@@ -210,7 +210,7 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
         return acc;
     }, 0);
 
-    // Calcular cupo proporcional según fecha de entrada
+    // Calcular cupo proporcional según fecha de entrada (por días exactos)
     const calculateProportionalQuota = () => {
         const baseQuota = employeeData?.vacationDaysTotal || 30;
         const entryDate = employeeData?.entryDate || employeeData?.seniorityDate;
@@ -224,12 +224,19 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
         // Si entró antes del año actual, tiene el cupo completo
         if (entryYear < currentYear) return baseQuota;
 
-        // Si entró este año, calcular proporcionalmente
+        // Si entró este año, calcular proporcionalmente por días
         if (entryYear === currentYear) {
-            const entryMonth = entry.getMonth(); // 0-11
-            const monthsWorked = 12 - entryMonth;
-            const proportionalQuota = Math.round((baseQuota * monthsWorked) / 12);
-            return proportionalQuota;
+            const yearStart = new Date(currentYear, 0, 1);
+            const yearEnd = new Date(currentYear, 11, 31);
+            const totalDaysInYear = Math.ceil((yearEnd.getTime() - yearStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+            const entryNormalized = new Date(entry);
+            entryNormalized.setHours(0, 0, 0, 0);
+
+            const daysWorkedInYear = Math.ceil((yearEnd.getTime() - entryNormalized.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+            const proportionalQuota = Math.round((baseQuota * daysWorkedInYear) / totalDaysInYear);
+
+            return Math.max(0, proportionalQuota);
         }
 
         // Si aún no ha entrado (fecha futura), no tiene cupo

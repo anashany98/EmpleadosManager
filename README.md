@@ -1,55 +1,243 @@
-# NominasApp - Automatización de Asientos Contables
+# 👥 EmpleadosManager - Sistema de Gestión de RRHH
 
-Aplicación Fullstack para importar nóminas desde Excel y generar asientos contables compatibles con CONTASOL.
+Sistema completo de gestión de empleados con nóminas, control de ausencias, horas extras y fichajes.
 
-## 🚀 Requisitos Previo
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-- **Docker Desktop** (Debe estar ejecutandose)
-- Node.js 18+ (Opcional si se usa Docker)
+## ✨ Características Principales
 
-## 🛠️ Instalación y Despliegue
+### 📊 Gestión de Empleados
+- Ficha completa de empleado con datos personales, laborales y financieros
+- Importación masiva desde Excel
+- Seguimiento de documentación (DNI, carnet de conducir, contratos)
+- Historial de cambios y auditoría
 
-1. **Clonar/Abrir el proyecto**
-2. **Iniciar Docker Compose**:
-   ```bash
-   docker-compose up --build
-   ```
-   Esto levantará:
-   - Base de Datos (Postgres): Puerto 5432
-   - Backend (API Node): Puerto 3000
-   - Frontend (React): Puerto 5173
+### 💰 Nóminas y Finanzas
+- Importación de nóminas desde Excel
+- Cálculo automático de costes
+- Gestión de horas extras con tarifas por categoría
+- Subcuentas contables (465)
 
-3. **Acceder a la Web**:
-   Abrir [http://localhost:5173](http://localhost:5173)
+### 📅 Gestión de Ausencias
+- Calendario global de empresa
+- Tipos: Vacaciones, Bajas médicas, Permisos, Horas médicas
+- Cálculo automático de días laborables
+- Cupo proporcional según fecha de alta
+- Generación de justificantes PDF
 
-## 🔄 Flujo de Uso
+### ⏰ Control de Fichajes
+- Registro de entradas/salidas
+- Gestión de pausas
+- Cálculo automático de horas trabajadas
+- Vista individual por empleado
+- Calendario global de control horario
+- Importación desde Excel
 
-1. **Gestión de Empleados**:
-   - Ve a la sección de Empleados.
-   - Crea un empleado asignándole un DNI y su Subcuenta 465 (ej: `465.1.0001`).
+### 🏢 Multi-empresa
+- Gestión de múltiples empresas
+- Filtrado por empresa en dashboard
+- Asignación de empleados por empresa
 
-2. **Importar Nómina**:
-   - Ve a "Importar Nómina".
-   - Sube el Excel de la gestoría.
-   - **Mapeo**: Asocia las columnas del Excel (ej: "Líquido a percibir") con los campos del sistema (ej: "Neto").
-   - El sistema validará los importes y cuadrará el asiento.
+### 📈 Analytics y Reportes
+- Dashboard con métricas clave
+- Alertas automáticas (vencimientos, ausencias)
+- Tendencias de contratación
+- Informes de ausencias
 
-3. **Generar y Exportar**:
-   - Una vez validado, genera los asientos.
-   - Descarga el archivo Excel (formato APU) listo para importar en CONTASOL.
+## 🛠️ Tecnologías
 
-## ⚠️ Solución de Problemas
+### Frontend
+- **React 18** + **TypeScript**
+- **Vite** - Build tool ultrarrápido
+- **TailwindCSS** - Styling
+- **Framer Motion** - Animaciones
+- **Recharts** - Gráficos
+- **Lucide React** - Iconos
+- **Sonner** - Notificaciones
+- **jsPDF** - Generación de PDFs
 
-- **Error de Conexión Docker**: Asegúrate de que Docker Desktop está iniciado y acepta conexiones.
-- **Base de Datos**: Si falla la conexión, revisa que el puerto 5432 no esté ocupado.
-- **Mapeo**: Si el Excel cambia de formato, puedes crear un nuevo perfil de mapeo.
+### Backend
+- **Node.js** + **Express** + **TypeScript**
+- **Prisma ORM** - Base de datos
+- **SQLite** - Base de datos (fácil de cambiar a PostgreSQL/MySQL)
+- **Multer** - Upload de archivos
+- **XLSX** - Procesamiento de Excel
 
-## 🏗️ Arquitectura
+## 📦 Instalación
 
-- **Frontend**: React + Vite + TailwindCSS (Premium UI).
-- **Backend**: Node.js + Express + Prisma.
-- **DB**: PostgreSQL.
-- **Infra**: Docker Compose.
+### Requisitos Previos
+- **Node.js** >= 18.0.0
+- **npm** >= 9.0.0
+
+### Pasos
+
+1. **Clonar el repositorio**
+```bash
+git clone https://github.com/anashany98/EmpleadosManager.git
+cd EmpleadosManager
+```
+
+2. **Instalar dependencias**
+
+```bash
+# Frontend
+cd frontend
+npm install
+
+# Backend
+cd ../backend
+npm install
+
+# Database
+cd ../database
+npm install
+```
+
+3. **Configurar base de datos**
+
+```bash
+cd database
+npx prisma db push
+```
+
+4. **Iniciar la aplicación**
+
+Abrir 2 terminales:
+
+**Terminal 1 - Backend:**
+```bash
+cd backend
+npm run dev
+```
+El backend correrá en `http://localhost:3000`
+
+**Terminal 2 - Frontend:**
+```bash
+cd frontend
+npm run dev
+```
+El frontend correrá en `http://localhost:5173`
+
+5. **Acceder a la aplicación**
+   
+Abrir el navegador en `http://localhost:5173`
+
+## 📚 Uso
+
+### Importar Empleados
+1. Ir a **Configuración** → **Importar Empleados**
+2. Descargar la plantilla Excel
+3. Rellenar los datos
+4. Subir el archivo
+
+### Registrar Ausencias
+1. Ir a **Calendario**
+2. Seleccionar empleado y rango de fechas
+3. Elegir tipo de ausencia
+4. Guardar
+
+### Importar Fichajes
+1. Ir a **Configuración** → **Importar Horas**
+2. Subir Excel con columnas: DNI, Fecha, Entrada, Salida, Pausa
+3. El sistema calculará automáticamente las horas
+
+### Ver Fichajes
+- **Vista Individual**: Abrir ficha de empleado → Pestaña "Fichajes"
+- **Vista Global**: Menú → Fichajes
+
+## 🗂️ Estructura del Proyecto
+
+```
+EmpleadosManager/
+├── frontend/          # Aplicación React
+│   ├── src/
+│   │   ├── api/      # Cliente API
+│   │   ├── components/  # Componentes reutilizables
+│   │   ├── pages/    # Páginas principales
+│   │   └── utils/    # Utilidades (festivos, etc.)
+│   └── public/
+├── backend/           # API Express
+│   ├── src/
+│   │   ├── controllers/  # Lógica de negocio
+│   │   ├── routes/   # Definición de rutas
+│   │   └── services/ # Servicios (validación, mapeo, etc.)
+│   └── uploads/      # Archivos subidos
+└── database/          # Configuración Prisma
+    ├── prisma/
+    │   └── schema.prisma  # Esquema de base de datos
+    └── dev.db         # Base de datos SQLite (generada)
+```
+
+## 🔐 Seguridad
+
+> ⚠️ **IMPORTANTE**: Esta versión NO incluye autenticación. Para uso en producción, se recomienda:
+> - Implementar autenticación JWT
+> - Añadir control de acceso basado en roles
+> - Usar HTTPS
+> - Validar todos los inputs
+> - Sanitizar uploads de archivos
+
+## 🚀 Despliegue
+
+### Opción 1: Docker (Recomendado)
+
+```bash
+docker-compose up -d
+```
+
+### Opción 2: Manual
+
+**Backend:**
+```bash
+cd backend
+npm run build
+npm start
+```
+
+**Frontend:**
+```bash
+cd frontend
+npm run build
+# Servir la carpeta dist/ con nginx o similar
+```
+
+## 📝 Roadmap
+
+- [ ] Sistema de autenticación y roles
+- [ ] Portal de autoservicio para empleados
+- [ ] Gestión de documentos adjuntos
+- [ ] Reportes avanzados (Excel, PDF)
+- [ ] Notificaciones por email
+- [ ] App móvil
+- [ ] Integración con sistemas de nómina externos
+- [ ] API pública con documentación
+
+## 🤝 Contribuir
+
+Las contribuciones son bienvenidas. Por favor:
+
+1. Fork el proyecto
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+
+## 📄 Licencia
+
+Este proyecto está bajo la licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+
+## 👨‍💻 Autor
+
+**Anas Hany Lahroudy**
+- GitHub: [@anashany98](https://github.com/anashany98)
+
+## 🙏 Agradecimientos
+
+- Iconos por [Lucide](https://lucide.dev/)
+- UI inspirado en diseños modernos de RRHH
+- Comunidad de React y Node.js
 
 ---
-Hecho con ❤️ por Antigravity.
+
+⭐ Si este proyecto te fue útil, considera darle una estrella en GitHub!

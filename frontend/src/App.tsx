@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'sonner';
-import { LayoutDashboard, Users, FileSpreadsheet, Settings, Moon, Sun, Menu, LogOut, CheckCircle2, Calendar as CalendarIcon, Building2, Clock } from 'lucide-react';
+import { LayoutDashboard, Users, FileSpreadsheet, Settings, Moon, Sun, Menu, LogOut, Calendar as CalendarIcon, Building2, Clock } from 'lucide-react';
 import PayrollImport from './pages/PayrollImport';
 import Dashboard from './pages/Dashboard';
 import Employees from './pages/Employees';

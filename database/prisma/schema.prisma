@@ -276,6 +276,10 @@ model OvertimeEntry {
   total       Float
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
+  
+  @@index([employeeId])
+  @@index([date])
+  @@index([employeeId, date])
 }
 
 model TimeEntry {
@@ -304,4 +308,5 @@ model TimeEntry {
   @@unique([employeeId, date])
   @@index([employeeId])
   @@index([date])
+  @@index([employeeId, date])
 }

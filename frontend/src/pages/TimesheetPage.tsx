@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { Clock, Calendar, ChevronLeft, ChevronRight, User, Download } from 'lucide-react';
+import { Clock, Calendar, ChevronLeft, ChevronRight, User } from 'lucide-react';
 
 interface Employee {
     id: string;
@@ -184,8 +184,8 @@ export default function TimesheetPage() {
                             <button
                                 onClick={() => setViewMode('calendar')}
                                 className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${viewMode === 'calendar'
-                                        ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
-                                        : 'text-slate-600 dark:text-slate-400'
+                                    ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400'
                                     }`}
                             >
                                 Calendario
@@ -193,8 +193,8 @@ export default function TimesheetPage() {
                             <button
                                 onClick={() => setViewMode('list')}
                                 className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${viewMode === 'list'
-                                        ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
-                                        : 'text-slate-600 dark:text-slate-400'
+                                    ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
+                                    : 'text-slate-600 dark:text-slate-400'
                                     }`}
                             >
                                 Lista
