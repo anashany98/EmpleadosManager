@@ -27,6 +27,7 @@ import companyRoutes from './routes/companyRoutes';
 import auditRoutes from './routes/auditRoutes';
 import overtimeRoutes from './routes/overtimeRoutes';
 import timeEntryRoutes from './routes/timeEntryRoutes';
+import employeeDashboardRoutes from './routes/employeeDashboardRoutes';
 
 // Rutas API
 app.use('/api/employees', employeeRoutes);
@@ -38,6 +39,7 @@ app.use('/api/companies', companyRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/overtime', overtimeRoutes);
 app.use('/api/time-entries', timeEntryRoutes);
+app.use('/api/dashboard/v2', employeeDashboardRoutes);
 
 
 app.listen(PORT, () => {
