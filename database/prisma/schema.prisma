@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../backend/node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+// Usuarios del sistema (para auditoría y login básico)
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String // Hashed
+  role      String   @default("user") // admin, user
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  batches   PayrollImportBatch[]
+  exports   Export[]
+  auditLogs AuditLog[]
+}
+
+// Empresas
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  cif       String   @unique
+  logoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+}
+
+// Maestro de Empleados
+model Employee {
+  id            String   @id @default(uuid())
+  dni           String   @unique // DNI/NIE o código interno mapeado
+  
+  // Personal Info
+  name          String   // Keeping for simple access (can be computed or manual)
+  firstName     String?
+  lastName      String?
+  email         String?
+  phone         String?
+  address       String?
+  city          String?
+  postalCode    String?
+  province      String?
+  registeredIn  String? // Empadronado en
+  birthDate     DateTime?
+  
+  // Financial & Legal Info
+  subaccount465 String   @unique // Subcuenta específica CONTASOL
+  active        Boolean  @default(true)
+  socialSecurityNumber String?
+  iban          String?
+  dniExpiration DateTime?
+  
+  // Driving License
+  drivingLicense           Boolean  @default(false)
+  drivingLicenseType       String?
+  drivingLicenseExpiration DateTime?
+
+  // Emergency Contact
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  
+  // Job Info
+  companyId     String?
+  company       Company? @relation(fields: [companyId], references: [id])
+  department    String?
+  category      String?
+  contractType  String? // Indefinido, Temporal, etc.
+  agreementType String? // Convenio
+  jobTitle      String? // Puesto
+  
+  // Dates
+  entryDate     DateTime? // Fecha entrada / Antigüedad
+  exitDate      DateTime? // Fecha salida
+  callDate      DateTime? // Fecha llamamiento (fijos discontinuos)
+  contractInterruptionDate DateTime? // Fecha interrupción (fijos discontinuos)
+  lowDate       DateTime? // Fecha baja
+  lowReason     String?   // Motivo baja
+  vacationDaysTotal Int   @default(30)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payrollRows   PayrollRow[]
+  accountingEntries AccountingEntry[]
+  vacations     Vacation[]
+  medicalReviews MedicalReview[]
+  trainings     Training[]
+  overtimeEntries OvertimeEntry[]
+  timeEntries TimeEntry[]
+}
+
+// Revisiones Médicas
+model MedicalReview {
+  id             String   @id @default(uuid())
+  employeeId     String
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date           DateTime
+  result         String?  // APTO, NO APTO, APTO CON LIMITACIONES
+  nextReviewDate DateTime? // Calculado (12/24 meses)
+  fileUrl        String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Formaciones
+model Training {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  type        String   // Ej: PRL, Técnica, Habilidades
+  name        String   // Nombre del curso
+  date        DateTime
+  hours       Int?
+  fileUrl     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Vacation {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  startDate   DateTime
+  endDate     DateTime
+  type        String   @default("VACATION") // VACATION, SICK, PERSONAL, etc.
+  reason      String?  // Motivo detallado para tipo "Otros"
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+}
+
+// Perfiles de Mapeo para interpretar Excels
+model MappingProfile {
+  id        String   @id @default(uuid())
+  name      String   // Ej: "Gestoría A - 2024"
+  rules     String     // Configuración de columnas { "employeeName": "C", "neto": "K", ... }
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  batches   PayrollImportBatch[]
+}
+
+// Lotes de importación (un archivo Excel subido)
+model PayrollImportBatch {
+  id              String   @id @default(uuid())
+  year            Int
+  month           Int
+  sourceFilename  String
+  status          String   @default("UPLOADED") // UPLOADED, MAPPED, VALIDATED, GENERATED, EXPORTED
+  resultSummary   String?    // Resumen de validación
+  notes           String?
+  
+  mappingProfileId String?
+  mappingProfile   MappingProfile? @relation(fields: [mappingProfileId], references: [id])
+  
+  createdById     String
+  createdBy       User     @relation(fields: [createdById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  rows            PayrollRow[]
+  entries         AccountingEntry[]
+  exports         Export[]
+}
+
+// Filas crudas/normalizadas del Excel
+model PayrollRow {
+  id              String   @id @default(uuid())
+  batchId         String
+  batch           PayrollImportBatch @relation(fields: [batchId], references: [id])
+  
+  // Datos extraídos
+  rawEmployeeName String?
+  employeeId      String?  // DNI/ID detectado si hay match
+  employee        Employee? @relation(fields: [employeeId], references: [id]) // Link opcional si ya se validó
+  
+  // Importes
+  bruto           Decimal  @default(0)
+  ssEmpresa       Decimal  @default(0)
+  ssTrabajador    Decimal  @default(0)
+  irpf            Decimal  @default(0)
+  neto            Decimal  @default(0)
+  
+  extraData       String?    // Otros campos capturados
+  
+  status          String   @default("PENDING") // PENDING, OK, WARNING, ERROR
+  validationNotes String?    // Array de mensajes de error/warning
+}
+
+// Asientos Contables Generados (Cabecera)
+model AccountingEntry {
+  id              String   @id @default(uuid())
+  batchId         String
+  batch           PayrollImportBatch @relation(fields: [batchId], references: [id])
+  
+  employeeId      String? // Opcional, si es asiento individual
+  employee        Employee? @relation(fields: [employeeId], references: [id])
+
+  concept         String
+  document        String?
+  date            DateTime
+  
+  totalDebe       Decimal
+  totalHaber      Decimal
+  
+  status          String   @default("DRAFT") // DRAFT, VALIDATED
+  
+  lines           AccountingEntryLine[]
+  createdAt       DateTime @default(now())
+}
+
+// Líneas de Asiento (Apuntes)
+model AccountingEntryLine {
+  id              String   @id @default(uuid())
+  entryId         String
+  entry           AccountingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  
+  account         String   // Cuenta contable
+  concept         String   // Concepto del apunte
+  debe            Decimal
+  haber           Decimal
+  document        String?
+  
+  order           Int
+}
+
+// Historial de Exportaciones
+model Export {
+  id              String   @id @default(uuid())
+  batchId         String
+  batch           PayrollImportBatch @relation(fields: [batchId], references: [id])
+  
+  type            String   // APU, MAE, REPORT
+  filename        String
+  generatedAt     DateTime @default(now())
+  
+  createdById     String
+  createdBy       User     @relation(fields: [createdById], references: [id])
+}
+
+// Auditoría
+model AuditLog {
+  id        String   @id @default(uuid())
+  action    String
+  entity    String
+  entityId  String
+  metadata  String?
+  
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  
+  createdAt DateTime @default(now())
+}
+model CategoryRate {
+  id           String   @id @default(uuid())
+  category     String   @unique
+  overtimeRate Float    @default(0.0)
+  updatedAt    DateTime @updatedAt
+}
+
+model OvertimeEntry {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  hours       Float
+  rate        Float
+  total       Float
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+model TimeEntry {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  date        DateTime  // Fecha del fichaje (solo fecha, sin hora)
+  
+  // Marcajes del día
+  checkIn     DateTime? // Hora de entrada
+  checkOut    DateTime? // Hora de salida
+  
+  lunchStart  DateTime? // Inicio pausa comida
+  lunchEnd    DateTime? // Fin pausa comida
+  
+  // Cálculos automáticos
+  totalHours  Float     @default(0.0) // Total horas trabajadas (sin contar pausa)
+  lunchHours  Float     @default(0.0) // Duración pausa comida en horas
+  
+  notes       String?   // Notas opcionales
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  @@unique([employeeId, date])
+  @@index([employeeId])
+  @@index([date])
+}

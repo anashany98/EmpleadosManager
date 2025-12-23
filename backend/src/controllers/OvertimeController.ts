@@ -1,0 +1,323 @@
+import { Request, Response } from 'express';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+function parseHours(value: any): number {
+    if (typeof value === 'number') return value * 24; // Excel stores time as fraction of day (0.5 = 12h)
+    if (typeof value === 'string') {
+        if (value.includes(':')) {
+            const parts = value.split(':');
+            const h = parseInt(parts[0], 10) || 0;
+            const m = parseInt(parts[1], 10) || 0;
+            return h + (m / 60);
+        }
+        return parseFloat(value) || 0;
+    }
+    return 0;
+}
+
+export const RateController = {
+    getAll: async (req: Request, res: Response) => {
+        try {
+            const rates = await prisma.categoryRate.findMany({
+                orderBy: { category: 'asc' }
+            });
+            res.json(rates);
+        } catch (error) {
+            res.status(500).json({ error: 'Error al obtener tarifas' });
+        }
+    },
+
+    update: async (req: Request, res: Response) => {
+        const { category, overtimeRate } = req.body;
+        try {
+            const rate = await prisma.categoryRate.upsert({
+                where: { category },
+                update: { overtimeRate },
+                create: { category, overtimeRate }
+            });
+            res.json(rate);
+        } catch (error) {
+            res.status(500).json({ error: 'Error al actualizar tarifa' });
+        }
+    }
+};
+
+export const OvertimeController = {
+    getByEmployee: async (req: Request, res: Response) => {
+        const { employeeId } = req.params;
+        try {
+            const entries = await prisma.overtimeEntry.findMany({
+                where: { employeeId },
+                orderBy: { date: 'desc' }
+            });
+            res.json(entries);
+        } catch (error) {
+            res.status(500).json({ error: 'Error al obtener horas extras' });
+        }
+    },
+
+    create: async (req: Request, res: Response) => {
+        const { employeeId, hours, rate, date } = req.body;
+        try {
+            const total = hours * rate;
+            const entry = await prisma.overtimeEntry.create({
+                data: {
+                    employeeId,
+                    hours,
+                    rate,
+                    total,
+                    date: date ? new Date(date) : new Date()
+                }
+            });
+            res.status(201).json(entry);
+        } catch (error) {
+            res.status(500).json({ error: 'Error al registrar horas extras' });
+        }
+    },
+
+    delete: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        try {
+            await prisma.overtimeEntry.delete({ where: { id } });
+            res.status(204).send();
+        } catch (error) {
+            res.status(500).json({ error: 'Error al eliminar registro' });
+        }
+    },
+
+    importOvertime: async (req: Request, res: Response) => {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No se ha subido ningún archivo' });
+        }
+
+        try {
+            const XLSX = require('xlsx');
+            const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(sheet);
+
+            let importedCount = 0;
+            const errors: string[] = [];
+            const skipped: string[] = [];
+
+            console.log(`📊 Procesando ${data.length} filas del Excel...`);
+
+            // Log columnas disponibles para debugging
+            if (data.length > 0) {
+                const columns = Object.keys(data[0]);
+                console.log(`\n${'='.repeat(50)}`);
+                console.log(`📋 Columnas encontradas: ${columns.join(', ')}`);
+                console.log(`${'='.repeat(50)}\n`);
+            }
+
+            const rates = await prisma.categoryRate.findMany();
+            const ratesMap = new Map<string, number>(rates.map((r: any) => [r.category, r.overtimeRate] as [string, number]));
+
+            let rowIndex = 0;
+            for (const row of data as any[]) {
+                rowIndex++;
+                const dni = String(row['DNI'] || '').trim();
+                const nombreRaw = row['Nombre'];
+                const fechaRaw = row['Fecha'];
+                const extrRaw = row['Extr'];
+
+                // Saltar filas sin datos relevantes (ni fichaje ni horas extras)
+                if (!dni || !fechaRaw) {
+                    skipped.push(`Fila ${rowIndex}: Sin datos válidos (DNI: ${dni || 'vacío'})`);
+                    continue;
+                }
+
+                try {
+                    const employee = await prisma.employee.findUnique({
+                        where: { dni }
+                    });
+
+                    if (!employee) {
+                        errors.push(`Fila ${rowIndex}: Empleado ${nombreRaw || dni} no encontrado en BD`);
+                        console.warn(`⚠️ Fila ${rowIndex}: DNI ${dni} no encontrado`);
+                        continue;
+                    }
+
+                    const hours = parseHours(extrRaw);
+                    if (hours <= 0) {
+                        skipped.push(`Fila ${rowIndex}: Horas inválidas (${extrRaw})`);
+                        continue;
+                    }
+
+                    const rate = (ratesMap.get(employee.category || '') || 0) as number;
+
+                    let date: Date;
+                    if (typeof fechaRaw === 'number') {
+                        // Excel date (serial number)
+                        date = new Date(Math.round(((fechaRaw as number) - 25569) * 86400 * 1000));
+                    } else if (typeof fechaRaw === 'string') {
+                        const parts = fechaRaw.split('/');
+                        if (parts.length === 3) {
+                            const [d, m, y] = parts.map(Number);
+                            date = new Date(y, m - 1, d);
+                        } else {
+                            throw new Error(`Formato de fecha inválido: ${fechaRaw}`);
+                        }
+                    } else {
+                        date = new Date(fechaRaw);
+                    }
+
+                    if (isNaN(date.getTime())) {
+                        errors.push(`Fila ${rowIndex}: Fecha inválida (${fechaRaw})`);
+                        continue;
+                    }
+
+                    // Normalizar fecha (solo día, sin hora)
+                    const normalizedDate = new Date(date);
+                    normalizedDate.setHours(0, 0, 0, 0);
+
+                    // Crear TimeEntry con los datos de fichaje
+                    const parseTimeToDate = (dateBase: Date, timeStr: any): Date | null => {
+                        if (!timeStr) return null;
+                        if (typeof timeStr === 'number') {
+                            // Excel time (fraction of day)
+                            const hours = Math.floor(timeStr * 24);
+                            const minutes = Math.floor((timeStr * 24 * 60) % 60);
+                            const result = new Date(dateBase);
+                            result.setHours(hours, minutes, 0, 0);
+                            return result;
+                        }
+                        if (typeof timeStr === 'string' && timeStr.includes(':')) {
+                            const [h, m] = timeStr.split(':').map(Number);
+                            const result = new Date(dateBase);
+                            result.setHours(h, m, 0, 0);
+                            return result;
+                        }
+                        return null;
+                    };
+
+                    // Intentar detectar si hay horario partido o simple (case-insensitive)
+                    const getColumn = (name: string) => {
+                        const key = Object.keys(row).find(k => k.toLowerCase() === name.toLowerCase());
+                        return key ? row[key] : undefined;
+                    };
+
+                    const entrada1Raw = getColumn('Entrada1') || getColumn('Entrada') || getColumn('Entrada_1');
+                    const salida1Raw = getColumn('Salida1') || getColumn('Salida') || getColumn('Salida_1');
+                    const entrada2Raw = getColumn('Entrada2') || getColumn('Entrada_2');
+                    const salida2Raw = getColumn('Salida2') || getColumn('Salida_') || getColumn('Salida_2');
+                    const pausaRaw = getColumn('Pausa');
+                    const presRaw = getColumn('Pres'); // Horas de presencia ya calculadas en el Excel
+
+                    console.log(`\n🔍 Fila ${rowIndex} - DATOS RAW:`);
+                    console.log(`   Entrada (mañana): ${entrada1Raw}`);
+                    console.log(`   Salida (mediodía): ${salida1Raw}`);
+                    console.log(`   Entrada (tarde): ${entrada2Raw}`);
+                    console.log(`   Salida (noche): ${salida2Raw}`);
+                    console.log(`   Pres (total): ${presRaw}`);
+                    console.log(`   Pausa: ${pausaRaw}`);
+
+                    if (entrada1Raw || salida1Raw || presRaw) {
+                        const checkIn = parseTimeToDate(date, entrada1Raw);
+                        const checkOut = parseTimeToDate(date, salida2Raw || salida1Raw); // Usar salida2 si existe, sino salida1
+                        const lunchStart = parseTimeToDate(date, salida1Raw); // Primera salida = inicio pausa
+                        const lunchEnd = parseTimeToDate(date, entrada2Raw); // Segunda entrada = fin pausa
+
+                        // Calcular horas trabajadas
+                        let totalHours = 0;
+                        let lunchHours = 0;
+
+                        // PRIORIDAD 1: Usar la columna "Pres" si existe (ya está calculado correctamente)
+                        if (presRaw) {
+                            if (typeof presRaw === 'number') {
+                                totalHours = presRaw * 24; // Excel guarda tiempos como fracción de día
+                            } else if (typeof presRaw === 'string' && presRaw.includes(':')) {
+                                const [h, m] = presRaw.split(':').map(Number);
+                                totalHours = h + (m / 60);
+                            }
+                        } else if (checkIn && checkOut) {
+                            // PRIORIDAD 2: Calcular manualmente si no hay Pres
+                            const grossHours = (checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60);
+
+                            // Si hay pausa como columna numérica, usarla
+                            if (pausaRaw && typeof pausaRaw === 'number') {
+                                lunchHours = pausaRaw * 24; // Excel guarda tiempos como fracción de día
+                            } else if (pausaRaw && typeof pausaRaw === 'string' && pausaRaw.includes(':')) {
+                                const [h, m] = pausaRaw.split(':').map(Number);
+                                lunchHours = h + (m / 60);
+                            } else if (lunchStart && lunchEnd) {
+                                // Calcular pausa desde las horas de entrada/salida
+                                lunchHours = (lunchEnd.getTime() - lunchStart.getTime()) / (1000 * 60 * 60);
+                            }
+
+                            totalHours = Math.max(0, grossHours - lunchHours);
+                        }
+
+                        console.log(`   ✅ RESULTADO: Total=${totalHours.toFixed(2)}h (Fuente: ${presRaw ? 'Columna Pres' : 'Calculado'}, Pausa=${lunchHours.toFixed(2)}h)`);
+
+                        // Crear o actualizar TimeEntry
+                        await prisma.timeEntry.upsert({
+                            where: {
+                                employeeId_date: {
+                                    employeeId: employee.id,
+                                    date: normalizedDate
+                                }
+                            },
+                            update: {
+                                checkIn,
+                                checkOut,
+                                lunchStart: entrada2Raw ? lunchStart : null,
+                                lunchEnd: entrada2Raw ? lunchEnd : null,
+                                totalHours,
+                                lunchHours
+                            },
+                            create: {
+                                employeeId: employee.id,
+                                date: normalizedDate,
+                                checkIn,
+                                checkOut,
+                                lunchStart: entrada2Raw ? lunchStart : null,
+                                lunchEnd: entrada2Raw ? lunchEnd : null,
+                                totalHours,
+                                lunchHours
+                            }
+                        });
+                    }
+
+                    // Crear OvertimeEntry solo si hay horas extras
+                    if (extrRaw && extrRaw !== "0:00" && extrRaw !== 0) {
+                        const hours = parseHours(extrRaw);
+                        if (hours > 0) {
+                            const rate = (ratesMap.get(employee.category || '') || 0) as number;
+                            await prisma.overtimeEntry.create({
+                                data: {
+                                    employeeId: employee.id,
+                                    hours,
+                                    rate,
+                                    total: Number((hours * rate).toFixed(2)),
+                                    date
+                                }
+                            });
+                        }
+                    }
+
+                    importedCount++;
+                    console.log(`✅ Fila ${rowIndex}: ${employee.name}`);
+                } catch (e: any) {
+                    const errorMsg = `Fila ${rowIndex} (DNI ${dni}): ${e.message || e}`;
+                    errors.push(errorMsg);
+                    console.error(`❌ ${errorMsg}`);
+                }
+            }
+
+            console.log(`\n📈 Resumen: ${importedCount} importados, ${errors.length} errores, ${skipped.length} saltados`);
+
+            res.json({
+                message: `Importación completada. ${importedCount} registros añadidos.`,
+                imported: importedCount,
+                errors,
+                skipped
+            });
+        } catch (error: any) {
+            console.error('❌ Error fatal en importación:', error);
+            res.status(500).json({ error: `Error procesando el archivo: ${error.message}` });
+        }
+    }
+};
