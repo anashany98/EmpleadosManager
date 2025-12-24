@@ -19,6 +19,8 @@ const TIPOS_CONTRATO = ['Indefinido', 'Temporal', 'Fijo Discontinuo', 'Práctica
 const CONVENIOS = ['Comercio', 'Hostelería', 'Metal', 'Construcción', 'Oficinas y Despachos', 'Propio de Empresa', 'Otros'];
 import VacationCalendar from '../components/VacationCalendar';
 import { TimesheetViewer } from '../components/TimesheetViewer';
+import DocumentArchive from '../components/DocumentArchive';
+import PRLArchive from '../components/PRLArchive';
 
 export default function EmployeeDetail() {
     const { id } = useParams();
@@ -148,7 +150,7 @@ export default function EmployeeDetail() {
         }
     };
 
-    if (loading) return <div className="p-10 text-center animate-pulse">Cargando perfil...</div>;
+    if (loading) return <div className="p-10 text-center animate-pulse text-slate-500">Cargando perfil...</div>;
 
     // --- VIEW MODE ---
     if (!isEditing && employeeView) {
@@ -162,8 +164,7 @@ export default function EmployeeDetail() {
                 <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
                     <div className="flex items-center gap-6">
                         <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
-                            {employeeView.name?.charAt(0)}
-                            {employeeView.firstName?.charAt(0)}
+                            {employeeView.firstName?.charAt(0) || employeeView.name?.charAt(0)}
                         </div>
                         <div>
                             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
@@ -178,42 +179,72 @@ export default function EmployeeDetail() {
                         </div>
                     </div>
                     <div className="flex gap-3">
-                        <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold rounded-lg hover:bg-blue-100 transition-colors">
-                            Editar Datos
+                        <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">
+                            Editar Perfil
                         </button>
                     </div>
                 </div>
 
-                {/* Stats Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
-                        <p className="text-slate-500 text-sm font-medium mb-1">Subcuenta Contable</p>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white">{employeeView.subaccount465}</h3>
+                {/* Tabs for View Mode */}
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                    <div className="border-b border-slate-100 dark:border-slate-800">
+                        <div className="flex overflow-x-auto">
+                            {['resumen', 'expediente', 'prl', 'fichajes', 'vacaciones'].map((tab) => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setActiveTab(tab)}
+                                    className={`px-6 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${activeTab === 'personal' && tab === 'resumen' || activeTab === tab
+                                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                                        : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                                        }`}
+                                >
+                                    {tab === 'prl' ? 'PRL / Formación' : (tab.charAt(0).toUpperCase() + tab.slice(1))}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
-                        <p className="text-slate-500 text-sm font-medium mb-1">Cupo Vacaciones</p>
-                        <h3 className="text-xl font-bold text-slate-900 dark:text-white">{employeeView.vacationDaysTotal || 30} días</h3>
+
+                    <div className="p-8">
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={activeTab}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 0.2 }}
+                            >
+                                {(activeTab === 'resumen' || activeTab === 'personal') && (
+                                    <div className="space-y-8">
+                                        {/* Stats Cards */}
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                            <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700">
+                                                <p className="text-slate-500 text-sm font-medium mb-1">Subcuenta Contable</p>
+                                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{employeeView.subaccount465}</h3>
+                                            </div>
+                                            <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700">
+                                                <p className="text-slate-500 text-sm font-medium mb-1">Cupo Vacaciones</p>
+                                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">{employeeView.vacationDaysTotal || 30} días</h3>
+                                            </div>
+                                            <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700">
+                                                <p className="text-slate-500 text-sm font-medium mb-1">Antigüedad</p>
+                                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                                                    {employeeView.entryDate ? new Date(employeeView.entryDate).toLocaleDateString() : (employeeView.seniorityDate ? new Date(employeeView.seniorityDate).toLocaleDateString() : '--')}
+                                                </h3>
+                                            </div>
+                                        </div>
+
+                                        <SalaryCalculator />
+                                        <OvertimeTracker employeeId={id || ''} category={employeeView.category} />
+                                    </div>
+                                )}
+
+                                {activeTab === 'expediente' && <DocumentArchive employeeId={id || ''} />}
+                                {activeTab === 'prl' && <PRLArchive employeeId={id || ''} />}
+                                {activeTab === 'fichajes' && <TimesheetViewer employeeId={id || ''} />}
+                                {activeTab === 'vacaciones' && <VacationCalendar employeeId={id || ''} />}
+                            </motion.div>
+                        </AnimatePresence>
                     </div>
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
-                        <p className="text-slate-500 text-sm font-medium mb-1">Fecha Entrada / Antigüedad</p>
-                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white">
-                            {employeeView.entryDate ? new Date(employeeView.entryDate).toLocaleDateString() : (employeeView.seniorityDate ? new Date(employeeView.seniorityDate).toLocaleDateString() : '--')}
-                        </h3>
-                    </div>
-                </div>
-
-                {/* Salary Cost Calculator Widget */}
-                <SalaryCalculator />
-
-                {/* Overtime Tracker Widget */}
-                <OvertimeTracker employeeId={id || ''} category={employeeView.category} />
-
-                {/* Timesheet Viewer - Fichajes */}
-                <TimesheetViewer employeeId={id || ''} />
-
-                {/* Vacation Calendar Section */}
-                <div id="vacations">
-                    <VacationCalendar employeeId={id || ''} />
                 </div>
             </div>
         );
@@ -240,7 +271,7 @@ export default function EmployeeDetail() {
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                 <div className="border-b border-slate-100 dark:border-slate-800">
                     <div className="flex overflow-x-auto">
-                        {['personal', 'laboral', 'financiero', 'fechas', 'fichajes', 'actividad'].map((tab) => (
+                        {['personal', 'laboral', 'financiero', 'fechas', 'expediente', 'prl'].map((tab) => (
                             <button
                                 key={tab}
                                 onClick={() => setActiveTab(tab)}
@@ -249,7 +280,8 @@ export default function EmployeeDetail() {
                                     : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                                     }`}
                             >
-                                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+
+                                {tab === 'prl' ? 'PRL / Formación' : (tab.charAt(0).toUpperCase() + tab.slice(1))}
                             </button>
                         ))}
                     </div>
@@ -457,6 +489,19 @@ export default function EmployeeDetail() {
                                         </div>
                                     </div>
                                 )}
+
+                                {/* OTHER TABS (Read-only components) */}
+                                {activeTab === 'expediente' && !isNew && (
+                                    <div className="animate-in fade-in duration-300">
+                                        <DocumentArchive employeeId={id || ''} />
+                                    </div>
+                                )}
+
+                                {activeTab === 'prl' && !isNew && (
+                                    <div className="animate-in fade-in duration-300">
+                                        <PRLArchive employeeId={id || ''} />
+                                    </div>
+                                )}
                             </form>
                         </motion.div>
                     </AnimatePresence>
@@ -481,6 +526,7 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
     }, [employeeId, category]);
 
     const fetchRateAndEntries = async () => {
+        setLoading(true);
         try {
             // Get category rates
             const rates = await api.get('/overtime/rates');
@@ -571,7 +617,12 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
                 </div>
 
                 <div className="lg:col-span-2">
-                    <div className="overflow-hidden rounded-xl border border-slate-100 dark:border-slate-800">
+                    <div className="overflow-hidden rounded-xl border border-slate-100 dark:border-slate-800 relative min-h-[200px]">
+                        {loading && (
+                            <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-10">
+                                <Loader2 className="animate-spin text-amber-500" size={32} />
+                            </div>
+                        )}
                         <table className="w-full text-left text-sm">
                             <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
                                 <tr>
@@ -583,7 +634,7 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {entries.length === 0 ? (
+                                {!loading && entries.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="px-4 py-8 text-center text-slate-400 italic">No hay horas extras registradas</td>
                                     </tr>

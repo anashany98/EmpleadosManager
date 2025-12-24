@@ -25,13 +25,13 @@ export default function SettingsPage() {
         }
     };
 
-    const handleUpdateRate = async (category: string, value: number) => {
+    const handleUpdateRate = async (category: string, normal: number, holiday: number) => {
         try {
-            await api.post('/overtime/rates', { category, overtimeRate: value });
-            toast.success(`Tarifa de ${category} actualizada`);
+            await api.post('/overtime/rates', { category, overtimeRate: normal, holidayOvertimeRate: holiday });
+            toast.success(`Tarifas de ${category} actualizadas`);
             fetchRates();
         } catch (error) {
-            toast.error('Error al actualizar tarifa');
+            toast.error('Error al actualizar tarifas');
         }
     };
 
@@ -102,18 +102,36 @@ export default function SettingsPage() {
                         {CATEGORIAS.map(cat => {
                             const rate = rates.find(r => r.category === cat);
                             return (
-                                <div key={cat} className="p-4 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-800/30 space-y-3">
-                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300 block">{cat}</label>
-                                    <div className="relative">
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            defaultValue={rate?.overtimeRate || 0}
-                                            onBlur={(e) => handleUpdateRate(cat, parseFloat(e.target.value))}
-                                            className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 font-bold text-blue-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                        />
-                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-                                            <span className="text-sm">€/h</span>
+                                <div key={cat} className="p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
+                                    <label className="text-sm font-black text-slate-900 dark:text-white border-l-4 border-blue-500 pl-3 block">{cat}</label>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Día Normal</span>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    defaultValue={rate?.overtimeRate || 0}
+                                                    onBlur={(e) => handleUpdateRate(cat, parseFloat(e.target.value), rate?.holidayOvertimeRate || 0)}
+                                                    className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 font-bold text-blue-600 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                                                />
+                                                <div className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400 text-[10px] font-bold">€</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <span className="text-[10px] font-bold text-amber-500 uppercase">Festivo / Finde</span>
+                                            <div className="relative">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    defaultValue={rate?.holidayOvertimeRate || 0}
+                                                    onBlur={(e) => handleUpdateRate(cat, rate?.overtimeRate || 0, parseFloat(e.target.value))}
+                                                    className="w-full pl-8 pr-3 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-amber-50/20 dark:bg-amber-900/10 font-bold text-amber-600 text-sm focus:ring-2 focus:ring-amber-500 outline-none transition-all"
+                                                />
+                                                <div className="absolute left-2 top-1/2 -translate-y-1/2 text-amber-400 text-[10px] font-bold">€</div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

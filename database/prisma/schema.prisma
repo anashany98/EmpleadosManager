@@ -3,9 +3,14 @@ generator client {
   output   = "../../backend/node_modules/.prisma/client"
 }
 
+generator client_root {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client"
+}
+
 datasource db {
   provider = "sqlite"
-  url      = "file:./dev.db"
+  url      = env("DATABASE_URL")
 }
 
 // Usuarios del sistema (para auditoría y login básico)
@@ -95,7 +100,25 @@ model Employee {
   medicalReviews MedicalReview[]
   trainings     Training[]
   overtimeEntries OvertimeEntry[]
-  timeEntries TimeEntry[]
+  timeEntries     TimeEntry[]
+  alerts          Alert[]
+  documents       Document[]
+}
+
+model Document {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  name        String   // Ej: "Contrato 2024", "DNI Copia"
+  category    String   // Ej: "CONTRACT", "DNI", "PAYROLL", "MEDICAL", "TRAINING", "OTHER"
+  fileUrl     String
+  uploadDate  DateTime @default(now())
+  expiryDate  DateTime? // Para avisar si un documento caduca
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([category])
 }
 
 // Revisiones Médicas
@@ -132,6 +155,7 @@ model Vacation {
   startDate   DateTime
   endDate     DateTime
   type        String   @default("VACATION") // VACATION, SICK, PERSONAL, etc.
+  days        Int      @default(0)         // Number of days (pre-calculated)
   reason      String?  // Motivo detallado para tipo "Otros"
   
   createdAt   DateTime @default(now())
@@ -261,10 +285,11 @@ model AuditLog {
   createdAt DateTime @default(now())
 }
 model CategoryRate {
-  id           String   @id @default(uuid())
-  category     String   @unique
-  overtimeRate Float    @default(0.0)
-  updatedAt    DateTime @updatedAt
+  id                  String   @id @default(uuid())
+  category            String   @unique
+  overtimeRate        Float    @default(0.0)
+  holidayOvertimeRate Float    @default(0.0)
+  updatedAt           DateTime @updatedAt
 }
 
 model OvertimeEntry {
@@ -309,4 +334,25 @@ model TimeEntry {
   @@index([employeeId])
   @@index([date])
   @@index([employeeId, date])
+}
+
+model Alert {
+  id          String   @id @default(uuid())
+  employeeId  String?
+  employee    Employee? @relation(fields: [employeeId], references: [id])
+  
+  type        String     // CONTRACT_EXPIRING, DNI_EXPIRING, etc.
+  severity    String     // HIGH, MEDIUM, LOW
+  title       String
+  message     String
+  actionUrl   String?
+  
+  isRead      Boolean  @default(false)
+  isDismissed Boolean  @default(false)
+  
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  
+  @@index([isRead, severity])
+  @@index([createdAt])
 }

@@ -46,61 +46,128 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
         const doc = new jsPDF();
 
         const typeLabel = getAbsenceLabel(v.type);
-        const startStr = new Date(v.startDate).toLocaleDateString();
-        const endStr = new Date(v.endDate).toLocaleDateString();
-        const empName = `${employeeData?.name} ${employeeData?.lastName || ''} `;
+        const start = new Date(v.startDate);
+        const end = new Date(v.endDate);
+        const startStr = start.toLocaleDateString();
+        const endStr = end.toLocaleDateString();
+        const empName = `${employeeData?.firstName} ${employeeData?.lastName || ''}`;
 
-        // Header
-        doc.setFillColor(59, 130, 246); // Blue-500
-        doc.rect(0, 0, 210, 40, 'F');
+        // Cálculo de días
+        const naturalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        const businessDays = getBusinessDaysCount(start, end);
+        const nonWorkingDays = naturalDays - businessDays;
+
+        // Header Design
+        doc.setFillColor(30, 41, 59); // Slate-800
+        doc.rect(0, 0, 210, 50, 'F');
+
         doc.setTextColor(255, 255, 255);
-        doc.setFontSize(22);
+        doc.setFontSize(24);
+        doc.setFont('helvetica', 'bold');
         doc.text('JUSTIFICANTE DE AUSENCIA', 105, 25, { align: 'center' });
 
-        // Content
-        doc.setTextColor(0, 0, 0);
-        doc.setFontSize(12);
-        let y = 60;
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Datos del Empleado:', 20, y);
+        doc.setFontSize(10);
         doc.setFont('helvetica', 'normal');
-        doc.text(empName, 70, y);
+        doc.text('Documento oficial de control de presencia y gestión de recursos humanos', 105, 35, { align: 'center' });
+
+        // Branding Placeholder
+        doc.setDrawColor(255, 255, 255);
+        doc.setLineWidth(0.5);
+        doc.line(20, 42, 190, 42);
+
+        // Content Section
+        doc.setTextColor(30, 41, 59);
+        let y = 70;
+
+        // Employee Info Box
+        doc.setFillColor(248, 250, 252); // Slate-50
+        doc.roundedRect(20, y - 5, 170, 35, 3, 3, 'F');
+
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('INFORMACIÓN DEL EMPLEADO', 25, y + 5);
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Nombre completo: ${empName}`, 25, y + 15);
+        doc.text(`DNI / NIE: ${employeeData?.dni || '-'}`, 25, y + 23);
+        doc.text(`Departamento: ${employeeData?.department || '-'}`, 100, y + 15);
+        doc.text(`Puesto: ${employeeData?.jobTitle || '-'}`, 100, y + 23);
+
+        y += 45;
+
+        // Absence Detail Box
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DETALLES DE LA AUSENCIA', 25, y);
+
+        doc.setDrawColor(226, 232, 240); // Slate-200
+        doc.line(20, y + 3, 190, y + 3);
+
+        y += 15;
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(11);
+        doc.text('Concepto:', 25, y);
+        doc.setFont('helvetica', 'bold');
+        doc.text(typeLabel.toUpperCase(), 70, y);
+
         y += 10;
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('DNI:', 20, y);
         doc.setFont('helvetica', 'normal');
-        doc.text(employeeData?.dni || '-', 70, y);
-        y += 20;
-
-        doc.setFont('helvetica', 'bold');
-        doc.text('Tipo de Ausencia:', 20, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(typeLabel, 70, y);
-        y += 10;
+        doc.text('Periodo:', 25, y);
+        doc.text(`Del ${startStr} al ${endStr}`, 70, y);
 
         if (v.reason) {
-            doc.setFont('helvetica', 'bold');
-            doc.text('Detalles:', 20, y);
-            doc.setFont('helvetica', 'normal');
-            doc.text(v.reason, 70, y);
             y += 10;
+            doc.text('Observaciones:', 25, y);
+            doc.setFont('helvetica', 'italic');
+            doc.text(v.reason, 70, y, { maxWidth: 110 });
+            y += 5; // Extra space for multi-line if needed
         }
 
-        doc.setFont('helvetica', 'bold');
-        doc.text('Periodo:', 20, y);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Del ${startStr} al ${endStr} `, 70, y);
-        y += 30;
+        y += 20;
 
-        // Signature box
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(20, y, 80, 40);
-        doc.rect(110, y, 80, 40);
+        // Days Breakdown Table
+        doc.setFillColor(241, 245, 249); // Slate-100
+        doc.rect(20, y, 170, 30, 'F');
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text('DESGLOSE DE DÍAS', 25, y + 7);
+
+        doc.setFontSize(11);
+        doc.text('Días Naturales:', 25, y + 18);
+        doc.text(`${naturalDays}`, 60, y + 18);
+
+        doc.text('Días Laborables:', 75, y + 18);
+        doc.setTextColor(37, 99, 235); // Blue-600
+        doc.text(`${businessDays}`, 115, y + 18);
+        doc.setTextColor(30, 41, 59);
+
+        doc.text('Festivos/Fines de Semana:', 130, y + 18);
+        doc.text(`${nonWorkingDays}`, 180, y + 18);
+
+        y += 50;
+
+        // Signature area
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text('FIRMAS Y SELLOS', 105, y, { align: 'center' });
+
+        y += 10;
+        doc.setDrawColor(203, 213, 225); // Slate-300
+        doc.rect(25, y, 75, 35);
+        doc.rect(110, y, 75, 35);
+
+        doc.setFont('helvetica', 'normal');
         doc.setFontSize(8);
-        doc.text('Firma del Empleado', 60, y + 45, { align: 'center' });
-        doc.text('Sello/Firma Empresa', 150, y + 45, { align: 'center' });
+        doc.text('Firma del Empleado', 62.5, y + 42, { align: 'center' });
+        doc.text('Sello y Firma de la Empresa', 147.5, y + 42, { align: 'center' });
+
+        // Footer
+        doc.setTextColor(148, 163, 184); // Slate-400
+        doc.setFontSize(7);
+        const generationDate = new Date().toLocaleString();
+        doc.text(`Documento generado automáticamente el ${generationDate} - NominasApp HR Intelligence`, 105, 285, { align: 'center' });
 
         doc.save(`Justificante_${typeLabel.replace(/\s/g, '_')}_${empName.replace(/\s/g, '_')}.pdf`);
     };

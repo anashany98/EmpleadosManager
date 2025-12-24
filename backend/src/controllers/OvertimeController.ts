@@ -17,6 +17,20 @@ function parseHours(value: any): number {
     return 0;
 }
 
+const SPAIN_HOLIDAYS_2025 = [
+    '2025-01-01', '2025-01-06', '2025-04-17', '2025-04-18',
+    '2025-05-01', '2025-08-15', '2025-10-12', '2025-11-01',
+    '2025-12-06', '2025-12-08', '2025-12-25'
+];
+
+function isHoliday(date: Date): boolean {
+    const day = date.getDay();
+    if (day === 0 || day === 6) return true; // Sábado o Domingo
+
+    const dateStr = date.toISOString().split('T')[0];
+    return SPAIN_HOLIDAYS_2025.includes(dateStr);
+}
+
 export const RateController = {
     getAll: async (req: Request, res: Response) => {
         try {
@@ -30,12 +44,12 @@ export const RateController = {
     },
 
     update: async (req: Request, res: Response) => {
-        const { category, overtimeRate } = req.body;
+        const { category, overtimeRate, holidayOvertimeRate } = req.body;
         try {
             const rate = await prisma.categoryRate.upsert({
                 where: { category },
-                update: { overtimeRate },
-                create: { category, overtimeRate }
+                update: { overtimeRate, holidayOvertimeRate },
+                create: { category, overtimeRate, holidayOvertimeRate }
             });
             res.json(rate);
         } catch (error) {
@@ -113,7 +127,9 @@ export const OvertimeController = {
             }
 
             const rates = await prisma.categoryRate.findMany();
-            const ratesMap = new Map<string, number>(rates.map((r: any) => [r.category, r.overtimeRate] as [string, number]));
+            const ratesMap = new Map<string, { normal: number, holiday: number }>(
+                rates.map((r: any) => [r.category, { normal: r.overtimeRate, holiday: r.holidayOvertimeRate }] as [string, any])
+            );
 
             let rowIndex = 0;
             for (const row of data as any[]) {
@@ -146,7 +162,9 @@ export const OvertimeController = {
                         continue;
                     }
 
-                    const rate = (ratesMap.get(employee.category || '') || 0) as number;
+                    const ratesInfo = ratesMap.get(employee.category || '');
+                    const rateNormal = ratesInfo?.normal || 0;
+                    const rateHoliday = ratesInfo?.holiday || 0;
 
                     let date: Date;
                     if (typeof fechaRaw === 'number') {
@@ -285,13 +303,15 @@ export const OvertimeController = {
                     if (extrRaw && extrRaw !== "0:00" && extrRaw !== 0) {
                         const hours = parseHours(extrRaw);
                         if (hours > 0) {
-                            const rate = (ratesMap.get(employee.category || '') || 0) as number;
+                            const isHolidayDay = isHoliday(date);
+                            const appliedRate = isHolidayDay ? rateHoliday : rateNormal;
+
                             await prisma.overtimeEntry.create({
                                 data: {
                                     employeeId: employee.id,
                                     hours,
-                                    rate,
-                                    total: Number((hours * rate).toFixed(2)),
+                                    rate: appliedRate,
+                                    total: Number((hours * appliedRate).toFixed(2)),
                                     date
                                 }
                             });

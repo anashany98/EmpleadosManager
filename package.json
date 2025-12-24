@@ -15,5 +15,8 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"
+  },
+  "prisma": {
+    "seed": "npx ts-node database/prisma/seed.ts"
   }
 }

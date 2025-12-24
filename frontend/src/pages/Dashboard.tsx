@@ -9,6 +9,7 @@ export default function Dashboard() {
     const [insights, setInsights] = useState<any[]>([]);
     const [absences, setAbsences] = useState<any[]>([]);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [metrics, setMetrics] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [companies, setCompanies] = useState<any[]>([]);
     const [selectedCompany, setSelectedCompany] = useState<string>('');
@@ -33,14 +34,16 @@ export default function Dashboard() {
         setLoading(true);
         try {
             const query = selectedCompany ? `?companyId=${selectedCompany}` : '';
-            const [insightsData, absencesData, logsData] = await Promise.all([
+            const [insightsData, absencesData, logsData, metricsData] = await Promise.all([
                 api.get(`/dashboard/insights${query}`).catch(() => []),
                 api.get('/dashboard/absences').catch(() => []),
-                api.get('/dashboard/audit').catch(() => [])
+                api.get('/dashboard/audit').catch(() => []),
+                api.get(`/dashboard/v2/employees${query}`).catch(() => null)
             ]);
             setInsights(insightsData || []);
             setAbsences(absencesData || []);
             setAuditLogs(logsData || []);
+            setMetrics(metricsData);
         } catch (error) {
             console.error('Failed to load dashboard data', error);
         } finally {
@@ -48,14 +51,12 @@ export default function Dashboard() {
         }
     };
 
-    const chartData = [
-        { name: 'Jun', value: 38000 },
-        { name: 'Jul', value: 39500 },
-        { name: 'Ago', value: 38200 },
-        { name: 'Sep', value: 40100 },
-        { name: 'Oct', value: 41500 },
-        { name: 'Nov', value: 42150 },
-    ];
+    const chartData = metrics?.growthTrend?.map((item: any) => ({
+        name: item.month,
+        value: item.count
+    })) || [
+            { name: 'Sin datos', value: 0 }
+        ];
 
     // Mock recent batches (since we don't have a specific endpoint for this in this file yet, keeping the visual mock mixed with real audit)
     const recentBatches = [
@@ -64,9 +65,27 @@ export default function Dashboard() {
     ];
 
     const stats = [
-        { title: 'Empleados Activos', value: '24', icon: <Users size={24} className="text-blue-500" />, trend: '+2 este mes', trendUp: true },
-        { title: 'Última Nómina', value: 'Nov 2024', icon: <FileSpreadsheet size={24} className="text-emerald-500" />, trend: 'Procesado', trendUp: true },
-        { title: 'Coste Total', value: '42,150€', icon: <TrendingUp size={24} className="text-purple-500" />, trend: '+1.2%', trendUp: false },
+        {
+            title: 'Empleados Activos',
+            value: metrics?.headcount?.active || '0',
+            icon: <Users size={24} className="text-blue-500" />,
+            trend: `Total: ${metrics?.headcount?.total || 0}`,
+            trendUp: true
+        },
+        {
+            title: 'Ausencias Hoy',
+            value: metrics?.attendance?.onLeaveToday || '0',
+            icon: <Clock size={24} className="text-emerald-500" />,
+            trend: 'En curso',
+            trendUp: true
+        },
+        {
+            title: 'Alertas Pendientes',
+            value: (metrics?.contracts?.dniExpiring || 0) + (metrics?.contracts?.licenseExpiring || 0),
+            icon: <AlertTriangle size={24} className="text-amber-500" />,
+            trend: 'Revisión req.',
+            trendUp: false
+        },
     ];
 
     return (
@@ -193,7 +212,7 @@ export default function Dashboard() {
                                 contentStyle={{ backgroundColor: 'rgb(15 23 42)', border: 'none', borderRadius: '8px', color: '#fff' }}
                                 itemStyle={{ color: '#fff' }}
                                 cursor={{ stroke: '#3b82f6', strokeWidth: 2 }}
-                                formatter={(value: number | string) => [`${Number(value).toLocaleString()}€`, 'Coste Total']}
+                                formatter={(value: any) => [`${Number(value || 0).toLocaleString()}€`, 'Coste Total']}
                             />
                             <Area
                                 type="monotone"

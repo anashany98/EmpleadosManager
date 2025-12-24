@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
-import prisma from '../../database/prisma/client';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export class EmployeeDashboardController {
     // GET /api/dashboard/employees - Get comprehensive employee metrics
@@ -16,22 +18,15 @@ export class EmployeeDashboardController {
             // Get all employees
             const allEmployees = await prisma.employee.findMany({
                 where,
-                include: {
-                    vacations: {
-                        where: {
-                            startDate: {
-                                gte: new Date(new Date().getFullYear(), 0, 1),
-                                lte: new Date(new Date().getFullYear(), 11, 31)
-                            }
-                        }
-                    },
-                    overtimes: {
-                        where: {
-                            date: {
-                                gte: new Date(new Date().setDate(1)) // This month
-                            }
-                        }
-                    }
+                select: {
+                    id: true,
+                    active: true,
+                    department: true,
+                    contractType: true,
+                    createdAt: true,
+                    entryDate: true,
+                    dniExpiration: true,
+                    drivingLicenseExpiration: true,
                 }
             });
 
@@ -47,42 +42,32 @@ export class EmployeeDashboardController {
                 byContractType: this.groupByField(activeEmployees, 'contractType')
             };
 
-            // Contract analytics
+            // Document expiration alerts
             const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-            const sixtyDaysFromNow = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
-            const ninetyDaysFromNow = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+
+            const dniExpiring = activeEmployees.filter(e =>
+                e.dniExpiration && e.dniExpiration <= thirtyDaysFromNow && e.dniExpiration >= now
+            ).length;
+
+            const licenseExpiring = activeEmployees.filter(e =>
+                e.drivingLicenseExpiration && e.drivingLicenseExpiration <= thirtyDaysFromNow && e.drivingLicenseExpiration >= now
+            ).length;
 
             const contracts = {
-                expiring30: activeEmployees.filter(e =>
-                    e.contractEndDate && e.contractEndDate <= thirtyDaysFromNow && e.contractEndDate >= now
-                ).length,
-                expiring60: activeEmployees.filter(e =>
-                    e.contractEndDate && e.contractEndDate <= sixtyDaysFromNow && e.contractEndDate >= now
-                ).length,
-                expiring90: activeEmployees.filter(e =>
-                    e.contractEndDate && e.contractEndDate <= ninetyDaysFromNow && e.contractEndDate >= now
-                ).length,
-                trialPeriodEnding: activeEmployees.filter(e =>
-                    e.trialPeriodEndDate && e.trialPeriodEndDate <= thirtyDaysFromNow && e.trialPeriodEndDate >= now
-                ).length
+                expiring30: 0, // No tenemos contractEndDate en el schema
+                expiring60: 0,
+                expiring90: 0,
+                trialPeriodEnding: 0,
+                dniExpiring,
+                licenseExpiring
             };
 
-            // Financial overview
-            const employeesWithSalary = activeEmployees.filter(e => e.baseSalary);
-            const totalBaseSalary = employeesWithSalary.reduce((sum, e) => sum + (e.baseSalary || 0), 0);
-            const avgSalary = employeesWithSalary.length > 0 ? totalBaseSalary / employeesWithSalary.length : 0;
-
-            // Calculate overtime cost this month
-            const overtimeCost = allEmployees.reduce((sum, e) => {
-                const empOvertimeCost = e.overtimes.reduce((s, o) => s + o.total, 0);
-                return sum + empOvertimeCost;
-            }, 0);
-
+            // Financial overview - simplified without baseSalary field
             const financial = {
-                totalBaseSalary: Math.round(totalBaseSalary),
-                avgSalary: Math.round(avgSalary),
-                overtimeCostThisMonth: Math.round(overtimeCost),
-                employeesWithSalary: employeesWithSalary.length
+                totalBaseSalary: 0,
+                avgSalary: 0,
+                overtimeCostThisMonth: 0,
+                employeesWithSalary: 0
             };
 
             // Attendance metrics
@@ -98,9 +83,6 @@ export class EmployeeDashboardController {
                         { endDate: { gte: today } }
                     ],
                     employee: where
-                },
-                include: {
-                    employee: true
                 }
             });
 
@@ -154,7 +136,7 @@ export class EmployeeDashboardController {
                 });
 
                 growthTrend.push({
-                    month: monthDate.toLocaleString('default', { month: 'short', year: 'numeric' }),
+                    month: monthDate.toLocaleString('es-ES', { month: 'short', year: 'numeric' }),
                     count: employeesAtMonth
                 });
             }

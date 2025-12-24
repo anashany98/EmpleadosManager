@@ -14,4 +14,13 @@ router.post('/', EmployeeController.create);
 router.put('/:id', EmployeeController.update);
 router.delete('/:id', EmployeeController.delete);
 
+// PRL & Training Features
+router.get('/:id/medical-reviews', EmployeeController.getMedicalReviews);
+router.post('/:id/medical-reviews', EmployeeController.createMedicalReview);
+router.delete('/:id/medical-reviews/:reviewId', EmployeeController.deleteMedicalReview);
+
+router.get('/:id/trainings', EmployeeController.getTrainings);
+router.post('/:id/trainings', EmployeeController.createTraining);
+router.delete('/:id/trainings/:trainingId', EmployeeController.deleteTraining);
+
 export default router;

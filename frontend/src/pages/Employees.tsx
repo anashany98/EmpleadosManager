@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, MoreHorizontal, User, Building2, CreditCard, FileSpreadsheet, Upload } from 'lucide-react';
-import { toast } from 'sonner';
 import { api } from '../api/client';
+import { toast } from 'sonner';
+import {
+    FileSpreadsheet, Upload, Plus, Search,
+    CreditCard, Building2, MoreHorizontal, User
+} from 'lucide-react';
 
 export default function EmployeeList() {
     const [employees, setEmployees] = useState<any[]>([]);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         // Mock data for initial visual feedback
@@ -18,8 +20,11 @@ export default function EmployeeList() {
         ]);
 
         api.get('/employees')
-            .then(data => { if (data.length > 0) setEmployees(data) })
-            .catch(err => console.log('Backend not connected, using mock data ' + err));
+            .then(data => {
+                if (data && data.length > 0) setEmployees(data);
+            })
+            .catch(err => console.log('Backend not connected, using mock data ' + err))
+            .finally(() => setLoading(false));
     }, []);
 
     return (
@@ -37,7 +42,7 @@ export default function EmployeeList() {
                                 const url = window.URL.createObjectURL(new Blob([response]));
                                 const link = document.createElement('a');
                                 link.href = url;
-                                link.setAttribute('download', 'plantilla_empleados.xlsx');
+                                link.setAttribute('download', 'plantilla_empleados_avanzada.xlsx');
                                 document.body.appendChild(link);
                                 link.click();
                                 link.remove();
@@ -48,7 +53,7 @@ export default function EmployeeList() {
                         className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-4 py-3 rounded-xl font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 transition-all"
                     >
                         <FileSpreadsheet size={20} className="text-green-600 dark:text-green-400" />
-                        Plantilla
+                        Plantilla Avanzada
                     </button>
 
                     <div className="relative">
@@ -65,7 +70,6 @@ export default function EmployeeList() {
                                     try {
                                         const res = await api.post('/employees/import', formData);
                                         toast.success(res.message, { id: toastId });
-                                        // Recargar datos sin reload completo si es posible, pero por ahora reload() es seguro
                                         setTimeout(() => window.location.reload(), 1500);
                                     } catch (err) {
                                         toast.error('Error en la importación', { id: toastId });
@@ -118,13 +122,13 @@ export default function EmployeeList() {
                                 <tr key={emp.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shadow-inner">
-                                            {emp.name.charAt(0)}
+                                            {emp.name?.charAt(0) || emp.firstName?.charAt(0)}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">
                                         <div className="font-semibold text-slate-900 dark:text-white">
                                             <Link to={`/employees/${emp.id}`} className="hover:text-blue-600 transition-colors">
-                                                {emp.name}
+                                                {emp.name || `${emp.firstName} ${emp.lastName}`}
                                             </Link>
                                         </div>
                                     </td>
@@ -157,7 +161,7 @@ export default function EmployeeList() {
                                     </td>
                                 </tr>
                             ))}
-                            {employees.length === 0 && (
+                            {!loading && employees.length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="px-6 py-16 text-center text-slate-400 dark:text-slate-600">
                                         <User size={48} className="mx-auto mb-4 opacity-20" />
@@ -173,3 +177,4 @@ export default function EmployeeList() {
         </div>
     );
 }
+
