@@ -21,6 +21,7 @@ import VacationCalendar from '../components/VacationCalendar';
 import { TimesheetViewer } from '../components/TimesheetViewer';
 import DocumentArchive from '../components/DocumentArchive';
 import PRLArchive from '../components/PRLArchive';
+import ExpenseManager from '../components/ExpenseManager';
 
 export default function EmployeeDetail() {
     const { id } = useParams();
@@ -41,6 +42,8 @@ export default function EmployeeDetail() {
         dniExpiration: '', birthDate: '', province: '', registeredIn: '',
         drivingLicense: false, drivingLicenseType: '', drivingLicenseExpiration: '',
         emergencyContactName: '', emergencyContactPhone: '',
+        workingDayType: 'COMPLETE',
+        weeklyHours: '',
         active: true
     });
 
@@ -110,6 +113,8 @@ export default function EmployeeDetail() {
                 drivingLicenseExpiration: data.drivingLicenseExpiration ? data.drivingLicenseExpiration.split('T')[0] : '',
                 emergencyContactName: data.emergencyContactName || '',
                 emergencyContactPhone: data.emergencyContactPhone || '',
+                workingDayType: data.workingDayType || 'COMPLETE',
+                weeklyHours: data.weeklyHours || '',
                 active: data.active
             });
         } catch (error) {
@@ -189,7 +194,7 @@ export default function EmployeeDetail() {
                 <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                     <div className="border-b border-slate-100 dark:border-slate-800">
                         <div className="flex overflow-x-auto">
-                            {['resumen', 'expediente', 'prl', 'fichajes', 'vacaciones'].map((tab) => (
+                            {['resumen', 'expediente', 'prl', 'fichajes', 'gastos', 'vacaciones'].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -241,6 +246,7 @@ export default function EmployeeDetail() {
                                 {activeTab === 'expediente' && <DocumentArchive employeeId={id || ''} />}
                                 {activeTab === 'prl' && <PRLArchive employeeId={id || ''} />}
                                 {activeTab === 'fichajes' && <TimesheetViewer employeeId={id || ''} />}
+                                {activeTab === 'gastos' && <ExpenseManager employeeId={id || ''} isAdmin={true} />}
                                 {activeTab === 'vacaciones' && <VacationCalendar employeeId={id || ''} />}
                             </motion.div>
                         </AnimatePresence>

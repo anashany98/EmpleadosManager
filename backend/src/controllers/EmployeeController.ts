@@ -188,7 +188,8 @@ export const EmployeeController = {
             agreementType, jobTitle, entryDate, callDate, contractInterruptionDate,
             dniExpiration, birthDate, province, registeredIn,
             drivingLicense, drivingLicenseType, drivingLicenseExpiration,
-            emergencyContactName, emergencyContactPhone
+            emergencyContactName, emergencyContactPhone,
+            workingDayType, weeklyHours
         } = req.body;
 
         try {
@@ -225,6 +226,8 @@ export const EmployeeController = {
                     drivingLicenseExpiration: drivingLicenseExpiration ? new Date(drivingLicenseExpiration) : undefined,
                     emergencyContactName: emergencyContactName || null,
                     emergencyContactPhone: emergencyContactPhone || null,
+                    workingDayType: workingDayType || 'COMPLETE',
+                    weeklyHours: weeklyHours ? parseFloat(weeklyHours) : null,
                     active: true
                 }
             });
@@ -250,7 +253,8 @@ export const EmployeeController = {
             lowDate, lowReason,
             dniExpiration, birthDate, province, registeredIn,
             drivingLicense, drivingLicenseType, drivingLicenseExpiration,
-            emergencyContactName, emergencyContactPhone
+            emergencyContactName, emergencyContactPhone,
+            workingDayType, weeklyHours
         } = req.body;
 
         try {
@@ -277,6 +281,8 @@ export const EmployeeController = {
                     drivingLicenseExpiration: drivingLicenseExpiration ? new Date(drivingLicenseExpiration) : undefined,
                     emergencyContactName: emergencyContactName || null,
                     emergencyContactPhone: emergencyContactPhone || null,
+                    workingDayType,
+                    weeklyHours: weeklyHours ? parseFloat(weeklyHours) : null,
                     lowReason
                 }
             });

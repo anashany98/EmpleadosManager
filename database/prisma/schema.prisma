@@ -90,6 +90,10 @@ model Employee {
   lowDate       DateTime? // Fecha baja
   lowReason     String?   // Motivo baja
   vacationDaysTotal Int   @default(30)
+  
+  // Working Day Info
+  workingDayType String?  // COMPLETE, PARTIAL
+  weeklyHours    Float?
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
@@ -103,6 +107,28 @@ model Employee {
   timeEntries     TimeEntry[]
   alerts          Alert[]
   documents       Document[]
+  expenses        Expense[]
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  date        DateTime @default(now())
+  category    String   // MEAL, TRAVEL, SUPPLIES, OTHER
+  amount      Float
+  description String?
+  receiptUrl  String?  // Path to uploaded receipt image/pdf
+  
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  paymentMethod String @default("CASH")    // CASH, CARD, TRANSFER
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([status])
 }
 
 model Document {
