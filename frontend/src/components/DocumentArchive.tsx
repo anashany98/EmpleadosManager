@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { FileText, Upload, Trash2, Download, Filter, Calendar, AlertTriangle } from 'lucide-react';
+import { FileText, Upload, Trash2, Download, Filter, Calendar, AlertTriangle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -20,6 +20,7 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('ALL');
     const [uploading, setUploading] = useState(false);
+    const [ocrLoading, setOcrLoading] = useState(false);
     const [showUpload, setShowUpload] = useState(false);
 
     // Form states
@@ -45,6 +46,31 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
     const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        /* OCR dehabilitado por ahora
+        setOcrLoading(true);
+        const ocrData = new FormData();
+        ocrData.append('file', file);
+
+        try {
+            const data = await api.post('/documents/ocr', ocrData);
+            if (data.suggestedCategory) {
+                setNewCategory(data.suggestedCategory);
+                toast.info(`Categoría detectada: ${DOC_CATEGORIES.find(c => c.id === data.suggestedCategory)?.label}`);
+            }
+            if (data.suggestedDate) {
+                setNewExpiry(data.suggestedDate);
+                toast.info(`Fecha de vencimiento detectada: ${data.suggestedDate}`);
+            }
+        } catch (error) {
+            console.error('OCR Error:', error);
+        } finally {
+            setOcrLoading(false);
+        }
+        */
+
+        const proceed = confirm(`¿Deseas subir "${file.name}" de forma manual?`);
+        if (!proceed) return;
 
         setUploading(true);
         const formData = new FormData();
@@ -170,11 +196,19 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
                         ${uploading ? 'opacity-50 cursor-wait' : 'hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-900/10'}
                         border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900
                     `}>
-                        <Upload className={`mb-2 ${uploading ? 'animate-bounce text-blue-500' : 'text-slate-400'}`} size={32} />
+                        <div className="flex items-center gap-2 mb-2">
+                            {uploading ? (
+                                <Upload className="animate-bounce text-blue-500" size={32} />
+                            ) : ocrLoading ? (
+                                <Loader2 className="animate-spin text-blue-500" size={32} />
+                            ) : (
+                                <Upload className="text-slate-400" size={32} />
+                            )}
+                        </div>
                         <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                            {uploading ? 'Subiendo...' : 'Selecciona un archivo (PDF, Imagen, Doc...)'}
+                            {uploading ? 'Subiendo...' : ocrLoading ? 'Analizando documento...' : 'Selecciona un archivo (PDF, Imagen, Doc...)'}
                         </span>
-                        <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading} />
+                        <input type="file" className="hidden" onChange={handleFileUpload} disabled={uploading || ocrLoading} />
                     </label>
                 </div>
             )}

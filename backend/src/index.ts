@@ -32,6 +32,7 @@ import employeeDashboardRoutes from './routes/employeeDashboardRoutes';
 import alertRoutes from './routes/alertRoutes';
 import reportRoutes from './routes/reportRoutes';
 import documentRoutes from './routes/documentRoutes';
+import expenseRoutes from './routes/expenseRoutes';
 
 // Rutas API
 app.use('/api/dashboard/v2', employeeDashboardRoutes);
@@ -47,6 +48,7 @@ app.use('/api/time-entries', timeEntryRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/documents', documentRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 
 app.listen(PORT, () => {

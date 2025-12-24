@@ -19,6 +19,7 @@ const storage = multer.diskStorage({
 const upload = multer({ storage });
 
 router.post('/upload', upload.single('file'), DocumentController.upload);
+router.post('/ocr', upload.single('file'), DocumentController.processOCR);
 router.get('/employee/:employeeId', DocumentController.getByEmployee);
 router.delete('/:id', DocumentController.delete);
 
