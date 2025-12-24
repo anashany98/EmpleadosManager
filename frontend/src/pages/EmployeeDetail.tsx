@@ -449,6 +449,29 @@ export default function EmployeeDetail() {
                                                 {CONVENIOS.map(c => <option key={c} value={c}>{c}</option>)}
                                             </select>
                                         </div>
+
+                                        {/* Nuevos Campos: Jornada */}
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Tipo de Jornada</label>
+                                            <select name="workingDayType" value={formData.workingDayType} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-bold text-blue-600 dark:text-blue-400">
+                                                <option value="COMPLETE">Jornada Completa</option>
+                                                <option value="PARTIAL">Jornada Parcial</option>
+                                            </select>
+                                        </div>
+
+                                        {formData.workingDayType === 'PARTIAL' && (
+                                            <div className="space-y-2 animate-in slide-in-from-left duration-300">
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Horas Semanales</label>
+                                                <input
+                                                    type="number"
+                                                    name="weeklyHours"
+                                                    value={formData.weeklyHours}
+                                                    onChange={handleChange}
+                                                    className="w-full px-4 py-2 rounded-xl border border-blue-200 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-900/10 font-bold"
+                                                    placeholder="Ej: 20"
+                                                />
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
