@@ -16,8 +16,8 @@ export default function SettingsPage() {
 
     const fetchRates = async () => {
         try {
-            const data = await api.get('/overtime/rates');
-            setRates(data);
+            const res = await api.get('/overtime/rates');
+            setRates(res.data || res || []);
         } catch (error) {
             console.error(error);
         } finally {
@@ -44,7 +44,8 @@ export default function SettingsPage() {
         formData.append('file', file);
 
         try {
-            const result = await api.post('/overtime/import', formData);
+            const res = await api.post('/overtime/import', formData);
+            const result = res.data || res;
 
             // Mostrar resultado principal
             toast.success(result.message || `${result.imported || 0} registros importados`);

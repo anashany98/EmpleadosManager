@@ -43,8 +43,8 @@ export default function TimesheetPage() {
 
     const fetchEmployees = async () => {
         try {
-            const data = await api.get('/employees');
-            setEmployees(data);
+            const res = await api.get('/employees');
+            setEmployees(res.data || res || []);
         } catch (error) {
             console.error(error);
             toast.error('Error al cargar empleados');
@@ -63,8 +63,8 @@ export default function TimesheetPage() {
                 ? `/time-entries/range?from=${startDate}&to=${endDate}`
                 : `/time-entries/range?from=${startDate}&to=${endDate}&employeeId=${selectedEmployee}`;
 
-            const data = await api.get(url);
-            setEntries(data);
+            const res = await api.get(url);
+            setEntries(res.data || res || []);
         } catch (error) {
             console.error(error);
             toast.error('Error al cargar fichajes');

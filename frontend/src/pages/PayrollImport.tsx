@@ -42,8 +42,8 @@ export default function PayrollImport() {
 
     const loadProfiles = async () => {
         try {
-            const data = await api.get('/mappings');
-            setProfiles(data);
+            const res = await api.get('/mappings');
+            setProfiles(res.data || res || []);
         } catch (err) {
             console.error('Error fetching profiles', err);
         }
@@ -91,9 +91,10 @@ export default function PayrollImport() {
             const formData = new FormData();
             formData.append('file', file);
             const res = await api.post('/payroll/upload', formData);
-            setBatchId(res.batchId);
-            setHeaders(res.headers);
-            setServerFilename(res.filename);
+            const data = res.data || res;
+            setBatchId(data.batchId);
+            setHeaders(data.headers);
+            setServerFilename(data.filename);
             setStep('MAP');
         } catch (error) {
             alert('Error al subir: ' + error);
@@ -110,7 +111,7 @@ export default function PayrollImport() {
                 mappingRules: mapping,
                 filename: serverFilename
             });
-            setStats(res);
+            setStats(res.data || res);
             setStep('REVIEW');
         } catch (error) {
             alert('Error en mapeo: ' + error);

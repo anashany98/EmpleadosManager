@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
     FileText,
     Download,
@@ -19,7 +18,7 @@ import { toast } from 'sonner';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS';
+type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS' | 'GENDER_GAP';
 
 export default function Reports() {
     const [activeTab, setActiveTab] = useState<ReportType>('ATTENDANCE');
@@ -41,7 +40,8 @@ export default function Reports() {
         { id: 'VACATIONS', name: 'Saldos de Vacaciones', icon: <Calendar size={20} />, description: 'Resumen de días consumidos y saldos por empleado.' },
         { id: 'COSTS', name: 'Coste Empresa (BI)', icon: <Building2 size={20} />, description: 'Desglose de Bruto + SS Empresa para análisis financiero.' },
         { id: 'ABSENCES_DETAILED', name: 'Detalle de Bajas (Audit)', icon: <AlertTriangle size={20} />, description: 'Listado cronológico de todas las bajas y suspensiones.' },
-        { id: 'KPIS', name: 'KPIs de Organización', icon: <LineChart size={20} />, description: 'Tasas de absentismo y rotación por departamento.' }
+        { id: 'KPIS', name: 'KPIs de Organización', icon: <LineChart size={20} />, description: 'Tasas de absentismo y rotación por departamento.' },
+        { id: 'GENDER_GAP', name: 'Igualdad y Diversidad', icon: <Users size={20} />, description: 'Análisis de brecha salarial y paridad por departamentos.' }
     ];
 
     useEffect(() => {
@@ -55,7 +55,7 @@ export default function Reports() {
     const fetchCompanies = async () => {
         try {
             const res = await api.get('/companies');
-            setCompanies(res || []);
+            setCompanies(res.data || res || []);
         } catch (err) {
             console.error(err);
         }
@@ -93,11 +93,14 @@ export default function Reports() {
                 endpoint = '/reports/kpis';
                 params.year = filters.year;
                 params.month = filters.month;
+            } else if (activeTab === 'GENDER_GAP') {
+                endpoint = '/reports/gender-gap';
+                params.year = filters.year;
             }
 
             const queryString = new URLSearchParams(params).toString();
             const res = await api.get(`${endpoint}?${queryString}`);
-            setData(res);
+            setData(res.data || res);
         } catch (err) {
             toast.error('Error al cargar datos del reporte');
         } finally {
@@ -114,6 +117,7 @@ export default function Reports() {
             else if (activeTab === 'VACATIONS') endpoint = '/reports/vacations';
             else if (activeTab === 'COSTS') endpoint = '/reports/costs';
             else if (activeTab === 'KPIS') endpoint = '/reports/kpis';
+            else if (activeTab === 'GENDER_GAP') endpoint = '/reports/gender-gap';
             else endpoint = '/reports/absences-detailed';
 
             const params = { ...filters, format: 'xlsx' };
@@ -167,10 +171,15 @@ export default function Reports() {
                 item.name, `${item.bruto.toFixed(2)}€`, `${item.ssEmpresa.toFixed(2)}€`, `${item.neto.toFixed(2)}€`, `${item.totalCost.toFixed(2)}€`
             ]);
         } else if (activeTab === 'KPIS') {
-            headers = ['Departamento', 'Empleados', 'Días Ausencia', 'Tasa %'];
             tableData = (data?.deptStats || []).map((item: any) => [
                 item.department, item.employees, item.absenceDays, `${item.rate}%`
             ]);
+        } else if (activeTab === 'GENDER_GAP') {
+            headers = ['Concepto', 'Masculino', 'Femenino', 'Brecha %'];
+            tableData = [
+                ['Plantilla', data?.summary?.maleCount, data?.summary?.femaleCount, `${data?.summary?.gapPercentage}%`],
+                ['Sueldo Medio', `${data?.summary?.maleAvgBruto?.toFixed(2)}€`, `${data?.summary?.femaleAvgBruto?.toFixed(2)}€`, '-']
+            ];
         } else {
             headers = ['Empleado', 'Inicio', 'Fin', 'Días', 'Tipo'];
             tableData = (data || []).map((item: any) => [
@@ -285,7 +294,7 @@ export default function Reports() {
                                     className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 text-sm font-medium outline-none"
                                 />
                             </div>
-                        ) : activeTab === 'COSTS' || activeTab === 'KPIS' ? (
+                        ) : activeTab === 'COSTS' || activeTab === 'KPIS' || activeTab === 'GENDER_GAP' ? (
                             <div className="flex items-center gap-3">
                                 <input
                                     type="number"
@@ -293,16 +302,18 @@ export default function Reports() {
                                     onChange={(e) => setFilters({ ...filters, year: e.target.value })}
                                     className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 text-sm font-medium w-20 outline-none"
                                 />
-                                <select
-                                    value={filters.month}
-                                    onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 text-sm font-medium outline-none"
-                                >
-                                    <option value="">Todo el año</option>
-                                    {Array.from({ length: 12 }).map((_, i) => (
-                                        <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('es', { month: 'long' })}</option>
-                                    ))}
-                                </select>
+                                {activeTab !== 'GENDER_GAP' && (
+                                    <select
+                                        value={filters.month}
+                                        onChange={(e) => setFilters({ ...filters, month: e.target.value })}
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 text-sm font-medium outline-none"
+                                    >
+                                        <option value="">Todo el año</option>
+                                        {Array.from({ length: 12 }).map((_, i) => (
+                                            <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('es', { month: 'long' })}</option>
+                                        ))}
+                                    </select>
+                                )}
                             </div>
                         ) : (
                             <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800">
@@ -390,6 +401,14 @@ export default function Reports() {
                                                     <th className="px-6 py-4 font-bold text-right">Tasa %</th>
                                                 </tr>
                                             )}
+                                            {activeTab === 'GENDER_GAP' && (
+                                                <tr>
+                                                    <th className="px-6 py-4 font-bold">Concepto / Dimensión</th>
+                                                    <th className="px-6 py-4 font-bold text-center">Masculino</th>
+                                                    <th className="px-6 py-4 font-bold text-center">Femenino</th>
+                                                    <th className="px-6 py-4 font-bold text-right">Brecha / Gap %</th>
+                                                </tr>
+                                            )}
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                             {activeTab === 'KPIS' && data?.summary && (
@@ -404,10 +423,30 @@ export default function Reports() {
                                                     </td>
                                                 </tr>
                                             )}
-                                            {(!data || (Array.isArray(data) ? data.length === 0 : (data.deptStats?.length === 0))) ? (
+                                            {activeTab === 'GENDER_GAP' && data?.summary && (
+                                                <tr className="bg-blue-50/20 dark:bg-blue-900/5">
+                                                    <td colSpan={4} className="p-6">
+                                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                                                            <KPICard title="Brecha Salarial" value={`${data.summary.gapPercentage}%`} subtitle="Diferencia global" color="text-rose-600" />
+                                                            <KPICard title="Sueldo Medio H" value={`${data.summary.maleAvgBruto.toFixed(2)}€`} subtitle="Hombres" />
+                                                            <KPICard title="Sueldo Medio M" value={`${data.summary.femaleAvgBruto.toFixed(2)}€`} subtitle="Mujeres" />
+                                                            <KPICard title="Paridad (M/H)" value={`${data.summary.femaleCount}/${data.summary.maleCount}`} subtitle="Distribución" color="text-indigo-500" />
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                            {(!data || (Array.isArray(data) ? data.length === 0 : (activeTab === 'GENDER_GAP' ? data.rows?.length === 0 : data.deptStats?.length === 0))) ? (
                                                 <tr><td colSpan={6} className="px-6 py-20 text-center text-slate-400">Sin datos para este periodo.</td></tr>
-                                            ) : (Array.isArray(data) ? data : data.deptStats).map((item: any, idx: number) => (
+                                            ) : (Array.isArray(data) ? data : (activeTab === 'GENDER_GAP' ? data.rows : data.deptStats)).map((item: any, idx: number) => (
                                                 <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                                    {activeTab === 'GENDER_GAP' && (
+                                                        <>
+                                                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white uppercase tracking-tighter text-xs">{item.department || 'GLOBAL'}</td>
+                                                            <td className="px-6 py-4 text-center font-mono">{(item.maleAvg || 0).toFixed(2)}€ <span className="text-[10px] text-slate-400 opacity-50 block font-sans">(n={item.maleCount})</span></td>
+                                                            <td className="px-6 py-4 text-center font-mono">{(item.femaleAvg || 0).toFixed(2)}€ <span className="text-[10px] text-slate-400 opacity-50 block font-sans">(n={item.femaleCount})</span></td>
+                                                            <td className={`px-6 py-4 text-right font-black ${item.gap > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{(item.gap || 0).toFixed(2)}%</td>
+                                                        </>
+                                                    )}
                                                     {activeTab === 'ATTENDANCE' && (
                                                         <>
                                                             <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white flex items-center gap-3">

@@ -1,20 +1,20 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
+import { AppError } from '../utils/AppError';
+import { ApiResponse } from '../utils/ApiResponse';
 import { HolidayService } from '../services/HolidayService';
-
-const prisma = new PrismaClient();
 
 export const VacationController = {
     // Obtener todas las vacaciones (Global)
     getAll: async (req: Request, res: Response) => {
         try {
             const vacations = await prisma.vacation.findMany({
-                include: { employee: { select: { name: true, id: true } } },
+                include: { employee: true },
                 orderBy: { startDate: 'desc' }
             });
-            res.json(vacations);
+            return ApiResponse.success(res, vacations);
         } catch (error) {
-            res.status(500).json({ error: 'Error al obtener calendario global' });
+            throw new AppError('Error al obtener vacaciones', 500);
         }
     },
 
@@ -82,7 +82,7 @@ export const VacationController = {
                 const quota = employee.vacationDaysTotal || 30;
                 if (usedDays + diffDays > quota) {
                     return res.status(400).json({
-                        error: `Excede cupo. Disponibles: ${quota - usedDays}, Solicitados: ${diffDays}.`,
+                        error: `Excede cupo.Disponibles: ${quota - usedDays}, Solicitados: ${diffDays}.`,
                         insufficientDays: true
                     });
                 }
@@ -113,6 +113,25 @@ export const VacationController = {
             res.json({ message: 'Vacaciones eliminadas' });
         } catch (error) {
             res.status(500).json({ error: 'Error al eliminar' });
+        }
+    },
+
+    updateStatus: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        const { status } = req.body; // PENDING, APPROVED, REJECTED
+
+        if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) {
+            throw new AppError('Estado no válido', 400);
+        }
+
+        try {
+            const vacation = await prisma.vacation.update({
+                where: { id },
+                data: { status }
+            });
+            return ApiResponse.success(res, vacation, 'Estado de vacaciones actualizado');
+        } catch (error) {
+            throw new AppError('Error al actualizar el estado de las vacaciones', 500);
         }
     }
 };

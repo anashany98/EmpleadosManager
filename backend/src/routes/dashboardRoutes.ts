@@ -7,7 +7,8 @@ const insights = new InsightController();
 
 router.get('/insights', insights.getDashboardInsights);
 router.get('/absences', insights.getDepartmentAbsences);
-router.get('/audit', AuditController.getLogs);
+router.get('/birthdays', insights.getUpcomingBirthdays);
+router.get('/audit', AuditController.getRecentActivity);
 router.get('/:entity/:entityId', AuditController.getLogs);
 
 export default router;

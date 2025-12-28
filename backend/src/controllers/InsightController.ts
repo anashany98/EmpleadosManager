@@ -1,7 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export class InsightController {
     async getDashboardInsights(req: Request, res: Response) {
@@ -111,6 +109,39 @@ export class InsightController {
         } catch (error) {
             console.error(error);
             res.status(500).json({ error: 'Error fetching absences' });
+        }
+    }
+
+    async getUpcomingBirthdays(req: Request, res: Response) {
+        try {
+            const currentMonth = new Date().getMonth() + 1; // 1-12
+
+            // Note: SQLite doesn't have a direct MONTH() function in a standard way through Prisma without raw queries
+            // but we can fetch all and filter or use a raw query if needed.
+            // For now, since the employee list is small (<100), we'll filter in JS.
+            const employees = await prisma.employee.findMany({
+                where: { active: true },
+                select: {
+                    id: true,
+                    firstName: true,
+                    lastName: true,
+                    birthDate: true
+                }
+            });
+
+            const upcoming = employees.filter(e => {
+                if (!e.birthDate) return false;
+                return (new Date(e.birthDate).getMonth() + 1) === currentMonth;
+            }).sort((a, b) => {
+                const dayA = new Date(a.birthDate!).getDate();
+                const dayB = new Date(b.birthDate!).getDate();
+                return dayA - dayB;
+            });
+
+            res.json(upcoming);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ error: 'Error fetching birthdays' });
         }
     }
 }

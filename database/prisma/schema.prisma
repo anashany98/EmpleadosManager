@@ -56,6 +56,7 @@ model Employee {
   province      String?
   registeredIn  String? // Empadronado en
   birthDate     DateTime?
+  gender        String? // MALE, FEMALE, OTHER
   
   // Financial & Legal Info
   subaccount465 String   @unique // Subcuenta específica CONTASOL
@@ -81,6 +82,12 @@ model Employee {
   contractType  String? // Indefinido, Temporal, etc.
   agreementType String? // Convenio
   jobTitle      String? // Puesto
+  contractEndDate DateTime? // Fecha fin de contrato previsto
+  
+  // Hierarchy
+  managerId     String?
+  manager       Employee? @relation("Hierarchy", fields: [managerId], references: [id])
+  subordinates  Employee[] @relation("Hierarchy")
   
   // Dates
   entryDate     DateTime? // Fecha entrada / Antigüedad
@@ -98,6 +105,8 @@ model Employee {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  contractExtensions ContractExtension[]
+
   payrollRows   PayrollRow[]
   accountingEntries AccountingEntry[]
   vacations     Vacation[]
@@ -108,6 +117,47 @@ model Employee {
   alerts          Alert[]
   documents       Document[]
   expenses        Expense[]
+  assets          Asset[]
+  checklistTasks  ChecklistTask[]
+}
+
+model Asset {
+  id              String   @id @default(uuid())
+  employeeId      String?
+  employee        Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  
+  category        String   // LAPTOP, MOBILE, TOOLS, CLOTHING, OTHER
+  name            String   // Ej: "MacBook Pro 14", "Pantalón Trabajo"
+  serialNumber    String?  
+  size            String?  // Para ropa (S, M, L, XL, etc.)
+  
+  assignedDate    DateTime?
+  returnDate      DateTime?
+  status          String    @default("ASSIGNED") // ASSIGNED, RETURNED, REPAIR, LOST
+  notes           String?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([employeeId])
+}
+
+model ChecklistTask {
+  id              String   @id @default(uuid())
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  type            String   // ONBOARDING, OFFBOARDING
+  title           String   // Ej: "Crear cuenta de email"
+  description     String?
+  completed       Boolean  @default(false)
+  completedAt     DateTime?
+  deadline        DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([employeeId, type])
 }
 
 model Expense {
@@ -183,6 +233,8 @@ model Vacation {
   type        String   @default("VACATION") // VACATION, SICK, PERSONAL, etc.
   days        Int      @default(0)         // Number of days (pre-calculated)
   reason      String?  // Motivo detallado para tipo "Otros"
+  
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
   
   createdAt   DateTime @default(now())
   updatedAt   DateTime @default(now()) @updatedAt
@@ -326,11 +378,30 @@ model OvertimeEntry {
   rate        Float
   total       Float
   date        DateTime @default(now())
+  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
   createdAt   DateTime @default(now())
   
   @@index([employeeId])
   @@index([date])
   @@index([employeeId, date])
+}
+
+model ContractExtension {
+  id              String   @id @default(uuid())
+  employeeId      String
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  extensionDate   DateTime @default(now()) // Fecha en que se firmó/acordó la prórroga
+  newEndDate      DateTime 
+  previousEndDate DateTime?
+  
+  notes           String?
+  fileUrl         String? // Link al documento de prórroga firmado
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([employeeId])
 }
 
 model TimeEntry {

@@ -1,8 +1,6 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { AuditService } from '../services/AuditService';
-
-const prisma = new PrismaClient();
 
 export const CompanyController = {
     getAll: async (req: Request, res: Response) => {

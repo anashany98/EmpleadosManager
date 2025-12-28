@@ -2,7 +2,10 @@ import { Router } from 'express';
 import multer from 'multer';
 import { RateController, OvertimeController } from '../controllers/OvertimeController';
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for imports
+});
 const router = Router();
 
 // Rates

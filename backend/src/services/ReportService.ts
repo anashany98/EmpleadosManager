@@ -1,7 +1,4 @@
-
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export class ReportService {
     /**
@@ -286,5 +283,61 @@ export class ReportService {
             ...d,
             rate: d.potentialDays > 0 ? Number(((d.absenceDays / d.potentialDays) * 100).toFixed(2)) : 0
         }));
+    }
+
+    /**
+     * Gets gender gap data analysis.
+     */
+    static async getGenderGapData(filters: any = {}) {
+        const where: any = { active: true };
+        if (filters.companyId) where.companyId = filters.companyId;
+
+        const employees = await prisma.employee.findMany({
+            where,
+            include: {
+                payrollRows: {
+                    where: { status: 'OK' },
+                    orderBy: { batch: { createdAt: 'desc' } },
+                    take: 12 // Last year to average
+                }
+            }
+        });
+
+        const stats: Record<string, any> = {
+            'MALE': { count: 0, totalSalary: 0, avgSalary: 0 },
+            'FEMALE': { count: 0, totalSalary: 0, avgSalary: 0 },
+            'OTHER': { count: 0, totalSalary: 0, avgSalary: 0 },
+            'UNKNOWN': { count: 0, totalSalary: 0, avgSalary: 0 }
+        };
+
+        employees.forEach(emp => {
+            const gender = emp.gender || 'UNKNOWN';
+            // Simple average of last year's bruto
+            const totalBruto = emp.payrollRows.reduce((sum, row) => sum + Number(row.bruto), 0);
+            const avgBruto = emp.payrollRows.length > 0 ? totalBruto / emp.payrollRows.length : 0;
+
+            if (!stats[gender]) stats[gender] = { count: 0, totalSalary: 0, avgSalary: 0 };
+
+            stats[gender].count++;
+            stats[gender].totalSalary += avgBruto;
+        });
+
+        Object.keys(stats).forEach(g => {
+            if (stats[g].count > 0) {
+                stats[g].avgSalary = stats[g].totalSalary / stats[g].count;
+            }
+        });
+
+        // Calculate gap (Male vs Female)
+        let gapPercentage = 0;
+        if (stats['MALE'].count > 0 && stats['FEMALE'].count > 0 && stats['MALE'].avgSalary > 0) {
+            gapPercentage = ((stats['MALE'].avgSalary - stats['FEMALE'].avgSalary) / stats['MALE'].avgSalary) * 100;
+        }
+
+        return {
+            breakdown: stats,
+            gapPercentage: Number(gapPercentage.toFixed(2)),
+            totalEmployees: employees.length
+        };
     }
 }

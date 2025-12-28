@@ -17,8 +17,8 @@ export default function EmployeeDashboard() {
     const fetchMetrics = async () => {
         setLoading(true);
         try {
-            const data = await api.get('/dashboard/v2/employees');
-            setMetrics(data);
+            const res = await api.get('/dashboard/v2/employees');
+            setMetrics(res.data || res);
         } catch (error) {
             console.error('Error fetching employee metrics:', error);
         } finally {

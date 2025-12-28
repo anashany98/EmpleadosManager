@@ -1,11 +1,10 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
 import path from 'path';
 import fs from 'fs';
-
 import { createWorker } from 'tesseract.js';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
+import { AppError } from '../utils/AppError';
+import { ApiResponse } from '../utils/ApiResponse';
 
 export const ExpenseController = {
     // Procesar OCR para sugerir datos
@@ -60,14 +59,14 @@ export const ExpenseController = {
                 }
             }
 
-            res.json({
+            return ApiResponse.success(res, {
                 text: text.substring(0, 500),
                 suggestedAmount,
                 suggestedDate
-            });
+            }, 'OCR de recibo completado');
         } catch (error) {
-            console.error('Error OCR:', error);
-            res.status(500).json({ error: 'Error al procesar la imagen' });
+            console.error('Error OCR Gastos:', error);
+            throw new AppError('Error al procesar el recibo mediante OCR', 500);
         }
     },
 

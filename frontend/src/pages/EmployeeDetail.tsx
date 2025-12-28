@@ -22,6 +22,9 @@ import { TimesheetViewer } from '../components/TimesheetViewer';
 import DocumentArchive from '../components/DocumentArchive';
 import PRLArchive from '../components/PRLArchive';
 import ExpenseManager from '../components/ExpenseManager';
+import EmployeeTimeline from '../components/employee/EmployeeTimeline';
+import EmployeeAssets from '../components/employee/EmployeeAssets';
+import EmployeeChecklist from '../components/employee/EmployeeChecklist';
 
 export default function EmployeeDetail() {
     const { id } = useParams();
@@ -32,7 +35,6 @@ export default function EmployeeDetail() {
     const [loading, setLoading] = useState(!isNew);
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState('personal');
-    const [companies, setCompanies] = useState<any[]>([]);
 
     const [formData, setFormData] = useState({
         firstName: '', lastName: '', dni: '', email: '', phone: '', address: '', city: '', postalCode: '',
@@ -44,19 +46,34 @@ export default function EmployeeDetail() {
         emergencyContactName: '', emergencyContactPhone: '',
         workingDayType: 'COMPLETE',
         weeklyHours: '',
+        gender: '',
+        managerId: '',
         active: true
     });
 
     // Mock data for aggregation/view mode
     const [employeeView, setEmployeeView] = useState<any>(null);
+    const [companies, setCompanies] = useState<any[]>([]);
+    const [allEmployees, setAllEmployees] = useState<any[]>([]);
 
     useEffect(() => {
         fetchCompanies();
+        fetchAllEmployees();
         if (!isNew && id) {
             fetchEmployee();
             fetchAuditLogs();
         }
     }, [id]);
+
+    const fetchAllEmployees = async () => {
+        try {
+            const res = await api.get('/employees');
+            const data = res.data || res || [];
+            if (Array.isArray(data)) {
+                setAllEmployees(data.filter((e: any) => e.id !== id));
+            }
+        } catch (err) { console.error(err); }
+    };
 
     const fetchAuditLogs = async () => {
         if (isNew) return;
@@ -68,8 +85,8 @@ export default function EmployeeDetail() {
 
     const fetchCompanies = async () => {
         try {
-            const data = await api.get('/companies');
-            setCompanies(data);
+            const res = await api.get('/companies');
+            setCompanies(res.data || res || []);
         } catch (err) {
             console.error(err);
         }
@@ -77,7 +94,8 @@ export default function EmployeeDetail() {
 
     const fetchEmployee = async () => {
         try {
-            const data = await api.get(`/employees/${id}`);
+            const res = await api.get(`/employees/${id}`);
+            const data = res.data || res;
             setEmployeeView(data);
             // Pre-fill form data for editing
             setFormData({
@@ -115,6 +133,8 @@ export default function EmployeeDetail() {
                 emergencyContactPhone: data.emergencyContactPhone || '',
                 workingDayType: data.workingDayType || 'COMPLETE',
                 weeklyHours: data.weeklyHours || '',
+                gender: data.gender || '',
+                managerId: data.managerId || '',
                 active: data.active
             });
         } catch (error) {
@@ -194,7 +214,7 @@ export default function EmployeeDetail() {
                 <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                     <div className="border-b border-slate-100 dark:border-slate-800">
                         <div className="flex overflow-x-auto">
-                            {['resumen', 'expediente', 'prl', 'fichajes', 'gastos', 'vacaciones'].map((tab) => (
+                            {['resumen', 'cronograma', 'expediente', 'prl', 'activos', 'checklists', 'fichajes', 'gastos', 'vacaciones'].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -245,6 +265,9 @@ export default function EmployeeDetail() {
 
                                 {activeTab === 'expediente' && <DocumentArchive employeeId={id || ''} />}
                                 {activeTab === 'prl' && <PRLArchive employeeId={id || ''} />}
+                                {activeTab === 'cronograma' && <EmployeeTimeline employeeId={id || ''} />}
+                                {activeTab === 'activos' && <EmployeeAssets employeeId={id || ''} />}
+                                {activeTab === 'checklists' && <EmployeeChecklist employeeId={id || ''} />}
                                 {activeTab === 'fichajes' && <TimesheetViewer employeeId={id || ''} />}
                                 {activeTab === 'gastos' && <ExpenseManager employeeId={id || ''} isAdmin={true} />}
                                 {activeTab === 'vacaciones' && <VacationCalendar employeeId={id || ''} />}
@@ -344,6 +367,15 @@ export default function EmployeeDetail() {
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono</label>
                                             <input name="phone" value={formData.phone} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Género</label>
+                                            <select name="gender" value={formData.gender} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                                                <option value="">No especificado</option>
+                                                <option value="MALE">Masculino</option>
+                                                <option value="FEMALE">Femenino</option>
+                                                <option value="OTHER">Otro</option>
+                                            </select>
                                         </div>
 
                                         <div className="md:col-span-2 space-y-4 pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -447,6 +479,15 @@ export default function EmployeeDetail() {
                                             <select name="agreementType" value={formData.agreementType} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
                                                 <option value="">Seleccionar...</option>
                                                 {CONVENIOS.map(c => <option key={c} value={c}>{c}</option>)}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 font-bold text-amber-600 dark:text-amber-400">Responsable Directo</label>
+                                            <select name="managerId" value={formData.managerId} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-amber-200 dark:border-amber-900/30 bg-amber-50/20 dark:bg-amber-900/10">
+                                                <option value="">Sin responsable asignado</option>
+                                                {allEmployees.map(emp => (
+                                                    <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName} ({emp.jobTitle})</option>
+                                                ))}
                                             </select>
                                         </div>
 
@@ -558,13 +599,14 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
         setLoading(true);
         try {
             // Get category rates
-            const rates = await api.get('/overtime/rates');
+            const ratesRes = await api.get('/overtime/rates');
+            const rates = ratesRes.data || ratesRes || [];
             const catRate = rates.find((r: any) => r.category === category);
             setRate(catRate?.overtimeRate || 0);
 
             // Get entries
-            const data = await api.get(`/overtime/employee/${employeeId}`);
-            setEntries(data);
+            const entriesRes = await api.get(`/overtime/employee/${employeeId}`);
+            setEntries(entriesRes.data || entriesRes || []);
         } catch (error) {
             console.error(error);
         } finally {

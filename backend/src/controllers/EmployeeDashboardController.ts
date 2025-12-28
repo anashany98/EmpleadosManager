@@ -1,7 +1,5 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export class EmployeeDashboardController {
     // GET /api/dashboard/employees - Get comprehensive employee metrics
@@ -83,10 +81,30 @@ export class EmployeeDashboardController {
                         { endDate: { gte: today } }
                     ],
                     employee: where
+                },
+                include: {
+                    employee: {
+                        select: {
+                            id: true,
+                            name: true,
+                            firstName: true,
+                            lastName: true,
+                            department: true
+                        }
+                    }
                 }
             });
 
-            const onLeaveToday = vacationsToday.length;
+            const onLeaveToday = {
+                count: vacationsToday.length,
+                details: vacationsToday.map(v => ({
+                    id: v.employee.id,
+                    name: v.employee.name || `${v.employee.firstName} ${v.employee.lastName}`,
+                    department: v.employee.department,
+                    type: v.type, // VACATION, DAY_OFF, SICK_LEAVE, etc.
+                    returnDate: v.endDate
+                }))
+            };
 
             // Calculate absence rate (last 30 days)
             const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);

@@ -1,25 +1,39 @@
 
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
-const prisma = new PrismaClient();
+
 
 export class AlertService {
     // Check for expiring contracts and generate alerts
     async generateContractAlerts() {
-        console.log('Generating contract alerts...');
+        console.log('Generating multi-category alerts (Document Semaphore)...');
         const now = new Date();
         const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-        const sixtyDaysFromNow = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+        const fifteenDaysFromNow = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
 
-        // This query might need adjustment based on real schema fields.
-        // Assuming we rely on createdAt/entryDate or if contractEndDate existed.
-        // Since we don't have contractEndDate in schema yet (as seen before), 
-        // we can't truly implement contract expiration logic without that field.
-        // BUT, the user wants "Intelligent Alerts". 
-        // We will simulate it or check for "Trial Period" based on entryDate + 6 months?
+        // 1. Contract End Date Alerts
+        const employeesWithExpiringContract = await prisma.employee.findMany({
+            where: {
+                contractEndDate: {
+                    lte: thirtyDaysFromNow,
+                    gte: now
+                },
+                active: true
+            }
+        });
 
-        // Let's implement what we can: DNI Expiration.
+        for (const emp of employeesWithExpiringContract) {
+            await this.createAlert({
+                employeeId: emp.id,
+                type: 'CONTRACT_EXPIRING',
+                severity: 'HIGH',
+                title: 'Contrato por vencer',
+                message: `El contrato de ${emp.name || 'Empleado'} vence el ${emp.contractEndDate?.toLocaleDateString()}. Considerar prórroga.`,
+                actionUrl: `/employees/${emp.id}`
+            });
+        }
 
+        // 2. DNI Expiration (Existing logic, slightly improved)
         const employeesWithExpiringDNI = await prisma.employee.findMany({
             where: {
                 dniExpiration: {
@@ -41,25 +55,47 @@ export class AlertService {
             });
         }
 
-        // Driving License Expiration
-        const employeesWithExpiringLicense = await prisma.employee.findMany({
+        // 3. Medical Review Expiration
+        const expiringMedicalReviews = await prisma.medicalReview.findMany({
             where: {
-                drivingLicenseExpiration: {
+                nextReviewDate: {
                     lte: thirtyDaysFromNow,
                     gte: now
-                },
-                active: true
-            }
+                }
+            },
+            include: { employee: true }
         });
 
-        for (const emp of employeesWithExpiringLicense) {
+        for (const rev of expiringMedicalReviews) {
             await this.createAlert({
-                employeeId: emp.id,
-                type: 'LICENSE_EXPIRING',
+                employeeId: rev.employeeId,
+                type: 'MEDICAL_REVIEW_EXPIRING',
+                severity: 'MEDIUM',
+                title: 'Revisión Médica pendiente',
+                message: `La próxima revisión médica de ${rev.employee.name} debería ser antes del ${rev.nextReviewDate?.toLocaleDateString()}`,
+                actionUrl: `/employees/${rev.employeeId}`
+            });
+        }
+
+        // 4. Document Expiry (Generic documents)
+        const expiringDocuments = await prisma.document.findMany({
+            where: {
+                expiryDate: {
+                    lte: fifteenDaysFromNow,
+                    gte: now
+                }
+            },
+            include: { employee: true }
+        });
+
+        for (const doc of expiringDocuments) {
+            await this.createAlert({
+                employeeId: doc.employeeId,
+                type: 'DOCUMENT_EXPIRING',
                 severity: 'LOW',
-                title: 'Carnet de conducir por vencer',
-                message: `El carnet de ${emp.name || 'Empleado'} vence el ${emp.drivingLicenseExpiration?.toLocaleDateString()}`,
-                actionUrl: `/employees/${emp.id}`
+                title: 'Documento caducado/por caducar',
+                message: `El documento "${doc.name}" de ${doc.employee.name} vence el ${doc.expiryDate?.toLocaleDateString()}`,
+                actionUrl: `/employees/${doc.employeeId}`
             });
         }
     }

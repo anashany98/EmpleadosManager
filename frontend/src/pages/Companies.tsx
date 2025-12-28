@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Building2, Trash2, Save, X, Search, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, Building2, Trash2, Save, X } from 'lucide-react';
 import { api } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -15,8 +15,8 @@ export default function Companies() {
 
     const fetchCompanies = async () => {
         try {
-            const data = await api.get('/companies');
-            setCompanies(data);
+            const res = await api.get('/companies');
+            setCompanies(res.data || res || []);
         } catch (err) {
             console.error(err);
         }

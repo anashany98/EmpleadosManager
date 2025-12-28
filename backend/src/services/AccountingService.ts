@@ -1,6 +1,5 @@
-import { PrismaClient, PayrollRow } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { PayrollRow } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 
 export class AccountingService {
     static async generateEntries(batchId: string, rows: PayrollRow[]) {

@@ -1,10 +1,9 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { ExcelParser } from '../services/ExcelParser';
 import { MappingService } from '../services/MappingService';
 import fs from 'fs';
 
-const prisma = new PrismaClient();
 
 export const PayrollController = {
     // 1. Subir archivo
@@ -14,8 +13,8 @@ export const PayrollController = {
         }
 
         try {
-            // Leemos buffer para sacar headers
-            const buffer = fs.readFileSync(req.file.path);
+            // Leemos buffer para sacar headers de forma asíncrona
+            const buffer = await fs.promises.readFile(req.file.path);
             const headers = ExcelParser.getHeaders(buffer);
 
             // Crear el Batch
@@ -55,11 +54,14 @@ export const PayrollController = {
             // Re-leer archivo (Deberíamos guardar el path en BD, aquí lo pasamos por body para simplificar demo)
             // OJO: En app real, buscar path por batchId. Asumimos que está en 'uploads/' + filename
             const filePath = `uploads/${filename}`;
-            if (!fs.existsSync(filePath)) {
+
+            try {
+                await fs.promises.access(filePath);
+            } catch {
                 return res.status(404).json({ error: 'El archivo original ha caducado o no existe' });
             }
 
-            const buffer = fs.readFileSync(filePath);
+            const buffer = await fs.promises.readFile(filePath);
             const rawData = ExcelParser.parseBuffer(buffer);
 
             // Transformar
@@ -89,15 +91,35 @@ export const PayrollController = {
         }
     },
 
-    // Obtener filas de un lote
+    // Obtener filas de un lote con paginación
     getRows: async (req: Request, res: Response) => {
         const { id } = req.params;
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const skip = (page - 1) * limit;
+
         try {
-            const rows = await prisma.payrollRow.findMany({
-                where: { batchId: id }
+            const [rows, total] = await prisma.$transaction([
+                prisma.payrollRow.findMany({
+                    where: { batchId: id },
+                    skip,
+                    take: limit,
+                    orderBy: { id: 'asc' } // Ensure deterministic ordering
+                }),
+                prisma.payrollRow.count({ where: { batchId: id } })
+            ]);
+
+            res.json({
+                data: rows,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit)
+                }
             });
-            res.json(rows);
         } catch (error) {
+            console.error("Error fetching rows:", error);
             res.status(500).json({ error: 'Error al obtener filas' });
         }
     }

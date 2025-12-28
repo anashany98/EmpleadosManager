@@ -20,7 +20,7 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('ALL');
     const [uploading, setUploading] = useState(false);
-    const [ocrLoading, setOcrLoading] = useState(false);
+    const [ocrLoading] = useState(false);
     const [showUpload, setShowUpload] = useState(false);
 
     // Form states

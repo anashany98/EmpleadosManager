@@ -80,8 +80,8 @@ async function main() {
     const now = new Date();
     const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
 
-    // Create 80 Employees
-    for (let i = 0; i < 80; i++) {
+    // Create 67 Employees (Requested by user)
+    for (let i = 0; i < 67; i++) {
         let dni;
         do {
             dni = `${randomInt(10000000, 99999999)}${String.fromCharCode(65 + randomInt(0, 25))}`;
@@ -130,6 +130,7 @@ async function main() {
                 entryDate,
                 exitDate,
                 dniExpiration,
+                contractEndDate: isActive && Math.random() < 0.5 ? randomDate(now, new Date('2026-01-01')) : null,
                 drivingLicenseExpiration: Math.random() < 0.2 ? randomDate(now, new Date('2028-01-01')) : null,
                 vacationDaysTotal: 30,
                 createdAt
@@ -200,7 +201,8 @@ async function main() {
                         date: otDate,
                         hours,
                         rate: appliedRate,
-                        total: Number((hours * appliedRate).toFixed(2))
+                        total: Number((hours * appliedRate).toFixed(2)),
+                        status: randomItem(['APPROVED', 'APPROVED', 'PENDING']) // Mostly approved
                     }
                 });
             }
@@ -224,10 +226,23 @@ async function main() {
                         endDate,
                         days: duration,
                         type: isSickLeave ? 'SICK_LEAVE' : 'VACATION',
-                        reason: isSickLeave ? 'Baja médica' : 'Vacaciones'
+                        reason: isSickLeave ? 'Baja médica' : 'Vacaciones',
+                        status: randomItem(['APPROVED', 'APPROVED', 'PENDING'])
                     }
                 });
             }
+        }
+
+        // 4. Contract Extensions (for some)
+        if (emp.active && Math.random() < 0.3) {
+            await prisma.contractExtension.create({
+                data: {
+                    employeeId: emp.id,
+                    extensionDate: randomDate(emp.entryDate || new Date(), now),
+                    newEndDate: randomDate(now, new Date('2027-01-01')),
+                    notes: 'Prórroga convenio 2024'
+                }
+            });
         }
     }
 
@@ -260,7 +275,212 @@ async function main() {
     }
 
     console.log('✅ Generated Payroll Data');
-    console.log('🌱 Seeding cleanup complete.');
+
+    // 5. Create Expenses (for some employees)
+    for (const emp of employees.filter(e => e.active)) {
+        if (Math.random() < 0.4) {
+            const numExpenses = randomInt(1, 4);
+            for (let i = 0; i < numExpenses; i++) {
+                await prisma.expense.create({
+                    data: {
+                        employeeId: emp.id,
+                        date: randomDate(sixMonthsAgo, now),
+                        category: randomItem(['MEAL', 'TRAVEL', 'SUPPLIES', 'OTHER']),
+                        amount: 10 + Math.random() * 150,
+                        description: randomItem([
+                            'Comida de trabajo con cliente',
+                            'Kilometraje desplazamiento',
+                            'Material de oficina',
+                            'Parking reunión externa',
+                            'Formación online'
+                        ]),
+                        status: randomItem(['APPROVED', 'APPROVED', 'PENDING', 'REJECTED']),
+                        paymentMethod: randomItem(['CASH', 'CARD', 'TRANSFER'])
+                    }
+                });
+            }
+        }
+    }
+    console.log('✅ Generated Expenses');
+
+    // 6. Create Assets (laptops, phones, tools, clothing)
+    const assetCategories = ['LAPTOP', 'MOBILE', 'TOOLS', 'CLOTHING', 'OTHER'];
+    const assetNames = {
+        LAPTOP: ['MacBook Pro 14', 'Dell Latitude 5420', 'HP EliteBook 840', 'Lenovo ThinkPad X1'],
+        MOBILE: ['iPhone 13', 'Samsung Galaxy S22', 'iPhone 14 Pro', 'Xiaomi 12'],
+        TOOLS: ['Destornillador eléctrico', 'Taladro Bosch', 'Kit herramientas', 'Medidor láser'],
+        CLOTHING: ['Pantalón trabajo', 'Chaleco reflectante', 'Botas seguridad', 'Casco obra'],
+        OTHER: ['Silla ergonómica', 'Monitor 27"', 'Teclado mecánico', 'Ratón inalámbrico']
+    };
+
+    for (const emp of employees.filter(e => e.active).slice(0, 40)) {
+        const numAssets = randomInt(1, 3);
+        for (let i = 0; i < numAssets; i++) {
+            const category = randomItem(assetCategories);
+            await prisma.asset.create({
+                data: {
+                    employeeId: emp.id,
+                    category,
+                    name: randomItem(assetNames[category as keyof typeof assetNames]),
+                    serialNumber: category === 'LAPTOP' || category === 'MOBILE' ? `SN${randomInt(100000, 999999)}` : null,
+                    size: category === 'CLOTHING' ? randomItem(['S', 'M', 'L', 'XL', 'XXL']) : null,
+                    assignedDate: randomDate(emp.entryDate || sixMonthsAgo, now),
+                    status: 'ASSIGNED'
+                }
+            });
+        }
+    }
+    console.log('✅ Generated Assets');
+
+    // 7. Create Documents
+    const documentCategories = ['CONTRACT', 'DNI', 'PAYROLL', 'MEDICAL', 'TRAINING', 'OTHER'];
+    for (const emp of employees.slice(0, 50)) {
+        const numDocs = randomInt(2, 5);
+        for (let i = 0; i < numDocs; i++) {
+            const category = randomItem(documentCategories);
+            await prisma.document.create({
+                data: {
+                    employeeId: emp.id,
+                    name: `${category} - ${emp.firstName}`,
+                    category,
+                    fileUrl: `/uploads/documents/${emp.dni}_${category.toLowerCase()}.pdf`,
+                    expiryDate: category === 'DNI' ? emp.dniExpiration : null
+                }
+            });
+        }
+    }
+    console.log('✅ Generated Documents');
+
+    // 8. Create Medical Reviews
+    for (const emp of employees.filter(e => e.active).slice(0, 45)) {
+        if (Math.random() < 0.6) {
+            await prisma.medicalReview.create({
+                data: {
+                    employeeId: emp.id,
+                    date: randomDate(new Date('2023-01-01'), now),
+                    result: randomItem(['APTO', 'APTO', 'APTO', 'APTO CON LIMITACIONES']),
+                    nextReviewDate: new Date(now.getFullYear() + 1, now.getMonth(), now.getDate())
+                }
+            });
+        }
+    }
+    console.log('✅ Generated Medical Reviews');
+
+    // 9. Create Trainings
+    const trainingTypes = ['PRL', 'Técnica', 'Habilidades', 'Idiomas', 'Certificación'];
+    const trainingNames = [
+        'Prevención de Riesgos Laborales',
+        'Trabajo en Altura',
+        'Manipulador de Alimentos',
+        'Primeros Auxilios',
+        'Excel Avanzado',
+        'Gestión de Equipos',
+        'Inglés B2',
+        'Certificación Scrum Master',
+        'Carretilla Elevadora'
+    ];
+
+    for (const emp of employees.filter(e => e.active).slice(0, 50)) {
+        const numTrainings = randomInt(1, 3);
+        for (let i = 0; i < numTrainings; i++) {
+            await prisma.training.create({
+                data: {
+                    employeeId: emp.id,
+                    type: randomItem(trainingTypes),
+                    name: randomItem(trainingNames),
+                    date: randomDate(new Date('2022-01-01'), now),
+                    hours: randomInt(8, 40)
+                }
+            });
+        }
+    }
+    console.log('✅ Generated Trainings');
+
+    // 10. Create Alerts
+    const activeEmployees = employees.filter(e => e.active);
+
+    // DNI expiring alerts
+    for (const emp of activeEmployees) {
+        if (emp.dniExpiration) {
+            const daysUntilExpiry = Math.floor((emp.dniExpiration.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
+                await prisma.alert.create({
+                    data: {
+                        employeeId: emp.id,
+                        type: 'DNI_EXPIRING',
+                        severity: daysUntilExpiry <= 10 ? 'HIGH' : 'MEDIUM',
+                        title: 'DNI próximo a caducar',
+                        message: `El DNI de ${emp.name} caduca en ${daysUntilExpiry} días`,
+                        actionUrl: `/employees/${emp.id}`
+                    }
+                });
+            }
+        }
+
+        // Contract expiring alerts
+        if (emp.contractEndDate) {
+            const daysUntilExpiry = Math.floor((emp.contractEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+            if (daysUntilExpiry <= 30 && daysUntilExpiry > 0) {
+                await prisma.alert.create({
+                    data: {
+                        employeeId: emp.id,
+                        type: 'CONTRACT_EXPIRING',
+                        severity: daysUntilExpiry <= 15 ? 'HIGH' : 'MEDIUM',
+                        title: 'Contrato próximo a vencer',
+                        message: `El contrato de ${emp.name} vence en ${daysUntilExpiry} días`,
+                        actionUrl: `/employees/${emp.id}`
+                    }
+                });
+            }
+        }
+    }
+    console.log('✅ Generated Alerts');
+
+    // 11. Create Checklist Tasks (Onboarding for recent employees)
+    const recentEmployees = employees.filter(e => {
+        if (!e.entryDate || !e.active) return false;
+        const monthsAgo = (now.getTime() - e.entryDate.getTime()) / (1000 * 60 * 60 * 24 * 30);
+        return monthsAgo <= 3;
+    }).slice(0, 10);
+
+    const onboardingTasks = [
+        'Crear email corporativo',
+        'Asignar portátil y móvil',
+        'Formación de seguridad',
+        'Completar documentación RRHH',
+        'Configurar accesos sistemas',
+        'Presentación al equipo',
+        'Revisión médica inicial'
+    ];
+
+    for (const emp of recentEmployees) {
+        for (const taskTitle of onboardingTasks) {
+            const completed = Math.random() > 0.3;
+            await prisma.checklistTask.create({
+                data: {
+                    employeeId: emp.id,
+                    type: 'ONBOARDING',
+                    title: taskTitle,
+                    description: `Tarea de incorporación para ${emp.name}`,
+                    completed,
+                    completedAt: completed ? randomDate(emp.entryDate || sixMonthsAgo, now) : null,
+                    deadline: emp.entryDate ? new Date(emp.entryDate.getTime() + 14 * 24 * 60 * 60 * 1000) : null
+                }
+            });
+        }
+    }
+    console.log('✅ Generated Onboarding Checklists');
+
+    console.log('\n🎉 Database seed complete!');
+    console.log(`   - ${employees.length} employees`);
+    console.log(`   - ${companies.length} companies`);
+    console.log('   - Time entries, overtime, vacations');
+    console.log('   - Payroll data');
+    console.log('   - Expenses, assets, documents');
+    console.log('   - Trainings, medical reviews');
+    console.log('   - Alerts and checklists');
+    console.log('🌱 Ready for screenshots!\n');
+
 }
 
 main()

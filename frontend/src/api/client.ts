@@ -30,6 +30,16 @@ export const api = {
         if (!res.ok) throw new Error(await res.text());
         return res.json();
     },
+    patch: async (endpoint: string, body: any) => {
+        const headers: any = { 'Content-Type': 'application/json' };
+        const res = await fetch(`${API_URL}${endpoint}`, {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+    },
     delete: async (endpoint: string) => {
         const res = await fetch(`${API_URL}${endpoint}`, { method: 'DELETE' });
         if (!res.ok) throw new Error(await res.text());

@@ -1,18 +1,33 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { EmployeeController } from '../controllers/EmployeeController';
+import { ContractController } from '../controllers/ContractController';
+import { TimelineController } from '../controllers/TimelineController';
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for imports
+});
 
 const router = Router();
 
+import { validateResource } from '../middlewares/validateResource';
+import { createEmployeeSchema, updateEmployeeSchema } from '../schemas/employeeSchemas';
+
 router.get('/', EmployeeController.getAll);
+router.get('/hierarchy', EmployeeController.getHierarchy);
 router.post('/import', upload.single('file'), EmployeeController.importEmployees);
 router.get('/template', EmployeeController.downloadTemplate);
 router.get('/:id', EmployeeController.getById);
-router.post('/', EmployeeController.create);
-router.put('/:id', EmployeeController.update);
+router.post('/', validateResource(createEmployeeSchema), EmployeeController.create);
+router.put('/:id', validateResource(updateEmployeeSchema), EmployeeController.update);
+router.patch('/:id', validateResource(updateEmployeeSchema), EmployeeController.update);
 router.delete('/:id', EmployeeController.delete);
+
+// Contract Management
+router.post('/:id/contract/extend', ContractController.extend);
+router.get('/:id/contract/history', ContractController.getHistory);
+router.get('/:id/timeline', TimelineController.getEmployeeTimeline);
 
 // PRL & Training Features
 router.get('/:id/medical-reviews', EmployeeController.getMedicalReviews);

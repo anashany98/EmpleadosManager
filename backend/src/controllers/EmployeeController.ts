@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { AuditService } from '../services/AuditService';
-
-const prisma = new PrismaClient();
+import { AppError } from '../utils/AppError';
+import { ApiResponse } from '../utils/ApiResponse';
+import path from 'path';
+import fs from 'fs';
 
 export const EmployeeController = {
     // Obtener todos los empleados
@@ -11,9 +13,30 @@ export const EmployeeController = {
             const employees = await prisma.employee.findMany({
                 orderBy: { name: 'asc' }
             });
-            res.json(employees);
+            return ApiResponse.success(res, employees);
         } catch (error) {
-            res.status(500).json({ error: 'Error al obtener empleados' });
+            throw new AppError('Error al obtener empleados', 500);
+        }
+    },
+
+    // Obtener jerarquía (para organigrama)
+    getHierarchy: async (req: Request, res: Response) => {
+        try {
+            const employees = await prisma.employee.findMany({
+                where: { active: true },
+                select: {
+                    id: true,
+                    name: true,
+                    firstName: true,
+                    lastName: true,
+                    jobTitle: true,
+                    department: true,
+                    managerId: true,
+                }
+            });
+            return ApiResponse.success(res, employees);
+        } catch (error) {
+            throw new AppError('Error al obtener jerarquía', 500);
         }
     },
 
@@ -24,124 +47,11 @@ export const EmployeeController = {
         }
 
         try {
-            const XLSX = require('xlsx');
-            const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-            const sheetName = workbook.SheetNames[0];
-            const sheet = workbook.Sheets[sheetName];
-            const data = XLSX.utils.sheet_to_json(sheet); // Auto-detect headers
+            // Delegar lógica compleja al servicio
+            const { EmployeeImportService } = await import('../services/EmployeeImportService');
+            const result = await EmployeeImportService.processFile(req.file.buffer);
 
-            let importedCount = 0;
-            let errors = [];
-
-            for (const row of data as any[]) {
-                // Heuristica expandida para detectar columnas
-                const rawName = row['Nombre'] || row['NOMBRE'] || row['Empleado'] || row['Name'];
-                const lastName = row['Apellido'] || row['APELLIDO'] || row['Last Name'];
-                const dni = row['DNI'] || row['NIF'] || row['Identificación'];
-                const dniExp = row['DNI Vencimiento'] || row['DNI Exp'];
-                const subaccount = row['Subcuenta 465'] || row['Subcuenta'] || row['Cuenta'] || row['465'];
-
-                const email = row['Email'] || row['Correo'] || row['E-mail'];
-                const phone = row['Teléfono'] || row['Telefono'] || row['Phone'];
-                const address = row['Dirección'] || row['Direccion'] || row['Address'];
-                const province = row['Provincia'] || row['Province'];
-                const city = row['Ciudad'] || row['City'];
-                const postalCode = row['Código Postal'] || row['Codigo Postal'] || row['Zip'];
-                const ssn = row['Seguridad Social'] || row['NSS'] || row['N.S.S.'];
-                const iban = row['IBAN'] || row['Cuenta Bancaria'];
-                const birthDate = row['Fecha Nacimiento'] || row['Nacimiento'];
-                const registeredIn = row['Lugar Registro'] || row['Registro'];
-
-                const companyId = row['Empresa (ID)'] || row['Empresa'] || row['Company ID'];
-                const department = row['Departamento'] || row['Department'];
-                const category = row['Categoría'] || row['Categoria'] || row['Category'];
-                const contractType = row['Tipo Contrato'] || row['Contrato'];
-                const agreementType = row['Convenio'];
-                const jobTitle = row['Puesto'] || row['Job Title'];
-
-                const entryDateStr = row['Fecha Entrada'] || row['Entrada'] || row['Fecha Antigüedad'];
-                const callDateStr = row['Llamada Fijo-Disc'] || row['Llamada'];
-                const interruptionDateStr = row['Interrupción Fijo-Disc'] || row['Interrupción'];
-                const exitDateStr = row['Fecha Baja'] || row['Baja'] || row['Fecha Salida'];
-                const lowReason = row['Motivo Baja'] || row['Motivo'];
-
-                const hasLicenseStr = row['Carnet Conducir (SI/NO)'] || row['Carnet'];
-                const licenseType = row['Tipo Carnet'];
-                const licenseExp = row['Vencimiento Carnet'];
-
-                const emergencyName = row['Contacto Emergencia Nombre'] || row['Emergencia Nombre'];
-                const emergencyPhone = row['Contacto Emergencia Teléfono'] || row['Emergencia Tel'];
-
-                if (dni && (rawName || lastName)) {
-                    try {
-                        const name = rawName || `${row['Nombre']} ${lastName}`.trim();
-                        const subaccountStr = String(subaccount || '');
-
-                        const employeeData: any = {
-                            name: String(name),
-                            firstName: String(rawName || ''),
-                            lastName: String(lastName || ''),
-                            dni: String(dni),
-                            dniExpiration: dniExp ? new Date(dniExp) : undefined,
-                            subaccount465: subaccountStr,
-                            email: email ? String(email) : null,
-                            phone: phone ? String(phone) : null,
-                            address: address ? String(address) : null,
-                            province: province ? String(province) : null,
-                            city: city ? String(city) : null,
-                            postalCode: postalCode ? String(postalCode) : null,
-                            socialSecurityNumber: ssn ? String(ssn) : null,
-                            iban: iban ? String(iban) : null,
-                            birthDate: birthDate ? new Date(birthDate) : null,
-                            registeredIn: registeredIn ? String(registeredIn) : null,
-
-                            companyId: companyId ? String(companyId) : undefined,
-                            department: department ? String(department) : null,
-                            category: category ? String(category) : null,
-                            contractType: contractType ? String(contractType) : null,
-                            agreementType: agreementType ? String(agreementType) : null,
-                            jobTitle: jobTitle ? String(jobTitle) : null,
-
-                            entryDate: entryDateStr ? new Date(entryDateStr) : null,
-                            exitDate: exitDateStr ? new Date(exitDateStr) : undefined,
-                            callDate: callDateStr ? new Date(callDateStr) : undefined,
-                            contractInterruptionDate: interruptionDateStr ? new Date(interruptionDateStr) : undefined,
-                            lowDate: exitDateStr ? new Date(exitDateStr) : undefined,
-                            lowReason: lowReason || null,
-
-                            drivingLicense: hasLicenseStr === 'SI' || hasLicenseStr === 'S' || hasLicenseStr === true,
-                            drivingLicenseType: licenseType ? String(licenseType) : null,
-                            drivingLicenseExpiration: licenseExp ? new Date(licenseExp) : undefined,
-
-                            emergencyContactName: emergencyName ? String(emergencyName) : null,
-                            emergencyContactPhone: emergencyPhone ? String(emergencyPhone) : null,
-
-                            active: true
-                        };
-
-                        // Intentamos encontrar por DNI
-                        const existing = await prisma.employee.findUnique({ where: { dni: String(dni) } });
-
-                        if (existing) {
-                            await prisma.employee.update({
-                                where: { id: existing.id },
-                                data: employeeData
-                            });
-                            await AuditService.log('UPDATE', 'EMPLOYEE', existing.id, { info: 'Import Bulk Update', name });
-                        } else {
-                            const created = await prisma.employee.create({
-                                data: employeeData
-                            });
-                            await AuditService.log('CREATE', 'EMPLOYEE', created.id, { info: 'Import Bulk Create', name });
-                        }
-                        importedCount++;
-                    } catch (e) {
-                        errors.push(`Error importando ${dni}: ${e}`);
-                    }
-                }
-            }
-
-            res.json({ message: `Importación completada. ${importedCount} nuevos empleados.`, errors });
+            res.json({ message: `Importación completada. ${result.importedCount} empleados procesados.`, errors: result.errors });
         } catch (error) {
             console.error(error);
             res.status(500).json({ error: 'Error procesando el archivo de empleados' });
@@ -189,7 +99,7 @@ export const EmployeeController = {
             dniExpiration, birthDate, province, registeredIn,
             drivingLicense, drivingLicenseType, drivingLicenseExpiration,
             emergencyContactName, emergencyContactPhone,
-            workingDayType, weeklyHours
+            workingDayType, weeklyHours, gender, managerId
         } = req.body;
 
         try {
@@ -228,6 +138,8 @@ export const EmployeeController = {
                     emergencyContactPhone: emergencyContactPhone || null,
                     workingDayType: workingDayType || 'COMPLETE',
                     weeklyHours: weeklyHours ? parseFloat(weeklyHours) : null,
+                    gender: gender || null,
+                    managerId: managerId || null,
                     active: true
                 }
             });
@@ -242,56 +154,63 @@ export const EmployeeController = {
         }
     },
 
-    // Actualizar empleado
+    // Actualizar empleado (Soporta PATCH parcial)
     update: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const {
-            name, subaccount465, department, active,
-            firstName, lastName, email, phone, address, city, postalCode,
-            socialSecurityNumber, iban, companyId, category, contractType,
-            agreementType, jobTitle, entryDate, exitDate, callDate, contractInterruptionDate,
-            lowDate, lowReason,
-            dniExpiration, birthDate, province, registeredIn,
-            drivingLicense, drivingLicenseType, drivingLicenseExpiration,
-            emergencyContactName, emergencyContactPhone,
-            workingDayType, weeklyHours
-        } = req.body;
+        const body = req.body;
 
         try {
-            const employee = await prisma.employee.update({
-                where: { id },
-                data: {
-                    name, firstName, lastName, email, phone, address, city, postalCode,
-                    subaccount465, department, active,
-                    socialSecurityNumber, iban,
-                    companyId: companyId || undefined,
-                    category, contractType,
-                    agreementType, jobTitle,
-                    entryDate: entryDate ? new Date(entryDate) : undefined,
-                    exitDate: exitDate ? new Date(exitDate) : undefined,
-                    callDate: callDate ? new Date(callDate) : undefined,
-                    contractInterruptionDate: contractInterruptionDate ? new Date(contractInterruptionDate) : undefined,
-                    lowDate: lowDate ? new Date(lowDate) : undefined,
-                    dniExpiration: dniExpiration ? new Date(dniExpiration) : undefined,
-                    birthDate: birthDate ? new Date(birthDate) : undefined,
-                    province: province || null,
-                    registeredIn: registeredIn || null,
-                    drivingLicense: drivingLicense === true || drivingLicense === 'true',
-                    drivingLicenseType: drivingLicenseType || null,
-                    drivingLicenseExpiration: drivingLicenseExpiration ? new Date(drivingLicenseExpiration) : undefined,
-                    emergencyContactName: emergencyContactName || null,
-                    emergencyContactPhone: emergencyContactPhone || null,
-                    workingDayType,
-                    weeklyHours: weeklyHours ? parseFloat(weeklyHours) : null,
-                    lowReason
+            const updateData: any = {};
+
+            // Mapeo de campos directos (String / null)
+            const stringFields = [
+                'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
+                'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
+                'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
+                'drivingLicenseType', 'emergencyContactName', 'emergencyContactPhone', 'gender',
+                'managerId', 'lowReason', 'workingDayType'
+            ];
+
+            stringFields.forEach(field => {
+                if (body[field] !== undefined) {
+                    updateData[field] = body[field];
                 }
             });
 
+            // Mapeo de campos Date
+            const dateFields = [
+                'entryDate', 'exitDate', 'callDate', 'contractInterruptionDate', 'lowDate',
+                'dniExpiration', 'birthDate', 'drivingLicenseExpiration'
+            ];
+
+            dateFields.forEach(field => {
+                if (body[field] !== undefined) {
+                    updateData[field] = body[field] ? new Date(body[field]) : null;
+                }
+            });
+
+            // Mapeo de campos Boolean
+            if (body.active !== undefined) updateData.active = body.active;
+            if (body.drivingLicense !== undefined) {
+                updateData.drivingLicense = body.drivingLicense === true || body.drivingLicense === 'true';
+            }
+
+            // Mapeo de campos Numeric
+            if (body.weeklyHours !== undefined) {
+                updateData.weeklyHours = body.weeklyHours ? parseFloat(body.weeklyHours) : null;
+            }
+
+            const employee = await prisma.employee.update({
+                where: { id },
+                data: updateData
+            });
+
             // Audit
-            await AuditService.log('UPDATE', 'EMPLOYEE', id, req.body);
+            await AuditService.log('UPDATE', 'EMPLOYEE', id, body);
 
             res.json(employee);
         } catch (error) {
+            console.error(error);
             res.status(500).json({ error: 'Error al actualizar el empleado' });
         }
     },
@@ -301,7 +220,7 @@ export const EmployeeController = {
         try {
             const XLSX = require('xlsx');
 
-            // Exhaustive headers including all model fields
+            // Header definition
             const headers = [
                 'Nombre', 'Apellido', 'DNI', 'DNI Vencimiento', 'Subcuenta 465',
                 'Email', 'Teléfono', 'Dirección', 'Provincia', 'Ciudad', 'Código Postal',
@@ -310,7 +229,8 @@ export const EmployeeController = {
                 'Tipo Contrato', 'Convenio', 'Fecha Entrada',
                 'Llamada Fijo-Disc', 'Interrupción Fijo-Disc', 'Fecha Baja', 'Motivo Baja',
                 'Carnet Conducir (SI/NO)', 'Tipo Carnet', 'Vencimiento Carnet',
-                'Contacto Emergencia Nombre', 'Contacto Emergencia Teléfono'
+                'Contacto Emergencia Nombre', 'Contacto Emergencia Teléfono',
+                'Género', 'ID Responsable'
             ];
 
             const exampleData = [
@@ -353,20 +273,13 @@ export const EmployeeController = {
                 { 'Campo': 'Instrucciones Generales', 'Descripción': 'Sigue estas reglas para una importación correcta.' },
                 { 'Campo': 'Formato Fechas', 'Descripción': 'Usa el formato AAAA-MM-DD (Ej: 2024-05-20)' },
                 { 'Campo': 'Valores SI/NO', 'Descripción': 'Para campos booleanos como Carnet de Conducir, usa SI o NO' },
-                { 'Campo': 'DNI', 'Descripción': 'Obligatorio. Se usa para detectar si el empleado ya existe (si existe, se actualiza).' },
-                { 'Campo': 'Subcuenta 465', 'Descripción': 'Obligatorio. Formato 465.X.XXXX' },
-                { 'Campo': 'Nombre/Apellido', 'Descripción': 'Obligatorios para crear nuevos empleados.' },
-                { 'Campo': 'Empresa (ID)', 'Descripción': 'Opcional. Si lo dejas vacío, usa la empresa por defecto.' },
-                { 'Campo': 'Fijos Discontinuos', 'Descripción': 'Usa Fecha Llamada/Interrupción solo si aplica el contrato.' }
+                { 'Campo': 'DNI', 'Descripción': 'Obligatorio. Se usa para detectar si el empleado ya existe.' },
+                { 'Campo': 'Subcuenta 465', 'Descripción': 'Obligatorio. Formato 465.X.XXXX' }
             ];
 
             const wb = XLSX.utils.book_new();
-
-            // Sheet 1: Template
             const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers });
             XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Importación');
-
-            // Sheet 2: Instructions
             const wsIns = XLSX.utils.json_to_sheet(instructions);
             XLSX.utils.book_append_sheet(wb, wsIns, 'INSTRUCCIONES');
 
@@ -382,7 +295,6 @@ export const EmployeeController = {
     },
 
     // --- PRL & TRAINING ---
-
     getMedicalReviews: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
@@ -469,19 +381,30 @@ export const EmployeeController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
-            // Intentamos borrar. Si falla por FK, lo desactivamos
+            const documents = await prisma.document.findMany({
+                where: { employeeId: id }
+            });
+
             try {
                 await prisma.employee.delete({ where: { id } });
-                res.json({ message: 'Empleado eliminado correctamente' });
+
+                for (const doc of documents) {
+                    const filePath = path.join(process.cwd(), doc.fileUrl);
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                    }
+                }
+
+                return ApiResponse.success(res, null, 'Empleado y sus documentos eliminados correctamente');
             } catch (e) {
                 await prisma.employee.update({
                     where: { id },
                     data: { active: false }
                 });
-                res.json({ message: 'Empleado desactivado (tiene nóminas asociadas)' });
+                return ApiResponse.success(res, null, 'Empleado desactivado (tiene registros históricos asociados)');
             }
         } catch (error) {
-            res.status(500).json({ error: 'Error al eliminar empleado' });
+            throw new AppError('Error al eliminar empleado', 500);
         }
     }
 };

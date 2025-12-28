@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import { prisma } from '../lib/prisma';
 
 export class AuditService {
     static async log(action: string, entity: string, entityId: string, metadata?: any, userId?: string) {

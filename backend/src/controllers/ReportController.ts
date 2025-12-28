@@ -166,4 +166,18 @@ export class ReportController {
             res.status(500).json({ error: 'Failed to generate KPI report', details: error.message });
         }
     }
+
+    /**
+     * GET /api/reports/gender-gap
+     */
+    static async getGenderGap(req: Request, res: Response) {
+        try {
+            const { companyId } = req.query;
+            const data = await ReportService.getGenderGapData({ companyId });
+            res.json(data);
+        } catch (error: any) {
+            console.error('Gender Gap Report Error:', error);
+            res.status(500).json({ error: 'Failed to generate gender gap report', details: error.message });
+        }
+    }
 }

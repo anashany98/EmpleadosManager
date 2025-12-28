@@ -1,12 +1,13 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './lib/prisma';
+import { errorMiddleware } from './middlewares/errorMiddleware';
 
 dotenv.config();
 
 const app = express();
-const prisma = new PrismaClient();
+
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
@@ -33,6 +34,8 @@ import alertRoutes from './routes/alertRoutes';
 import reportRoutes from './routes/reportRoutes';
 import documentRoutes from './routes/documentRoutes';
 import expenseRoutes from './routes/expenseRoutes';
+import assetRoutes from './routes/assetRoutes';
+import checklistRoutes from './routes/checklistRoutes';
 
 // Rutas API
 app.use('/api/dashboard/v2', employeeDashboardRoutes);
@@ -49,6 +52,8 @@ app.use('/api/alerts', alertRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/expenses', expenseRoutes);
+app.use('/api/assets', assetRoutes);
+app.use('/api/checklists', checklistRoutes);
 
 
 app.listen(PORT, () => {

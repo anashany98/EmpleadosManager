@@ -1,17 +1,19 @@
 import { Request, Response } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import path from 'path';
 import fs from 'fs';
+import { AppError } from '../utils/AppError';
+import { ApiResponse } from '../utils/ApiResponse';
 
 import { createWorker } from 'tesseract.js';
 
-const prisma = new PrismaClient();
+
 
 export const DocumentController = {
     // Procesar OCR para clasificar documentos
     processOCR: async (req: Request, res: Response) => {
         const file = req.file;
-        if (!file) return res.status(400).json({ error: 'No se ha subido ningún archivo' });
+        if (!file) throw new AppError('No se ha subido ningún archivo', 400);
 
         try {
             const worker = await createWorker('spa');
@@ -42,14 +44,14 @@ export const DocumentController = {
                 }
             }
 
-            res.json({
+            return ApiResponse.success(res, {
                 text: text.substring(0, 500),
                 suggestedCategory,
                 suggestedDate
-            });
+            }, 'OCR completado');
         } catch (error) {
             console.error('Error OCR Documentos:', error);
-            res.status(500).json({ error: 'Error al procesar el documento' });
+            throw new AppError('Error al procesar el documento mediante OCR', 500);
         }
     },
 
@@ -57,9 +59,7 @@ export const DocumentController = {
         const { employeeId, name, category, expiryDate } = req.body;
         const file = req.file;
 
-        if (!file) {
-            return res.status(400).json({ error: 'No se ha subido ningún archivo' });
-        }
+        if (!file) throw new AppError('No se ha subido ningún archivo', 400);
 
         try {
             const document = await prisma.document.create({
@@ -72,10 +72,10 @@ export const DocumentController = {
                 }
             });
 
-            res.status(201).json(document);
+            return ApiResponse.success(res, document, 'Documento subido correctamente', 201);
         } catch (error) {
             console.error('Error al subir documento:', error);
-            res.status(500).json({ error: 'Error al registrar el documento en la base de datos' });
+            throw new AppError('Error al registrar el documento en la base de datos', 500);
         }
     },
 
@@ -86,9 +86,9 @@ export const DocumentController = {
                 where: { employeeId },
                 orderBy: { createdAt: 'desc' }
             });
-            res.json(documents);
+            return ApiResponse.success(res, documents);
         } catch (error) {
-            res.status(500).json({ error: 'Error al obtener documentos' });
+            throw new AppError('Error al obtener documentos', 500);
         }
     },
 
@@ -96,18 +96,19 @@ export const DocumentController = {
         const { id } = req.params;
         try {
             const document = await prisma.document.findUnique({ where: { id } });
-            if (!document) return res.status(404).json({ error: 'Documento no encontrado' });
+            if (!document) throw new AppError('Documento no encontrado', 404);
 
             // Eliminar archivo físico
-            const filePath = path.join(__dirname, '../../', document.fileUrl);
+            const filePath = path.join(process.cwd(), document.fileUrl);
             if (fs.existsSync(filePath)) {
                 fs.unlinkSync(filePath);
             }
 
             await prisma.document.delete({ where: { id } });
-            res.json({ message: 'Documento eliminado' });
+            return ApiResponse.success(res, null, 'Documento eliminado');
         } catch (error) {
-            res.status(500).json({ error: 'Error al eliminar documento' });
+            if (error instanceof AppError) throw error;
+            throw new AppError('Error al eliminar documento', 500);
         }
     }
 };
