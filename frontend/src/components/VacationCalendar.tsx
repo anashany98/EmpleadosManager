@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info, Trash2, Plane, Stethoscope, Baby, Clock, FileText, MoreHorizontal, Gift } from 'lucide-react';
-import { api } from '../api/client';
+import { api, BASE_URL } from '../api/client';
 import { toast } from 'sonner';
 import { isHoliday, getBusinessDaysCount } from '../utils/holidays';
+import QRCode from 'qrcode';
 
 const ABSENCE_TYPES = [
     { id: 'VACATION', label: 'Vacaciones', bg: 'bg-emerald-500', text: 'text-emerald-700', light: 'bg-emerald-50', icon: Plane },
@@ -13,7 +14,10 @@ const ABSENCE_TYPES = [
     { id: 'OTHER', label: 'Otros', bg: 'bg-slate-500', text: 'text-slate-700', light: 'bg-slate-50', icon: MoreHorizontal },
 ];
 
+import { useConfirm } from '../context/ConfirmContext';
+
 export default function VacationCalendar({ employeeId }: { employeeId: string }) {
+    const confirmAction = useConfirm();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [vacations, setVacations] = useState<any[]>([]);
     const [selection, setSelection] = useState<{ start: Date | null, end: Date | null }>({ start: null, end: null });
@@ -41,9 +45,48 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
         } catch (e) { console.error(e); }
     };
 
+    const handleDelete = async (id: string) => {
+        const ok = await confirmAction({
+            title: 'Eliminar Registro',
+            message: '¿Estás seguro de que deseas eliminar este registro de ausencia? Esta acción es definitiva.',
+            confirmText: 'Sí, eliminar',
+            cancelText: 'Cancelar',
+            type: 'danger'
+        });
+
+        if (ok) {
+            try {
+                await api.delete(`/vacations/${id}`);
+                toast.success('Registro eliminado');
+                fetchVacations();
+                fetchEmployee();
+            } catch (err) {
+                toast.error('Error al eliminar');
+            }
+        }
+    };
+
     const generatePDF = async (v: any) => {
         const { jsPDF } = await import('jspdf');
         const doc = new jsPDF();
+
+        // Helper to load image as base64
+        const getBase64Image = (url: string): Promise<string> => {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.crossOrigin = 'Anonymous';
+                img.src = url;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx?.drawImage(img, 0, 0);
+                    resolve(canvas.toDataURL('image/png'));
+                };
+                img.onerror = reject;
+            });
+        };
 
         const typeLabel = getAbsenceLabel(v.type);
         const start = new Date(v.startDate);
@@ -57,23 +100,55 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
         const businessDays = getBusinessDaysCount(start, end);
         const nonWorkingDays = naturalDays - businessDays;
 
+        // QR Code Data
+        const qrData = JSON.stringify({
+            t: 'VACATION',
+            id: v.id,
+            eid: employeeId,
+            d: new Date().toISOString()
+        });
+
+        const qrCodeUrl = await QRCode.toDataURL(qrData, { width: 100, margin: 1 });
+
+        // Embed metadata for Backup Auto-Assignment (Bypassing Image Scan)
+        doc.setProperties({
+            title: `Justificante Ausencia - ${empName}`,
+            subject: qrData, // Storing JSON data in Subject for easy backend parsing
+            author: 'Empleados Manager APP',
+            keywords: 'justificante, absence, vacation, auto-assign',
+            creator: 'Empleados Manager APP'
+        });
+
         // Header Design
         doc.setFillColor(30, 41, 59); // Slate-800
         doc.rect(0, 0, 210, 50, 'F');
 
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(24);
-        doc.setFont('helvetica', 'bold');
-        doc.text('JUSTIFICANTE DE AUSENCIA', 105, 25, { align: 'center' });
+        try {
+            const logoUrl = `${BASE_URL}/assets/logo.png`;
+            const base64 = await getBase64Image(logoUrl);
+            doc.addImage(base64, 'PNG', 15, 10, 30, 30);
+        } catch (e) {
+            console.warn("No se pudo cargar el logo:", e);
+        }
 
-        doc.setFontSize(10);
+        // Add QR Code at the bottom right corner (small size, non-invasive)
+        // A4 height is ~297mm. Footer is around 285. doc height is 297.
+        // Let's put it at y=255, x=175 (20x20 size)
+        doc.addImage(qrCodeUrl, 'PNG', 175, 255, 20, 20);
+
+        doc.setTextColor(255, 255, 255);
+        doc.setFontSize(22);
+        doc.setFont('helvetica', 'bold');
+        doc.text('JUSTIFICANTE DE AUSENCIA', 115, 25, { align: 'center' });
+
+        doc.setFontSize(9);
         doc.setFont('helvetica', 'normal');
-        doc.text('Documento oficial de control de presencia y gestión de recursos humanos', 105, 35, { align: 'center' });
+        doc.text('Documento oficial de control de presencia y gestión RRHH', 115, 33, { align: 'center' });
 
         // Branding Placeholder
         doc.setDrawColor(255, 255, 255);
         doc.setLineWidth(0.5);
-        doc.line(20, 42, 190, 42);
+        doc.line(60, 40, 190, 40);
 
         // Content Section
         doc.setTextColor(30, 41, 59);
@@ -167,7 +242,7 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
         doc.setTextColor(148, 163, 184); // Slate-400
         doc.setFontSize(7);
         const generationDate = new Date().toLocaleString();
-        doc.text(`Documento generado automáticamente el ${generationDate} - NominasApp HR Intelligence`, 105, 285, { align: 'center' });
+        doc.text(`Documento generado automáticamente el ${generationDate} - Empleados Manager APP`, 105, 285, { align: 'center' });
 
         doc.save(`Justificante_${typeLabel.replace(/\s/g, '_')}_${empName.replace(/\s/g, '_')}.pdf`);
     };
@@ -190,11 +265,41 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
         const existing = getVacationByDay(day);
         if (existing) {
             const label = getAbsenceLabel(existing.type);
-            const detail = existing.reason ? ` (${existing.reason})` : '';
 
-            const action = confirm(`Registro: ${label}${detail} \nDel ${new Date(existing.startDate).toLocaleDateString()} al ${new Date(existing.endDate).toLocaleDateString()} \n\nAceptar -> Descargar PDF\nCancelar -> Ignorar\n(Si quieres eliminar, usa el icono de papelera)`);
+            const ok = await confirmAction({
+                title: 'Detalle de Ausencia',
+                message: (
+                    <div className="text-left space-y-4">
+                        <div className="space-y-2">
+                            <p><strong>Tipo:</strong> {label}</p>
+                            <p><strong>Periodo:</strong> Del {new Date(existing.startDate).toLocaleDateString()} al {new Date(existing.endDate).toLocaleDateString()}</p>
+                            {existing.reason && <p><strong>Motivo:</strong> {existing.reason}</p>}
+                        </div>
 
-            if (action) {
+                        <button
+                            onClick={(e) => {
+                                // Since we can't easily trigger a nested modal from here with confirmAction
+                                // because it would overlap or be blocked by the current one's resolution,
+                                // we'll just show a native confirm or similar if needed, 
+                                // but actually, we can just resolve the current one with 'false' and THEN trigger delete.
+                                // However, confirmAction only returns 'ok' (true).
+                                // Let's use a simpler trick: use a specific button here.
+                                e.preventDefault();
+                                document.dispatchEvent(new CustomEvent('close-confirm-dialog'));
+                                handleDelete(existing.id);
+                            }}
+                            className="flex items-center gap-2 text-rose-500 hover:text-rose-600 font-bold text-sm transition-colors"
+                        >
+                            <Trash2 size={16} /> Eliminar este registro
+                        </button>
+                    </div>
+                ),
+                confirmText: 'Descargar PDF',
+                cancelText: 'Cerrar',
+                type: 'info'
+            });
+
+            if (ok) {
                 generatePDF(existing);
             }
             return;
@@ -212,7 +317,15 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
             const typeLabel = getAbsenceLabel(selectedType);
             const detail = selectedType === 'OTHER' && reason ? ` [${reason}]` : '';
 
-            if (confirm(`¿Registrar ${typeLabel}${detail}?\nDel ${selection.start.toLocaleDateString()} al ${end.toLocaleDateString()} `)) {
+            const ok = await confirmAction({
+                title: 'Registrar Ausencia',
+                message: `¿Estás seguro de registrar ${typeLabel}${detail} del ${selection.start.toLocaleDateString()} al ${end.toLocaleDateString()}?`,
+                confirmText: 'Registrar',
+                cancelText: 'Cancelar',
+                type: 'info'
+            });
+
+            if (ok) {
                 const toastId = toast.loading('Registrando...');
                 try {
                     await api.post('/vacations', {

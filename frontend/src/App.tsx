@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,14 +12,20 @@ import CalendarPage from './pages/CalendarPage';
 import Companies from './pages/Companies';
 import SettingsPage from './pages/Settings';
 import TimesheetPage from './pages/TimesheetPage';
-import EmployeeDashboard from './pages/EmployeeDashboard';
 import Reports from './pages/Reports';
 import OrgChart from './pages/OrgChart';
 import AuditLogPage from './pages/AuditLogPage';
 import GlobalAssetsPage from './pages/GlobalAssetsPage';
+import UserManagement from './pages/UserManagement';
+import InboxPage from './pages/InboxPage';
+import PayrollBatchDetail from './pages/PayrollBatchDetail';
 
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
+import LoginPage from './pages/LoginPage';
+import ProtectedRoute from './components/ProtectedRoute';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import CommandPalette from './components/CommandPalette';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -31,7 +37,8 @@ const queryClient = new QueryClient({
   },
 });
 
-function App() {
+function AppContent() {
+  const { user, loading } = useAuth();
   const location = useLocation();
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -71,58 +78,93 @@ function App() {
     }
   }, [darkMode]);
 
-  return (
-    <QueryClientProvider client={queryClient}>
-      <div className={`flex h-screen transition-colors duration-300 ${darkMode ? 'dark bg-slate-950' : 'bg-slate-50'}`}>
+  // If loading user info (checking token), don't show anything yet
+  // ProtectedRoute handles this for individual routes, but we need to hide the layout
+  if (loading) {
+    return null;
+  }
 
-        <Sidebar
+  // If no user, only show login route (or redirect)
+  if (!user) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<LoginPage />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <div className={`flex h-screen transition-colors duration-300 ${darkMode ? 'dark bg-slate-950' : 'bg-slate-50'}`}>
+
+      <Sidebar
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        darkMode={darkMode}
+      />
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-hidden flex flex-col relative">
+
+        <Header
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
           darkMode={darkMode}
+          setDarkMode={setDarkMode}
         />
 
-        {/* Main Content */}
-        <main className="flex-1 overflow-hidden flex flex-col relative">
-
-          <Header
-            sidebarOpen={sidebarOpen}
-            setSidebarOpen={setSidebarOpen}
-            darkMode={darkMode}
-            setDarkMode={setDarkMode}
-          />
-
-          <div className="flex-1 overflow-auto p-4 md:p-8 scroll-smooth">
-            <div className={`${location.pathname === '/calendar' ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto`}>
-              <AnimatePresence mode="wait">
-                <motion.div
-                  key={location.pathname}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Routes location={location} key={location.pathname}>
-                    <Route path="/" element={<Dashboard />} />
-                    <Route path="/employees" element={<Employees />} />
-                    <Route path="/employees/:id" element={<EmployeeDetail />} />
-                    <Route path="/employees/org-chart" element={<OrgChart />} />
-                    <Route path="/companies" element={<Companies />} />
-                    <Route path="/calendar" element={<CalendarPage />} />
-                    <Route path="/audit" element={<AuditLogPage />} />
-                    <Route path="/assets" element={<GlobalAssetsPage />} />
-                    <Route path="/dashboard/employees" element={<EmployeeDashboard />} />
-                    <Route path="/reports" element={<Reports />} />
-                    <Route path="/timesheet" element={<TimesheetPage />} />
-                    <Route path="/import" element={<PayrollImport />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                  </Routes>
-                </motion.div>
-              </AnimatePresence>
-            </div>
+        <div className="flex-1 overflow-auto p-4 md:p-8 scroll-smooth">
+          <div className={`${location.pathname === '/calendar' ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto`}>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={location.pathname}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+              >
+                <Routes location={location} key={location.pathname}>
+                  <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+                  <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />
+                  <Route path="/employees/:id" element={<ProtectedRoute><EmployeeDetail /></ProtectedRoute>} />
+                  <Route path="/employees/org-chart" element={<ProtectedRoute><OrgChart /></ProtectedRoute>} />
+                  <Route path="/companies" element={<ProtectedRoute><Companies /></ProtectedRoute>} />
+                  <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
+                  <Route path="/audit" element={<ProtectedRoute><AuditLogPage /></ProtectedRoute>} />
+                  <Route path="/assets" element={<ProtectedRoute><GlobalAssetsPage /></ProtectedRoute>} />
+                  <Route path="/reports" element={<ProtectedRoute><Reports /></ProtectedRoute>} />
+                  <Route path="/timesheet" element={<ProtectedRoute><TimesheetPage /></ProtectedRoute>} />
+                  <Route path="/inbox" element={<ProtectedRoute roles={['admin']}><InboxPage /></ProtectedRoute>} />
+                  <Route path="/import" element={<ProtectedRoute><PayrollImport /></ProtectedRoute>} />
+                  <Route path="/payroll/batch/:id" element={<ProtectedRoute><PayrollBatchDetail /></ProtectedRoute>} />
+                  <Route path="/users" element={<ProtectedRoute roles={['admin']}><UserManagement /></ProtectedRoute>} />
+                  <Route path="/settings" element={<ProtectedRoute roles={['admin']}><SettingsPage /></ProtectedRoute>} />
+                  <Route path="/login" element={<Navigate to="/" replace />} />
+                </Routes>
+              </motion.div>
+            </AnimatePresence>
           </div>
-        </main>
-        <Toaster position="top-right" richColors closeButton />
-      </div>
+        </div>
+      </main>
+      <CommandPalette />
+      <Toaster position="top-right" richColors closeButton />
+    </div>
+  );
+}
+
+import { ConfirmProvider } from './context/ConfirmContext';
+import { NotificationProvider } from './contexts/NotificationContext';
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <ConfirmProvider>
+          <NotificationProvider>
+            <AppContent />
+          </NotificationProvider>
+        </ConfirmProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

@@ -16,6 +16,10 @@ interface AuditLog {
         firstName: string;
         lastName: string;
     };
+    targetEmployee?: {
+        firstName: string;
+        lastName: string;
+    };
 }
 
 export default function AuditLogPage() {
@@ -168,6 +172,11 @@ export default function AuditLogPage() {
                                                             <User size={10} />
                                                             ID: {log.entityId}
                                                             {log.user && <span>· por {log.user.firstName} {log.user.lastName}</span>}
+                                                            {log.targetEmployee && (
+                                                                <span className="text-blue-500 font-bold italic ml-1">
+                                                                    · Afecta a: {log.targetEmployee.firstName} {log.targetEmployee.lastName}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 </td>

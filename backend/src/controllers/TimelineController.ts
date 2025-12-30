@@ -7,8 +7,13 @@ export const TimelineController = {
      * GET /api/employees/:id/timeline
      */
     getEmployeeTimeline: async (req: Request, res: Response) => {
-        const { id } = req.params;
-        const timeline = await TimelineService.getEmployeeTimeline(id);
-        return ApiResponse.success(res, timeline);
+        try {
+            const { id } = req.params;
+            const timeline = await TimelineService.getEmployeeTimeline(id);
+            return ApiResponse.success(res, timeline);
+        } catch (error: any) {
+            console.error('Error fetching employee timeline:', error);
+            return ApiResponse.error(res, error.message || 'Error al obtener el historial del empleado', 500);
+        }
     }
 };

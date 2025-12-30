@@ -55,6 +55,7 @@ export default function Reports() {
     const fetchCompanies = async () => {
         try {
             const res = await api.get('/companies');
+            const baseUrl = 'http://192.168.1.38:3000';
             setCompanies(res.data || res || []);
         } catch (err) {
             console.error(err);
@@ -123,7 +124,7 @@ export default function Reports() {
             const params = { ...filters, format: 'xlsx' };
             const queryString = new URLSearchParams(params as any).toString();
 
-            window.open(`${import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}${endpoint}?${queryString}`, '_blank');
+            window.open(`${'http://192.168.1.38:3000/api'}${endpoint}?${queryString}`, '_blank');
         } catch (err) {
             toast.error('Error al exportar Excel');
         }

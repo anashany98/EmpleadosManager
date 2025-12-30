@@ -1,33 +1,41 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import {
-    Calendar, Briefcase, HeartPulse, GraduationCap,
-    Receipt, Wallet, History, Star
+    Circle, CheckCircle2, AlertCircle, Clock, FileText,
+    Briefcase, Calendar, GraduationCap, Receipt, HeartPulse,
+    UserPlus, UserMinus, ShieldAlert, History
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 
 interface TimelineEvent {
     id: string;
-    type: string;
     date: string;
+    type: 'ENTRY' | 'EXIT' | 'CONTRACT' | 'PAYROLL' | 'MEDICAL' | 'VACATION' | 'TRAINING' | 'EXPENSE' | 'INCIDENT' | 'AUDIT';
     title: string;
-    description: string;
-    category: string;
+    description?: string;
     amount?: number;
+    fileUrl?: string;
+    category?: string;
 }
 
-export default function EmployeeTimeline({ employeeId }: { employeeId: string }) {
+interface EmployeeTimelineProps {
+    employeeId: string;
+}
+
+export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) {
     const [events, setEvents] = useState<TimelineEvent[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
         const fetchTimeline = async () => {
             try {
-                const resp = await api.get(`/employees/${employeeId}/timeline`);
-                setEvents(resp.data);
+                const res = await api.get(`/employees/${employeeId}/timeline`);
+                setEvents(res.data?.data || res.data || []);
             } catch (error) {
-                console.error('Error fetching timeline', error);
+                console.error("Error fetching timeline", error);
             } finally {
-                setLoading(false);
+                setIsLoading(false);
             }
         };
         fetchTimeline();
@@ -35,88 +43,110 @@ export default function EmployeeTimeline({ employeeId }: { employeeId: string })
 
     const getIcon = (type: string) => {
         switch (type) {
-            case 'CONTRACT': return <Briefcase className="w-4 h-4" />;
-            case 'CONTRACT_EXTENSION': return <Star className="w-4 h-4 text-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]" />;
-            case 'VACATION': return <Calendar className="w-4 h-4 text-blue-400" />;
-            case 'MEDICAL_REVIEW': return <HeartPulse className="w-4 h-4 text-red-400" />;
-            case 'TRAINING': return <GraduationCap className="w-4 h-4 text-green-400" />;
-            case 'EXPENSE': return <Receipt className="w-4 h-4 text-purple-400" />;
-            case 'PAYROLL': return <Wallet className="w-4 h-4 text-emerald-400" />;
-            default: return <History className="w-4 h-4" />;
+            case 'ENTRY': return <UserPlus size={18} className="text-emerald-500" />;
+            case 'EXIT': return <UserMinus size={18} className="text-red-500" />;
+            case 'CONTRACT': return <FileText size={18} className="text-blue-500" />;
+            case 'PAYROLL': return <Receipt size={18} className="text-indigo-500" />;
+            case 'MEDICAL': return <HeartPulse size={18} className="text-rose-500" />;
+            case 'VACATION': return <Calendar size={18} className="text-orange-500" />;
+            case 'TRAINING': return <GraduationCap size={18} className="text-purple-500" />;
+            case 'EXPENSE': return <CreditCardIcon size={18} className="text-amber-500" />;
+            case 'INCIDENT': case 'AUDIT': return <ShieldAlert size={18} className="text-slate-500" />;
+            default: return <Circle size={18} className="text-slate-400" />;
         }
     };
 
     const getBgColor = (type: string) => {
         switch (type) {
-            case 'CONTRACT': return 'bg-slate-800';
-            case 'CONTRACT_EXTENSION': return 'bg-amber-900/20 border-amber-500/30';
-            case 'VACATION': return 'bg-blue-900/30 border-blue-500/30';
-            case 'MEDICAL_REVIEW': return 'bg-red-900/30 border-red-500/30';
-            case 'TRAINING': return 'bg-green-900/30 border-green-500/30';
-            case 'EXPENSE': return 'bg-purple-900/30 border-purple-500/30';
-            case 'PAYROLL': return 'bg-emerald-900/30 border-emerald-500/30';
-            default: return 'bg-slate-800 border-slate-700';
+            case 'ENTRY': return 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-900/30';
+            case 'EXIT': return 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-900/30';
+            case 'CONTRACT': return 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30';
+            case 'PAYROLL': return 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30';
+            case 'MEDICAL': return 'bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-900/30';
+            case 'AUDIT': case 'INCIDENT': return 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700';
+            default: return 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700';
         }
     };
 
-    if (loading) return (
-        <div className="animate-pulse space-y-8 py-4">
-            {[1, 2, 3, 4].map(i => (
-                <div key={i} className="flex gap-4">
-                    <div className="w-10 h-10 bg-slate-800 rounded-full shrink-0" />
-                    <div className="flex-1 space-y-2">
-                        <div className="h-4 bg-slate-800 rounded w-1/4" />
-                        <div className="h-12 bg-slate-800 rounded w-full" />
+    if (isLoading) {
+        return (
+            <div className="flex flex-col gap-4 p-8 animate-pulse">
+                {[1, 2, 3].map(i => (
+                    <div key={i} className="flex gap-4">
+                        <div className="w-12 flex flex-col items-center">
+                            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 mb-2"></div>
+                            <div className="w-0.5 flex-1 bg-slate-200 dark:bg-slate-700"></div>
+                        </div>
+                        <div className="flex-1 h-24 bg-slate-50 dark:bg-slate-800 rounded-xl"></div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    if (events.length === 0) {
+        return (
+            <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+                <History size={48} className="mb-4 opacity-20" />
+                <p>No hay historial disponible</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative pl-4 space-y-6 max-w-3xl mx-auto py-8">
+            {/* Vertical Line */}
+            <div className="absolute top-0 bottom-0 left-[27px] w-0.5 bg-slate-200 dark:bg-slate-800" />
+
+            {events.map((event, index) => (
+                <div key={`${event.id}-${index}`} className="relative flex gap-6 group">
+                    {/* Icon */}
+                    <div className="relative z-10 flex flex-col items-center">
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center bg-white dark:bg-slate-900 border-4 border-slate-50 dark:border-slate-800 shadow-sm group-hover:scale-110 transition-transform`}>
+                            {getIcon(event.type)}
+                        </div>
+                    </div>
+
+                    {/* Content Card */}
+                    <div className={`flex-1 rounded-2xl p-5 border shadow-sm transition-all hover:shadow-md ${getBgColor(event.type)}`}>
+                        <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-bold text-slate-900 dark:text-white text-lg">{event.title}</h3>
+                            <span className="text-xs font-mono text-slate-500 dark:text-slate-400 bg-white/50 dark:bg-black/20 px-2 py-1 rounded-md">
+                                {format(new Date(event.date), 'dd MMM yyyy, HH:mm', { locale: es })}
+                            </span>
+                        </div>
+
+                        {event.description && (
+                            <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed whitespace-pre-line">
+                                {event.description}
+                            </p>
+                        )}
+
+                        {event.amount && (
+                            <div className="mt-3 inline-block font-mono font-bold text-emerald-600 bg-emerald-100/50 dark:bg-emerald-900/30 px-3 py-1 rounded-lg">
+                                {event.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                            </div>
+                        )}
+
+                        {event.fileUrl && (
+                            <a
+                                href={event.fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+                            >
+                                <FileText size={14} />
+                                Ver Documento
+                            </a>
+                        )}
                     </div>
                 </div>
             ))}
         </div>
     );
-
-    return (
-        <div className="relative py-8">
-            {/* Central Line */}
-            <div className="absolute left-5 md:left-1/2 top-0 bottom-0 w-0.5 bg-gradient-to-b from-transparent via-slate-700 to-transparent -translate-x-1/2" />
-
-            {events.length === 0 ? (
-                <div className="text-center py-12 bg-slate-800/20 rounded-3xl border border-dashed border-slate-700">
-                    <History className="w-12 h-12 text-slate-600 mx-auto mb-3 opacity-30" />
-                    <p className="text-slate-500 font-medium">No hay eventos registrados en la línea de tiempo</p>
-                </div>
-            ) : (
-                <div className="space-y-12">
-                    {events.map((event, index) => (
-                        <div key={`${event.id}-${index}`} className="relative flex items-center group">
-                            {/* Event Dot/Icon */}
-                            <div className={`absolute left-5 md:left-1/2 -translate-x-1/2 flex items-center justify-center w-10 h-10 rounded-full border-2 ${getBgColor(event.type)} text-slate-200 z-10 transition-all duration-300 group-hover:scale-125 group-hover:shadow-[0_0_15px_rgba(255,255,255,0.1)]`}>
-                                {getIcon(event.type)}
-                            </div>
-
-                            {/* Card Container */}
-                            <div className={`flex flex-col w-full pl-16 md:pl-0 md:w-1/2 ${index % 2 === 0 ? 'md:pr-12 md:text-right md:items-end' : 'md:ml-auto md:pl-12 md:text-left md:items-start'}`}>
-                                <div className="bg-slate-900/40 border border-slate-800/50 p-5 rounded-2xl hover:bg-slate-800/60 hover:border-slate-700 transition-all duration-300 shadow-lg group-hover:shadow-black/40 max-w-lg">
-                                    <div className={`flex flex-col gap-1 ${index % 2 === 0 ? 'md:items-end' : 'md:items-start'}`}>
-                                        <time className="text-[10px] font-black font-mono text-blue-400 tracking-tighter bg-blue-500/10 px-2 py-0.5 rounded-md mb-1 inline-block">
-                                            {new Date(event.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase()}
-                                        </time>
-                                        <h4 className="text-base font-bold text-white tracking-tight leading-tight">{event.title}</h4>
-                                        <p className="text-sm text-slate-400 mt-1.5 leading-relaxed">{event.description}</p>
-
-                                        {event.amount && event.amount > 0 && (
-                                            <div className="mt-3 inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-lg">
-                                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Importe</span>
-                                                <span className="text-sm font-black text-emerald-400">
-                                                    {new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(event.amount)}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-        </div>
-    );
 }
+
+// Icon helper
+const CreditCardIcon = ({ size, className }: { size: number, className: string }) => (
+    <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></svg>
+);

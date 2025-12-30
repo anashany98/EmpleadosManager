@@ -37,7 +37,10 @@ const CATEGORIES = [
     { id: 'OTHER', label: 'Otros', color: 'bg-slate-500' },
 ];
 
+import { useConfirm } from '../context/ConfirmContext';
+
 export default function ExpenseManager({ employeeId, isAdmin = false }: { employeeId: string; isAdmin?: boolean }) {
+    const confirmAction = useConfirm();
     const [expenses, setExpenses] = useState<Expense[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -143,7 +146,14 @@ export default function ExpenseManager({ employeeId, isAdmin = false }: { employ
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('¿Estás seguro de eliminar este gasto?')) return;
+        const ok = await confirmAction({
+            title: 'Eliminar Gasto',
+            message: '¿Estás seguro de eliminar este gasto? Esta acción no se puede deshacer.',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+
+        if (!ok) return;
         try {
             await api.delete(`/expenses/${id}`);
             toast.success('Gasto eliminado');
@@ -343,7 +353,7 @@ export default function ExpenseManager({ employeeId, isAdmin = false }: { employ
                                 <div className="flex items-center gap-2 w-full md:w-auto justify-end border-t md:border-t-0 pt-2 md:pt-0">
                                     {expense.receiptUrl && (
                                         <a
-                                            href={(import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/api$/, '') + expense.receiptUrl}
+                                            href={'http://192.168.1.38:3000' + expense.receiptUrl}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"

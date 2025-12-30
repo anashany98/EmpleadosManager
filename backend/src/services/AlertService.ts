@@ -115,8 +115,7 @@ export class AlertService {
                 type: data.type,
                 createdAt: {
                     gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
-                },
-                isDismissed: false
+                }
             }
         });
 
@@ -131,7 +130,15 @@ export class AlertService {
         }
     }
 
-    async getUnreadAlerts() {
+    async getUnreadAlerts(permissions?: any) {
+        // If it's a regular user (not admin), filter alerts they have permission for
+        // (In this system, currently all alerts are for the "employees" module)
+        const canSeeEmployeeAlerts = !permissions || permissions.employees !== 'none';
+
+        if (!canSeeEmployeeAlerts) {
+            return [];
+        }
+
         return prisma.alert.findMany({
             where: {
                 isRead: false,

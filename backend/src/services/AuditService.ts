@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 
 export class AuditService {
-    static async log(action: string, entity: string, entityId: string, metadata?: any, userId?: string) {
+    static async log(action: string, entity: string, entityId: string, metadata?: any, userId?: string, targetEmployeeId?: string) {
         try {
             await prisma.auditLog.create({
                 data: {
@@ -9,7 +9,8 @@ export class AuditService {
                     entity,
                     entityId,
                     metadata: metadata ? JSON.stringify(metadata) : null,
-                    userId
+                    userId,
+                    targetEmployeeId
                 }
             });
         } catch (error) {

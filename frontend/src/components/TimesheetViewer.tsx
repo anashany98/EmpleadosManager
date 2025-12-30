@@ -19,7 +19,10 @@ interface TimesheetViewerProps {
     employeeId: string;
 }
 
+import { useConfirm } from '../context/ConfirmContext';
+
 export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
+    const confirmAction = useConfirm();
     const [entries, setEntries] = useState<TimeEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -90,7 +93,14 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('¿Eliminar este fichaje?')) return;
+        const ok = await confirmAction({
+            title: 'Eliminar Fichaje',
+            message: '¿Estás seguro de eliminar este registro de fichaje?',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+
+        if (!ok) return;
         try {
             await api.delete(`/time-entries/${id}`);
             toast.success('Fichaje eliminado');

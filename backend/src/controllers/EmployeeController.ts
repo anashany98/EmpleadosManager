@@ -5,17 +5,29 @@ import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import path from 'path';
 import fs from 'fs';
+import * as XLSX from 'xlsx';
+import { EncryptionService } from '../services/EncryptionService';
 
 export const EmployeeController = {
     // Obtener todos los empleados
     getAll: async (req: Request, res: Response) => {
         try {
             const employees = await prisma.employee.findMany({
+                where: { active: true },
                 orderBy: { name: 'asc' }
             });
-            return ApiResponse.success(res, employees);
-        } catch (error) {
-            throw new AppError('Error al obtener empleados', 500);
+
+            // Decrypt sensitive data
+            const decryptedEmployees = employees.map(emp => ({
+                ...emp,
+                socialSecurityNumber: EncryptionService.decrypt(emp.socialSecurityNumber),
+                iban: EncryptionService.decrypt(emp.iban)
+            }));
+
+            return ApiResponse.success(res, decryptedEmployees);
+        } catch (error: any) {
+            console.error('Error fetching employees:', error);
+            return ApiResponse.error(res, error.message || 'Error al obtener empleados', 500);
         }
     },
 
@@ -35,26 +47,30 @@ export const EmployeeController = {
                 }
             });
             return ApiResponse.success(res, employees);
-        } catch (error) {
-            throw new AppError('Error al obtener jerarquía', 500);
+        } catch (error: any) {
+            console.error('Error fetching hierarchy:', error);
+            return ApiResponse.error(res, error.message || 'Error al obtener jerarquía', 500);
         }
     },
 
     // Importar Empleados desde Excel (Simple: Nombre, DNI, Subcuenta)
     importEmployees: async (req: Request, res: Response) => {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No se ha subido ningún archivo' });
-        }
-
         try {
+            if (!req.file) {
+                return ApiResponse.error(res, 'No se ha subido ningún archivo', 400);
+            }
+
             // Delegar lógica compleja al servicio
             const { EmployeeImportService } = await import('../services/EmployeeImportService');
             const result = await EmployeeImportService.processFile(req.file.buffer);
 
-            res.json({ message: `Importación completada. ${result.importedCount} empleados procesados.`, errors: result.errors });
-        } catch (error) {
+            const userId = (req as any).user?.id;
+            await AuditService.log('IMPORT', 'EMPLOYEE', 'MULTIPLE', { count: result.importedCount }, userId);
+
+            return ApiResponse.success(res, result, `Importación completada. ${result.importedCount} empleados procesados.`);
+        } catch (error: any) {
             console.error(error);
-            res.status(500).json({ error: 'Error procesando el archivo de empleados' });
+            return ApiResponse.error(res, error.message || 'Error procesando el archivo de empleados', 500);
         }
     },
 
@@ -79,39 +95,51 @@ export const EmployeeController = {
             });
 
             if (!employee) {
-                return res.status(404).json({ error: 'Empleado no encontrado' });
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
             }
 
-            res.json(employee);
-        } catch (error) {
+            // Decrypt sensitive data
+            employee.socialSecurityNumber = EncryptionService.decrypt(employee.socialSecurityNumber);
+            employee.iban = EncryptionService.decrypt(employee.iban);
+
+            // Audit access to sensitive data
+            const userId = (req as any).user?.id;
+            await AuditService.log('VIEW_SENSITIVE_DATA', 'EMPLOYEE', id, { info: 'Acceso a ficha detallada' }, userId, id);
+
+            return ApiResponse.success(res, employee);
+        } catch (error: any) {
             console.error(error);
-            res.status(500).json({ error: 'Error al obtener el empleado' });
+            return ApiResponse.error(res, error.message || 'Error al obtener el empleado', 500);
         }
     },
 
     // Crear un nuevo empleado
     create: async (req: Request, res: Response) => {
-        const {
-            dni, name, subaccount465, department,
-            firstName, lastName, email, phone, address, city, postalCode,
-            socialSecurityNumber, iban, companyId, category, contractType,
-            agreementType, jobTitle, entryDate, callDate, contractInterruptionDate,
-            dniExpiration, birthDate, province, registeredIn,
-            drivingLicense, drivingLicenseType, drivingLicenseExpiration,
-            emergencyContactName, emergencyContactPhone,
-            workingDayType, weeklyHours, gender, managerId
-        } = req.body;
-
         try {
+            const {
+                dni, name, subaccount465, department,
+                firstName, lastName, email, phone, address, city, postalCode,
+                socialSecurityNumber, iban, companyId, category, contractType,
+                agreementType, jobTitle, entryDate, callDate, contractInterruptionDate,
+                dniExpiration, birthDate, province, registeredIn,
+                drivingLicense, drivingLicenseType, drivingLicenseExpiration,
+                emergencyContactName, emergencyContactPhone,
+                workingDayType, weeklyHours, gender, managerId
+            } = req.body;
+
+            const userId = (req as any).user?.id;
+
             // Validaciones básicas
             const existingDni = await prisma.employee.findUnique({ where: { dni } });
             if (existingDni) {
-                return res.status(400).json({ error: 'Ya existe un empleado con ese DNI' });
+                return ApiResponse.error(res, 'Ya existe un empleado con ese DNI', 400);
             }
 
-            const existingSub = await prisma.employee.findUnique({ where: { subaccount465 } });
-            if (existingSub) {
-                return res.status(400).json({ error: 'Esa subcuenta 465 ya está asignada' });
+            if (subaccount465) {
+                const existingSub = await prisma.employee.findUnique({ where: { subaccount465 } });
+                if (existingSub) {
+                    return ApiResponse.error(res, 'Esa subcuenta 465 ya está asignada', 400);
+                }
             }
 
             const employee = await prisma.employee.create({
@@ -119,8 +147,9 @@ export const EmployeeController = {
                     dni,
                     name: name || `${firstName} ${lastName}`,
                     firstName, lastName, email, phone, address, city, postalCode,
-                    subaccount465,
-                    socialSecurityNumber, iban,
+                    subaccount465: subaccount465 || null,
+                    socialSecurityNumber: EncryptionService.encrypt(socialSecurityNumber),
+                    iban: EncryptionService.encrypt(iban),
                     companyId: companyId || undefined,
                     department, category,
                     contractType, agreementType, jobTitle,
@@ -145,12 +174,12 @@ export const EmployeeController = {
             });
 
             // Audit
-            await AuditService.log('CREATE', 'EMPLOYEE', employee.id, { name: employee.name });
+            await AuditService.log('CREATE', 'EMPLOYEE', employee.id, { name: employee.name }, userId, employee.id);
 
-            res.status(201).json(employee);
-        } catch (error) {
+            return ApiResponse.success(res, employee, 'Empleado creado correctamente', 201);
+        } catch (error: any) {
             console.error(error);
-            res.status(500).json({ error: 'Error al crear el empleado' });
+            return ApiResponse.error(res, error.message || 'Error al crear el empleado', 500);
         }
     },
 
@@ -158,6 +187,7 @@ export const EmployeeController = {
     update: async (req: Request, res: Response) => {
         const { id } = req.params;
         const body = req.body;
+        const userId = (req as any).user?.id;
 
         try {
             const updateData: any = {};
@@ -200,26 +230,105 @@ export const EmployeeController = {
                 updateData.weeklyHours = body.weeklyHours ? parseFloat(body.weeklyHours) : null;
             }
 
+            // Encrypt sensitive fields if they are being updated
+            if (updateData.socialSecurityNumber) {
+                updateData.socialSecurityNumber = EncryptionService.encrypt(updateData.socialSecurityNumber);
+            }
+            if (updateData.iban) {
+                updateData.iban = EncryptionService.encrypt(updateData.iban);
+            }
+
             const employee = await prisma.employee.update({
                 where: { id },
                 data: updateData
             });
 
             // Audit
-            await AuditService.log('UPDATE', 'EMPLOYEE', id, body);
+            await AuditService.log('UPDATE', 'EMPLOYEE', id, body, userId, id);
 
-            res.json(employee);
-        } catch (error) {
+            return ApiResponse.success(res, employee, 'Empleado actualizado correctamente');
+        } catch (error: any) {
             console.error(error);
-            res.status(500).json({ error: 'Error al actualizar el empleado' });
+            return ApiResponse.error(res, error.message || 'Error al actualizar el empleado', 500);
         }
     },
 
-    // Descargar Plantilla Excel
+    // Bulk Updates (Actions en lote)
+    bulkUpdate: async (req: Request, res: Response) => {
+        const { employeeIds, action, data } = req.body;
+        const userId = (req as any).user?.id;
+
+        if (!employeeIds || !Array.isArray(employeeIds) || employeeIds.length === 0) {
+            return ApiResponse.error(res, 'Selecciona al menos un empleado', 400);
+        }
+
+        try {
+            const results = await prisma.$transaction(async (tx) => {
+                let updatedCount = 0;
+
+                for (const empId of employeeIds) {
+                    let updateData: any = {};
+                    let logAction = '';
+                    let logInfo = '';
+
+                    switch (action) {
+                        case 'activate':
+                            updateData = { active: true, exitDate: null };
+                            logAction = 'BULK_ACTIVATE';
+                            logInfo = 'Activación masiva';
+                            break;
+                        case 'deactivate':
+                            updateData = { active: false, exitDate: new Date() };
+                            logAction = 'BULK_DEACTIVATE';
+                            logInfo = 'Baja masiva';
+                            break;
+                        case 'delete':
+                            updateData = { active: false, exitDate: new Date() }; // Soft delete
+                            logAction = 'BULK_DELETE';
+                            logInfo = 'Eliminación masiva (Soft)';
+                            break;
+                        case 'change_dept':
+                            if (!data.department) throw new Error('Departamento no especificado');
+                            updateData = { department: data.department };
+                            logAction = 'BULK_CHANGE_DEPT';
+                            logInfo = `Cambio masivo a ${data.department}`;
+                            break;
+                        default:
+                            throw new Error('Acción no válida');
+                    }
+
+                    // Perform update
+                    await tx.employee.update({
+                        where: { id: empId },
+                        data: updateData
+                    });
+
+                    // Create Individual Audit Log
+                    await tx.auditLog.create({
+                        data: {
+                            action: logAction,
+                            entity: 'EMPLOYEE',
+                            entityId: empId,
+                            userId: userId,
+                            targetEmployee: { connect: { id: empId } },
+                            metadata: JSON.stringify({ info: logInfo, ...updateData })
+                        } as any
+                    });
+
+                    updatedCount++;
+                }
+                return updatedCount;
+            });
+
+            return ApiResponse.success(res, { count: results }, `${results} empleados actualizados correctamente`);
+        } catch (error: any) {
+            console.error('Bulk update error:', error);
+            return ApiResponse.error(res, error.message || 'Error en la actualización masiva', 500);
+        }
+    },
+
     downloadTemplate: async (req: Request, res: Response) => {
         try {
-            const XLSX = require('xlsx');
-
             // Header definition
             const headers = [
                 'Nombre', 'Apellido', 'DNI', 'DNI Vencimiento', 'Subcuenta 465',
@@ -234,63 +343,74 @@ export const EmployeeController = {
             ];
 
             const exampleData = [
+                // Row 1: Clear hints/examples
                 {
-                    'Nombre': 'Juan',
-                    'Apellido': 'Pérez García',
-                    'DNI': '12345678A',
-                    'DNI Vencimiento': '2028-12-31',
-                    'Subcuenta 465': '465.1.0001',
-                    'Email': 'juan@example.com',
-                    'Teléfono': '600123456',
-                    'Dirección': 'Calle Principal 123',
+                    'Nombre': 'EJEMPLO: Juan',
+                    'Apellido': 'EJEMPLO: Pérez García',
+                    'DNI': 'EJEMPLO: 12345678A',
+                    'DNI Vencimiento': 'EJEMPLO: 2028-12-31',
+                    'Subcuenta 465': 'EJEMPLO: 465.1.0001',
+                    'Email': 'juan@ejemplo.com',
+                    'Teléfono': '600000000',
+                    'Dirección': 'Calle Falsa 123',
                     'Provincia': 'Baleares',
                     'Ciudad': 'Palma',
                     'Código Postal': '07001',
                     'Seguridad Social': '281234567890',
-                    'IBAN': 'ES1234567890123456789012',
-                    'Fecha Nacimiento': '1985-05-15',
+                    'IBAN': 'ES00...',
+                    'Fecha Nacimiento': '1990-01-01',
                     'Lugar Registro': 'Palma',
-                    'Empresa (ID)': '',
-                    'Departamento': 'Ventas',
-                    'Categoría': 'Oficial de 1ª',
-                    'Puesto': 'Vendedor Senior',
+                    'Empresa (ID)': '(Opcional)',
+                    'Departamento': 'RRHH',
+                    'Categoría': 'Oficial',
+                    'Puesto': 'Administrativo',
                     'Tipo Contrato': 'Indefinido',
                     'Convenio': 'Comercio',
-                    'Fecha Entrada': '2020-01-01',
-                    'Llamada Fijo-Disc': '',
-                    'Interrupción Fijo-Disc': '',
-                    'Fecha Baja': '',
-                    'Motivo Baja': '',
+                    'Fecha Entrada': '2024-01-01',
                     'Carnet Conducir (SI/NO)': 'SI',
-                    'Tipo Carnet': 'B',
-                    'Vencimiento Carnet': '2030-01-01',
-                    'Contacto Emergencia Nombre': 'María Pérez',
-                    'Contacto Emergencia Teléfono': '600987654'
+                    'Género': 'HOMBRE'
+                },
+                // Row 2: Actual clean example
+                {
+                    'Nombre': 'Maria',
+                    'Apellido': 'Lopez',
+                    'DNI': '87654321B',
+                    'Subcuenta 465': '465.1.0002',
+                    'DNI Vencimiento': '2027-05-20',
+                    'Fecha Entrada': '2023-06-15',
+                    'Carnet Conducir (SI/NO)': 'NO'
                 }
             ];
 
             const instructions = [
                 { 'Campo': 'Instrucciones Generales', 'Descripción': 'Sigue estas reglas para una importación correcta.' },
+                { 'Campo': 'IMPORTANTE', 'Descripción': 'No borres las cabeceras de la fila 1.' },
+                { 'Campo': 'CAMPOS EJEMPLO', 'Descripción': 'Las filas que empiezan con "EJEMPLO:" serán ignoradas por el sistema.' },
                 { 'Campo': 'Formato Fechas', 'Descripción': 'Usa el formato AAAA-MM-DD (Ej: 2024-05-20)' },
                 { 'Campo': 'Valores SI/NO', 'Descripción': 'Para campos booleanos como Carnet de Conducir, usa SI o NO' },
-                { 'Campo': 'DNI', 'Descripción': 'Obligatorio. Se usa para detectar si el empleado ya existe.' },
-                { 'Campo': 'Subcuenta 465', 'Descripción': 'Obligatorio. Formato 465.X.XXXX' }
+                { 'Campo': 'DNI / Subcuenta', 'Descripción': 'Son obligatorios para dar de alta al empleado.' }
             ];
 
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers });
+
+            // Set some column widths for better readability
+            const wscols = headers.map(() => ({ wch: 20 }));
+            ws['!cols'] = wscols;
+
             XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Importación');
             const wsIns = XLSX.utils.json_to_sheet(instructions);
             XLSX.utils.book_append_sheet(wb, wsIns, 'INSTRUCCIONES');
 
-            const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+            // Write to buffer using a more compatible mode
+            const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', 'attachment; filename=plantilla_empleados_avanzada.xlsx');
-            res.send(buffer);
-        } catch (error) {
-            console.error(error);
-            res.status(500).json({ error: 'Error al generar la plantilla' });
+            res.setHeader('Content-Disposition', 'attachment; filename=plantilla_empleados.xlsx');
+            return res.send(Buffer.from(excelBuffer));
+        } catch (error: any) {
+            console.error('Error generating Excel template:', error);
+            return ApiResponse.error(res, error.message || 'Error al generar la plantilla', 500);
         }
     },
 
@@ -302,9 +422,9 @@ export const EmployeeController = {
                 where: { employeeId: id },
                 orderBy: { date: 'desc' }
             });
-            res.json(reviews);
-        } catch (error) {
-            res.status(500).json({ error: 'Error al obtener revisiones médicas' });
+            return ApiResponse.success(res, reviews);
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al obtener revisiones médicas', 500);
         }
     },
 
@@ -320,9 +440,9 @@ export const EmployeeController = {
                     nextReviewDate: nextReviewDate ? new Date(nextReviewDate) : null
                 }
             });
-            res.status(201).json(review);
-        } catch (error) {
-            res.status(500).json({ error: 'Error al crear la revisión médica' });
+            return ApiResponse.success(res, review, 'Revisión médica creada correctamente', 201);
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al crear la revisión médica', 500);
         }
     },
 
@@ -333,9 +453,9 @@ export const EmployeeController = {
                 where: { employeeId: id },
                 orderBy: { date: 'desc' }
             });
-            res.json(trainings);
-        } catch (error) {
-            res.status(500).json({ error: 'Error al obtener formaciones' });
+            return ApiResponse.success(res, trainings);
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al obtener formaciones', 500);
         }
     },
 
@@ -352,9 +472,9 @@ export const EmployeeController = {
                     hours: hours ? parseInt(hours) : null
                 }
             });
-            res.status(201).json(training);
-        } catch (error) {
-            res.status(500).json({ error: 'Error al crear la formación' });
+            return ApiResponse.success(res, training, 'Formación creada correctamente', 201);
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al crear la formación', 500);
         }
     },
 
@@ -362,9 +482,9 @@ export const EmployeeController = {
         const { reviewId } = req.params;
         try {
             await prisma.medicalReview.delete({ where: { id: reviewId } });
-            res.json({ message: 'Revisión eliminada' });
-        } catch (error) {
-            res.status(500).json({ error: 'Error al eliminar revisión' });
+            return ApiResponse.success(res, null, 'Revisión eliminada');
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al eliminar revisión', 500);
         }
     },
 
@@ -372,39 +492,87 @@ export const EmployeeController = {
         const { trainingId } = req.params;
         try {
             await prisma.training.delete({ where: { id: trainingId } });
-            res.json({ message: 'Formación eliminada' });
-        } catch (error) {
-            res.status(500).json({ error: 'Error al eliminar formación' });
+            return ApiResponse.success(res, null, 'Formación eliminada');
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al eliminar formación', 500);
         }
     },
 
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
+        const userId = (req as any).user?.id;
         try {
-            const documents = await prisma.document.findMany({
-                where: { employeeId: id }
+            // Fetch name before deleting for audit
+            const employee = await prisma.employee.findUnique({ where: { id }, select: { name: true } });
+
+            // Soft delete: just set active to false
+            await prisma.employee.update({
+                where: { id },
+                data: {
+                    active: false,
+                    exitDate: new Date() // Set exit date today if not set
+                }
             });
 
-            try {
-                await prisma.employee.delete({ where: { id } });
+            // Audit
+            await AuditService.log('DELETE', 'EMPLOYEE', id, {
+                name: employee?.name || 'Desconocido',
+                info: 'Soft delete (deactivation)'
+            }, userId, id);
 
-                for (const doc of documents) {
-                    const filePath = path.join(process.cwd(), doc.fileUrl);
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
+            return ApiResponse.success(res, null, 'Empleado desactivado correctamente');
+        } catch (error: any) {
+            console.error('Error deactivating employee:', error);
+            return ApiResponse.error(res, error.message || 'Error al dar de baja al empleado', 500);
+        }
+    },
+
+    // Generar reporte de portabilidad (RGPD)
+    getPortabilityReport: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        const userId = (req as any).user?.id;
+
+        try {
+            const employee = await prisma.employee.findUnique({
+                where: { id },
+                include: {
+                    company: true,
+                    assets: true,
+                    vacations: true,
+                    medicalReviews: true,
+                    trainings: true,
+                    documents: true,
+                    payrollRows: {
+                        include: { batch: true }
                     }
                 }
+            });
 
-                return ApiResponse.success(res, null, 'Empleado y sus documentos eliminados correctamente');
-            } catch (e) {
-                await prisma.employee.update({
-                    where: { id },
-                    data: { active: false }
-                });
-                return ApiResponse.success(res, null, 'Empleado desactivado (tiene registros históricos asociados)');
+            if (!employee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
             }
-        } catch (error) {
-            throw new AppError('Error al eliminar empleado', 500);
+
+            // Decrypt sensitive data for the report
+            const reportData = {
+                ...employee,
+                socialSecurityNumber: EncryptionService.decrypt(employee.socialSecurityNumber),
+                iban: EncryptionService.decrypt(employee.iban),
+                _metadata: {
+                    reportGeneratedAt: new Date(),
+                    generatedBy: userId,
+                    legalBasis: 'RGPD - Derecho de Acceso / Portabilidad'
+                }
+            };
+
+            // Audit the report generation
+            await AuditService.log('RGPD_PORTABILITY_REPORT', 'EMPLOYEE', id, { info: 'Generación de reporte de portabilidad' }, userId, id);
+
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Content-Disposition', `attachment; filename=portabilidad_${employee.lastName}_${employee.firstName}.json`);
+            return res.json(reportData);
+        } catch (error: any) {
+            console.error('Error generating portability report:', error);
+            return ApiResponse.error(res, error.message || 'Error al generar reporte de portabilidad', 500);
         }
     }
 };

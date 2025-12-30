@@ -289,7 +289,7 @@ export class ReportService {
      * Gets gender gap data analysis.
      */
     static async getGenderGapData(filters: any = {}) {
-        const where: any = { active: true };
+        const where: any = {};
         if (filters.companyId) where.companyId = filters.companyId;
 
         const employees = await prisma.employee.findMany({
@@ -298,46 +298,82 @@ export class ReportService {
                 payrollRows: {
                     where: { status: 'OK' },
                     orderBy: { batch: { createdAt: 'desc' } },
-                    take: 12 // Last year to average
+                    take: 12 // Last 12 records
                 }
             }
         });
 
-        const stats: Record<string, any> = {
-            'MALE': { count: 0, totalSalary: 0, avgSalary: 0 },
-            'FEMALE': { count: 0, totalSalary: 0, avgSalary: 0 },
-            'OTHER': { count: 0, totalSalary: 0, avgSalary: 0 },
-            'UNKNOWN': { count: 0, totalSalary: 0, avgSalary: 0 }
+        const deptStats: Record<string, any> = {};
+        const globalStats = {
+            maleCount: 0,
+            femaleCount: 0,
+            maleTotalBruto: 0,
+            femaleTotalBruto: 0,
+            maleAvgBruto: 0,
+            femaleAvgBruto: 0,
+            gapPercentage: 0
         };
 
         employees.forEach(emp => {
             const gender = emp.gender || 'UNKNOWN';
-            // Simple average of last year's bruto
+            const dept = emp.department || 'Sin asignar';
+
+            // Calculate employee's average bruto
             const totalBruto = emp.payrollRows.reduce((sum, row) => sum + Number(row.bruto), 0);
             const avgBruto = emp.payrollRows.length > 0 ? totalBruto / emp.payrollRows.length : 0;
 
-            if (!stats[gender]) stats[gender] = { count: 0, totalSalary: 0, avgSalary: 0 };
+            // Global totals
+            if (gender === 'MALE') {
+                globalStats.maleCount++;
+                globalStats.maleTotalBruto += avgBruto;
+            } else if (gender === 'FEMALE') {
+                globalStats.femaleCount++;
+                globalStats.femaleTotalBruto += avgBruto;
+            }
 
-            stats[gender].count++;
-            stats[gender].totalSalary += avgBruto;
-        });
+            // Department breakdown
+            if (!deptStats[dept]) {
+                deptStats[dept] = {
+                    department: dept,
+                    maleCount: 0,
+                    femaleCount: 0,
+                    maleTotal: 0,
+                    femaleTotal: 0,
+                    maleAvg: 0,
+                    femaleAvg: 0,
+                    gap: 0
+                };
+            }
 
-        Object.keys(stats).forEach(g => {
-            if (stats[g].count > 0) {
-                stats[g].avgSalary = stats[g].totalSalary / stats[g].count;
+            if (gender === 'MALE') {
+                deptStats[dept].maleCount++;
+                deptStats[dept].maleTotal += avgBruto;
+            } else if (gender === 'FEMALE') {
+                deptStats[dept].femaleCount++;
+                deptStats[dept].femaleTotal += avgBruto;
             }
         });
 
-        // Calculate gap (Male vs Female)
-        let gapPercentage = 0;
-        if (stats['MALE'].count > 0 && stats['FEMALE'].count > 0 && stats['MALE'].avgSalary > 0) {
-            gapPercentage = ((stats['MALE'].avgSalary - stats['FEMALE'].avgSalary) / stats['MALE'].avgSalary) * 100;
+        // Finalize averages and gaps
+        globalStats.maleAvgBruto = globalStats.maleCount > 0 ? globalStats.maleTotalBruto / globalStats.maleCount : 0;
+        globalStats.femaleAvgBruto = globalStats.femaleCount > 0 ? globalStats.femaleTotalBruto / globalStats.femaleCount : 0;
+
+        if (globalStats.maleAvgBruto > 0) {
+            globalStats.gapPercentage = Number(((globalStats.maleAvgBruto - globalStats.femaleAvgBruto) / globalStats.maleAvgBruto * 100).toFixed(2));
         }
 
+        const rows = Object.values(deptStats).map((d: any) => {
+            d.maleAvg = d.maleCount > 0 ? d.maleTotal / d.maleCount : 0;
+            d.femaleAvg = d.femaleCount > 0 ? d.femaleTotal / d.femaleCount : 0;
+            if (d.maleAvg > 0) {
+                d.gap = Number(((d.maleAvg - d.femaleAvg) / d.maleAvg * 100).toFixed(2));
+            }
+            return d;
+        });
+
         return {
-            breakdown: stats,
-            gapPercentage: Number(gapPercentage.toFixed(2)),
-            totalEmployees: employees.length
+            summary: globalStats,
+            rows
         };
     }
 }

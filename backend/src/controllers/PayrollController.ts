@@ -2,17 +2,21 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ExcelParser } from '../services/ExcelParser';
 import { MappingService } from '../services/MappingService';
+import { ApiResponse } from '../utils/ApiResponse';
+import { AuditService } from '../services/AuditService';
 import fs from 'fs';
 
 
 export const PayrollController = {
     // 1. Subir archivo
     upload: async (req: Request, res: Response) => {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No se ha subido ningún archivo' });
-        }
-
         try {
+            if (!req.file) {
+                return ApiResponse.error(res, 'No se ha subido ningún archivo', 400);
+            }
+
+            const userId = (req as any).user?.id || 'system';
+
             // Leemos buffer para sacar headers de forma asíncrona
             const buffer = await fs.promises.readFile(req.file.path);
             const headers = ExcelParser.getHeaders(buffer);
@@ -20,28 +24,25 @@ export const PayrollController = {
             // Crear el Batch
             const batch = await prisma.payrollImportBatch.create({
                 data: {
-                    year: new Date().getFullYear(), // Default, luego se edita
+                    year: new Date().getFullYear(),
                     month: new Date().getMonth() + 1,
                     sourceFilename: req.file.originalname,
-                    createdById: 'temp-user-id', // TODO: Auth
+                    createdById: userId,
                     status: 'UPLOADED'
                 }
             });
 
-            // Guardamos path temporal o contenido si fuera necesario. 
-            // Por simplicidad, asumimos que el archivo se queda en uploads/ y lo referenciamos o re-leemos.
-            // En prod, mejor guardar en storage seguro.
+            await AuditService.log('UPLOAD', 'PAYROLL_BATCH', batch.id, { filename: req.file.originalname }, userId);
 
-            res.json({
+            return ApiResponse.success(res, {
                 batchId: batch.id,
                 headers,
                 filename: req.file.filename,
-                message: 'Archivo subido correctamente. Por favor configura el mapeo.'
-            });
+            }, 'Archivo subido correctamente. Por favor configura el mapeo.');
 
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            res.status(500).json({ error: 'Error al procesar el archivo Excel' });
+            return ApiResponse.error(res, error.message || 'Error al procesar el archivo Excel', 500);
         }
     },
 
@@ -49,16 +50,15 @@ export const PayrollController = {
     applyMapping: async (req: Request, res: Response) => {
         const { id } = req.params; // Batch ID
         const { mappingRules, filename } = req.body; // Rules { "neto": "Importe Neto" } y el nombre físico temp
+        const userId = (req as any).user?.id || 'system';
 
         try {
-            // Re-leer archivo (Deberíamos guardar el path en BD, aquí lo pasamos por body para simplificar demo)
-            // OJO: En app real, buscar path por batchId. Asumimos que está en 'uploads/' + filename
             const filePath = `uploads/${filename}`;
 
             try {
                 await fs.promises.access(filePath);
             } catch {
-                return res.status(404).json({ error: 'El archivo original ha caducado o no existe' });
+                return ApiResponse.error(res, 'El archivo original ha caducado o no existe', 404);
             }
 
             const buffer = await fs.promises.readFile(filePath);
@@ -67,27 +67,25 @@ export const PayrollController = {
             // Transformar
             const rowsData = MappingService.applyMapping(rawData, mappingRules, id);
 
-            // Guardar en BD (Transactions idealmente)
-            // Borramos anteriores si re-mapeamos
-            await prisma.payrollRow.deleteMany({ where: { batchId: id } });
+            // Guardar en BD (Transactions)
+            await prisma.$transaction([
+                prisma.payrollRow.deleteMany({ where: { batchId: id } }),
+                prisma.payrollRow.createMany({
+                    data: rowsData as any
+                }),
+                prisma.payrollImportBatch.update({
+                    where: { id },
+                    data: { status: 'MAPPED' }
+                })
+            ]);
 
-            const createdRows = await prisma.payrollRow.createMany({
-                data: rowsData as any // Typescript mismatch con Decimal a veces, cast any
-            });
+            await AuditService.log('APPLY_MAPPING', 'PAYROLL_BATCH', id, { rowCount: rowsData.length }, userId);
 
-            await prisma.payrollImportBatch.update({
-                where: { id },
-                data: { status: 'MAPPED' }
-            });
+            return ApiResponse.success(res, { rowsCreated: rowsData.length }, 'Mapeo aplicado correctamente');
 
-            res.json({
-                message: 'Mapeo aplicado correctamente',
-                rowsCreated: createdRows.count
-            });
-
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            res.status(500).json({ error: 'Error al aplicar el mapeo' });
+            return ApiResponse.error(res, error.message || 'Error al aplicar el mapeo', 500);
         }
     },
 
@@ -104,23 +102,114 @@ export const PayrollController = {
                     where: { batchId: id },
                     skip,
                     take: limit,
-                    orderBy: { id: 'asc' } // Ensure deterministic ordering
+                    include: { items: true }, // Include items in main fetch if needed, or separate
+                    orderBy: { id: 'asc' }
                 }),
                 prisma.payrollRow.count({ where: { batchId: id } })
             ]);
 
-            res.json({
-                data: rows,
-                meta: {
-                    total,
-                    page,
-                    limit,
-                    totalPages: Math.ceil(total / limit)
+            return ApiResponse.success(res, {
+                rows,
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
+            });
+        } catch (error: any) {
+            console.error("Error fetching rows:", error);
+            return ApiResponse.error(res, error.message || 'Error al obtener filas', 500);
+        }
+    },
+
+    getBreakdown: async (req: Request, res: Response) => {
+        const { rowId } = req.params;
+        try {
+            const items = await prisma.payrollItem.findMany({
+                where: { payrollRowId: rowId },
+                orderBy: { createdAt: 'asc' }
+            });
+            return ApiResponse.success(res, items);
+        } catch (error: any) {
+            return ApiResponse.error(res, 'Error al obtener desglose', 500);
+        }
+    },
+
+    saveBreakdown: async (req: Request, res: Response) => {
+        const { rowId } = req.params;
+        const { items } = req.body; // Expects [{ concept, amount, type }]
+
+        try {
+            await prisma.$transaction([
+                prisma.payrollItem.deleteMany({ where: { payrollRowId: rowId } }),
+                prisma.payrollItem.createMany({
+                    data: items.map((item: any) => ({
+                        payrollRowId: rowId,
+                        concept: item.concept,
+                        amount: parseFloat(item.amount),
+                        type: item.type
+                    }))
+                })
+            ]);
+
+            return ApiResponse.success(res, { message: 'Desglose actualizado correctamente' });
+        } catch (error: any) {
+            console.error('Save breakdown error:', error);
+            return ApiResponse.error(res, 'Error al guardar el desglose', 500);
+        }
+    },
+
+    getEmployeePayrolls: async (req: Request, res: Response) => {
+        const { employeeId } = req.params;
+        try {
+            const rows = await prisma.payrollRow.findMany({
+                where: { employeeId },
+                include: { batch: { select: { year: true, month: true } }, items: true },
+                orderBy: { batch: { month: 'desc' } }
+            });
+            return ApiResponse.success(res, rows);
+        } catch (error: any) {
+            return ApiResponse.error(res, 'Error al obtener nóminas del empleado', 500);
+        }
+    },
+
+    createManualPayroll: async (req: Request, res: Response) => {
+        const { employeeId, year, month, bruto, neto } = req.body;
+        const userId = (req as any).user?.id || 'system';
+
+        try {
+            // 1. Find or create batch for Manual Entries for this Month/Year
+            let batch = await prisma.payrollImportBatch.findFirst({
+                where: { year, month, sourceFilename: 'ENTRADA_MANUAL' }
+            });
+
+            if (!batch) {
+                batch = await prisma.payrollImportBatch.create({
+                    data: {
+                        year,
+                        month,
+                        sourceFilename: 'ENTRADA_MANUAL',
+                        status: 'MAPPED',
+                        createdById: userId
+                    }
+                });
+            }
+
+            // 2. Create Row
+            const row = await prisma.payrollRow.create({
+                data: {
+                    batchId: batch.id,
+                    employeeId,
+                    bruto: parseFloat(bruto || 0),
+                    neto: parseFloat(neto || 0),
+                    status: 'VALID',
+                    rawEmployeeName: 'Manual Entry'
                 }
             });
-        } catch (error) {
-            console.error("Error fetching rows:", error);
-            res.status(500).json({ error: 'Error al obtener filas' });
+
+            return ApiResponse.success(res, row, 'Nómina creada correctamente');
+        } catch (error: any) {
+            console.error(error);
+            return ApiResponse.error(res, 'Error al crear nómina manual', 500);
         }
     }
 };

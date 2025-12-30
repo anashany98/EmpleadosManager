@@ -19,10 +19,12 @@ router.get('/hierarchy', EmployeeController.getHierarchy);
 router.post('/import', upload.single('file'), EmployeeController.importEmployees);
 router.get('/template', EmployeeController.downloadTemplate);
 router.get('/:id', EmployeeController.getById);
+router.get('/:id/portability-report', EmployeeController.getPortabilityReport);
 router.post('/', validateResource(createEmployeeSchema), EmployeeController.create);
 router.put('/:id', validateResource(updateEmployeeSchema), EmployeeController.update);
 router.patch('/:id', validateResource(updateEmployeeSchema), EmployeeController.update);
 router.delete('/:id', EmployeeController.delete);
+router.post('/bulk-update', EmployeeController.bulkUpdate);
 
 // Contract Management
 router.post('/:id/contract/extend', ContractController.extend);

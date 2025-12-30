@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api/client';
+import { api, BASE_URL } from '../api/client';
 import { toast } from 'sonner';
-import { FileText, Upload, Trash2, Download, Filter, Calendar, AlertTriangle, Loader2 } from 'lucide-react';
+import { FileText, Upload, Trash2, Download, Filter, Calendar, AlertTriangle, Loader2, Eye } from 'lucide-react';
+import DocumentPreview from './DocumentPreview';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -15,13 +16,18 @@ const DOC_CATEGORIES = [
     { id: 'OTHER', label: 'Otros', color: 'bg-slate-400' },
 ];
 
+import { useConfirm } from '../context/ConfirmContext';
+
 export default function DocumentArchive({ employeeId }: { employeeId: string }) {
+    const confirmAction = useConfirm();
     const [documents, setDocuments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('ALL');
     const [uploading, setUploading] = useState(false);
     const [ocrLoading] = useState(false);
     const [showUpload, setShowUpload] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+    const [previewTitle, setPreviewTitle] = useState('');
 
     // Form states
     const [newName, setNewName] = useState('');
@@ -34,8 +40,8 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
 
     const fetchDocuments = async () => {
         try {
-            const data = await api.get(`/documents/employee/${employeeId}`);
-            setDocuments(data);
+            const response = await api.get(`/documents/employee/${employeeId}`);
+            setDocuments(response.data || []);
         } catch (error) {
             toast.error('Error al cargar documentos');
         } finally {
@@ -51,9 +57,10 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
         setOcrLoading(true);
         const ocrData = new FormData();
         ocrData.append('file', file);
-
+    
         try {
-            const data = await api.post('/documents/ocr', ocrData);
+            const response = await api.post('/documents/ocr', ocrData);
+            const data = response.data;
             if (data.suggestedCategory) {
                 setNewCategory(data.suggestedCategory);
                 toast.info(`Categoría detectada: ${DOC_CATEGORIES.find(c => c.id === data.suggestedCategory)?.label}`);
@@ -69,13 +76,19 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
         }
         */
 
-        const proceed = confirm(`¿Deseas subir "${file.name}" de forma manual?`);
+        const proceed = await confirmAction({
+            title: 'Subida Manual',
+            message: `¿Deseas subir "${file.name}" de forma manual?`,
+            confirmText: 'Subir',
+            type: 'info'
+        });
+
         if (!proceed) return;
 
         setUploading(true);
         const formData = new FormData();
-        formData.append('file', file);
         formData.append('employeeId', employeeId);
+        formData.append('file', file);
         formData.append('name', newName || file.name);
         formData.append('category', newCategory);
         if (newExpiry) formData.append('expiryDate', newExpiry);
@@ -96,7 +109,14 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('¿Estás seguro de eliminar este documento?')) return;
+        const ok = await confirmAction({
+            title: 'Eliminar Documento',
+            message: '¿Estás seguro de eliminar este documento? Esta acción no se puede deshacer.',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+
+        if (!ok) return;
         try {
             await api.delete(`/documents/${id}`);
             toast.success('Documento eliminado');
@@ -112,12 +132,20 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
 
     const handleDownload = async (doc: any) => {
         try {
-            // Get the base URL (strip /api if present)
-            const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/api$/, '');
-            const url = `${baseUrl}${doc.fileUrl}`;
+            // Helper to clean URL, strip double slashes
+            const getDownloadUrl = (path: string) => {
+                if (!path) return '';
+                if (path.startsWith('http')) return path;
+                const cleanBase = BASE_URL.replace(/\/+$/, '');
+                const cleanPath = path.startsWith('/') ? path : `/${path}`;
+                return `${cleanBase}${cleanPath}`;
+            };
+            const url = getDownloadUrl(doc.fileUrl);
 
             // Try to download using fetch to avoid tab opening issues
             const response = await fetch(url);
+            if (!response.ok) throw new Error('Download failed');
+
             const blob = await response.blob();
             const downloadUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
@@ -130,8 +158,9 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
         } catch (error) {
             console.error(error);
             // Fallback to simple link
-            const baseUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000/api').replace(/\/api$/, '');
-            window.open(`${baseUrl}${doc.fileUrl}`, '_blank');
+            const cleanBase = BASE_URL.replace(/\/+$/, '');
+            const cleanPath = doc.fileUrl.startsWith('/') ? doc.fileUrl : `/${doc.fileUrl}`;
+            window.open(`${cleanBase}${cleanPath}`, '_blank');
         }
     };
 
@@ -245,6 +274,16 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
                                         </div>
                                         <div className="flex gap-1">
                                             <button
+                                                onClick={() => {
+                                                    setPreviewUrl(doc.fileUrl);
+                                                    setPreviewTitle(doc.name);
+                                                }}
+                                                className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"
+                                                title="Previsualizar"
+                                            >
+                                                <Eye size={16} />
+                                            </button>
+                                            <button
                                                 onClick={() => handleDownload(doc)}
                                                 className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"
                                                 title="Descargar"
@@ -290,6 +329,13 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
                     </div>
                 )}
             </div>
+
+            <DocumentPreview
+                isOpen={!!previewUrl}
+                fileUrl={previewUrl || ''}
+                title={previewTitle}
+                onClose={() => setPreviewUrl(null)}
+            />
         </div>
     );
 }

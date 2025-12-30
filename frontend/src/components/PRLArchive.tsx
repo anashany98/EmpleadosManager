@@ -4,7 +4,10 @@ import { Stethoscope, GraduationCap, Plus, Calendar, Trash2, Check, X, Loader2 }
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 
+import { useConfirm } from '../context/ConfirmContext';
+
 export default function PRLArchive({ employeeId }: { employeeId: string }) {
+    const confirmAction = useConfirm();
     const [reviews, setReviews] = useState<any[]>([]);
     const [trainings, setTrainings] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -35,8 +38,8 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
                 api.get(`/employees/${employeeId}/medical-reviews`),
                 api.get(`/employees/${employeeId}/trainings`)
             ]);
-            setReviews(revs);
-            setTrainings(trains);
+            setReviews(revs.data || revs || []);
+            setTrainings(trains.data || trains || []);
         } catch (error) {
             console.error(error);
         } finally {
@@ -87,7 +90,14 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
     };
 
     const handleDeleteReview = async (id: string) => {
-        if (!confirm('¿Eliminar esta revisión?')) return;
+        const ok = await confirmAction({
+            title: 'Eliminar Revisión Médica',
+            message: '¿Estás seguro de eliminar esta revisión médica?',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+
+        if (!ok) return;
         try {
             await api.delete(`/employees/${employeeId}/medical-reviews/${id}`);
             fetchData();
@@ -97,7 +107,14 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
     };
 
     const handleDeleteTraining = async (id: string) => {
-        if (!confirm('¿Eliminar esta formación?')) return;
+        const ok = await confirmAction({
+            title: 'Eliminar Formación',
+            message: '¿Estás seguro de eliminar esta formación?',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+
+        if (!ok) return;
         try {
             await api.delete(`/employees/${employeeId}/trainings/${id}`);
             fetchData();

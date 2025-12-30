@@ -88,7 +88,7 @@ export default function AlertCenter() {
                             initial={{ opacity: 0, scale: 0.95, y: 10 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                            className="absolute right-0 mt-2 w-80 md:w-96 z-50 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden"
+                            className="absolute right-0 mt-2 w-80 md:w-96 z-[100] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
                         >
                             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                                 <h3 className="font-semibold text-slate-900 dark:text-white">Notificaciones</h3>

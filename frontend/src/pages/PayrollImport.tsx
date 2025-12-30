@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Upload, FileUp, ArrowRight, CheckCircle, RefreshCw, FileText, Table, Save, BookTemplate } from 'lucide-react';
 import { api } from '../api/client';
 
 type Step = 'UPLOAD' | 'MAP' | 'REVIEW';
 
 export default function PayrollImport() {
+    const navigate = useNavigate();
     const [step, setStep] = useState<Step>('UPLOAD');
     const [loading, setLoading] = useState(false);
     const [file, setFile] = useState<File | null>(null);
@@ -332,7 +334,9 @@ export default function PayrollImport() {
                     </p>
 
                     <div className="flex justify-center gap-4">
-                        <button className="px-8 py-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold transition-colors">
+                        <button
+                            onClick={() => navigate(`/payroll/batch/${batchId}`)}
+                            className="px-8 py-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 font-semibold transition-colors">
                             Ver Detalle
                         </button>
                         <button

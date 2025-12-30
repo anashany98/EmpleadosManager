@@ -7,12 +7,13 @@ import { toast } from 'sonner';
 
 interface EmployeeNode {
     id: string;
-    firstName: string;
-    lastName: string;
+    firstName?: string | null;
+    lastName?: string | null;
     jobTitle: string;
     department: string;
     managerId?: string;
     imageUrl?: string;
+    name?: string;
 }
 
 export default function OrgChart() {
@@ -331,7 +332,7 @@ function TreeNode({ node, isSandbox, allEmployees, onReassign, isChanged }: { no
                                 w-16 h-16 rounded-[22px] flex items-center justify-center font-black text-2xl shadow-lg transition-transform group-hover:scale-105 duration-500
                                 ${hasChildren && isOpen ? 'bg-white text-blue-600' : 'bg-gradient-to-br from-blue-500 to-blue-700 text-white'}
                             `}>
-                                {node.firstName[0]}
+                                {(node.firstName || node.name || '?')[0]?.toUpperCase()}
                             </div>
                             {hasChildren && (
                                 <div className={`
@@ -345,7 +346,7 @@ function TreeNode({ node, isSandbox, allEmployees, onReassign, isChanged }: { no
 
                         <div className="flex-1 min-w-0">
                             <Link to={`/employees/${node.id}`} className={`text-lg font-black tracking-tight truncate block hover:underline ${hasChildren && isOpen ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
-                                {node.firstName} {node.lastName}
+                                {node.firstName ? `${node.firstName} ${node.lastName || ''}`.trim() : node.name}
                             </Link>
                             <div className={`text-[10px] uppercase font-black tracking-[0.1em] truncate mt-0.5 ${hasChildren && isOpen ? 'text-blue-100/70' : 'text-slate-400'}`}>
                                 {node.jobTitle || 'Puesto no asignado'}
@@ -386,7 +387,7 @@ function TreeNode({ node, isSandbox, allEmployees, onReassign, isChanged }: { no
                                             className="w-full text-left px-3 py-2 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
                                         >
                                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                            {e.firstName} {e.lastName}
+                                            {e.firstName ? `${e.firstName} ${e.lastName || ''}` : e.name}
                                         </button>
                                     ))}
                                 </div>

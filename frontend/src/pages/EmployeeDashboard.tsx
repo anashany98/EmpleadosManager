@@ -156,7 +156,7 @@ export default function EmployeeDashboard() {
                                 {attendance?.absenceRate || 0}%
                             </h3>
                             <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
-                                {attendance?.onLeaveToday || 0} de baja hoy
+                                {attendance?.onLeaveToday?.count || 0} de baja hoy
                             </p>
                         </div>
                         <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-xl">

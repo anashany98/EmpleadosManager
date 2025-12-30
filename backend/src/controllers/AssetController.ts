@@ -17,7 +17,8 @@ export const AssetController = {
                             lastName: true,
                             department: true
                         }
-                    }
+                    },
+                    inventoryItem: true
                 },
                 orderBy: { createdAt: 'desc' }
             });

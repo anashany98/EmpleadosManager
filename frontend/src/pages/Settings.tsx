@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { Settings, DollarSign, Upload, AlertCircle } from 'lucide-react';
+import { Settings, DollarSign, Upload, AlertCircle, Folder, Mail, Save } from 'lucide-react';
 
 const CATEGORIAS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4', 'Grupo 5', 'Grupo 6', 'Grupo 7', 'Oficial de 1ª', 'Oficial de 2ª', 'Oficial de 3ª', 'Peón', 'Otros'];
 
@@ -9,15 +9,35 @@ export default function SettingsPage() {
     const [rates, setRates] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [importing, setImporting] = useState(false);
+    const [savingInbox, setSavingInbox] = useState(false);
+
+    // Inbox config state
+    const [inboxConfig, setInboxConfig] = useState({
+        scannerPath: 'backend/data/inbox',
+        emailEnabled: false,
+        imap: {
+            host: '',
+            port: 993,
+            user: '',
+            password: '',
+            tls: true
+        }
+    });
 
     useEffect(() => {
-        fetchRates();
+        fetchData();
     }, []);
 
-    const fetchRates = async () => {
+    const fetchData = async () => {
         try {
-            const res = await api.get('/overtime/rates');
-            setRates(res.data || res || []);
+            const [ratesRes, configRes] = await Promise.all([
+                api.get('/overtime/rates'),
+                api.get('/config/inbox_settings')
+            ]);
+            setRates(ratesRes.data || ratesRes || []);
+            if (configRes.data) {
+                setInboxConfig(prev => ({ ...prev, ...configRes.data }));
+            }
         } catch (error) {
             console.error(error);
         } finally {
@@ -25,11 +45,23 @@ export default function SettingsPage() {
         }
     };
 
+    const handleSaveInboxConfig = async () => {
+        setSavingInbox(true);
+        try {
+            await api.post('/config/inbox_settings', inboxConfig);
+            toast.success('Configuración de bandeja de entrada guardada');
+        } catch (error) {
+            toast.error('Error al guardar configuración');
+        } finally {
+            setSavingInbox(false);
+        }
+    };
+
     const handleUpdateRate = async (category: string, normal: number, holiday: number) => {
         try {
             await api.post('/overtime/rates', { category, overtimeRate: normal, holidayOvertimeRate: holiday });
             toast.success(`Tarifas de ${category} actualizadas`);
-            fetchRates();
+            fetchData();
         } catch (error) {
             toast.error('Error al actualizar tarifas');
         }
@@ -195,6 +227,115 @@ export default function SettingsPage() {
                                 Máximo 5MB por archivo
                             </li>
                         </ul>
+                    </div>
+                </div>
+            </div>
+
+            {/* Configuración de Bandeja de Entrada */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <Folder className="text-blue-500" size={20} />
+                        <h2 className="font-bold text-slate-900 dark:text-white text-lg">Configuración de Bandeja de Entrada</h2>
+                    </div>
+                    <button
+                        onClick={handleSaveInboxConfig}
+                        disabled={savingInbox}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all"
+                    >
+                        <Save size={18} />
+                        {savingInbox ? 'Guardando...' : 'Guardar Cambios'}
+                    </button>
+                </div>
+
+                <div className="p-6 space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Scanner Config */}
+                        <div className="space-y-4">
+                            <h3 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                <Folder size={18} className="text-slate-400" />
+                                Escáner y Servidor
+                            </h3>
+                            <div className="p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Ruta de Monitorización</label>
+                                    <input
+                                        type="text"
+                                        value={inboxConfig.scannerPath}
+                                        onChange={(e) => setInboxConfig({ ...inboxConfig, scannerPath: e.target.value })}
+                                        placeholder="Ej: backend/data/inbox"
+                                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none focus:ring-2 focus:ring-blue-500/20"
+                                    />
+                                    <p className="text-[10px] text-slate-500 mt-2 italic">Ruta relativa a la raíz del backend donde el escáner deposita los PDF.</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Email Config */}
+                        <div className="space-y-4">
+                            <h3 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                <Mail size={18} className="text-slate-400" />
+                                Recepción por Email (IMAP)
+                            </h3>
+                            <div className="p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 space-y-4">
+                                <label className="flex items-center gap-3 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={inboxConfig.emailEnabled}
+                                        onChange={(e) => setInboxConfig({ ...inboxConfig, emailEnabled: e.target.checked })}
+                                        className="w-5 h-5 rounded-lg border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300 text-sm">Habilitar recepción por correo</span>
+                                </label>
+
+                                {inboxConfig.emailEnabled && (
+                                    <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
+                                        <div className="grid grid-cols-3 gap-3">
+                                            <div className="col-span-2">
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Servidor IMAP</label>
+                                                <input
+                                                    type="text"
+                                                    value={inboxConfig.imap.host}
+                                                    onChange={(e) => setInboxConfig({ ...inboxConfig, imap: { ...inboxConfig.imap, host: e.target.value } })}
+                                                    placeholder="imap.gmail.com"
+                                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Puerto</label>
+                                                <input
+                                                    type="number"
+                                                    value={inboxConfig.imap.port}
+                                                    onChange={(e) => setInboxConfig({ ...inboxConfig, imap: { ...inboxConfig.imap, port: parseInt(e.target.value) } })}
+                                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Usuario / Email</label>
+                                                <input
+                                                    type="text"
+                                                    value={inboxConfig.imap.user}
+                                                    onChange={(e) => setInboxConfig({ ...inboxConfig, imap: { ...inboxConfig.imap, user: e.target.value } })}
+                                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Contraseña</label>
+                                                <input
+                                                    type="password"
+                                                    value={inboxConfig.imap.password}
+                                                    onChange={(e) => setInboxConfig({ ...inboxConfig, imap: { ...inboxConfig.imap, password: e.target.value } })}
+                                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

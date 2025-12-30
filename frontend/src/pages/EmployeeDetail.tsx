@@ -4,8 +4,8 @@ import { api } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
-    ArrowLeft, Save, Loader2, Calculator, Info, Euro, CreditCard, Building,
-    Clock, Plus, Trash2
+    ArrowLeft, Save, Loader2, CreditCard, Building,
+    Clock, Plus, Trash2, Scale
 } from 'lucide-react';
 
 const PROVINCIAS = [
@@ -16,7 +16,7 @@ const DEPARTAMENTOS = ['Ventas', 'Administración', 'Producción', 'Logística',
 const PUESTOS = ['Gerente', 'Director', 'Responsable', 'Técnico', 'Operario', 'Auxiliar', 'Administrativo', 'Vendedor', 'Otros'];
 const CATEGORIAS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4', 'Grupo 5', 'Grupo 6', 'Grupo 7', 'Oficial de 1ª', 'Oficial de 2ª', 'Oficial de 3ª', 'Peón', 'Otros'];
 const TIPOS_CONTRATO = ['Indefinido', 'Temporal', 'Fijo Discontinuo', 'Prácticas', 'Aprendizaje', 'Otros'];
-const CONVENIOS = ['Comercio', 'Hostelería', 'Metal', 'Construcción', 'Oficinas y Despachos', 'Propio de Empresa', 'Otros'];
+const CONVENIOS = ['Comercio', 'Textil', 'Madera', 'Hostelería', 'Metal', 'Construcción', 'Oficinas y Despachos', 'Propio de Empresa', 'Otros'];
 import VacationCalendar from '../components/VacationCalendar';
 import { TimesheetViewer } from '../components/TimesheetViewer';
 import DocumentArchive from '../components/DocumentArchive';
@@ -25,9 +25,14 @@ import ExpenseManager from '../components/ExpenseManager';
 import EmployeeTimeline from '../components/employee/EmployeeTimeline';
 import EmployeeAssets from '../components/employee/EmployeeAssets';
 import EmployeeChecklist from '../components/employee/EmployeeChecklist';
+import EmployeeProjects from '../components/employee/EmployeeProjects';
+import DocumentGenerator from '../components/DocumentGenerator';
+import { useConfirm } from '../context/ConfirmContext';
+import EmployeePayrollViewer from '../components/employee/EmployeePayrollViewer';
 
 export default function EmployeeDetail() {
-    const { id } = useParams();
+    const confirmAction = useConfirm();
+    const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const isNew = id === 'new';
 
@@ -158,18 +163,33 @@ export default function EmployeeDetail() {
         e.preventDefault();
         setSaving(true);
         try {
+            // Prepare payload
+            const payload = {
+                ...formData,
+                email: formData.email ? formData.email : null,
+                weeklyHours: formData.weeklyHours ? Number(formData.weeklyHours) : null,
+                companyId: formData.companyId ? formData.companyId : null,
+                managerId: formData.managerId ? formData.managerId : null,
+                // Ensure empty strings for optional dates are sent as null or handle by backend if it accepts empty strings? 
+                // Zod might complain about empty strings for dates if they are not validated as dates.
+                // But specifically fixing the reported errors first.
+            };
+
             if (isNew) {
-                await api.post('/employees', formData);
+                await api.post('/employees', payload);
                 toast.success('Empleado creado correctamente');
                 navigate('/employees');
             } else {
-                await api.put(`/employees/${id}`, formData);
+                await api.put(`/employees/${id}`, payload);
                 toast.success('Empleado actualizado correctamente');
                 setIsEditing(false);
                 fetchEmployee();
             }
         } catch (error: any) {
             toast.error('Error al guardar: ' + (error.response?.data?.error || error.message));
+            if (error.response?.data?.details) {
+                console.error("Validation Details:", error.response.data.details);
+            }
         } finally {
             setSaving(false);
         }
@@ -197,13 +217,47 @@ export default function EmployeeDetail() {
                                     ? `${employeeView.firstName || ''} ${employeeView.lastName || ''}`.trim()
                                     : employeeView.name}
                             </h1>
-                            <div className="flex items-center gap-4 mt-2 text-slate-500 dark:text-slate-400 text-sm">
+                            <div className="flex flex-wrap items-center gap-4 mt-2 text-slate-500 dark:text-slate-400 text-sm">
                                 <span className="flex items-center gap-1"><CreditCard size={14} /> {employeeView.dni}</span>
                                 <span className="flex items-center gap-1"><Building size={14} /> {employeeView.department}</span>
+                                {employeeView.gender && (
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${employeeView.gender === 'MALE'
+                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                        : employeeView.gender === 'FEMALE'
+                                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+                                            : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                                        }`}>
+                                        {employeeView.gender === 'MALE' ? 'Hombre' : employeeView.gender === 'FEMALE' ? 'Mujer' : 'Otro'}
+                                    </span>
+                                )}
                             </div>
                         </div>
                     </div>
                     <div className="flex gap-3">
+                        <button
+                            onClick={async () => {
+                                const ok = await confirmAction({
+                                    title: 'Dar de Baja Empleado',
+                                    message: '¿Estás seguro de que deseas dar de baja a este empleado? Sus datos se conservarán en el sistema pero no aparecerán en el listado activo.',
+                                    confirmText: 'Dar de Baja',
+                                    type: 'danger'
+                                });
+
+                                if (ok) {
+                                    try {
+                                        await api.delete(`/employees/${id}`);
+                                        toast.success('Empleado dado de baja correctamente');
+                                        navigate('/employees');
+                                    } catch (err) {
+                                        toast.error('Error al dar de baja al empleado');
+                                    }
+                                }
+                            }}
+                            className="px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-semibold rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center gap-2 border border-rose-100 dark:border-rose-900/30"
+                        >
+                            <Trash2 size={18} />
+                            Dar de Baja
+                        </button>
                         <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">
                             Editar Perfil
                         </button>
@@ -214,7 +268,7 @@ export default function EmployeeDetail() {
                 <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                     <div className="border-b border-slate-100 dark:border-slate-800">
                         <div className="flex overflow-x-auto">
-                            {['resumen', 'cronograma', 'expediente', 'prl', 'activos', 'checklists', 'fichajes', 'gastos', 'vacaciones'].map((tab) => (
+                            {['resumen', 'nominas', 'cronograma', 'generar', 'expediente', 'prl', 'obras', 'activos', 'checklists', 'fichajes', 'gastos', 'vacaciones', 'privacidad'].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -223,7 +277,7 @@ export default function EmployeeDetail() {
                                         : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
                                         }`}
                                 >
-                                    {tab === 'prl' ? 'PRL / Formación' : (tab.charAt(0).toUpperCase() + tab.slice(1))}
+                                    {tab === 'generar' ? 'Generar Doc.' : (tab === 'prl' ? 'PRL / Formación' : (tab.charAt(0).toUpperCase() + tab.slice(1)))}
                                 </button>
                             ))}
                         </div>
@@ -258,19 +312,22 @@ export default function EmployeeDetail() {
                                             </div>
                                         </div>
 
-                                        <SalaryCalculator />
                                         <OvertimeTracker employeeId={id || ''} category={employeeView.category} />
                                     </div>
                                 )}
 
+                                {activeTab === 'generar' && <DocumentGenerator employeeId={id || ''} onDocumentGenerated={() => setActiveTab('expediente')} />}
                                 {activeTab === 'expediente' && <DocumentArchive employeeId={id || ''} />}
                                 {activeTab === 'prl' && <PRLArchive employeeId={id || ''} />}
+                                {activeTab === 'obras' && <EmployeeProjects employeeId={id || ''} />}
                                 {activeTab === 'cronograma' && <EmployeeTimeline employeeId={id || ''} />}
                                 {activeTab === 'activos' && <EmployeeAssets employeeId={id || ''} />}
                                 {activeTab === 'checklists' && <EmployeeChecklist employeeId={id || ''} />}
                                 {activeTab === 'fichajes' && <TimesheetViewer employeeId={id || ''} />}
                                 {activeTab === 'gastos' && <ExpenseManager employeeId={id || ''} isAdmin={true} />}
                                 {activeTab === 'vacaciones' && <VacationCalendar employeeId={id || ''} />}
+                                {activeTab === 'nominas' && <EmployeePayrollViewer employeeId={id || ''} />}
+                                {activeTab === 'privacidad' && <PrivacySection employeeId={id || ''} employeeName={`${employeeView.firstName} ${employeeView.lastName}`} />}
                             </motion.div>
                         </AnimatePresence>
                     </div>
@@ -282,15 +339,15 @@ export default function EmployeeDetail() {
     // --- EDIT / CREATE MODE ---
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex items-center justify-between">
-                <Link to="/employees" className="inline-flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-colors">
-                    <ArrowLeft size={16} /> Cancelar y Volver
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <Link to="/employees" className="inline-flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-colors self-start">
+                    <ArrowLeft size={16} /> <span className="md:inline">Volver</span>
                 </Link>
-                <div className="flex gap-3">
-                    <button type="button" onClick={() => isNew ? navigate('/employees') : setIsEditing(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                    <button type="button" onClick={() => isNew ? navigate('/employees') : setIsEditing(false)} className="px-4 py-3 md:py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg w-full md:w-auto text-center">
                         Cancelar
                     </button>
-                    <button disabled={saving} onClick={handleSubmit} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-500/30 flex items-center gap-2 disabled:opacity-50">
+                    <button disabled={saving} onClick={handleSubmit} className="px-6 py-3 md:py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 disabled:opacity-50 w-full md:w-auto transition-all active:scale-95">
                         {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
                         {isNew ? 'Crear Empleado' : 'Guardar Cambios'}
                     </button>
@@ -330,16 +387,16 @@ export default function EmployeeDetail() {
                                 {activeTab === 'personal' && (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-300">
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Nombre</label>
-                                            <input name="firstName" value={formData.firstName} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: Juan" />
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Nombre <span className="text-red-500">*</span></label>
+                                            <input name="firstName" value={formData.firstName} onChange={handleChange} required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: Juan" />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Apellidos</label>
-                                            <input name="lastName" value={formData.lastName} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: Pérez García" />
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Apellidos <span className="text-red-500">*</span></label>
+                                            <input name="lastName" value={formData.lastName} onChange={handleChange} required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: Pérez García" />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">DNI / NIE</label>
-                                            <input name="dni" value={formData.dni} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="12345678A" />
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">DNI / NIE <span className="text-red-500">*</span></label>
+                                            <input name="dni" value={formData.dni} onChange={handleChange} required className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="12345678A" />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Caducidad DNI</label>
@@ -585,7 +642,109 @@ export default function EmployeeDetail() {
     );
 }
 
+function PrivacySection({ employeeId, employeeName }: { employeeId: string, employeeName: string }) {
+    const [logs, setLogs] = useState<any[]>([]);
+    const [loadingLogs, setLoadingLogs] = useState(true);
+
+    useEffect(() => {
+        fetchLogs();
+    }, [employeeId]);
+
+    const fetchLogs = async () => {
+        try {
+            const res = await api.get(`/audit/EMPLOYEE/${employeeId}`);
+            setLogs(res.data?.data || res.data || []);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoadingLogs(false);
+        }
+    };
+
+    const downloadReport = async () => {
+        try {
+            const res = await api.get(`/employees/${employeeId}/portability-report`, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `portabilidad_${employeeName.replace(/\s+/g, '_')}.json`);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode?.removeChild(link);
+            toast.success('Reporte de portabilidad generado correctamente');
+        } catch (err) {
+            toast.error('Error al descargar el reporte');
+        }
+    };
+
+    return (
+        <div className="space-y-8 max-w-4xl">
+            <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 p-6 rounded-2xl flex flex-col md:flex-row justify-between items-center gap-6">
+                <div>
+                    <h3 className="text-lg font-bold text-blue-900 dark:text-blue-400 flex items-center gap-2">
+                        <Scale size={20} /> Derecho de Portabilidad (RGPD)
+                    </h3>
+                    <p className="text-sm text-blue-700 dark:text-blue-500 mt-1 max-w-xl">
+                        Descarga un archivo JSON con todos los datos registrados del empleado. Este documento cumple con el derecho de acceso y portabilidad.
+                    </p>
+                </div>
+                <button
+                    onClick={downloadReport}
+                    className="px-6 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/20 active:scale-95 whitespace-nowrap"
+                >
+                    Descargar Reporte JSON
+                </button>
+            </div>
+
+            <div className="space-y-4">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <Clock size={20} className="text-slate-400" /> Historial de Acceso y Modificaciones
+                </h3>
+
+                <div className="overflow-hidden rounded-xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-950">
+                    <table className="w-full text-left text-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-500 uppercase text-[10px] font-bold tracking-widest">
+                            <tr>
+                                <th className="px-6 py-4">Acción</th>
+                                <th className="px-6 py-4">Usuario</th>
+                                <th className="px-6 py-4 text-right">Fecha</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {loadingLogs ? (
+                                <tr><td colSpan={3} className="p-8 text-center animate-pulse text-slate-400">Cargando registros...</td></tr>
+                            ) : logs.length === 0 ? (
+                                <tr><td colSpan={3} className="p-8 text-center text-slate-400 italic">No hay registros de actividad para este empleado</td></tr>
+                            ) : (
+                                logs.map((log: any) => (
+                                    <tr key={log.id} className="hover:bg-slate-50/30 dark:hover:bg-slate-800/30 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border uppercase tracking-wider ${log.action === 'VIEW_SENSITIVE_DATA' ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                                                log.action === 'UPDATE' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                                    'bg-slate-100 text-slate-700 border-slate-200'
+                                                }`}>
+                                                {log.action === 'VIEW_SENSITIVE_DATA' ? 'Consulta Datos' : log.action}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-600 dark:text-slate-400 font-medium">
+                                            {log.user ? `${log.user.firstName} ${log.user.lastName}` : 'Sistema'}
+                                        </td>
+                                        <td className="px-6 py-4 text-right text-slate-500 tabular-nums font-medium">
+                                            {new Date(log.createdAt).toLocaleString()}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function OvertimeTracker({ employeeId, category }: { employeeId: string, category: string }) {
+    const confirmAction = useConfirm();
     const [hours, setHours] = useState<number>(0);
     const [rate, setRate] = useState<number>(0);
     const [entries, setEntries] = useState<any[]>([]);
@@ -627,6 +786,15 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
     };
 
     const handleDelete = async (id: string) => {
+        const ok = await confirmAction({
+            title: 'Eliminar Registro',
+            message: '¿Estás seguro de eliminar este registro de horas extras?',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+
+        if (!ok) return;
+
         try {
             await api.delete(`/overtime/${id}`);
             toast.success('Registro eliminado');
@@ -741,108 +909,3 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
     );
 }
 
-function SalaryCalculator() {
-    const [monthlyGross, setMonthlyGross] = useState<number>(0);
-    const [payments, setPayments] = useState<number>(12);
-
-    const annual = monthlyGross * payments;
-    const weekly = annual / 52.14;
-    const daily = weekly / 5; // labor days
-    const hourly = weekly / 40;
-    const minute = hourly / 60;
-
-    const format = (val: number) =>
-        new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2 }).format(val);
-
-    return (
-        <div className="bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-blue-900/20 rounded-2xl p-8 border border-blue-100 dark:border-blue-900/30">
-            <div className="flex items-center gap-3 mb-6">
-                <div className="p-2 bg-blue-600 rounded-lg text-white">
-                    <Calculator size={20} />
-                </div>
-                <div>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Calculadora de Coste Salarial (Bruto)</h2>
-                    <p className="text-slate-500 text-sm">Desglose rápido para simulación de costes</p>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
-                <div className="space-y-4">
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Mensual Bruto (€)</label>
-                        <div className="relative">
-                            <input
-                                type="number"
-                                value={monthlyGross || ''}
-                                onChange={(e) => setMonthlyGross(Number(e.target.value))}
-                                className="w-full pl-10 pr-4 py-3 rounded-xl border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-800 text-lg font-bold text-blue-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                                placeholder="0.00"
-                            />
-                            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
-                                <Euro size={18} />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Pagas:</span>
-                        <div className="flex p-1 bg-slate-200 dark:bg-slate-800 rounded-lg">
-                            {[12, 14].map(p => (
-                                <button
-                                    key={p}
-                                    onClick={() => setPayments(p)}
-                                    className={`px-4 py-1.5 text-sm font-bold rounded-md transition-all ${payments === p
-                                        ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-sm'
-                                        : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
-                                        }`}
-                                >
-                                    {p}
-                                </button>
-                            ))}
-                        </div>
-                        <div className="group relative">
-                            <Info size={14} className="text-slate-400 cursor-help" />
-                            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-slate-900 text-white text-xs rounded shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
-                                Incluye pagas extra prorrateadas en el cálculo anual.
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-blue-50 dark:border-blue-900/20">
-                        <p className="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Anual</p>
-                        <p className="text-xl font-bold text-slate-900 dark:text-white">{format(annual)}</p>
-                    </div>
-                    <div className="bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-blue-50 dark:border-blue-900/20">
-                        <p className="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Semanal</p>
-                        <p className="text-xl font-bold text-slate-900 dark:text-white">{format(weekly)}</p>
-                    </div>
-                    <div className="bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-blue-50 dark:border-blue-900/20">
-                        <p className="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Diario</p>
-                        <p className="text-xl font-bold text-slate-900 dark:text-white">{format(daily)}</p>
-                    </div>
-                    <div className="bg-white dark:bg-slate-800/50 p-4 rounded-xl border border-blue-50 dark:border-blue-900/20 text-blue-600">
-                        <p className="text-slate-400 text-xs uppercase font-bold tracking-wider mb-1">Hora</p>
-                        <p className="text-xl font-bold">{format(hourly)}</p>
-                    </div>
-                </div>
-            </div>
-
-            <div className="flex items-center justify-between p-4 bg-blue-600/5 dark:bg-blue-400/5 rounded-xl border border-blue-100 dark:border-blue-900/20">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">
-                        min
-                    </div>
-                    <div>
-                        <p className="text-slate-500 text-xs font-medium">Coste por Minuto</p>
-                        <p className="text-lg font-bold text-slate-900 dark:text-white">{format(minute)}</p>
-                    </div>
-                </div>
-                <div className="text-right">
-                    <p className="text-slate-400 text-[10px] italic">Basado en jornada estándar (40h/sem)</p>
-                </div>
-            </div>
-        </div>
-    );
-}

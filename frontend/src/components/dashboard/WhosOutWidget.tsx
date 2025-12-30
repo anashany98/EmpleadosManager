@@ -51,8 +51,8 @@ export function WhosOutWidget({ data }: WhosOutWidgetProps) {
                         <p className="text-sm">¡Todos están trabajando hoy!</p>
                     </div>
                 ) : (
-                    data.details.map((emp) => (
-                        <div key={emp.id} className="flex items-center gap-3 group">
+                    data.details.map((emp, index) => (
+                        <div key={`${emp.id}-${index}`} className="flex items-center gap-3 group">
                             <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-500 font-bold text-sm">
                                 {emp.name.charAt(0)}
                             </div>

@@ -10,5 +10,9 @@ const upload = multer(createMulterOptions('uploads/payroll/', ['.xlsx', '.xls', 
 router.post('/upload', upload.single('file'), PayrollController.upload);
 router.post('/:id/map', PayrollController.applyMapping);
 router.get('/:id/rows', PayrollController.getRows);
+router.get('/row/:rowId/breakdown', PayrollController.getBreakdown);
+router.post('/row/:rowId/breakdown', PayrollController.saveBreakdown);
+router.post('/manual', PayrollController.createManualPayroll);
+router.get('/employee/:employeeId', PayrollController.getEmployeePayrolls);
 
 export default router;

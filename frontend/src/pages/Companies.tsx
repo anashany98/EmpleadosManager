@@ -4,7 +4,10 @@ import { api } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 
+import { useConfirm } from '../context/ConfirmContext';
+
 export default function Companies() {
+    const confirmAction = useConfirm();
     const [companies, setCompanies] = useState<any[]>([]);
     const [isAdding, setIsAdding] = useState(false);
     const [newCompany, setNewCompany] = useState({ name: '', cif: '' });
@@ -36,8 +39,15 @@ export default function Companies() {
     };
 
     const handleDelete = async (id: string) => {
-        // Here we could use a custom Modal, but for now let's keep it simple or use toast.promise
-        if (!confirm('¿Seguro que quieres eliminar esta empresa?')) return;
+        const ok = await confirmAction({
+            title: 'Eliminar Empresa',
+            message: '¿Estás seguro de que quieres eliminar esta empresa? Esta acción no se puede deshacer.',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+
+        if (!ok) return;
+
         try {
             await api.delete(`/companies/${id}`);
             toast.success('Empresa eliminada');

@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { ApiResponse } from '../utils/ApiResponse';
 
 export class EmployeeDashboardController {
     // GET /api/dashboard/employees - Get comprehensive employee metrics
     async getEmployeeMetrics(req: Request, res: Response) {
         try {
-            const { companyId } = req.query;
+            const { companyId, range = '6M' } = req.query;
+            const monthsToFetch = range === '1Y' ? 12 : 6;
 
             // Build where clause
             const where: any = {};
@@ -19,6 +21,8 @@ export class EmployeeDashboardController {
                 select: {
                     id: true,
                     active: true,
+                    firstName: true,
+                    lastName: true,
                     department: true,
                     contractType: true,
                     createdAt: true,
@@ -43,21 +47,32 @@ export class EmployeeDashboardController {
             // Document expiration alerts
             const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
-            const dniExpiring = activeEmployees.filter(e =>
-                e.dniExpiration && e.dniExpiration <= thirtyDaysFromNow && e.dniExpiration >= now
-            ).length;
+            const dniExpiringDetails = activeEmployees
+                .filter(e => e.dniExpiration && e.dniExpiration <= thirtyDaysFromNow && e.dniExpiration >= now)
+                .map(e => ({
+                    id: e.id,
+                    name: `${e.firstName} ${e.lastName}`,
+                    expiryDate: e.dniExpiration,
+                    type: 'DNI'
+                }));
 
-            const licenseExpiring = activeEmployees.filter(e =>
-                e.drivingLicenseExpiration && e.drivingLicenseExpiration <= thirtyDaysFromNow && e.drivingLicenseExpiration >= now
-            ).length;
+            const licenseExpiringDetails = activeEmployees
+                .filter(e => e.drivingLicenseExpiration && e.drivingLicenseExpiration <= thirtyDaysFromNow && e.drivingLicenseExpiration >= now)
+                .map(e => ({
+                    id: e.id,
+                    name: `${e.firstName} ${e.lastName}`,
+                    expiryDate: e.drivingLicenseExpiration,
+                    type: 'LICENCIA'
+                }));
 
             const contracts = {
-                expiring30: 0, // No tenemos contractEndDate en el schema
+                expiring30: 0,
                 expiring60: 0,
                 expiring90: 0,
                 trialPeriodEnding: 0,
-                dniExpiring,
-                licenseExpiring
+                dniExpiring: dniExpiringDetails.length,
+                licenseExpiring: licenseExpiringDetails.length,
+                details: [...dniExpiringDetails, ...licenseExpiringDetails]
             };
 
             // Financial overview - simplified without baseSalary field
@@ -133,9 +148,9 @@ export class EmployeeDashboardController {
                 totalAbsenceDaysLast30: totalAbsenceDays
             };
 
-            // Growth trend (last 6 months)
+            // Growth trend
             const growthTrend = [];
-            for (let i = 5; i >= 0; i--) {
+            for (let i = monthsToFetch - 1; i >= 0; i--) {
                 const monthDate = new Date();
                 monthDate.setMonth(monthDate.getMonth() - i);
                 monthDate.setDate(1);
@@ -159,7 +174,7 @@ export class EmployeeDashboardController {
                 });
             }
 
-            res.json({
+            return ApiResponse.success(res, {
                 headcount,
                 contracts,
                 financial,
@@ -168,7 +183,7 @@ export class EmployeeDashboardController {
             });
         } catch (error: any) {
             console.error('Error fetching employee metrics:', error);
-            res.status(500).json({ error: 'Failed to fetch employee metrics', details: error.message });
+            return ApiResponse.error(res, 'Failed to fetch employee metrics', 500);
         }
     }
 

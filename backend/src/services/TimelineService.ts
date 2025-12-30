@@ -37,7 +37,57 @@ export const TimelineService = {
             throw new AppError('Empleado no encontrado', 404);
         }
 
+        // Restore type safety by asserting the result if needed or just handle the property access carefully
+        const employeeWithLogs = employee as any;
+
+        const directLogs = await prisma.auditLog.findMany({
+            where: { entity: 'EMPLOYEE', entityId: employeeId },
+            include: { user: true }
+        });
+
         const events: TimelineEvent[] = [];
+
+        // 0. Audit Logs (Combined)
+        // Fetch logs where the employee is the "target" (e.g. they were updated by someone else)
+        // We do this separately to avoid issues if the Prisma Client types are out of sync
+        const targetLogs = await prisma.auditLog.findMany({
+            where: { targetEmployeeId: employeeId } as any,
+            include: { user: true }
+        });
+
+        const allLogs = [...targetLogs, ...directLogs];
+        // Remove duplicates if any (though usually disjoint sets unless self-referencing)
+        const uniqueLogs = Array.from(new Map(allLogs.map(item => [item.id, item])).values());
+
+        uniqueLogs.forEach(log => {
+            let title = log.action;
+            let description = '';
+
+            try {
+                const meta = log.metadata ? JSON.parse(log.metadata) : {};
+                description = meta.info || meta.message || JSON.stringify(meta);
+
+                // Humanize titles
+                if (log.action === 'UPDATE') title = 'Actualización de Perfil';
+                if (log.action === 'CREATE') title = 'Creación';
+                if (log.action === 'DELETE') title = 'Eliminación';
+                if (log.action.startsWith('BULK')) title = 'Acción Masiva: ' + log.action.replace('BULK_', '');
+                if (log.action === 'GENERATE_DOCUMENT') title = 'Documento Generado';
+                if (log.action === 'VIEW_SENSITIVE_DATA') title = 'Acceso a Datos Sensibles';
+
+            } catch (e) {
+                description = 'Sin detalles';
+            }
+
+            events.push({
+                id: log.id,
+                date: log.createdAt,
+                type: 'INCIDENT', // Use INCIDENT generic type or map specifically
+                title: title,
+                description: `${description} (Por: ${(log as any).user?.email || 'Sistema'})`,
+                category: 'AUDIT'
+            });
+        });
 
         // 1. Alta (Entry Date)
         if (employee.entryDate) {

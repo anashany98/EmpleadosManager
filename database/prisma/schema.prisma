@@ -13,355 +13,363 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Usuarios del sistema (para auditoría y login básico)
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
-  password  String // Hashed
-  role      String   @default("user") // admin, user
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  batches   PayrollImportBatch[]
-  exports   Export[]
-  auditLogs AuditLog[]
+  id          String               @id @default(uuid())
+  email       String               @unique
+  password    String
+  role        String               @default("user")
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  permissions String?
+  auditLogs   AuditLog[]
+  exports     Export[]
+  batches     PayrollImportBatch[]
+  refreshTokens RefreshToken[]
 }
 
-// Empresas
-model Company {
+model RefreshToken {
   id        String   @id @default(uuid())
-  name      String
-  cif       String   @unique
-  logoUrl   String?
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+}
+
+model Company {
+  id        String     @id @default(uuid())
+  name      String
+  cif       String     @unique
+  logoUrl   String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   employees Employee[]
 }
 
-// Maestro de Empleados
+model PermissionProfile {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  permissions String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model Employee {
-  id            String   @id @default(uuid())
-  dni           String   @unique // DNI/NIE o código interno mapeado
-  
-  // Personal Info
-  name          String   // Keeping for simple access (can be computed or manual)
-  firstName     String?
-  lastName      String?
-  email         String?
-  phone         String?
-  address       String?
-  city          String?
-  postalCode    String?
-  province      String?
-  registeredIn  String? // Empadronado en
-  birthDate     DateTime?
-  gender        String? // MALE, FEMALE, OTHER
-  
-  // Financial & Legal Info
-  subaccount465 String   @unique // Subcuenta específica CONTASOL
-  active        Boolean  @default(true)
-  socialSecurityNumber String?
-  iban          String?
-  dniExpiration DateTime?
-  
-  // Driving License
-  drivingLicense           Boolean  @default(false)
+  id                       String                @id @default(uuid())
+  dni                      String                @unique
+  name                     String
+  firstName                String?
+  lastName                 String?
+  email                    String?
+  phone                    String?
+  address                  String?
+  city                     String?
+  postalCode               String?
+  province                 String?
+  registeredIn             String?
+  birthDate                DateTime?
+  gender                   String?
+  subaccount465            String?               @unique
+  active                   Boolean               @default(true)
+  socialSecurityNumber     String?
+  iban                     String?
+  dniExpiration            DateTime?
+  drivingLicense           Boolean               @default(false)
   drivingLicenseType       String?
   drivingLicenseExpiration DateTime?
+  emergencyContactName     String?
+  emergencyContactPhone    String?
+  companyId                String?
+  department               String?
+  category                 String?
+  contractType             String?
+  agreementType            String?
+  jobTitle                 String?
+  contractEndDate          DateTime?
+  managerId                String?
+  entryDate                DateTime?
+  exitDate                 DateTime?
+  callDate                 DateTime?
+  contractInterruptionDate DateTime?
+  lowDate                  DateTime?
+  lowReason                String?
+  vacationDaysTotal        Int                   @default(30)
+  workingDayType           String?
+  weeklyHours              Float?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  accountingEntries        AccountingEntry[]
+  alerts                   Alert[]
+  assets                   Asset[]
+  targetAuditLogs          AuditLog[]            @relation("TargetEmployee")
+  checklistTasks           ChecklistTask[]
+  contractExtensions       ContractExtension[]
+  documents                Document[]
+  manager                  Employee?             @relation("Hierarchy", fields: [managerId], references: [id])
+  subordinates             Employee[]            @relation("Hierarchy")
+  company                  Company?              @relation(fields: [companyId], references: [id])
+  projectWork              EmployeeProjectWork[]
+  expenses                 Expense[]
+  medicalReviews           MedicalReview[]
+  overtimeEntries          OvertimeEntry[]
+  payrollRows              PayrollRow[]
+  timeEntries              TimeEntry[]
+  trainings                Training[]
+  vacations                Vacation[]
+}
 
-  // Emergency Contact
-  emergencyContactName  String?
-  emergencyContactPhone String?
-  
-  // Job Info
-  companyId     String?
-  company       Company? @relation(fields: [companyId], references: [id])
-  department    String?
-  category      String?
-  contractType  String? // Indefinido, Temporal, etc.
-  agreementType String? // Convenio
-  jobTitle      String? // Puesto
-  contractEndDate DateTime? // Fecha fin de contrato previsto
-  
-  // Hierarchy
-  managerId     String?
-  manager       Employee? @relation("Hierarchy", fields: [managerId], references: [id])
-  subordinates  Employee[] @relation("Hierarchy")
-  
-  // Dates
-  entryDate     DateTime? // Fecha entrada / Antigüedad
-  exitDate      DateTime? // Fecha salida
-  callDate      DateTime? // Fecha llamamiento (fijos discontinuos)
-  contractInterruptionDate DateTime? // Fecha interrupción (fijos discontinuos)
-  lowDate       DateTime? // Fecha baja
-  lowReason     String?   // Motivo baja
-  vacationDaysTotal Int   @default(30)
-  
-  // Working Day Info
-  workingDayType String?  // COMPLETE, PARTIAL
-  weeklyHours    Float?
+model Project {
+  id           String                @id @default(uuid())
+  code         String                @unique
+  name         String
+  destination  String?
+  active       Boolean               @default(true)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  employeeWork EmployeeProjectWork[]
+}
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+model EmployeeProjectWork {
+  id         String   @id @default(uuid())
+  employeeId String
+  projectId  String
+  startDate  DateTime
+  endDate    DateTime
+  hours      Float    @default(8.0)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  contractExtensions ContractExtension[]
-
-  payrollRows   PayrollRow[]
-  accountingEntries AccountingEntry[]
-  vacations     Vacation[]
-  medicalReviews MedicalReview[]
-  trainings     Training[]
-  overtimeEntries OvertimeEntry[]
-  timeEntries     TimeEntry[]
-  alerts          Alert[]
-  documents       Document[]
-  expenses        Expense[]
-  assets          Asset[]
-  checklistTasks  ChecklistTask[]
+  @@index([employeeId])
+  @@index([projectId])
+  @@index([startDate, endDate])
 }
 
 model Asset {
-  id              String   @id @default(uuid())
+  id              String         @id @default(uuid())
   employeeId      String?
-  employee        Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  
-  category        String   // LAPTOP, MOBILE, TOOLS, CLOTHING, OTHER
-  name            String   // Ej: "MacBook Pro 14", "Pantalón Trabajo"
-  serialNumber    String?  
-  size            String?  // Para ropa (S, M, L, XL, etc.)
-  
+  category        String
+  name            String
+  serialNumber    String?
+  size            String?
   assignedDate    DateTime?
   returnDate      DateTime?
-  status          String    @default("ASSIGNED") // ASSIGNED, RETURNED, REPAIR, LOST
+  status          String         @default("ASSIGNED")
   notes           String?
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  inventoryItemId String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  employee        Employee?      @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])
 }
 
 model ChecklistTask {
-  id              String   @id @default(uuid())
-  employeeId      String
-  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  
-  type            String   // ONBOARDING, OFFBOARDING
-  title           String   // Ej: "Crear cuenta de email"
-  description     String?
-  completed       Boolean  @default(false)
-  completedAt     DateTime?
-  deadline        DateTime?
-  
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id          String    @id @default(uuid())
+  employeeId  String
+  type        String
+  title       String
+  description String?
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  deadline    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, type])
 }
 
 model Expense {
-  id          String   @id @default(uuid())
-  employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  
-  date        DateTime @default(now())
-  category    String   // MEAL, TRAVEL, SUPPLIES, OTHER
-  amount      Float
-  description String?
-  receiptUrl  String?  // Path to uploaded receipt image/pdf
-  
-  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  paymentMethod String @default("CASH")    // CASH, CARD, TRANSFER
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(uuid())
+  employeeId    String
+  date          DateTime @default(now())
+  category      String
+  amount        Float
+  description   String?
+  receiptUrl    String?
+  status        String   @default("PENDING")
+  paymentMethod String   @default("CASH")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([status])
 }
 
 model Document {
-  id          String   @id @default(uuid())
-  employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  name        String   // Ej: "Contrato 2024", "DNI Copia"
-  category    String   // Ej: "CONTRACT", "DNI", "PAYROLL", "MEDICAL", "TRAINING", "OTHER"
-  fileUrl     String
-  uploadDate  DateTime @default(now())
-  expiryDate  DateTime? // Para avisar si un documento caduca
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(uuid())
+  employeeId String
+  name       String
+  category   String
+  fileUrl    String
+  uploadDate DateTime  @default(now())
+  expiryDate DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
   @@index([category])
 }
 
-// Revisiones Médicas
 model MedicalReview {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   employeeId     String
-  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   date           DateTime
-  result         String?  // APTO, NO APTO, APTO CON LIMITACIONES
-  nextReviewDate DateTime? // Calculado (12/24 meses)
+  result         String?
+  nextReviewDate DateTime?
   fileUrl        String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
-// Formaciones
 model Training {
-  id          String   @id @default(uuid())
-  employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  type        String   // Ej: PRL, Técnica, Habilidades
-  name        String   // Nombre del curso
-  date        DateTime
-  hours       Int?
-  fileUrl     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(uuid())
+  employeeId String
+  type       String
+  name       String
+  date       DateTime
+  hours      Int?
+  fileUrl    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
 model Vacation {
-  id          String   @id @default(uuid())
-  employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  startDate   DateTime
-  endDate     DateTime
-  type        String   @default("VACATION") // VACATION, SICK, PERSONAL, etc.
-  days        Int      @default(0)         // Number of days (pre-calculated)
-  reason      String?  // Motivo detallado para tipo "Otros"
-  
-  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
+  id         String   @id @default(uuid())
+  employeeId String
+  startDate  DateTime
+  endDate    DateTime
+  type       String   @default("VACATION")
+  days       Int      @default(0)
+  reason     String?
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 }
 
-// Perfiles de Mapeo para interpretar Excels
 model MappingProfile {
-  id        String   @id @default(uuid())
-  name      String   // Ej: "Gestoría A - 2024"
-  rules     String     // Configuración de columnas { "employeeName": "C", "neto": "K", ... }
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
+  id        String               @id @default(uuid())
+  name      String
+  rules     String
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
   batches   PayrollImportBatch[]
 }
 
-// Lotes de importación (un archivo Excel subido)
 model PayrollImportBatch {
-  id              String   @id @default(uuid())
-  year            Int
-  month           Int
-  sourceFilename  String
-  status          String   @default("UPLOADED") // UPLOADED, MAPPED, VALIDATED, GENERATED, EXPORTED
-  resultSummary   String?    // Resumen de validación
-  notes           String?
-  
+  id               String            @id @default(uuid())
+  year             Int
+  month            Int
+  sourceFilename   String
+  status           String            @default("UPLOADED")
+  resultSummary    String?
+  notes            String?
   mappingProfileId String?
-  mappingProfile   MappingProfile? @relation(fields: [mappingProfileId], references: [id])
-  
-  createdById     String
-  createdBy       User     @relation(fields: [createdById], references: [id])
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  rows            PayrollRow[]
-  entries         AccountingEntry[]
-  exports         Export[]
+  createdById      String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  entries          AccountingEntry[]
+  exports          Export[]
+  createdBy        User              @relation(fields: [createdById], references: [id])
+  mappingProfile   MappingProfile?   @relation(fields: [mappingProfileId], references: [id])
+  rows             PayrollRow[]
 }
 
-// Filas crudas/normalizadas del Excel
 model PayrollRow {
-  id              String   @id @default(uuid())
+  id              String             @id @default(uuid())
   batchId         String
-  batch           PayrollImportBatch @relation(fields: [batchId], references: [id])
-  
-  // Datos extraídos
   rawEmployeeName String?
-  employeeId      String?  // DNI/ID detectado si hay match
-  employee        Employee? @relation(fields: [employeeId], references: [id]) // Link opcional si ya se validó
-  
-  // Importes
-  bruto           Decimal  @default(0)
-  ssEmpresa       Decimal  @default(0)
-  ssTrabajador    Decimal  @default(0)
-  irpf            Decimal  @default(0)
-  neto            Decimal  @default(0)
-  
-  extraData       String?    // Otros campos capturados
-  
-  status          String   @default("PENDING") // PENDING, OK, WARNING, ERROR
-  validationNotes String?    // Array de mensajes de error/warning
+  employeeId      String?
+  bruto           Decimal            @default(0)
+  ssEmpresa       Decimal            @default(0)
+  ssTrabajador    Decimal            @default(0)
+  irpf            Decimal            @default(0)
+  neto            Decimal            @default(0)
+  extraData       String?
+  status          String             @default("PENDING")
+  validationNotes String?
+  employee        Employee?          @relation(fields: [employeeId], references: [id])
+  batch           PayrollImportBatch @relation(fields: [batchId], references: [id])
+  items           PayrollItem[]
 }
 
-// Asientos Contables Generados (Cabecera)
+model PayrollItem {
+  id           String      @id @default(uuid())
+  payrollRowId String
+  concept      String
+  amount       Decimal
+  type         String      // "EARNING", "DEDUCTION"
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  payrollRow   PayrollRow  @relation(fields: [payrollRowId], references: [id], onDelete: Cascade)
+
+  @@index([payrollRowId])
+}
+
 model AccountingEntry {
-  id              String   @id @default(uuid())
-  batchId         String
-  batch           PayrollImportBatch @relation(fields: [batchId], references: [id])
-  
-  employeeId      String? // Opcional, si es asiento individual
-  employee        Employee? @relation(fields: [employeeId], references: [id])
-
-  concept         String
-  document        String?
-  date            DateTime
-  
-  totalDebe       Decimal
-  totalHaber      Decimal
-  
-  status          String   @default("DRAFT") // DRAFT, VALIDATED
-  
-  lines           AccountingEntryLine[]
-  createdAt       DateTime @default(now())
+  id         String                @id @default(uuid())
+  batchId    String
+  employeeId String?
+  concept    String
+  document   String?
+  date       DateTime
+  totalDebe  Decimal
+  totalHaber Decimal
+  status     String                @default("DRAFT")
+  createdAt  DateTime              @default(now())
+  employee   Employee?             @relation(fields: [employeeId], references: [id])
+  batch      PayrollImportBatch    @relation(fields: [batchId], references: [id])
+  lines      AccountingEntryLine[]
 }
 
-// Líneas de Asiento (Apuntes)
 model AccountingEntryLine {
-  id              String   @id @default(uuid())
-  entryId         String
-  entry           AccountingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  
-  account         String   // Cuenta contable
-  concept         String   // Concepto del apunte
-  debe            Decimal
-  haber           Decimal
-  document        String?
-  
-  order           Int
+  id       String          @id @default(uuid())
+  entryId  String
+  account  String
+  concept  String
+  debe     Decimal
+  haber    Decimal
+  document String?
+  order    Int
+  entry    AccountingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 }
 
-// Historial de Exportaciones
 model Export {
-  id              String   @id @default(uuid())
-  batchId         String
-  batch           PayrollImportBatch @relation(fields: [batchId], references: [id])
-  
-  type            String   // APU, MAE, REPORT
-  filename        String
-  generatedAt     DateTime @default(now())
-  
-  createdById     String
-  createdBy       User     @relation(fields: [createdById], references: [id])
+  id          String             @id @default(uuid())
+  batchId     String
+  type        String
+  filename    String
+  generatedAt DateTime           @default(now())
+  createdById String
+  createdBy   User               @relation(fields: [createdById], references: [id])
+  batch       PayrollImportBatch @relation(fields: [batchId], references: [id])
 }
 
-// Auditoría
 model AuditLog {
-  id        String   @id @default(uuid())
-  action    String
-  entity    String
-  entityId  String
-  metadata  String?
-  
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id])
-  
-  createdAt DateTime @default(now())
+  id               String    @id @default(uuid())
+  action           String
+  entity           String
+  entityId         String
+  metadata         String?
+  userId           String?
+  targetEmployeeId String?
+  createdAt        DateTime  @default(now())
+  targetEmployee   Employee? @relation("TargetEmployee", fields: [targetEmployeeId], references: [id])
+  user             User?     @relation(fields: [userId], references: [id])
 }
+
 model CategoryRate {
   id                  String   @id @default(uuid())
   category            String   @unique
@@ -371,62 +379,51 @@ model CategoryRate {
 }
 
 model OvertimeEntry {
-  id          String   @id @default(uuid())
-  employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  hours       Float
-  rate        Float
-  total       Float
-  date        DateTime @default(now())
-  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED
-  createdAt   DateTime @default(now())
-  
+  id         String   @id @default(uuid())
+  employeeId String
+  hours      Float
+  rate       Float
+  total      Float
+  date       DateTime @default(now())
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
   @@index([employeeId])
   @@index([date])
   @@index([employeeId, date])
 }
 
 model ContractExtension {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   employeeId      String
-  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  
-  extensionDate   DateTime @default(now()) // Fecha en que se firmó/acordó la prórroga
-  newEndDate      DateTime 
+  extensionDate   DateTime  @default(now())
+  newEndDate      DateTime
   previousEndDate DateTime?
-  
   notes           String?
-  fileUrl         String? // Link al documento de prórroga firmado
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  fileUrl         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId])
 }
 
 model TimeEntry {
-  id          String   @id @default(uuid())
-  employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  
-  date        DateTime  // Fecha del fichaje (solo fecha, sin hora)
-  
-  // Marcajes del día
-  checkIn     DateTime? // Hora de entrada
-  checkOut    DateTime? // Hora de salida
-  
-  lunchStart  DateTime? // Inicio pausa comida
-  lunchEnd    DateTime? // Fin pausa comida
-  
-  // Cálculos automáticos
-  totalHours  Float     @default(0.0) // Total horas trabajadas (sin contar pausa)
-  lunchHours  Float     @default(0.0) // Duración pausa comida en horas
-  
-  notes       String?   // Notas opcionales
-  
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  
+  id         String    @id @default(uuid())
+  employeeId String
+  date       DateTime
+  checkIn    DateTime?
+  checkOut   DateTime?
+  lunchStart DateTime?
+  lunchEnd   DateTime?
+  totalHours Float     @default(0.0)
+  lunchHours Float     @default(0.0)
+  notes      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
   @@unique([employeeId, date])
   @@index([employeeId])
   @@index([date])
@@ -434,22 +431,66 @@ model TimeEntry {
 }
 
 model Alert {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   employeeId  String?
-  employee    Employee? @relation(fields: [employeeId], references: [id])
-  
-  type        String     // CONTRACT_EXPIRING, DNI_EXPIRING, etc.
-  severity    String     // HIGH, MEDIUM, LOW
+  type        String
+  severity    String
   title       String
   message     String
   actionUrl   String?
-  
-  isRead      Boolean  @default(false)
-  isDismissed Boolean  @default(false)
-  
-  createdAt   DateTime @default(now())
+  isRead      Boolean   @default(false)
+  isDismissed Boolean   @default(false)
+  createdAt   DateTime  @default(now())
   expiresAt   DateTime?
-  
+  employee    Employee? @relation(fields: [employeeId], references: [id])
+
   @@index([isRead, severity])
   @@index([createdAt])
+}
+
+model InventoryItem {
+  id          String              @id @default(uuid())
+  category    String
+  name        String
+  size        String?
+  quantity    Int                 @default(0)
+  minQuantity Int                 @default(5)
+  description String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  assets      Asset[]
+  movements   InventoryMovement[]
+
+  @@unique([name, size])
+}
+
+model InventoryMovement {
+  id              String        @id @default(uuid())
+  inventoryItemId String
+  type            String
+  quantity        Int
+  userId          String?
+  employeeId      String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId])
+}
+
+model InboxDocument {
+  id           String    @id @default(uuid())
+  filename     String
+  originalName String
+  source       String
+  receivedAt   DateTime  @default(now())
+  fileUrl      String
+  processed    Boolean   @default(false)
+  processedAt  DateTime?
+}
+
+model Configuration {
+  id    String @id @default("global")
+  key   String @unique
+  value String
 }

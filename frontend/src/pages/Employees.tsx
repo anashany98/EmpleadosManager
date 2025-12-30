@@ -8,6 +8,8 @@ import {
     Loader2
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import BulkActionToolbar, { EMPLOYEE_BULK_ACTIONS } from '../components/BulkActionToolbar';
+import { useConfirm } from '../context/ConfirmContext';
 
 // Type helper (would normally be in types/employee.ts)
 interface Employee {
@@ -29,7 +31,9 @@ const fetchEmployees = async (): Promise<Employee[]> => {
 
 export default function EmployeeList() {
     const queryClient = useQueryClient();
+    const confirmAction = useConfirm();
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
     const { data: employees = [], isLoading } = useQuery({
         queryKey: ['employees'],
@@ -53,12 +57,76 @@ export default function EmployeeList() {
         }
     });
 
+    const bulkUpdateMutation = useMutation({
+        mutationFn: async ({ employeeIds, action, data }: { employeeIds: string[], action: string, data?: any }) => {
+            const res = await api.post('/employees/bulk-update', { employeeIds, action, data });
+            return res.data;
+        },
+        onSuccess: (data) => {
+            toast.success(data.message || 'Actualización masiva completada');
+            queryClient.invalidateQueries({ queryKey: ['employees'] });
+            setSelectedIds([]);
+        },
+        onError: (err: any) => {
+            toast.error(err.message || 'Error en la actualización masiva');
+        }
+    });
+
     // Client-side simple filter
     const filteredEmployees = employees.filter(emp => {
         const term = searchTerm.toLowerCase();
         const fullName = (emp.name || `${emp.firstName} ${emp.lastName}`).toLowerCase();
         return fullName.includes(term) || emp.dni.toLowerCase().includes(term);
     });
+
+    const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.checked) {
+            setSelectedIds(filteredEmployees.map(emp => emp.id));
+        } else {
+            setSelectedIds([]);
+        }
+    };
+
+    const handleSelectOne = (id: string) => {
+        setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+    };
+
+    const handleBulkAction = async (actionId: string) => {
+        if (actionId === 'delete') {
+            const ok = await confirmAction({
+                title: 'Eliminación Masiva',
+                message: `¿Estás seguro de eliminar ${selectedIds.length} empleados? Se marcarán como inactivos.`,
+                confirmText: 'Eliminar',
+                type: 'danger'
+            });
+            if (!ok) return;
+        } else if (actionId === 'deactivate') {
+            const ok = await confirmAction({
+                title: 'Desactivación Masiva',
+                message: `¿Desactivar a los ${selectedIds.length} empleados seleccionados?`,
+                confirmText: 'Desactivar',
+                type: 'warning'
+            });
+            if (!ok) return;
+        } else if (actionId === 'activate') {
+            const ok = await confirmAction({
+                title: 'Activación Masiva',
+                message: `¿Activar a los ${selectedIds.length} empleados seleccionados?`,
+                confirmText: 'Activar',
+                type: 'info'
+            });
+            if (!ok) return;
+        }
+
+        if (actionId === 'change_dept') {
+            const newDept = prompt('Escribe el nombre del nuevo departamento:');
+            if (!newDept) return;
+            bulkUpdateMutation.mutate({ employeeIds: selectedIds, action: actionId, data: { department: newDept } });
+            return;
+        }
+
+        bulkUpdateMutation.mutate({ employeeIds: selectedIds, action: actionId });
+    };
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -67,12 +135,12 @@ export default function EmployeeList() {
                     <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">Empleados</h1>
                     <p className="text-slate-500 dark:text-slate-400 mt-1">Gestiona el maestro de empleados y sus cuentas contables</p>
                 </div>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
                     <button
                         onClick={async () => {
                             try {
-                                const response = await api.get('/employees/template', { responseType: 'blob' });
-                                const url = window.URL.createObjectURL(new Blob([response.data]));
+                                const blob = await api.get('/employees/template', { responseType: 'blob' });
+                                const url = window.URL.createObjectURL(blob);
                                 const link = document.createElement('a');
                                 link.href = url;
                                 link.setAttribute('download', 'plantilla_empleados_avanzada.xlsx');
@@ -83,13 +151,13 @@ export default function EmployeeList() {
                                 toast.error('Error al descargar la plantilla');
                             }
                         }}
-                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-4 py-3 rounded-xl font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 transition-all"
+                        className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-4 py-3 rounded-xl font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center gap-2 transition-all w-full md:w-auto"
                     >
                         <FileSpreadsheet size={20} className="text-green-600 dark:text-green-400" />
-                        Plantilla Avanzada
+                        <span className="truncate">Plantilla</span>
                     </button>
 
-                    <div className="relative">
+                    <div className="relative w-full md:w-auto">
                         <input
                             type="file"
                             id="import-employees"
@@ -106,15 +174,15 @@ export default function EmployeeList() {
                                 }
                             }}
                         />
-                        <label htmlFor="import-employees" className={`cursor-pointer bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-4 py-3 rounded-xl font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2 transition-all ${importMutation.isPending ? 'opacity-50 pointer-events-none' : ''}`}>
+                        <label htmlFor="import-employees" className={`cursor-pointer bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 px-4 py-3 rounded-xl font-medium shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center gap-2 transition-all w-full md:w-auto ${importMutation.isPending ? 'opacity-50 pointer-events-none' : ''}`}>
                             {importMutation.isPending ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} className="text-blue-600 dark:text-blue-400" />}
-                            Importar Excel/CSV
+                            Importar
                         </label>
                     </div>
 
-                    <Link to="/employees/new" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 flex items-center gap-2 transition-all hover:scale-105 active:scale-95">
+                    <Link to="/employees/new" className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium shadow-lg shadow-blue-500/30 hover:shadow-blue-500/40 flex items-center justify-center gap-2 transition-all hover:scale-105 active:scale-95 w-full md:w-auto">
                         <Plus size={20} />
-                        Nuevo Empleado
+                        Nuevo
                     </Link>
                 </div>
             </div>
@@ -134,11 +202,19 @@ export default function EmployeeList() {
                     </div>
                 </div>
 
-                {/* Table */}
-                <div className="overflow-x-auto">
+                {/* Table for Desktop */}
+                <div className="hidden md:block overflow-x-auto">
                     <table className="w-full text-left text-sm">
                         <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 font-medium">
                             <tr>
+                                <th className="px-6 py-4 w-12">
+                                    <input
+                                        type="checkbox"
+                                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-5 h-5 cursor-pointer"
+                                        onChange={handleSelectAll}
+                                        checked={filteredEmployees.length > 0 && selectedIds.length === filteredEmployees.length}
+                                    />
+                                </th>
                                 <th className="px-6 py-4 w-16"></th>
                                 <th className="px-6 py-4">Nombre Completo</th>
                                 <th className="px-6 py-4">DNI / NIE</th>
@@ -164,7 +240,15 @@ export default function EmployeeList() {
                                 ))
                             ) : (
                                 filteredEmployees.map((emp) => (
-                                    <tr key={emp.id} className="group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                    <tr key={emp.id} className={`group transition-colors ${selectedIds.includes(emp.id) ? 'bg-blue-50 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                                        <td className="px-6 py-4">
+                                            <input
+                                                type="checkbox"
+                                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-5 h-5 cursor-pointer"
+                                                checked={selectedIds.includes(emp.id)}
+                                                onChange={() => handleSelectOne(emp.id)}
+                                            />
+                                        </td>
                                         <td className="px-6 py-4">
                                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shadow-inner">
                                                 {(emp.name || emp.firstName || '?').charAt(0)}
@@ -200,9 +284,9 @@ export default function EmployeeList() {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <button className="text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                                            <Link to={`/employees/${emp.id}`} className="inline-block text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                                                 <MoreHorizontal size={20} />
-                                            </button>
+                                            </Link>
                                         </td>
                                     </tr>
                                 ))
@@ -220,8 +304,62 @@ export default function EmployeeList() {
                         </tbody>
                     </table>
                 </div>
+
+                {/* Card View for Mobile */}
+                <div className="md:hidden p-4 space-y-4">
+                    {isLoading ? (
+                        Array.from({ length: 3 }).map((_, i) => (
+                            <div key={i} className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 animate-pulse h-32"></div>
+                        ))
+                    ) : filteredEmployees.length === 0 ? (
+                        <div className="text-center py-10 text-slate-400">
+                            <User size={40} className="mx-auto mb-3 opacity-30" />
+                            <p>No se encontraron empleados</p>
+                        </div>
+                    ) : (
+                        filteredEmployees.map((emp) => (
+                            <Link
+                                key={emp.id}
+                                to={`/employees/${emp.id}`}
+                                className="block bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm active:scale-95 transition-all"
+                            >
+                                <div className="flex items-center gap-4 mb-3">
+                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-lg shadow-inner shrink-0">
+                                        {(emp.name || emp.firstName || '?').charAt(0)}
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h3 className="font-bold text-slate-900 dark:text-white truncate">
+                                            {emp.name || `${emp.firstName} ${emp.lastName}`}
+                                        </h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate">
+                                            {emp.dni}
+                                        </p>
+                                    </div>
+                                    <div className="ml-auto">
+                                        <span className={`w-2 h-2 rounded-full block ${emp.active ? 'bg-emerald-500 box-shadow-emerald' : 'bg-slate-400'}`}></span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 pt-3 border-t border-slate-50 dark:border-slate-800">
+                                    <div className="flex items-center gap-1.5">
+                                        <Building2 size={12} />
+                                        {emp.department || 'General'}
+                                    </div>
+                                    <div className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">
+                                        {emp.subaccount465}
+                                    </div>
+                                </div>
+                            </Link>
+                        ))
+                    )}
+                </div>
             </div>
+
+            <BulkActionToolbar
+                selectedCount={selectedIds.length}
+                onClearSelection={() => setSelectedIds([])}
+                onAction={handleBulkAction}
+                actions={EMPLOYEE_BULK_ACTIONS}
+            />
         </div>
     );
 }
-

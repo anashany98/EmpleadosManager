@@ -9,7 +9,10 @@ export class AlertController {
             // Trigger generation on fetch (simple approach for now, instead of cron)
             await alertService.generateContractAlerts();
 
-            const alerts = await alertService.getUnreadAlerts();
+            const user = (req as any).user;
+            const permissions = user?.role === 'admin' ? null : user?.permissions;
+
+            const alerts = await alertService.getUnreadAlerts(permissions);
             res.json(alerts);
         } catch (error: any) {
             console.error('Error fetching alerts:', error);

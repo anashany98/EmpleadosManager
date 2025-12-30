@@ -62,12 +62,13 @@ export const DocumentController = {
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
 
         try {
+            const subfolder = employeeId ? `EXP_${employeeId}/` : '';
             const document = await prisma.document.create({
                 data: {
                     employeeId,
                     name: name || file.originalname,
                     category: category || 'OTHER',
-                    fileUrl: `/uploads/documents/${file.filename}`,
+                    fileUrl: `/uploads/documents/${subfolder}${file.filename}`,
                     expiryDate: expiryDate ? new Date(expiryDate) : null
                 }
             });

@@ -30,6 +30,7 @@ export default function TimesheetPage() {
     const [entries, setEntries] = useState<TimeEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
+    const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
 
@@ -90,16 +91,29 @@ export default function TimesheetPage() {
         return new Date(dateString).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' });
     };
 
-    // Calcular resumen
+    // Filter Logic
+    const departments = Array.from(new Set(employees.map(e => e.department).filter(Boolean))).sort();
+
+    // Filter employees for dropdown
+    const filteredEmployees = employees.filter(emp =>
+        selectedDepartment === 'all' || emp.department === selectedDepartment
+    );
+
+    // Filter actual time entries
+    const displayedEntries = entries.filter(entry =>
+        selectedDepartment === 'all' || entry.employee.department === selectedDepartment
+    );
+
+    // Calcular resumen (using displayedEntries)
     const summary = {
-        totalHours: entries.reduce((sum, e) => sum + e.totalHours, 0),
-        totalLunchHours: entries.reduce((sum, e) => sum + e.lunchHours, 0),
-        daysWorked: entries.filter(e => e.checkIn && e.checkOut).length,
-        uniqueEmployees: new Set(entries.map(e => e.employee.id)).size
+        totalHours: displayedEntries.reduce((sum, e) => sum + e.totalHours, 0),
+        totalLunchHours: displayedEntries.reduce((sum, e) => sum + e.lunchHours, 0),
+        daysWorked: displayedEntries.filter(e => e.checkIn && e.checkOut).length,
+        uniqueEmployees: new Set(displayedEntries.map(e => e.employee.id)).size
     };
 
     // Agrupar entradas por fecha para vista calendario
-    const entriesByDate = entries.reduce((acc, entry) => {
+    const entriesByDate = displayedEntries.reduce((acc, entry) => {
         const date = entry.date.split('T')[0];
         if (!acc[date]) acc[date] = [];
         acc[date].push(entry);
@@ -140,6 +154,26 @@ export default function TimesheetPage() {
             {/* Filters */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-6">
                 <div className="flex flex-wrap items-center gap-4">
+                    {/* Department Filter */}
+                    <div className="flex-1 min-w-[200px]">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                            Departamento
+                        </label>
+                        <select
+                            value={selectedDepartment}
+                            onChange={(e) => {
+                                setSelectedDepartment(e.target.value);
+                                setSelectedEmployee('all'); // Reset employee filter when department changes
+                            }}
+                            className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
+                        >
+                            <option value="all">Todos los departamentos</option>
+                            {departments.map(dept => (
+                                <option key={dept} value={dept}>{dept}</option>
+                            ))}
+                        </select>
+                    </div>
+
                     {/* Employee Filter */}
                     <div className="flex-1 min-w-[250px]">
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
@@ -151,9 +185,9 @@ export default function TimesheetPage() {
                             onChange={(e) => setSelectedEmployee(e.target.value)}
                             className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
                         >
-                            <option value="all">Todos los empleados ({employees.length})</option>
-                            {employees.map(emp => (
-                                <option key={emp.id} value={emp.id}>{emp.name} - {emp.department}</option>
+                            <option value="all">Todos ({filteredEmployees.length})</option>
+                            {filteredEmployees.map(emp => (
+                                <option key={emp.id} value={emp.id}>{emp.name}</option>
                             ))}
                         </select>
                     </div>
@@ -287,14 +321,14 @@ export default function TimesheetPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {entries.length === 0 ? (
+                                {displayedEntries.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
-                                            No hay fichajes registrados
+                                            No hay fichajes registrados que coincidan con los filtros
                                         </td>
                                     </tr>
                                 ) : (
-                                    entries.map((entry) => (
+                                    displayedEntries.map((entry) => (
                                         <tr key={entry.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                             <td className="px-4 py-3">
                                                 <div className="font-medium text-slate-900 dark:text-white">{entry.employee.name}</div>

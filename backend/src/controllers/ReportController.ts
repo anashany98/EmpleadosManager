@@ -172,8 +172,8 @@ export class ReportController {
      */
     static async getGenderGap(req: Request, res: Response) {
         try {
-            const { companyId } = req.query;
-            const data = await ReportService.getGenderGapData({ companyId });
+            const { companyId, year } = req.query;
+            const data = await ReportService.getGenderGapData({ companyId, year });
             res.json(data);
         } catch (error: any) {
             console.error('Gender Gap Report Error:', error);

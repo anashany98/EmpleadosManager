@@ -9,7 +9,11 @@ export const AuditController = {
             if (!entity || !entityId) {
                 return res.status(400).json({ error: 'Faltan parámetros de entidad' });
             }
-            const logs = await AuditService.getLogs(entity.toUpperCase(), entityId);
+            const logs = await prisma.auditLog.findMany({
+                where: { entity: entity.toUpperCase(), entityId },
+                orderBy: { createdAt: 'desc' },
+                include: { user: true, targetEmployee: true }
+            });
             res.json(logs);
         } catch (error) {
             res.status(500).json({ error: 'Error al obtener registros de auditoría' });
@@ -21,7 +25,7 @@ export const AuditController = {
             const logs = await prisma.auditLog.findMany({
                 orderBy: { createdAt: 'desc' },
                 take: 10,
-                include: { user: true }
+                include: { user: true, targetEmployee: true }
             });
             const mapped = logs.map((l: any) => ({
                 ...l,
@@ -44,14 +48,43 @@ export const AuditController = {
                     orderBy: { createdAt: 'desc' },
                     skip,
                     take: limit,
-                    include: { user: true }
+                    include: { user: true, targetEmployee: true }
                 }),
                 prisma.auditLog.count()
             ]);
 
+            const mappedLogs = logs.map(log => {
+                let details = '';
+                try {
+                    const meta = log.metadata ? JSON.parse(log.metadata) : {};
+                    if (log.action === 'CREATE') {
+                        details = `Creado nuevo ${log.entity.toLowerCase()}: ${meta.name || log.entityId}`;
+                    } else if (log.action === 'DELETE') {
+                        details = `Eliminado ${log.entity.toLowerCase()}: ${meta.name || log.entityId}`;
+                    } else if (log.action === 'UPDATE') {
+                        const keys = Object.keys(meta).filter(k => k !== 'id' && k !== 'updatedAt');
+                        details = `Actualizado ${log.entity.toLowerCase()}: ${keys.join(', ') || 'varios campos'}`;
+                    } else {
+                        details = meta.info || meta.message || log.action;
+                    }
+
+                    if (log.targetEmployee) {
+                        const targetName = `${log.targetEmployee.firstName} ${log.targetEmployee.lastName || ''}`.trim();
+                        details += ` (Afec. a ${targetName})`;
+                    }
+                } catch (e) {
+                    details = log.action;
+                }
+
+                return {
+                    ...log,
+                    details
+                };
+            });
+
             res.json({
                 success: true,
-                data: logs,
+                data: mappedLogs,
                 pagination: {
                     total,
                     page,
