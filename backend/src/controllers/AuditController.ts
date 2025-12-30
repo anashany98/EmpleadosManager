@@ -23,6 +23,11 @@ export const AuditController = {
     getRecentActivity: async (req: Request, res: Response) => {
         try {
             const logs = await prisma.auditLog.findMany({
+                where: {
+                    action: {
+                        notIn: ['VIEW', 'ACCESS', 'READ', 'LOGIN_ATTEMPT', 'LOGIN_SUCCESS']
+                    }
+                },
                 orderBy: { createdAt: 'desc' },
                 take: 10,
                 include: { user: true, targetEmployee: true }
@@ -69,7 +74,9 @@ export const AuditController = {
                     }
 
                     if (log.targetEmployee) {
-                        const targetName = `${log.targetEmployee.firstName} ${log.targetEmployee.lastName || ''}`.trim();
+                        const firstName = log.targetEmployee.firstName || '';
+                        const lastName = log.targetEmployee.lastName || '';
+                        const targetName = `${firstName} ${lastName}`.trim();
                         details += ` (Afec. a ${targetName})`;
                     }
                 } catch (e) {

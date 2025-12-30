@@ -9,7 +9,9 @@
         "build": "tsc",
         "prisma:generate": "prisma generate --schema=../database/prisma/schema.prisma",
         "prisma:migrate": "prisma migrate dev --schema=../database/prisma/schema.prisma",
-        "seed:admin": "ts-node src/scripts/seed-admin.ts"
+        "seed:admin": "ts-node src/scripts/seed-admin.ts",
+        "seed:profiles": "ts-node src/scripts/seed-profiles.ts",
+        "seed:data": "ts-node src/scripts/populate_data.ts"
     },
     "dependencies": {
         "@prisma/client": "^5.x",

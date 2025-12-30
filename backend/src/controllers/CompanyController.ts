@@ -15,10 +15,13 @@ export const CompanyController = {
     },
 
     create: async (req: Request, res: Response) => {
-        const { name, cif, logoUrl } = req.body;
+        const { name, cif, logoUrl, legalRep, address, postalCode, city, province, country, email, phone } = req.body;
         try {
             const company = await prisma.company.create({
-                data: { name, cif }
+                data: {
+                    name, cif, logoUrl,
+                    legalRep, address, postalCode, city, province, country, email, phone
+                }
             });
             await AuditService.log('CREATE', 'COMPANY', company.id, { name });
             res.status(201).json(company);
@@ -29,13 +32,16 @@ export const CompanyController = {
 
     update: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const { name, cif, logoUrl } = req.body;
+        const { name, cif, logoUrl, legalRep, address, postalCode, city, province, country, email, phone } = req.body;
         try {
             const company = await prisma.company.update({
                 where: { id },
-                data: { name, cif, logoUrl }
+                data: {
+                    name, cif, logoUrl,
+                    legalRep, address, postalCode, city, province, country, email, phone
+                }
             });
-            await AuditService.log('UPDATE', 'COMPANY', id, { name, cif, logoUrl });
+            await AuditService.log('UPDATE', 'COMPANY', id, { name, cif });
             res.json(company);
         } catch (error) {
             res.status(500).json({ error: 'Error al actualizar la empresa' });

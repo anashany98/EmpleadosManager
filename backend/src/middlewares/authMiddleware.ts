@@ -3,15 +3,16 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-123';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET is not defined in environment variables.');
+}
 
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
     try {
         let token;
         if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
-        } else if (req.query.token) {
-            token = req.query.token as string;
         }
 
         if (!token) {

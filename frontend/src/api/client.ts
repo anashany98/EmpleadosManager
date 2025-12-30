@@ -1,6 +1,6 @@
-export const BASE_URL = 'http://192.168.1.38:3000';
+export const BASE_URL = import.meta.env.VITE_API_URL || '';
 export const API_URL = `${BASE_URL}/api`;
-console.log('API_URL being used (Hardcoded):', API_URL);
+// console.log('API_URL:', API_URL);
 
 const getHeaders = (isFormData = false) => {
     const headers: any = {};

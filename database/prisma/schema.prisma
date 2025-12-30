@@ -44,6 +44,14 @@ model Company {
   name      String
   cif       String     @unique
   logoUrl   String?
+  legalRep    String?    // Apoderado
+  address     String?
+  postalCode  String?
+  city        String?
+  province    String?
+  country     String?
+  email       String?
+  phone       String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   employees Employee[]

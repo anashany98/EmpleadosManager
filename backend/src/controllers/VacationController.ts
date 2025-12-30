@@ -94,6 +94,7 @@ export const VacationController = {
                     startDate: start,
                     endDate: end,
                     type: type || 'VACATION',
+                    days: diffDays,
                     reason: reason || null
                 }
             });

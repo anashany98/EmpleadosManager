@@ -14,5 +14,6 @@ router.get('/row/:rowId/breakdown', PayrollController.getBreakdown);
 router.post('/row/:rowId/breakdown', PayrollController.saveBreakdown);
 router.post('/manual', PayrollController.createManualPayroll);
 router.get('/employee/:employeeId', PayrollController.getEmployeePayrolls);
+router.get('/:id/pdf', PayrollController.downloadPdf);
 
 export default router;

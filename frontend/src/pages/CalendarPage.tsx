@@ -316,6 +316,31 @@ export default function CalendarPage() {
                                                 ))}
                                             </div>
                                         </div>
+
+                                        {vacationType === 'MEDICAL_HOURS' && (
+                                            <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
+                                                <label className="text-xs font-bold text-indigo-500 uppercase">Horas Médicas</label>
+                                                <input
+                                                    type="number"
+                                                    step="0.5"
+                                                    value={medicalHours}
+                                                    onChange={(e) => setMedicalHours(e.target.value)}
+                                                    placeholder="Ej: 2.5"
+                                                    className="w-full p-3 rounded-xl bg-indigo-50/50 border-indigo-100 dark:bg-slate-800 dark:border-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold transition-all"
+                                                />
+                                            </div>
+                                        )}
+
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-bold text-slate-500 uppercase">Observaciones</label>
+                                            <textarea
+                                                value={reason}
+                                                onChange={(e) => setReason(e.target.value)}
+                                                placeholder="Detalles opcionales..."
+                                                className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-medium transition-all resize-none h-20"
+                                            />
+                                        </div>
+
                                         <button className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:-translate-y-0.5 transition-all">Guardar Evento</button>
                                     </form>
                                 )}

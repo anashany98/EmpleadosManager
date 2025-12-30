@@ -33,15 +33,15 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
 
     const fetchEmployee = async () => {
         try {
-            const data = await api.get(`/employees/${employeeId}`);
-            setEmployeeData(data);
+            const res = await api.get(`/employees/${employeeId}`);
+            setEmployeeData(res.data || res);
         } catch (e) { console.error(e); }
     };
 
     const fetchVacations = async () => {
         try {
-            const data = await api.get(`/vacations/employee/${employeeId}`);
-            setVacations(data);
+            const res = await api.get(`/vacations/employee/${employeeId}`);
+            setVacations(res.data || res || []);
         } catch (e) { console.error(e); }
     };
 

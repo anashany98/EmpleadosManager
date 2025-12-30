@@ -5,173 +5,121 @@ const prisma = new PrismaClient();
 async function main() {
     console.log('Starting data population...');
 
-    const employees = await prisma.employee.findMany();
-    const companies = await prisma.company.findMany();
+    // 1. Ensure requested companies exist
+    const companyNames = ['Decoraciones Egea', 'Teoneg'];
+    const companyIds: string[] = [];
+
+    for (const name of companyNames) {
+        let company = await prisma.company.findFirst({ where: { name } });
+        if (!company) {
+            console.log(`Creating company: ${name}`);
+            company = await prisma.company.create({
+                data: {
+                    name,
+                    cif: 'B' + Math.floor(Math.random() * 100000000).toString(),
+                    // fiscalName, address, city, etc not in schema
+                }
+            });
+        }
+        companyIds.push(company.id);
+    }
+
     const users = await prisma.user.findMany();
-
-    if (employees.length === 0) {
-        console.log('No employees found to populate.');
-        return;
-    }
-
     const adminUser = users.find(u => u.role === 'ADMIN') || users[0];
-    const company = companies[0];
 
-    // 1. Create some Inventory Items if not exist
-    const inventoryItems = [
-        { name: 'MacBook Pro 14', category: 'TECH', quantity: 5, minQuantity: 2 },
-        { name: 'iPhone 15', category: 'TECH', quantity: 8, minQuantity: 3 },
-        { name: 'Casco de Seguridad', category: 'EPI', quantity: 15, minQuantity: 5 },
-        { name: 'Botas de Seguridad', category: 'EPI', quantity: 12, minQuantity: 4 },
-        { name: 'Taladro Percutor', category: 'TOOLS', quantity: 3, minQuantity: 1 },
-    ];
+    // Helper to generate random valid-ish DNI
+    const generateDNI = () => {
+        const num = Math.floor(Math.random() * 100000000);
+        const letters = "TRWAGMYFPDXBNJZSQVHLCKE";
+        return num.toString().padStart(8, '0') + letters[num % 23];
+    };
 
-    for (const item of inventoryItems) {
-        await prisma.inventoryItem.upsert({
-            where: { name_size: { name: item.name, size: '' } },
-            update: {},
-            create: {
-                ...item,
-                size: ''
-            }
-        });
-    }
+    // Helper for random names
+    const firstNames = ["Antonio", "Manuel", "Jose", "Francisco", "David", "Juan", "Javier", "Daniel", "Maria", "Carmen", "Ana", "Isabel", "Laura", "Cristina", "Marta", "Sara", "Lucia", "Elena", "Paula", "Raquel"];
+    const lastNames = ["Garcia", "Gonzalez", "Rodriguez", "Fernandez", "Lopez", "Martinez", "Sanchez", "Perez", "Gomez", "Martin", "Jimenez", "Ruiz", "Hernandez", "Diaz", "Moreno", "Muñoz", "Alvarez", "Romero"];
 
-    const dbItems = await prisma.inventoryItem.findMany();
+    // 2. Create 20 Employees
+    console.log('Generating 20 new employees...');
 
-    // 1.5 Add some random movements for the inventory items
-    console.log('Adding inventory movements...');
-    for (const item of dbItems) {
-        await prisma.inventoryMovement.create({
-            data: {
-                inventoryItemId: item.id,
-                type: 'ENTRY',
-                quantity: 10,
-                userId: adminUser?.id || 'system',
-                notes: 'Carga inicial de stock para inventario.'
-            }
-        });
-    }
-
-    // 1.6 Create a dummy Payroll Batch
-    console.log('Creating mock payroll batch...');
+    // Create a mock batch for their payrolls
     const batch = await prisma.payrollImportBatch.create({
         data: {
-            sourceFilename: 'Nominas_Diciembre_2025.xlsx',
-            month: 12,
-            year: 2025,
+            sourceFilename: 'Nominas_Generadas_Auto.xlsx',
+            month: new Date().getMonth() + 1,
+            year: new Date().getFullYear(),
             status: 'COMPLETED',
             createdById: adminUser?.id || 'system',
-            notes: 'Importación mensual de nóminas'
+            notes: 'Batch generado automáticamente para nuevos empleados'
         }
     });
 
-    // 2. Populate for each employee
-    for (const emp of employees) {
-        const fullName = `${emp.firstName || ''} ${emp.lastName || ''}`.trim() || 'Empleado Sin Nombre';
-        console.log(`Populating data for: ${fullName}`);
+    for (let i = 0; i < 20; i++) {
+        const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+        const lastName = lastNames[Math.floor(Math.random() * lastNames.length)] + " " + lastNames[Math.floor(Math.random() * lastNames.length)];
+        const fullName = `${firstName} ${lastName}`;
+        const dni = generateDNI();
+        const companyId = companyIds[Math.floor(Math.random() * companyIds.length)]; // Randomly assign to one of the 2 companies
 
-        // Update DNI/License expiration to trigger alerts for some
-        const randomDays = Math.floor(Math.random() * 60) - 10;
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + randomDays);
+        // Ensure unique subaccount
+        const subaccount = '465' + Math.floor(Math.random() * 10000).toString().padStart(4, '0');
 
-        await prisma.employee.update({
-            where: { id: emp.id },
+        const employee = await prisma.employee.create({
             data: {
-                dniExpiration: Math.random() > 0.5 ? expiryDate : emp.dniExpiration,
-                drivingLicenseExpiration: Math.random() > 0.7 ? new Date(expiryDate.getTime() + 10000000) : emp.drivingLicenseExpiration
+                name: fullName,
+                firstName: firstName,
+                lastName: lastName,
+                dni: dni,
+                subaccount465: subaccount,
+                email: `${firstName.toLowerCase()}.${lastName.split(' ')[0].toLowerCase()}${Math.floor(Math.random() * 100)}@email.com`,
+                phone: '6' + Math.floor(Math.random() * 100000000).toString(),
+                address: `C/ Aleatoria ${Math.floor(Math.random() * 100)}, ${Math.floor(Math.random() * 10)}º ${['A', 'B', 'C'][Math.floor(Math.random() * 3)]}`,
+                city: 'Madrid',
+                postalCode: '2800' + Math.floor(Math.random() * 9),
+                province: 'Madrid',
+                socialSecurityNumber: '28' + Math.floor(Math.random() * 10000000000).toString(),
+                iban: 'ES' + Math.floor(Math.random() * 100) + ' ' + Math.floor(Math.random() * 10000) + ' ' + Math.floor(Math.random() * 10000) + ' ' + Math.floor(Math.random() * 10000) + ' ' + Math.floor(Math.random() * 10000),
+                gender: Math.random() > 0.5 ? 'MALE' : 'FEMALE',
+                birthDate: new Date(1970 + Math.floor(Math.random() * 30), Math.floor(Math.random() * 12), Math.floor(Math.random() * 28)),
+                entryDate: new Date(2020 + Math.floor(Math.random() * 4), Math.floor(Math.random() * 12), Math.floor(Math.random() * 28)),
+                department: ['Ventas', 'Administración', 'Técnico', 'Almacén'][Math.floor(Math.random() * 4)],
+                jobTitle: ['Técnico', 'Administrativo', 'Gerente', 'Operario'][Math.floor(Math.random() * 4)],
+                contractType: ['Indefinido', 'Temporal', 'Prácticas'][Math.floor(Math.random() * 3)],
+                companyId: companyId,
+                active: true,
+                // Add some realistic expiration dates
+                dniExpiration: new Date(new Date().setFullYear(new Date().getFullYear() + Math.floor(Math.random() * 5))),
             }
         });
 
-        // Add Vacations
-        await prisma.vacation.create({
-            data: {
-                employeeId: emp.id,
-                startDate: new Date('2025-11-01'),
-                endDate: new Date('2025-11-10'),
-                type: 'VACATION',
-                status: 'APPROVED',
-                reason: 'Vacaciones de invierno'
-            }
-        });
-
-        if (Math.random() > 0.7) {
-            const today = new Date();
-            const endDate = new Date();
-            endDate.setDate(today.getDate() + 5);
-            await prisma.vacation.create({
-                data: {
-                    employeeId: emp.id,
-                    startDate: today,
-                    endDate: endDate,
-                    type: 'VACATION',
-                    status: 'APPROVED',
-                    reason: 'Viaje personal'
-                }
-            });
-        }
-
-        // Add Assets
-        const techItem = dbItems.find(i => i.category === 'TECH');
-        if (techItem) {
-            await prisma.asset.create({
-                data: {
-                    employeeId: emp.id,
-                    category: 'TECH',
-                    name: techItem.name,
-                    serialNumber: `SN-${Math.random().toString(36).substring(2, 10).toUpperCase()}`,
-                    status: 'ASSIGNED',
-                    assignedDate: new Date(),
-                    inventoryItemId: techItem.id
-                }
-            });
-        }
+        console.log(`Created employee: ${fullName} (${dni}) assigned to company ID: ${companyId}`);
 
         // Add Payroll Row
         await prisma.payrollRow.create({
             data: {
                 batchId: batch.id,
-                employeeId: emp.id,
+                employeeId: employee.id,
                 rawEmployeeName: fullName,
-                bruto: 2500 + Math.random() * 500,
-                neto: 1800 + Math.random() * 400,
-                irpf: 400 + Math.random() * 100,
-                ssEmpresa: 800 + Math.random() * 100,
-                ssTrabajador: 150 + Math.random() * 50,
+                bruto: 1500 + Math.random() * 1500,
+                neto: 1200 + Math.random() * 1000,
+                irpf: 200 + Math.random() * 300,
+                ssEmpresa: 500 + Math.random() * 200,
+                ssTrabajador: 100 + Math.random() * 100,
                 status: 'COMPLETED'
             }
         });
 
-        // Add some Documents
-        const docCategories = ['CONTRACT', 'PRL', 'PAYROLL'];
-        for (const cat of docCategories) {
-            await prisma.document.create({
+        // Add Vacation request
+        if (Math.random() > 0.3) {
+            await prisma.vacation.create({
                 data: {
-                    employeeId: emp.id,
-                    name: `${cat}_${emp.lastName || 'Doc'}.pdf`,
-                    category: cat,
-                    fileUrl: `/uploads/documents/placeholder.pdf`,
-                    uploadDate: new Date()
+                    employeeId: employee.id,
+                    startDate: new Date(2025, 6, 1 + Math.floor(Math.random() * 15)), // July
+                    endDate: new Date(2025, 6, 15 + Math.floor(Math.random() * 15)),
+                    type: 'VACATION',
+                    status: Math.random() > 0.5 ? 'APPROVED' : 'PENDING',
+                    reason: 'Vacaciones de verano'
                 }
             });
-        }
-
-        // Add some random activity logs
-        const actions = ['ACCESO_RECIBO', 'DESCARGA_DOCUMENTO', 'SOLICITUD_VACACIONES'];
-        for (const action of actions) {
-            if (Math.random() > 0.5) {
-                await prisma.auditLog.create({
-                    data: {
-                        userId: adminUser?.id || 'system',
-                        action,
-                        entity: 'Employee',
-                        entityId: emp.id,
-                        targetEmployeeId: emp.id,
-                        metadata: JSON.stringify({ device: 'Chrome / Windows', timestamp: new Date().toISOString() })
-                    }
-                });
-            }
         }
     }
 

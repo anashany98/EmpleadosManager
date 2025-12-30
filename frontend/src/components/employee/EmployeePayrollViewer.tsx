@@ -22,6 +22,7 @@ export default function EmployeePayrollViewer({ employeeId }: { employeeId: stri
     const [payrolls, setPayrolls] = useState<PayrollRow[]>([]);
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [selectedPayroll, setSelectedPayroll] = useState<PayrollRow | null>(null);
     const [newPayroll, setNewPayroll] = useState({
         month: '',
         year: new Date().getFullYear().toString(),
@@ -144,10 +145,41 @@ export default function EmployeePayrollViewer({ employeeId }: { employeeId: stri
                             </div>
 
                             <div className="flex gap-2 w-full md:w-auto">
-                                <button className="flex-1 md:flex-none px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-slate-700 dark:text-slate-200 text-sm font-medium transition-colors">
+                                <button
+                                    onClick={() => setSelectedPayroll(payroll)}
+                                    className="flex-1 md:flex-none px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-lg text-slate-700 dark:text-slate-200 text-sm font-medium transition-colors"
+                                >
                                     Ver Detalle
                                 </button>
-                                <button className="flex-1 md:flex-none px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2">
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            toast.info('Generando PDF...');
+                                            const res = await api.get(`/payroll/${payroll.id}/pdf`, { responseType: 'blob' });
+
+                                            // Check if response is actually a JSON error
+                                            if (res.type === 'application/json') {
+                                                const text = await res.text();
+                                                const json = JSON.parse(text);
+                                                throw new Error(json.message || 'Error al generar PDF');
+                                            }
+
+                                            const url = window.URL.createObjectURL(new Blob([res]));
+                                            const link = document.createElement('a');
+                                            link.href = url;
+                                            link.setAttribute('download', `Nomina_${payroll.batch.month}_${payroll.batch.year}.pdf`);
+                                            document.body.appendChild(link);
+                                            link.click();
+                                            link.parentNode?.removeChild(link);
+                                            window.URL.revokeObjectURL(url);
+                                            toast.success('PDF descargado');
+                                        } catch (error: any) {
+                                            console.error('PDF Download Error:', error);
+                                            toast.error(error.message || 'Error al descargar PDF');
+                                        }
+                                    }}
+                                    className="flex-1 md:flex-none px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                >
                                     <Download size={16} /> PDF
                                 </button>
                             </div>
@@ -225,6 +257,95 @@ export default function EmployeePayrollViewer({ employeeId }: { employeeId: stri
                             >
                                 Guardar
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {selectedPayroll && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-lg p-6 shadow-xl animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Desglose de Nómina</h3>
+                                <p className="text-sm text-slate-500 capitalize">
+                                    {getMonthName(selectedPayroll.batch.month)} {selectedPayroll.batch.year}
+                                </p>
+                            </div>
+                            <button onClick={() => setSelectedPayroll(null)} className="text-slate-400 hover:text-slate-600">×</button>
+                        </div>
+
+                        <div className="space-y-6">
+                            {/* Summary Cards */}
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl">
+                                    <div className="text-sm text-slate-500 mb-1">Total Devengado</div>
+                                    <div className="text-2xl font-bold text-slate-900 dark:text-white">{formatCurrency(selectedPayroll.bruto)}</div>
+                                </div>
+                                <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-xl">
+                                    <div className="text-sm text-blue-600 dark:text-blue-400 mb-1">Líquido a Percibir</div>
+                                    <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">{formatCurrency(selectedPayroll.neto)}</div>
+                                </div>
+                            </div>
+
+                            {/* Deductions Breakdown */}
+                            <div className="space-y-3">
+                                <h4 className="text-sm font-medium text-slate-900 dark:text-white border-b pb-2">Deducciones y Aportaciones</h4>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">SS Empresa</span>
+                                    <span className="font-medium">{formatCurrency(selectedPayroll.ssEmpresa)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">SS Trabajador</span>
+                                    <span className="font-medium text-red-600">-{formatCurrency(selectedPayroll.ssTrabajador)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="text-slate-500">IRPF</span>
+                                    <span className="font-medium text-red-600">-{formatCurrency(selectedPayroll.irpf)}</span>
+                                </div>
+                            </div>
+
+                            {/* Detailed Items Table */}
+                            {selectedPayroll.items && selectedPayroll.items.length > 0 ? (
+                                <div className="border rounded-lg overflow-hidden">
+                                    <table className="w-full text-sm">
+                                        <thead className="bg-slate-50 dark:bg-slate-800 text-slate-500">
+                                            <tr>
+                                                <th className="px-4 py-2 text-left font-medium">Concepto</th>
+                                                <th className="px-4 py-2 text-right font-medium">Importe</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                                            {selectedPayroll.items.map((item: any, idx) => (
+                                                <tr key={idx}>
+                                                    <td className="px-4 py-2 text-slate-700 dark:text-slate-300">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`w-2 h-2 rounded-full ${item.type === 'EARNING' ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                                            {item.concept}
+                                                        </div>
+                                                    </td>
+                                                    <td className={`px-4 py-2 text-right font-medium ${item.type === 'EARNING' ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {item.type === 'EARNING' ? '+' : '-'}{formatCurrency(item.amount)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            ) : (
+                                <div className="text-center p-4 bg-slate-50 rounded-lg text-slate-500 text-sm italic">
+                                    No hay detalle de conceptos disponible para esta nómina.
+                                </div>
+                            )}
+
+                            <div className="flex justify-end pt-4">
+                                <button
+                                    onClick={() => setSelectedPayroll(null)}
+                                    className="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -4,6 +4,7 @@ import { ExcelParser } from '../services/ExcelParser';
 import { MappingService } from '../services/MappingService';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AuditService } from '../services/AuditService';
+import { PayrollPdfService } from '../services/PayrollPdfService';
 import fs from 'fs';
 
 
@@ -210,6 +211,67 @@ export const PayrollController = {
         } catch (error: any) {
             console.error(error);
             return ApiResponse.error(res, 'Error al crear nómina manual', 500);
+        }
+    },
+
+    downloadPdf: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        try {
+            const payroll = await prisma.payrollRow.findUnique({
+                where: { id },
+                include: {
+                    batch: true,
+                    employee: {
+                        include: { company: true }
+                    },
+                    items: true
+                }
+            });
+
+            if (!payroll) return ApiResponse.error(res, 'Nómina no encontrada', 404);
+            if (!payroll.employee) return ApiResponse.error(res, 'Empleado no asociado a la nómina', 400);
+
+            // Default company if missing
+            const companyData = payroll.employee.company;
+
+            const pdfBuffer = await PayrollPdfService.generate(res, {
+                id: payroll.id,
+                month: payroll.batch.month,
+                year: payroll.batch.year,
+                bruto: Number(payroll.bruto),
+                neto: Number(payroll.neto),
+                ssEmpresa: Number(payroll.ssEmpresa),
+                ssTrabajador: Number(payroll.ssTrabajador),
+                irpf: Number(payroll.irpf),
+                company: {
+                    name: companyData?.name || 'Empresa Genérica S.L.',
+                    cif: companyData?.cif || 'B00000000',
+                    address: (companyData as any)?.address || 'Calle Sin Dirección',
+                    city: (companyData as any)?.city || 'Madrid',
+                    postalCode: (companyData as any)?.postalCode || '28000'
+                },
+                employee: {
+                    name: payroll.employee.name,
+                    dni: payroll.employee.dni,
+                    socialSecurityNumber: payroll.employee.socialSecurityNumber || '',
+                    jobTitle: payroll.employee.jobTitle || 'Empleado',
+                    category: payroll.employee.category || undefined,
+                    seniorityDate: payroll.employee.entryDate || undefined
+                },
+                items: payroll.items.map(i => ({
+                    concept: i.concept,
+                    amount: Number(i.amount),
+                    type: i.type as 'EARNING' | 'DEDUCTION'
+                }))
+            });
+
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', `attachment; filename=Nomina_${payroll.batch.month}_${payroll.batch.year}_${payroll.employee.dni}.pdf`);
+            res.send(pdfBuffer);
+
+        } catch (error: any) {
+            console.error('PDF Generation Error:', error);
+            return ApiResponse.error(res, 'Error al generar el PDF', 500);
         }
     }
 };

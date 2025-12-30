@@ -53,6 +53,11 @@ import { inventoryRoutes } from './routes/inventoryRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 
 // Rutas API
+import fileRoutes from './routes/fileRoutes';
+
+// ... other imports
+
+// Rutas API
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/permission-profiles', permissionProfileRoutes);
@@ -60,9 +65,11 @@ app.use('/api/document-templates', documentTemplateRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/notifications', notificationRoutes);
+// Secure Files
+app.use('/api/files', fileRoutes);
 
 // Static folders
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
+// app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'))); // REMOVED FOR SECURITY
 app.use('/inbox', express.static(path.join(process.cwd(), 'data/inbox')));
 app.use('/assets', express.static(path.join(process.cwd(), 'assets')));
 
@@ -93,3 +100,16 @@ app.use(errorMiddleware);
 app.listen(Number(PORT), '0.0.0.0', () => {
     console.log(`Backend running on http://0.0.0.0:${PORT}`);
 });
+// Trigger restart 2
+
+// Trigger restart 3
+
+// Trigger restart 4
+
+// Trigger restart 5
+
+// Trigger restart 6
+
+// Trigger restart 7
+
+// Trigger restart 8

@@ -59,7 +59,7 @@ export function WhosOutWidget({ data }: WhosOutWidgetProps) {
                             <div className="flex-1 min-w-0">
                                 <p className="font-semibold text-sm text-slate-900 dark:text-white truncate">{emp.name}</p>
                                 <p className="text-xs text-slate-500 flex items-center gap-1">
-                                    {emp.department} •
+                                    {emp.department ? emp.department.charAt(0).toUpperCase() + emp.department.slice(1).toLowerCase() : 'Departamento desconocido'} •
                                     <span className="text-slate-400">Vuelve: {new Date(emp.returnDate).toLocaleDateString()}</span>
                                 </p>
                             </div>
