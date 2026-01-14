@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { WhosOutWidget } from './WhosOutWidget';
+import TimeTrackerWidget from '../TimeTrackerWidget';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface OverviewTabProps {
     selectedCompany: string;
@@ -12,6 +14,8 @@ interface OverviewTabProps {
 }
 
 export default function OverviewTab({ selectedCompany, metrics }: OverviewTabProps) {
+    const { user } = useAuth();
+    const isEmployee = user?.role === 'employee';
     const [insights, setInsights] = useState<any[]>([]);
     const [currentInsightIndex, setCurrentInsightIndex] = useState(0);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -80,7 +84,7 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
     return (
         <div className="flex flex-col md:grid md:grid-cols-12 md:grid-rows-12 gap-4 pb-4 flex-1 min-h-0 animate-in fade-in duration-500">
             {/* Stats Row */}
-            {stats.map((stat, idx) => (
+            {!isEmployee && stats.map((stat, idx) => (
                 <motion.div
                     key={idx}
                     initial={{ opacity: 0, y: 20 }}
@@ -99,114 +103,145 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
             ))}
 
             {/* AI Insight Card */}
-            <div className="col-span-12 md:col-span-3 row-span-2 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[1.5rem] p-4 text-white relative overflow-hidden group shadow-lg shadow-indigo-500/20 min-h-[120px]">
-                <Sparkles className="absolute top-2 right-2 text-white/10 group-hover:scale-125 transition-transform duration-500" size={50} />
-                <div className="relative z-10 flex flex-col h-full justify-center">
-                    <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-1.5 text-indigo-200">
-                            <Sparkles size={12} className="text-amber-300" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest">Insight</span>
-                        </div>
-                        {insights.length > 1 && (
-                            <div className="flex gap-1">
-                                {insights.map((_, i) => (
-                                    <div key={i} className={`w-1 h-1 rounded-full transition-all ${i === currentInsightIndex ? 'bg-white w-2' : 'bg-white/30'}`} />
-                                ))}
+            {!isEmployee && (
+                <div className="col-span-12 md:col-span-3 row-span-2 bg-gradient-to-br from-indigo-600 to-violet-700 rounded-[1.5rem] p-4 text-white relative overflow-hidden group shadow-lg shadow-indigo-500/20 min-h-[120px]">
+                    <Sparkles className="absolute top-2 right-2 text-white/10 group-hover:scale-125 transition-transform duration-500" size={50} />
+                    <div className="relative z-10 flex flex-col h-full justify-center">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-1.5 text-indigo-200">
+                                <Sparkles size={12} className="text-amber-300" />
+                                <span className="text-[10px] font-bold uppercase tracking-widest">Insight</span>
                             </div>
-                        )}
-                    </div>
+                            {insights.length > 1 && (
+                                <div className="flex gap-1">
+                                    {insights.map((_, i) => (
+                                        <div key={i} className={`w-1 h-1 rounded-full transition-all ${i === currentInsightIndex ? 'bg-white w-2' : 'bg-white/30'}`} />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
 
-                    <AnimatePresence mode="wait">
-                        <motion.div
-                            key={currentInsightIndex}
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                            transition={{ duration: 0.3 }}
-                            className="min-h-[3rem]"
-                        >
-                            <h5 className="text-[10px] font-bold text-indigo-200 mb-0.5 uppercase tracking-wide">
-                                {currentInsight?.title || 'Analizando...'}
-                            </h5>
-                            <p className="text-xs font-medium leading-relaxed opacity-90 line-clamp-2">
-                                {currentInsight?.message || 'Escaneando datos de la empresa...'}
-                            </p>
-                        </motion.div>
-                    </AnimatePresence>
+                        <AnimatePresence mode="wait">
+                            <motion.div
+                                key={currentInsightIndex}
+                                initial={{ opacity: 0, x: 20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                exit={{ opacity: 0, x: -20 }}
+                                transition={{ duration: 0.3 }}
+                                className="min-h-[3rem]"
+                            >
+                                <h5 className="text-[10px] font-bold text-indigo-200 mb-0.5 uppercase tracking-wide">
+                                    {currentInsight?.title || 'Analizando...'}
+                                </h5>
+                                <p className="text-xs font-medium leading-relaxed opacity-90 line-clamp-2">
+                                    {currentInsight?.message || 'Escaneando datos de la empresa...'}
+                                </p>
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
                 </div>
-            </div>
+            )}
 
             {/* Activity Table - Takes Main Left Area */}
-            <div className="col-span-12 md:col-span-8 row-span-10 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col shadow-sm min-h-[400px]">
-                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
-                    <div className="flex gap-4 text-sm font-medium text-slate-500">
-                        <button
-                            onClick={() => setActivityTab('BATCHES')}
-                            className={`pb-2 -mb-2.5 border-b-2 transition-colors ${activityTab === 'BATCHES' ? 'border-blue-500 text-blue-600' : 'border-transparent hover:text-slate-700'}`}
-                        >
-                            Nóminas Recientes
-                        </button>
-                        <button
-                            onClick={() => setActivityTab('AUDIT')}
-                            className={`pb-2 -mb-2.5 border-b-2 transition-colors ${activityTab === 'AUDIT' ? 'border-emerald-500 text-emerald-600' : 'border-transparent hover:text-slate-700'}`}
-                        >
-                            Actividad
-                        </button>
-                    </div>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                    {activityTab === 'BATCHES' ? (
-                        <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-50/50 dark:bg-slate-800/20 text-slate-500 sticky top-0">
-                                <tr>
-                                    <th className="px-4 py-3 font-medium">Archivo</th>
-                                    <th className="px-4 py-3 font-medium text-right">Estado</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                                {recentBatches.map((batch) => (
-                                    <tr key={batch.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-slate-900 dark:text-slate-200">{batch.name}</div>
-                                            <div className="text-[10px] text-slate-400 mt-0.5">{batch.date} • {batch.rows} empleados</div>
-                                        </td>
-                                        <td className="px-4 py-3 text-right">
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800">
-                                                {batch.status}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    ) : (
-                        <div className="p-4 space-y-4">
-                            {auditLogs.map((log, idx) => (
-                                <div key={idx} className="flex gap-3 text-xs group">
-                                    <div className="flex flex-col items-center">
-                                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 group-hover:scale-125 transition-transform"></div>
-                                        {idx !== auditLogs.length - 1 && <div className="w-px h-full bg-slate-200 dark:bg-slate-800 my-1 group-hover:bg-blue-200 dark:group-hover:bg-blue-900 transition-colors"></div>}
-                                    </div>
-                                    <div className="pb-2">
-                                        <p className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{log.action}</p>
-                                        <span className="text-slate-400 text-[10px]">{new Date(log.createdAt).toLocaleTimeString()}</span>
-                                    </div>
-                                </div>
-                            ))}
+            <div className={`${isEmployee ? 'col-span-12 md:col-span-8' : 'col-span-12 md:col-span-8'} row-span-10 bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 overflow-hidden flex flex-col shadow-sm min-h-[400px]`}>
+                {!isEmployee ? (
+                    <>
+                        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center shrink-0">
+                            <div className="flex gap-4 text-sm font-medium text-slate-500">
+                                <button
+                                    onClick={() => setActivityTab('BATCHES')}
+                                    className={`pb-2 -mb-2.5 border-b-2 transition-colors ${activityTab === 'BATCHES' ? 'border-blue-500 text-blue-600' : 'border-transparent hover:text-slate-700'}`}
+                                >
+                                    Nóminas Recientes
+                                </button>
+                                <button
+                                    onClick={() => setActivityTab('AUDIT')}
+                                    className={`pb-2 -mb-2.5 border-b-2 transition-colors ${activityTab === 'AUDIT' ? 'border-emerald-500 text-emerald-600' : 'border-transparent hover:text-slate-700'}`}
+                                >
+                                    Actividad
+                                </button>
+                            </div>
                         </div>
-                    )}
-                </div>
+                        <div className="flex-1 overflow-y-auto">
+                            {activityTab === 'BATCHES' ? (
+                                <table className="w-full text-left text-xs">
+                                    <thead className="bg-slate-50/50 dark:bg-slate-800/20 text-slate-500 sticky top-0">
+                                        <tr>
+                                            <th className="px-4 py-3 font-medium">Archivo</th>
+                                            <th className="px-4 py-3 font-medium text-right">Estado</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
+                                        {recentBatches.map((batch) => (
+                                            <tr key={batch.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                                                <td className="px-4 py-3">
+                                                    <div className="font-medium text-slate-900 dark:text-slate-200">{batch.name}</div>
+                                                    <div className="text-[10px] text-slate-400 mt-0.5">{batch.date} • {batch.rows} empleados</div>
+                                                </td>
+                                                <td className="px-4 py-3 text-right">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800">
+                                                        {batch.status}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className="p-4 space-y-4">
+                                    {auditLogs.map((log, idx) => (
+                                        <div key={idx} className="flex gap-3 text-xs group">
+                                            <div className="flex flex-col items-center">
+                                                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 mt-1.5 group-hover:scale-125 transition-transform"></div>
+                                                {idx !== auditLogs.length - 1 && <div className="w-px h-full bg-slate-200 dark:bg-slate-800 my-1 group-hover:bg-blue-200 dark:group-hover:bg-blue-900 transition-colors"></div>}
+                                            </div>
+                                            <div className="pb-2">
+                                                <p className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{log.action}</p>
+                                                <span className="text-slate-400 text-[10px]">{new Date(log.createdAt).toLocaleTimeString()}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <div className="p-8 flex flex-col items-center justify-center h-full text-center">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-full mb-6">
+                            <Sparkles size={48} className="text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">¡Hola, {user?.email.split('@')[0]}!</h3>
+                        <p className="text-slate-500 dark:text-slate-400 max-w-sm">
+                            Bienvenido a tu panel personal. Aquí puedes gestionar tus fichajes, ver tus vacaciones y acceder a tus documentos.
+                        </p>
+                        <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-md">
+                            <Link to="/profile" className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-blue-500 transition-all text-center">
+                                <Users className="mx-auto mb-2 text-blue-500" size={24} />
+                                <span className="text-xs font-bold block text-slate-700 dark:text-slate-200">Mi Perfil</span>
+                            </Link>
+                            <Link to="/vacations" className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-blue-500 transition-all text-center">
+                                <Clock className="mx-auto mb-2 text-emerald-500" size={24} />
+                                <span className="text-xs font-bold block text-slate-700 dark:text-slate-200">Vacaciones</span>
+                            </Link>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Right Column Stack */}
-            <div className="col-span-12 md:col-span-4 row-span-10 grid grid-rows-2 gap-4 h-full">
+            <div className="col-span-12 md:col-span-4 row-span-10 flex flex-col gap-4 h-full">
+                {/* Time Tracker Widget */}
+                <div className="shrink-0">
+                    <TimeTrackerWidget />
+                </div>
+
                 {/* Who's Out Widget */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-1 shadow-sm flex flex-col overflow-hidden h-full">
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-1 shadow-sm flex flex-col overflow-hidden flex-1 min-h-[150px]">
                     <WhosOutWidget data={absencesData} />
                 </div>
 
                 {/* Celebrations */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-5 shadow-sm overflow-hidden flex flex-col relative h-full">
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-5 shadow-sm overflow-hidden flex flex-col relative flex-1 min-h-[150px]">
                     <div className="flex items-center gap-2 mb-3 text-pink-500 shrink-0">
                         <Cake size={18} className="animate-bounce" />
                         <span className="text-xs font-bold uppercase tracking-widest">Celebraciones</span>

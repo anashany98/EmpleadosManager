@@ -77,6 +77,13 @@ export const EmployeeController = {
     // Obtener un empleado con su histórico
     getById: async (req: Request, res: Response) => {
         const { id } = req.params;
+        const user = (req as any).user;
+
+        // Security Check: Admin or Self
+        if (user.role !== 'admin' && user.employeeId !== id) {
+            return ApiResponse.error(res, 'No tienes permiso para ver este perfil', 403);
+        }
+
         try {
             const employee = await prisma.employee.findUnique({
                 where: { id },

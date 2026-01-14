@@ -17,16 +17,28 @@ const generateRefreshToken = () => {
 export const AuthController = {
     login: async (req: Request, res: Response) => {
         try {
-            const { email, password } = req.body;
+            const { email, dni, password, identifier } = req.body;
+            // Support 'identifier' generic field or specific email/dni fields
+            const loginId = identifier || email || dni;
 
-            if (!email || !password) {
-                throw new AppError('Por favor, proporciona email y contraseña', 400);
+            if (!loginId || !password) {
+                throw new AppError('Por favor, proporciona identificador y contraseña', 400);
             }
 
-            const user = await prisma.user.findUnique({ where: { email } });
+            // Search by Email OR DNI (trimmed and case-safe for DNI)
+            const trimmedId = loginId.trim();
+            const user = await prisma.user.findFirst({
+                where: {
+                    OR: [
+                        { email: trimmedId },
+                        { dni: trimmedId },
+                        { dni: trimmedId.toUpperCase() }
+                    ]
+                }
+            });
 
             if (!user || !(await bcrypt.compare(password, user.password))) {
-                throw new AppError('Email o contraseña incorrectos', 401);
+                throw new AppError('Credenciales incorrectas', 401);
             }
 
             // Generate Access Token
@@ -39,7 +51,6 @@ export const AuthController = {
             const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN);
 
             // Save Refresh Token to DB
-            // Using as any to bypass potential EPERM type generation issues
             await (prisma as any).refreshToken.create({
                 data: {
                     token: refreshToken,
@@ -58,6 +69,103 @@ export const AuthController = {
             }, 'Sesión iniciada correctamente');
         } catch (error: any) {
             return ApiResponse.error(res, error.message || 'Error al iniciar sesión', error.statusCode || 500);
+        }
+    },
+
+    // Generar/Habilitar Acceso para Empleado
+    generateAccess: async (req: Request, res: Response) => {
+        try {
+            const { employeeId } = req.body;
+
+            if (!employeeId) throw new AppError('ID de empleado requerido', 400);
+
+            const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+            if (!employee) throw new AppError('Empleado no encontrado', 404);
+            if (!employee.dni) throw new AppError('El empleado no tiene DNI registrado', 400);
+            if (!employee.email) throw new AppError('El empleado no tiene email personal para enviar las credenciales', 400);
+
+            // Generate Random Password
+            const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+            const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+            // Check if user exists linked to this employee or DNI
+            let user = await prisma.user.findFirst({
+                where: {
+                    OR: [
+                        { employeeId: employee.id },
+                        { dni: employee.dni }
+                    ]
+                }
+            });
+
+            if (user) {
+                // Update existing user
+                user = await prisma.user.update({
+                    where: { id: user.id },
+                    data: {
+                        password: hashedPassword,
+                        dni: employee.dni, // Ensure synced
+                        employeeId: employee.id
+                    }
+                });
+            } else {
+                // Create new user
+                // Check if email is taken by another user (shouldn't happen 1:1 usually but check safety)
+                const existingEmail = await prisma.user.findUnique({ where: { email: employee.email } });
+
+                if (existingEmail) {
+                    // Determine if we should link or fail. 
+                    // Failing is safer to avoid account hijacking or confusion.
+                    // But if the email matches, maybe it IS the user?
+                    if (existingEmail.dni && existingEmail.dni !== employee.dni) {
+                        throw new AppError('El email del empleado ya está asociado a otro usuario con diferente DNI', 400);
+                    }
+                    // If email exists but no DNI, maybe we upgrade it?
+                    // Let's UPDATE it to link it.
+                    user = await prisma.user.update({
+                        where: { id: existingEmail.id },
+                        data: {
+                            dni: employee.dni,
+                            employeeId: employee.id,
+                            password: hashedPassword
+                        }
+                    });
+                } else {
+                    user = await prisma.user.create({
+                        data: {
+                            email: employee.email,
+                            dni: employee.dni,
+                            password: hashedPassword,
+                            role: 'user', // Default role
+                            employeeId: employee.id,
+                            permissions: JSON.stringify({ dashboard: 'read', calendar: 'read' }) // Default permissions?
+                        }
+                    });
+                }
+            }
+
+            // SIMULATE EMAIL SENDING
+            console.log(`
+            ==================================================
+            [MOCK EMAIL SERVICE] SENDING TO: ${employee.email}
+            SUBJECT: Credenciales de Acceso - Portal del Empleado
+            --------------------------------------------------
+            Hola ${employee.name},
+
+            Se ha habilitado tu acceso al portal del empleado.
+            
+            Usuario (DNI): ${employee.dni}
+            Contraseña: ${tempPassword}
+
+            Accede aquí: http://localhost:5173/login
+            ==================================================
+            `);
+
+            return ApiResponse.success(res, { email: employee.email }, 'Acceso generado correctamente. Credenciales enviadas por correo.');
+
+        } catch (error: any) {
+            console.error(error);
+            return ApiResponse.error(res, error.message || 'Error al generar acceso', error.statusCode || 500);
         }
     },
 
@@ -144,6 +252,129 @@ export const AuthController = {
             return ApiResponse.success(res, null, 'Sesión cerrada correctamente');
         } catch (error: any) {
             return ApiResponse.error(res, error.message || 'Error al cerrar sesión', 500);
+        }
+    },
+
+    // --- SELF SERVICE PASSWORD RESET ---
+
+    requestPasswordReset: async (req: Request, res: Response) => {
+        try {
+            const { identifier } = req.body;
+            if (!identifier) throw new AppError('DNI o Email requerido', 400);
+            const trimmedId = identifier.trim();
+            // 1. Find Employee by DNI or Email (case-safe for DNI)
+            const employee = await prisma.employee.findFirst({
+                where: {
+                    OR: [
+                        { dni: trimmedId },
+                        { dni: trimmedId.toUpperCase() },
+                        { email: trimmedId }
+                    ]
+                }
+            });
+
+            if (!employee) {
+                // Security: Don't reveal if user exists. Fake success.
+                // But for debugging, we might log it.
+                console.log(`Password reset requested for "${trimmedId}" but no employee found.`);
+                return ApiResponse.success(res, null, 'Si los datos coinciden, recibirás un correo con las instrucciones.');
+            }
+
+            if (!employee.email) {
+                throw new AppError('El empleado no tiene un correo electrónico registrado. Contacta con RRHH.', 400);
+            }
+
+            // 2. Generate Reset Token (Short lived JWT)
+            // Payload contains employee ID, so we know who to activate/reset
+            const resetToken = jwt.sign({
+                sub: employee.id,
+                dni: employee.dni,
+                type: 'PASSWORD_RESET'
+            }, JWT_SECRET, { expiresIn: '15m' });
+
+            // 3. "Send" Email
+            const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+
+            console.log(`
+            ==================================================
+            PASSWORD RESET REQUEST FOR: ${employee.name} (${employee.email})
+            --------------------------------------------------
+            Link: ${resetLink}
+            ==================================================
+            `);
+
+            // In a real app, use nodemailer here.
+
+            return ApiResponse.success(res, { debugLink: resetLink }, 'Si los datos coinciden, recibirás un correo con las instrucciones.');
+
+        } catch (error: any) {
+            console.error(error);
+            return ApiResponse.error(res, error.message || 'Error al procesar la solicitud', 500);
+        }
+    },
+
+    resetPassword: async (req: Request, res: Response) => {
+        try {
+            const { token, newPassword } = req.body;
+
+            if (!token || !newPassword) {
+                throw new AppError('Token y nueva contraseña requeridos', 400);
+            }
+
+            // 1. Verify Token
+            let payload: any;
+            try {
+                payload = jwt.verify(token, JWT_SECRET);
+            } catch (e) {
+                throw new AppError('El enlace ha expirado o es inválido', 400);
+            }
+
+            if (payload.type !== 'PASSWORD_RESET' || !payload.sub) {
+                throw new AppError('Token inválido', 400);
+            }
+
+            const employeeId = payload.sub;
+
+            // 2. Find Employee
+            const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
+            if (!employee) throw new AppError('Empleado no encontrado', 404);
+
+            // 3. Find or Create User
+            let user = await prisma.user.findFirst({
+                where: {
+                    OR: [
+                        { employeeId: employee.id },
+                        { dni: employee.dni }
+                    ]
+                }
+            });
+
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+            if (user) {
+                // Update existing user
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: { password: hashedPassword }
+                });
+            } else {
+                // Create new user (Activation flow)
+                await prisma.user.create({
+                    data: {
+                        email: employee.email || `${employee.dni}@system.local`, // Fallback
+                        dni: employee.dni,
+                        password: hashedPassword,
+                        role: 'employee', // Default role
+                        employeeId: employee.id,
+                        permissions: JSON.stringify({}) // Default empty permissions
+                    }
+                });
+            }
+
+            return ApiResponse.success(res, null, 'Contraseña actualizada correctamente. Ya puedes iniciar sesión.');
+
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al restablecer contraseña', 400); // 400 likely for token errors
         }
     },
 

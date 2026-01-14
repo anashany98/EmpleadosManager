@@ -16,6 +16,8 @@ datasource db {
 model User {
   id          String               @id @default(uuid())
   email       String               @unique
+  dni         String?              @unique // Login alternative
+  employeeId  String?              // Link to specific employee record
   password    String
   role        String               @default("user")
   createdAt   DateTime             @default(now())
@@ -25,6 +27,7 @@ model User {
   exports     Export[]
   batches     PayrollImportBatch[]
   refreshTokens RefreshToken[]
+  notifications Notification[]
 }
 
 model RefreshToken {
@@ -417,26 +420,7 @@ model ContractExtension {
   @@index([employeeId])
 }
 
-model TimeEntry {
-  id         String    @id @default(uuid())
-  employeeId String
-  date       DateTime
-  checkIn    DateTime?
-  checkOut   DateTime?
-  lunchStart DateTime?
-  lunchEnd   DateTime?
-  totalHours Float     @default(0.0)
-  lunchHours Float     @default(0.0)
-  notes      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
-  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  @@unique([employeeId, date])
-  @@index([employeeId])
-  @@index([date])
-  @@index([employeeId, date])
-}
 
 model Alert {
   id          String    @id @default(uuid())
@@ -501,4 +485,30 @@ model Configuration {
   id    String @id @default("global")
   key   String @unique
   value String
+}
+
+model TimeEntry {
+  id         String   @id @default(uuid())
+  employeeId String
+  type       String   // IN, OUT, BREAK_START, BREAK_END, LUNCH_START, LUNCH_END
+  timestamp  DateTime @default(now())
+  latitude   Float?
+  longitude  Float?
+  location   String?
+  device     String?
+  
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, SUCCESS, WARNING, ERROR
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

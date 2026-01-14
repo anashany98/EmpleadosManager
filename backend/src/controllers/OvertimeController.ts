@@ -288,33 +288,69 @@ export const OvertimeController = {
 
                         console.log(`   ✅ RESULTADO: Total = ${totalHours.toFixed(2)} h(Fuente: ${presRaw ? 'Columna Pres' : 'Calculado'}, Pausa = ${lunchHours.toFixed(2)}h)`);
 
-                        // Crear o actualizar TimeEntry
-                        await prisma.timeEntry.upsert({
+                        // Sincronizar con el nuevo sistema de fichajes (TimeEntry)
+                        // Primero limpiamos posibles registros previos para este día para evitar duplicados en re-importaciones
+                        const startOfDay = new Date(date);
+                        startOfDay.setHours(0, 0, 0, 0);
+                        const endOfDay = new Date(date);
+                        endOfDay.setHours(23, 59, 59, 999);
+
+                        await prisma.timeEntry.deleteMany({
                             where: {
-                                employeeId_date: {
-                                    employeeId: employee.id,
-                                    date: normalizedDate
-                                }
-                            },
-                            update: {
-                                checkIn,
-                                checkOut,
-                                lunchStart: entrada2Raw ? lunchStart : null,
-                                lunchEnd: entrada2Raw ? lunchEnd : null,
-                                totalHours,
-                                lunchHours
-                            },
-                            create: {
                                 employeeId: employee.id,
-                                date: normalizedDate,
-                                checkIn,
-                                checkOut,
-                                lunchStart: entrada2Raw ? lunchStart : null,
-                                lunchEnd: entrada2Raw ? lunchEnd : null,
-                                totalHours,
-                                lunchHours
+                                timestamp: {
+                                    gte: startOfDay,
+                                    lte: endOfDay
+                                }
                             }
                         });
+
+                        // Crear registros de fichaje basados en las horas importadas
+                        const entriesToCreate = [];
+
+                        if (checkIn) {
+                            entriesToCreate.push({
+                                employeeId: employee.id,
+                                type: 'IN',
+                                timestamp: checkIn,
+                                location: 'Importado (Excel)',
+                                device: 'System Import'
+                            });
+                        }
+
+                        if (entrada2Raw && lunchStart && lunchEnd) {
+                            // Si hubo pausa partida
+                            entriesToCreate.push({
+                                employeeId: employee.id,
+                                type: 'LUNCH_START',
+                                timestamp: lunchStart,
+                                location: 'Importado (Excel)',
+                                device: 'System Import'
+                            });
+                            entriesToCreate.push({
+                                employeeId: employee.id,
+                                type: 'LUNCH_END',
+                                timestamp: lunchEnd,
+                                location: 'Importado (Excel)',
+                                device: 'System Import'
+                            });
+                        }
+
+                        if (checkOut) {
+                            entriesToCreate.push({
+                                employeeId: employee.id,
+                                type: 'OUT',
+                                timestamp: checkOut,
+                                location: 'Importado (Excel)',
+                                device: 'System Import'
+                            });
+                        }
+
+                        if (entriesToCreate.length > 0) {
+                            await prisma.timeEntry.createMany({
+                                data: entriesToCreate
+                            });
+                        }
                     }
 
                     // Crear OvertimeEntry solo si hay horas extras

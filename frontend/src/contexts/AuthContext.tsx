@@ -5,6 +5,7 @@ interface User {
     id: string;
     email: string;
     role: string;
+    employeeId?: string; // Linked employee ID
     permissions?: Record<string, 'none' | 'read' | 'write' | 'admin'>;
 }
 

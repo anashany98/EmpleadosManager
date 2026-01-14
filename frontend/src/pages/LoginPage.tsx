@@ -20,7 +20,7 @@ export default function LoginPage() {
         setError('');
 
         try {
-            const response = await api.post('/auth/login', { email, password });
+            const response = await api.post('/auth/login', { identifier: email, password });
             login(response.data.token, response.data.refreshToken, response.data.user);
             toast.success('¡Bienvenido de nuevo!');
             navigate('/');
@@ -75,15 +75,15 @@ export default function LoginPage() {
                         )}
 
                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase ml-1">Email</label>
+                            <label className="text-xs font-bold text-slate-500 uppercase ml-1">Email o DNI</label>
                             <div className="relative group">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors">
                                     <Mail size={18} />
                                 </span>
                                 <input
-                                    type="email"
+                                    type="text"
                                     required
-                                    placeholder="admin@empresa.com"
+                                    placeholder="admin@empresa.com o 12345678Z"
                                     className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl py-3 pl-12 pr-4 text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
@@ -106,6 +106,16 @@ export default function LoginPage() {
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
                             </div>
+                        </div>
+
+                        <div className="flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/request-reset')}
+                                className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+                            >
+                                ¿Activar cuenta o olvidaste tu contraseña?
+                            </button>
                         </div>
 
                         <button

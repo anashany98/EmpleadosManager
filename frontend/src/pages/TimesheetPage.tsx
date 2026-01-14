@@ -25,7 +25,12 @@ interface TimeEntry {
     };
 }
 
+import { useAuth } from '../contexts/AuthContext';
+
 export default function TimesheetPage() {
+    const { user } = useAuth();
+    const isAdmin = user?.role === 'admin';
+
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [entries, setEntries] = useState<TimeEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -33,6 +38,12 @@ export default function TimesheetPage() {
     const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+
+    useEffect(() => {
+        if (!isAdmin && user?.employeeId) {
+            setSelectedEmployee(user.employeeId);
+        }
+    }, [user, isAdmin]);
 
     useEffect(() => {
         fetchEmployees();
@@ -154,43 +165,47 @@ export default function TimesheetPage() {
             {/* Filters */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 p-6">
                 <div className="flex flex-wrap items-center gap-4">
-                    {/* Department Filter */}
-                    <div className="flex-1 min-w-[200px]">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                            Departamento
-                        </label>
-                        <select
-                            value={selectedDepartment}
-                            onChange={(e) => {
-                                setSelectedDepartment(e.target.value);
-                                setSelectedEmployee('all'); // Reset employee filter when department changes
-                            }}
-                            className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
-                        >
-                            <option value="all">Todos los departamentos</option>
-                            {departments.map(dept => (
-                                <option key={dept} value={dept}>{dept}</option>
-                            ))}
-                        </select>
-                    </div>
+                    {/* Department Filter - Admin Only */}
+                    {isAdmin && (
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                Departamento
+                            </label>
+                            <select
+                                value={selectedDepartment}
+                                onChange={(e) => {
+                                    setSelectedDepartment(e.target.value);
+                                    setSelectedEmployee('all'); // Reset employee filter when department changes
+                                }}
+                                className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
+                            >
+                                <option value="all">Todos los departamentos</option>
+                                {departments.map(dept => (
+                                    <option key={dept} value={dept}>{dept}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
-                    {/* Employee Filter */}
-                    <div className="flex-1 min-w-[250px]">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                            <User size={16} className="inline mr-1" />
-                            Empleado
-                        </label>
-                        <select
-                            value={selectedEmployee}
-                            onChange={(e) => setSelectedEmployee(e.target.value)}
-                            className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
-                        >
-                            <option value="all">Todos ({filteredEmployees.length})</option>
-                            {filteredEmployees.map(emp => (
-                                <option key={emp.id} value={emp.id}>{emp.name}</option>
-                            ))}
-                        </select>
-                    </div>
+                    {/* Employee Filter - Admin Only */}
+                    {isAdmin && (
+                        <div className="flex-1 min-w-[250px]">
+                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                                <User size={16} className="inline mr-1" />
+                                Empleado
+                            </label>
+                            <select
+                                value={selectedEmployee}
+                                onChange={(e) => setSelectedEmployee(e.target.value)}
+                                className="w-full px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-medium"
+                            >
+                                <option value="all">Todos ({filteredEmployees.length})</option>
+                                {filteredEmployees.map(emp => (
+                                    <option key={emp.id} value={emp.id}>{emp.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     {/* Month Navigation */}
                     <div>

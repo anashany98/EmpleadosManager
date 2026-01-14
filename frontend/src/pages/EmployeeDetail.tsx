@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
     ArrowLeft, Save, Loader2, CreditCard, Building,
-    Clock, Plus, Trash2, Scale
+    Clock, Plus, Trash2, Scale, ShieldCheck, Lock
 } from 'lucide-react';
+import { isHoliday } from '../utils/holidays';
 
 const PROVINCIAS = [
     'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias', 'Ávila', 'Badajoz', 'Baleares', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba', 'Cuenca', 'Gerona', 'Granada', 'Guadalajara', 'Guipúzcoa', 'Huelva', 'Huesca', 'Jaén', 'La Coruña', 'La Rioja', 'Las Palmas', 'León', 'Lérida', 'Lugo', 'Madrid', 'Málaga', 'Murcia', 'Navarra', 'Orense', 'Palencia', 'Pontevedra', 'Salamanca', 'Santa Cruz de Tenerife', 'Segovia', 'Sevilla', 'Soria', 'Tarragona', 'Teruel', 'Toledo', 'Valencia', 'Valladolid', 'Vizcaya', 'Zamora', 'Zaragoza', 'Ceuta', 'Melilla'
@@ -29,12 +30,23 @@ import EmployeeProjects from '../components/employee/EmployeeProjects';
 import DocumentGenerator from '../components/DocumentGenerator';
 import { useConfirm } from '../context/ConfirmContext';
 import EmployeePayrollViewer from '../components/employee/EmployeePayrollViewer';
+import { useAuth } from '../contexts/AuthContext';
 
-export default function EmployeeDetail() {
+export default function EmployeeDetail(props: { employeeId?: string }) {
     const confirmAction = useConfirm();
-    const { id } = useParams<{ id: string }>();
+    const { id: paramId } = useParams<{ id: string }>();
+    const { user } = useAuth();
+
+    // Support ID from props (for nested usage) or params
+    const id = (props as any).employeeId || paramId;
+
     const navigate = useNavigate();
     const isNew = id === 'new';
+
+    // Permissions
+    const isAdmin = user?.role === 'admin';
+    const isOwner = user?.employeeId === id;
+    const canEdit = isAdmin; // Only admin can edit for now
 
     const [isEditing, setIsEditing] = useState(isNew);
     const [loading, setLoading] = useState(!isNew);
@@ -233,42 +245,52 @@ export default function EmployeeDetail() {
                             </div>
                         </div>
                     </div>
-                    <div className="flex gap-3">
-                        <button
-                            onClick={async () => {
-                                const ok = await confirmAction({
-                                    title: 'Dar de Baja Empleado',
-                                    message: '¿Estás seguro de que deseas dar de baja a este empleado? Sus datos se conservarán en el sistema pero no aparecerán en el listado activo.',
-                                    confirmText: 'Dar de Baja',
-                                    type: 'danger'
-                                });
 
-                                if (ok) {
-                                    try {
-                                        await api.delete(`/employees/${id}`);
-                                        toast.success('Empleado dado de baja correctamente');
-                                        navigate('/employees');
-                                    } catch (err) {
-                                        toast.error('Error al dar de baja al empleado');
+                    {canEdit && (
+                        <div className="flex gap-3">
+                            <button
+                                onClick={async () => {
+                                    const ok = await confirmAction({
+                                        title: 'Dar de Baja Empleado',
+                                        message: '¿Estás seguro de que deseas dar de baja a este empleado? Sus datos se conservarán en el sistema pero no aparecerán en el listado activo.',
+                                        confirmText: 'Dar de Baja',
+                                        type: 'danger'
+                                    });
+
+                                    if (ok) {
+                                        try {
+                                            await api.delete(`/employees/${id}`);
+                                            toast.success('Empleado dado de baja correctamente');
+                                            navigate('/employees');
+                                        } catch (err) {
+                                            toast.error('Error al dar de baja al empleado');
+                                        }
                                     }
-                                }
-                            }}
-                            className="px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-semibold rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center gap-2 border border-rose-100 dark:border-rose-900/30"
-                        >
-                            <Trash2 size={18} />
-                            Dar de Baja
-                        </button>
-                        <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">
-                            Editar Perfil
-                        </button>
-                    </div>
+                                }}
+                                className="px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-semibold rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center gap-2 border border-rose-100 dark:border-rose-900/30"
+                            >
+                                <Trash2 size={18} />
+                                Dar de Baja
+                            </button>
+                            <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">
+                                Editar Perfil
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Tabs for View Mode */}
                 <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                     <div className="border-b border-slate-100 dark:border-slate-800">
                         <div className="flex overflow-x-auto">
-                            {['resumen', 'nominas', 'cronograma', 'generar', 'expediente', 'prl', 'obras', 'activos', 'checklists', 'fichajes', 'gastos', 'vacaciones', 'privacidad'].map((tab) => (
+                            {[
+                                'resumen',
+                                'nominas',
+                                'cronograma',
+                                ...(isAdmin ? ['generar', 'expediente', 'prl', 'obras', 'activos', 'checklists', 'seguridad', 'privacidad'] : ['prl']),
+                                'fichajes',
+                                'vacaciones'
+                            ].map((tab) => (
                                 <button
                                     key={tab}
                                     onClick={() => setActiveTab(tab)}
@@ -324,15 +346,16 @@ export default function EmployeeDetail() {
                                 {activeTab === 'activos' && <EmployeeAssets employeeId={id || ''} />}
                                 {activeTab === 'checklists' && <EmployeeChecklist employeeId={id || ''} />}
                                 {activeTab === 'fichajes' && <TimesheetViewer employeeId={id || ''} />}
-                                {activeTab === 'gastos' && <ExpenseManager employeeId={id || ''} isAdmin={true} />}
+                                {activeTab === 'gastos' && <ExpenseManager employeeId={id || ''} isAdmin={isAdmin} />}
                                 {activeTab === 'vacaciones' && <VacationCalendar employeeId={id || ''} />}
                                 {activeTab === 'nominas' && <EmployeePayrollViewer employeeId={id || ''} />}
+                                {activeTab === 'seguridad' && <SecuritySection employeeId={id || ''} employeeName={`${employeeView.firstName} ${employeeView.lastName}`} />}
                                 {activeTab === 'privacidad' && <PrivacySection employeeId={id || ''} employeeName={`${employeeView.firstName} ${employeeView.lastName}`} />}
                             </motion.div>
                         </AnimatePresence>
                     </div>
                 </div>
-            </div>
+            </div >
         );
     }
 
@@ -754,8 +777,6 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
 
     const currentRate = rateType === 'NORMAL' ? rateInfo.normal : rateInfo.holiday;
 
-    const currentRate = rateType === 'NORMAL' ? rateInfo.normal : rateInfo.holiday;
-
     // Auto-detect holiday/weekend
     useEffect(() => {
         if (!date) return;
@@ -763,20 +784,11 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
         const day = d.getDay();
         const isWeekend = day === 0 || day === 6;
 
-        // Import isHoliday dynamically or assume it's available in context/utils
-        // Since we are in the same project, we can just use the logic if we imported it, 
-        // but here we might need to import it at the top of the file. 
-        // For now, let's assume we can add the import or use a simple check if the import is missing.
-        // Ideally we should have imported { isHoliday } from '../../utils/holidays';
-        // But since I can't easily add imports to the top without reading the whole file again or risking merge conflicts if I don't see the top,
-        // I will trust the user to have the utils available or I'll implement a safe check.
-        // Wait, I can make a separate edit to add the import if needed.
-
-        // Actually, let's just use the logic here if we can't import easily, OR simpler:
-        // I should have added the import in a previous step or with this step.
-        // Let's check if I can add the import. I'll assume I can't change the top of the file easily in this specific replace block without being careful.
-        // However, looking at the previous view_file, there are no imports shown in the snippet (lines 746+).
-        // I will add the logic to useEffect, but I need `isHoliday`.
+        if (isWeekend || isHoliday(d)) {
+            setRateType('HOLIDAY');
+        } else {
+            setRateType('NORMAL');
+        }
     }, [date]);
 
     // RETRY: I need to add the import. I will do it in a separate block or try to target the import section if I viewed it.
@@ -804,13 +816,11 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
 
         // We'll trust the import is there (I will add it in the next tool call)
         // @ts-ignore
-        import('../../utils/holidays').then(({ isHoliday }) => {
-            if (isWeekend || isHoliday(d)) {
-                setRateType('HOLIDAY');
-            } else {
-                setRateType('NORMAL');
-            }
-        });
+        if (isWeekend || isHoliday(d)) {
+            setRateType('HOLIDAY');
+        } else {
+            setRateType('NORMAL');
+        }
     }, [date]);
 
     const fetchRateAndEntries = async () => {
@@ -1014,6 +1024,49 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+function SecuritySection({ employeeId, employeeName }: { employeeId: string, employeeName: string }) {
+    const [loading, setLoading] = useState(false);
+
+    const handleGenerateAccess = async () => {
+        setLoading(true);
+        try {
+            const res = await api.post('/auth/generate-access', { employeeId });
+            if (res.success) {
+                toast.success(`Acceso generado. Credenciales enviadas a: ${res.data.email}`);
+            }
+        } catch (error: any) {
+            toast.error(error.message || 'Error al generar acceso');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="space-y-6 max-w-2xl mx-auto">
+            <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl p-8 shadow-sm text-center">
+                <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <ShieldCheck size={32} className="text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Acceso al Portal del Empleado</h3>
+                <p className="text-slate-500 dark:text-slate-400 mb-8 max-w-md mx-auto">
+                    Genera o restablece las credenciales de acceso para <strong>{employeeName}</strong>.
+                    El sistema enviará automáticamente un correo electrónico con el DNI (usuario) y una nueva contraseña.
+                </p>
+
+                <button
+                    onClick={handleGenerateAccess}
+                    disabled={loading}
+                    className="w-full max-w-xs mx-auto py-3 bg-blue-600 text-white font-bold rounded-xl shadow-xl shadow-blue-500/20 hover:bg-blue-700 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 flex items-center justify-center gap-2"
+                >
+                    {loading ? <Loader2 className="animate-spin" size={20} /> : <Lock size={20} />}
+                    {loading ? 'Generando...' : 'Habilitar / Restablecer Acceso'}
+                </button>
+                <p className="text-xs text-slate-400 mt-4 font-medium uppercase tracking-wider">Se enviará un correo a la dirección personal</p>
             </div>
         </div>
     );

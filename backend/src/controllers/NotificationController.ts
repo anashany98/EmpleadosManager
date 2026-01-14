@@ -1,28 +1,66 @@
+
 import { Request, Response } from 'express';
-import { notificationService } from '../services/NotificationService';
-import { v4 as uuidv4 } from 'uuid';
+import { prisma } from '../lib/prisma';
+import { ApiResponse } from '../utils/ApiResponse';
+
+export const createNotification = async (userId: string, title: string, message: string, type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR' = 'INFO', link?: string) => {
+    try {
+        await prisma.notification.create({
+            data: { userId, title, message, type, link }
+        });
+    } catch (error) {
+        console.error('Error creating notification:', error);
+    }
+};
 
 export const NotificationController = {
-    stream: (req: Request, res: Response) => {
-        // SSE headers
-        res.writeHead(200, {
-            'Content-Type': 'text/event-stream',
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive'
-        });
+    getMine: async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const notifications = await prisma.notification.findMany({
+                where: { userId: user.id },
+                orderBy: { createdAt: 'desc' },
+                take: 50
+            });
 
-        // Send initial connection message
-        res.write('data: {"status":"connected"}\n\n');
+            // Count unread
+            const unreadCount = await prisma.notification.count({
+                where: { userId: user.id, read: false }
+            });
 
-        const clientId = uuidv4();
-        // Assuming auth middleware attaches user to req
-        const userId = (req as any).user?.id;
+            return ApiResponse.success(res, { notifications, unreadCount });
+        } catch (error) {
+            console.error(error);
+            return ApiResponse.error(res, 'Error al obtener notificaciones', 500);
+        }
+    },
 
-        notificationService.addClient(clientId, res, userId);
+    markRead: async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const { id } = req.params;
 
-        // Cleanup on close
-        req.on('close', () => {
-            notificationService.removeClient(clientId);
-        });
+            await prisma.notification.updateMany({
+                where: { id, userId: user.id }, // Security: ensure it belongs to user
+                data: { read: true }
+            });
+
+            return ApiResponse.success(res, { success: true });
+        } catch (error) {
+            return ApiResponse.error(res, 'Error al marcar como leída', 500);
+        }
+    },
+
+    markAllRead: async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            await prisma.notification.updateMany({
+                where: { userId: user.id, read: false },
+                data: { read: true }
+            });
+            return ApiResponse.success(res, { success: true });
+        } catch (error) {
+            return ApiResponse.error(res, 'Error al marcar todas como leídas', 500);
+        }
     }
 };

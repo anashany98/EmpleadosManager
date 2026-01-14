@@ -1,55 +1,47 @@
-import { Response } from 'express';
+import { prisma } from '../lib/prisma';
 
-interface Client {
-    id: string;
-    res: Response;
-    userId?: string;
-}
-
-class NotificationService {
-    private clients: Client[] = [];
-    private static instance: NotificationService;
-
-    private constructor() { }
-
-    public static getInstance(): NotificationService {
-        if (!NotificationService.instance) {
-            NotificationService.instance = new NotificationService();
+export const NotificationService = {
+    create: async ({ userId, title, message, type = 'INFO', link }: {
+        userId: string,
+        title: string,
+        message: string,
+        type?: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR',
+        link?: string
+    }) => {
+        try {
+            await prisma.notification.create({
+                data: {
+                    userId,
+                    title,
+                    message,
+                    type,
+                    link
+                }
+            });
+        } catch (error) {
+            console.error('Error creating notification:', error);
         }
-        return NotificationService.instance;
-    }
+    },
 
-    addClient(id: string, res: Response, userId?: string) {
-        this.clients.push({ id, res, userId });
-        console.log(`Client ${id} connected. Total clients: ${this.clients.length}`);
-    }
+    notifyAdmins: async (title: string, message: string, link?: string) => {
+        try {
+            const admins = await prisma.user.findMany({
+                where: { role: 'admin' }
+            });
 
-    removeClient(id: string) {
-        this.clients = this.clients.filter(client => client.id !== id);
-        console.log(`Client ${id} disconnected. Total clients: ${this.clients.length}`);
+            for (const admin of admins) {
+                await prisma.notification.create({
+                    data: {
+                        userId: admin.id,
+                        title,
+                        message,
+                        type: 'INFO',
+                        link
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('Error notifying admins:', error);
+        }
     }
-
-    broadcast(type: string, data: any) {
-        this.clients.forEach(client => {
-            this.sendEventToClient(client, type, data);
-        });
-    }
-
-    sendToUser(userId: string, type: string, data: any) {
-        const userClients = this.clients.filter(c => c.userId === userId);
-        userClients.forEach(client => {
-            this.sendEventToClient(client, type, data);
-        });
-    }
-
-    private sendEventToClient(client: Client, type: string, data: any) {
-        // SSE format:
-        // event: eventName
-        // data: JSON string
-        // \n\n
-        client.res.write(`event: ${type}\n`);
-        client.res.write(`data: ${JSON.stringify(data)}\n\n`);
-    }
-}
-
-export const notificationService = NotificationService.getInstance();
+};

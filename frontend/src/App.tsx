@@ -19,10 +19,14 @@ import GlobalAssetsPage from './pages/GlobalAssetsPage';
 import UserManagement from './pages/UserManagement';
 import InboxPage from './pages/InboxPage';
 import PayrollBatchDetail from './pages/PayrollBatchDetail';
+import VacationRequests from './pages/VacationRequests';
+import MyProfile from './pages/MyProfile';
 
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import LoginPage from './pages/LoginPage';
+import RequestReset from './pages/RequestReset';
+import ResetPassword from './pages/ResetPassword';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import CommandPalette from './components/CommandPalette';
@@ -89,6 +93,8 @@ function AppContent() {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/request-reset" element={<RequestReset />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="*" element={<LoginPage />} />
       </Routes>
     );
@@ -137,6 +143,8 @@ function AppContent() {
                   <Route path="/inbox" element={<ProtectedRoute roles={['admin']}><InboxPage /></ProtectedRoute>} />
                   <Route path="/import" element={<ProtectedRoute><PayrollImport /></ProtectedRoute>} />
                   <Route path="/payroll/batch/:id" element={<ProtectedRoute><PayrollBatchDetail /></ProtectedRoute>} />
+                  <Route path="/vacations" element={<ProtectedRoute><VacationRequests /></ProtectedRoute>} />
+                  <Route path="/profile" element={<ProtectedRoute><MyProfile /></ProtectedRoute>} />
                   <Route path="/users" element={<ProtectedRoute roles={['admin']}><UserManagement /></ProtectedRoute>} />
                   <Route path="/settings" element={<ProtectedRoute roles={['admin']}><SettingsPage /></ProtectedRoute>} />
                   <Route path="/login" element={<Navigate to="/" replace />} />

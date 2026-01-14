@@ -8,7 +8,7 @@ import jsQR from 'jsqr';
 // import { getDocument } from 'pdfjs-dist/legacy/build/pdf';
 // import { createCanvas, Image as CanvasImage } from 'canvas';
 
-import { notificationService } from './NotificationService';
+import { NotificationService } from './NotificationService';
 
 export class InboxService {
     private inboxDir = path.join(process.cwd(), 'data', 'inbox');
@@ -138,12 +138,12 @@ export class InboxService {
 
                     console.log(`[InboxService] Registered new document: ${file} -> ${newFilename}`);
 
-                    // Broadcast Notification
-                    notificationService.broadcast('INBOX_NEW_DOCUMENT', {
-                        title: 'Nuevo Documento',
-                        message: `Se ha recibido el archivo ${file}`,
-                        filename: file
-                    });
+                    // Broadcast Notification via DB
+                    await NotificationService.notifyAdmins(
+                        'Nuevo Documento',
+                        `Se ha recibido el archivo ${file}`,
+                        `/inbox`
+                    );
 
                     // Automation Logic
                     if (qrData && qrData.eid && qrData.t) {

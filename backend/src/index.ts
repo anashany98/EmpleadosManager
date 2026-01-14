@@ -1,12 +1,13 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Request, Response } from 'express';
 import path from 'path';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import { prisma } from './lib/prisma';
 import { errorMiddleware } from './middlewares/errorMiddleware';
 import { protect, restrictTo, checkPermission } from './middlewares/authMiddleware';
 
-dotenv.config();
 
 const app = express();
 
@@ -83,7 +84,7 @@ app.use('/api/vacations', protect, checkPermission('employees', 'read'), vacatio
 app.use('/api/companies', protect, checkPermission('companies', 'read'), companyRoutes);
 app.use('/api/audit', protect, restrictTo('admin'), auditRoutes);
 app.use('/api/overtime', protect, checkPermission('employees', 'read'), overtimeRoutes);
-app.use('/api/time-entries', protect, checkPermission('timesheet', 'read'), timeEntryRoutes);
+app.use('/api/time-entries', timeEntryRoutes);
 app.use('/api/alerts', protect, alertRoutes);
 app.use('/api/reports', protect, checkPermission('reports', 'read'), reportRoutes);
 app.use('/api/documents', protect, checkPermission('employees', 'read'), documentRoutes);

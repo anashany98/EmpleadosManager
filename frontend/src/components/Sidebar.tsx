@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, LayoutDashboard, Users, Network, Building2, Calendar as CalendarIcon, Clock, Package, History, FileText, FileSpreadsheet, Settings, Shield, Inbox } from 'lucide-react';
+import { LogOut, LayoutDashboard, Users, Network, Building2, Calendar as CalendarIcon, Clock, Package, History, FileText, FileSpreadsheet, Settings, Shield, Inbox, Plane } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -11,6 +11,8 @@ interface SidebarProps {
 
 export const navItems = [
     { path: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} />, module: 'dashboard' },
+    { path: '/profile', label: 'Mi Perfil', icon: <Users size={20} />, module: 'calendar' }, // Accessible to employees
+    { path: '/vacations', label: 'Vacaciones', icon: <Plane size={20} />, module: 'calendar' },
     { path: '/employees', label: 'Empleados', icon: <Users size={20} />, module: 'employees' },
     { path: '/employees/org-chart', label: 'Organigrama', icon: <Network size={20} />, module: 'employees' },
     { path: '/companies', label: 'Empresas', icon: <Building2 size={20} />, module: 'companies' },

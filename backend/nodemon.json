@@ -8,5 +8,5 @@
         "node_modules",
         "uploads"
     ],
-    "exec": "ts-node src/index.ts"
+    "exec": "node --max-old-space-size=4096 -r ts-node/register src/index.ts"
 }

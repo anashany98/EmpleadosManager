@@ -6,7 +6,7 @@ export class ReportService {
      */
     static async getAttendanceData(start: Date, end: Date, filters: any = {}) {
         const where: any = {
-            date: {
+            timestamp: {
                 gte: start,
                 lte: end
             }
@@ -30,7 +30,7 @@ export class ReportService {
                     }
                 }
             },
-            orderBy: [{ date: 'asc' }, { checkIn: 'asc' }]
+            orderBy: [{ timestamp: 'asc' }]
         });
 
         return entries;

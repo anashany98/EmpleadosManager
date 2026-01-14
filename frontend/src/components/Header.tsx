@@ -1,7 +1,9 @@
+
 import { Menu, Sun, Moon, LogOut, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
 import AlertCenter from './AlertCenter';
+import NotificationBell from './NotificationBell';
 import { navItems } from './Sidebar';
 
 interface HeaderProps {
@@ -34,6 +36,9 @@ export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: H
                     <User size={14} className="text-slate-500" />
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{user?.email || 'Admin'}</span>
                 </div>
+
+                <NotificationBell />
+
                 {(user?.role === 'admin' || (user?.permissions && user.permissions.employees !== 'none')) && (
                     <AlertCenter />
                 )}
