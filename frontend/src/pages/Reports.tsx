@@ -55,7 +55,7 @@ export default function Reports() {
     const fetchCompanies = async () => {
         try {
             const res = await api.get('/companies');
-            const baseUrl = 'http://192.168.1.38:3000';
+            // const baseUrl = 'http://192.168.1.38:3000';
             setCompanies(res.data || res || []);
         } catch (err) {
             console.error(err);

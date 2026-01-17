@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { createContext, useEffect, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { API_URL } from '../api/client';

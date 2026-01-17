@@ -14,6 +14,9 @@ interface AuthContextType {
     loading: boolean;
     login: (token: string, refreshToken: string, userData: User) => void;
     logout: () => void;
+    isAdmin: boolean;
+    isManager: boolean;
+    isEmployee: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +24,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+
+    const isAdmin = user?.role === 'admin';
+    const isManager = user?.role === 'manager' || user?.role === 'admin'; // Managers often subsumed by admin, or distinct. Let's say Manager is separate or inclusive.
+    const isEmployee = !!user?.employeeId; // Has a linked employee record
 
     useEffect(() => {
         checkAuth();
@@ -71,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout }}>
+        <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isManager, isEmployee }}>
             {children}
         </AuthContext.Provider>
     );

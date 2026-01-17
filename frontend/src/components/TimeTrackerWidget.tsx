@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { Play, Square, Coffee, Utensils, MapPin, Loader2, Clock } from 'lucide-react';
-import { motion } from 'framer-motion';
+// import { motion } from 'framer-motion';
 
 export default function TimeTrackerWidget() {
     const [status, setStatus] = useState<'OFF' | 'WORKING' | 'BREAK' | 'LUNCH'>('OFF');
@@ -81,9 +81,24 @@ export default function TimeTrackerWidget() {
                 else if (e.code === 2) msg = 'Ubicación no disponible.';
                 else if (e.code === 3) msg = 'Tiempo de espera agotado al obtener ubicación.';
 
-                toast.error(msg);
-                setActionLoading(false);
-                return; // BLOCK ACTION
+                // FALLBACK: Try low accuracy if high accuracy fails
+                try {
+                    console.log('Retrying with low accuracy...');
+                    const pos: any = await new Promise((resolve, reject) => {
+                        navigator.geolocation.getCurrentPosition(resolve, reject, {
+                            timeout: 10000,
+                            enableHighAccuracy: false // Try relying on wifi/cellular
+                        });
+                    });
+                    locationData = {
+                        latitude: pos.coords.latitude,
+                        longitude: pos.coords.longitude
+                    };
+                } catch (fallbackError) {
+                    toast.error(msg + ' Es OBLIGATORIO tener ubicación para fichar.');
+                    setActionLoading(false);
+                    return; // BLOCK ACTION STRICTLY
+                }
             }
 
             const res = await api.post('/time-entries/clock', {

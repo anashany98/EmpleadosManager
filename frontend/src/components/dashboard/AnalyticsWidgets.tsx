@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, DollarSign, Users, Activity, AlertCircle } from 'lucide-react';
+import { DollarSign, Users, Activity, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function AnalyticsWidgets() {

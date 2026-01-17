@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
-import { Bell, Check, X, Info, AlertTriangle, CheckCircle, AlertOctagon } from 'lucide-react';
+import { Bell, Info, AlertTriangle, CheckCircle, AlertOctagon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
@@ -43,7 +43,7 @@ export default function NotificationBell() {
 
     const markRead = async (id: string) => {
         try {
-            await api.put(`/notifications/${id}/read`);
+            await api.put(`/notifications/${id}/read`, {});
             setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
             setUnreadCount(prev => Math.max(0, prev - 1));
         } catch (error) {
@@ -53,7 +53,7 @@ export default function NotificationBell() {
 
     const markAllRead = async () => {
         try {
-            await api.put('/notifications/read-all');
+            await api.put('/notifications/read-all', {});
             setNotifications(prev => prev.map(n => ({ ...n, read: true })));
             setUnreadCount(0);
         } catch (error) {

@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Users, Clock, AlertTriangle, Sparkles, Plus, FileSpreadsheet, Cake, ChevronRight } from 'lucide-react';
+import { Users, Clock, AlertTriangle, Sparkles, Cake } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { WhosOutWidget } from './WhosOutWidget';
 import TimeTrackerWidget from '../TimeTrackerWidget';
+import OnboardingWidget from '../dashboard/OnboardingWidget';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface OverviewTabProps {
@@ -214,7 +215,7 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                         <p className="text-slate-500 dark:text-slate-400 max-w-sm">
                             Bienvenido a tu panel personal. Aquí puedes gestionar tus fichajes, ver tus vacaciones y acceder a tus documentos.
                         </p>
-                        <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-md">
+                        <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-lg">
                             <Link to="/profile" className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-blue-500 transition-all text-center">
                                 <Users className="mx-auto mb-2 text-blue-500" size={24} />
                                 <span className="text-xs font-bold block text-slate-700 dark:text-slate-200">Mi Perfil</span>
@@ -231,9 +232,12 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
             {/* Right Column Stack */}
             <div className="col-span-12 md:col-span-4 row-span-10 flex flex-col gap-4 h-full">
                 {/* Time Tracker Widget */}
-                <div className="shrink-0">
-                    <TimeTrackerWidget />
-                </div>
+                {isEmployee && (
+                    <div className="shrink-0 space-y-4">
+                        <TimeTrackerWidget />
+                        {user?.employeeId && <OnboardingWidget employeeId={user.employeeId} />}
+                    </div>
+                )}
 
                 {/* Who's Out Widget */}
                 <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-1 shadow-sm flex flex-col overflow-hidden flex-1 min-h-[150px]">

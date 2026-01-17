@@ -1,6 +1,6 @@
 import { useAuth } from '../contexts/AuthContext';
 import EmployeeDetail from './EmployeeDetail';
-import { Navigate } from 'react-router-dom';
+// import { Navigate } from 'react-router-dom';
 
 export default function MyProfile() {
     const { user } = useAuth();

@@ -9,9 +9,27 @@ import { errorMiddleware } from './middlewares/errorMiddleware';
 import { protect, restrictTo, checkPermission } from './middlewares/authMiddleware';
 
 
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
+
 const app = express();
 
 const PORT = process.env.PORT || 3000;
+
+// Security Middleware
+app.use(helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" } // Allow local file serving
+}));
+
+// Intranet Rate Limiting (Lenient)
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 300, // Limit each IP to 300 requests per windowMs (Higher for internal usage)
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: 'Too many requests from this IP, please try again after 15 minutes'
+});
+app.use(limiter);
 
 app.use(cors());
 app.use(express.json());
@@ -52,6 +70,7 @@ import inboxRoutes from './routes/inboxRoutes';
 import configRoutes from './routes/configRoutes';
 import { inventoryRoutes } from './routes/inventoryRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import onboardingRoutes from './routes/onboardingRoutes';
 
 // Rutas API
 import fileRoutes from './routes/fileRoutes';
@@ -94,6 +113,7 @@ app.use('/api/checklists', protect, checkPermission('employees', 'read'), checkl
 app.use('/api/projects', protect, checkPermission('projects', 'read'), projectRoutes);
 app.use('/api/employee-project-work', protect, checkPermission('projects', 'read'), employeeProjectWorkRoutes);
 app.use('/api/inventory', protect, checkPermission('assets', 'read'), inventoryRoutes);
+app.use('/api/onboarding', protect, onboardingRoutes);
 
 app.use(errorMiddleware);
 

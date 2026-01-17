@@ -13,6 +13,8 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         let token;
         if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
+        } else if (req.query.token) {
+            token = req.query.token as string;
         }
 
         if (!token) {
@@ -23,7 +25,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 
         const user = await prisma.user.findUnique({
             where: { id: decoded.id },
-            select: { id: true, email: true, role: true, permissions: true } // Include permissions
+            select: { id: true, email: true, role: true, permissions: true, employeeId: true, dni: true } // Include employee links
         });
 
         if (!user) {

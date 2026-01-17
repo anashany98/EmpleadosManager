@@ -57,6 +57,41 @@ export const TimeEntryController = {
                 return ApiResponse.error(res, 'Tipo de fichaje inválido', 400);
             }
 
+            // Geofencing Check
+            if (latitude && longitude && (type === 'IN' || type === 'OUT')) {
+                const employee = await prisma.employee.findUnique({
+                    where: { id: user.employeeId },
+                    include: { company: true }
+                });
+
+                if (employee?.company?.officeLatitude && employee?.company?.officeLongitude) {
+                    const distance = getDistanceFromLatLonInM(
+                        latitude, longitude,
+                        employee.company.officeLatitude,
+                        employee.company.officeLongitude
+                    );
+
+                    const radius = employee.company.allowedRadius || 100;
+
+                    if (distance > radius) {
+                        try {
+                            await prisma.alert.create({
+                                data: {
+                                    employeeId: user.employeeId,
+                                    type: 'GEOFENCE',
+                                    severity: 'WARNING',
+                                    title: 'Fichaje fuera de zona',
+                                    message: `Fichaje ${type} realizado a ${Math.round(distance)}m de la oficina (Radio: ${radius}m). Ubicación: ${location || 'Desconocida'}`,
+                                    isRead: false
+                                }
+                            });
+                        } catch (alertError) {
+                            console.error('Error creating geofence alert:', alertError);
+                        }
+                    }
+                }
+            }
+
             // Create entry
             const entry = await prisma.timeEntry.create({
                 data: {
@@ -104,3 +139,19 @@ export const TimeEntryController = {
         }
     }
 };
+
+function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
+    const R = 6371e3; // metres
+    const φ1 = lat1 * Math.PI / 180; // φ, λ in radians
+    const φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+        Math.cos(φ1) * Math.cos(φ2) *
+        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    const d = R * c; // in metres
+    return d;
+}

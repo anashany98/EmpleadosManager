@@ -1,6 +1,6 @@
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { motion } from 'framer-motion';
-import { Users, AlertTriangle, TrendingUp, Users as UsersIcon, Briefcase, UserCheck, Clock } from 'lucide-react';
+import { Users, AlertTriangle, TrendingUp, Briefcase, UserCheck, Clock } from 'lucide-react';
 
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client';

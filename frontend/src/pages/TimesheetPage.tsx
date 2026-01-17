@@ -1,7 +1,9 @@
+
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { Clock, Calendar, ChevronLeft, ChevronRight, User } from 'lucide-react';
+import { Clock, Calendar, ChevronLeft, ChevronRight, User, MapPin } from 'lucide-react';
+import LocationMapModal from '../components/LocationMapModal';
 
 interface Employee {
     id: string;
@@ -38,6 +40,19 @@ export default function TimesheetPage() {
     const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [viewMode, setViewMode] = useState<'calendar' | 'list'>('calendar');
+
+    // Map State
+    const [mapLocation, setMapLocation] = useState<{ lat: number, lng: number } | null>(null);
+    const [isMapOpen, setIsMapOpen] = useState(false);
+
+    const handleViewMap = (lat?: number, lng?: number) => {
+        if (lat && lng) {
+            setMapLocation({ lat, lng });
+            setIsMapOpen(true);
+        } else {
+            toast.error('No hay ubicación registrada para este fichaje');
+        }
+    };
 
     useEffect(() => {
         if (!isAdmin && user?.employeeId) {
@@ -356,9 +371,20 @@ export default function TimesheetPage() {
                                                 {entry.lunchHours > 0 ? `${entry.lunchHours.toFixed(1)}h` : '-'}
                                             </td>
                                             <td className="px-4 py-3">
-                                                <span className="font-bold text-blue-600 dark:text-blue-400">
-                                                    {entry.totalHours.toFixed(2)}h
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-blue-600 dark:text-blue-400">
+                                                        {entry.totalHours.toFixed(2)}h
+                                                    </span>
+                                                    {(entry as any).lat && (entry as any).lng && (
+                                                        <button
+                                                            onClick={() => handleViewMap((entry as any).lat, (entry as any).lng)}
+                                                            className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
+                                                            title="Ver ubicación"
+                                                        >
+                                                            <MapPin size={16} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
@@ -368,6 +394,12 @@ export default function TimesheetPage() {
                     </div>
                 </div>
             )}
+            {/* Map Modal */}
+            <LocationMapModal
+                isOpen={isMapOpen}
+                onClose={() => setIsMapOpen(false)}
+                location={mapLocation}
+            />
         </div>
     );
 }

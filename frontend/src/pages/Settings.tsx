@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { Settings, DollarSign, Upload, AlertCircle, Folder, Mail, Save } from 'lucide-react';
+import ChecklistManager from '../components/onboarding/ChecklistManager';
+import BackupManager from '../components/BackupManager';
 
 const CATEGORIAS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4', 'Grupo 5', 'Grupo 6', 'Grupo 7', 'Oficial de 1ª', 'Oficial de 2ª', 'Oficial de 3ª', 'Peón', 'Otros'];
 
@@ -229,6 +231,16 @@ export default function SettingsPage() {
                         </ul>
                     </div>
                 </div>
+            </div>
+
+            {/* Onboarding Templates */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-6">
+                <ChecklistManager />
+            </div>
+
+            {/* Backups */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                <BackupManager />
             </div>
 
             {/* Configuración de Bandeja de Entrada */}

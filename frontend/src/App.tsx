@@ -21,6 +21,7 @@ import InboxPage from './pages/InboxPage';
 import PayrollBatchDetail from './pages/PayrollBatchDetail';
 import VacationRequests from './pages/VacationRequests';
 import MyProfile from './pages/MyProfile';
+import ExpensesPage from './pages/ExpensesPage';
 
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -144,6 +145,7 @@ function AppContent() {
                   <Route path="/import" element={<ProtectedRoute><PayrollImport /></ProtectedRoute>} />
                   <Route path="/payroll/batch/:id" element={<ProtectedRoute><PayrollBatchDetail /></ProtectedRoute>} />
                   <Route path="/vacations" element={<ProtectedRoute><VacationRequests /></ProtectedRoute>} />
+                  <Route path="/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
                   <Route path="/profile" element={<ProtectedRoute><MyProfile /></ProtectedRoute>} />
                   <Route path="/users" element={<ProtectedRoute roles={['admin']}><UserManagement /></ProtectedRoute>} />
                   <Route path="/settings" element={<ProtectedRoute roles={['admin']}><SettingsPage /></ProtectedRoute>} />

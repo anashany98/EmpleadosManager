@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import { FileText, Download, Euro, Plus } from 'lucide-react';
 import { toast } from 'sonner';

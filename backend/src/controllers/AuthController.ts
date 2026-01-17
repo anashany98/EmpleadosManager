@@ -31,11 +31,15 @@ export const AuthController = {
                 where: {
                     OR: [
                         { email: trimmedId },
-                        { dni: trimmedId },
-                        { dni: trimmedId.toUpperCase() }
+                        { dni: trimmedId }, // Exact match
+                        { dni: trimmedId.toLowerCase() }, // Lowercase
+                        { dni: trimmedId.toUpperCase() } // Uppercase
                     ]
                 }
             });
+
+            // Debug log (remove in prod)
+            console.log(`[Login] Attempt for ${trimmedId}. User found: ${!!user}`);
 
             if (!user || !(await bcrypt.compare(password, user.password))) {
                 throw new AppError('Credenciales incorrectas', 401);
@@ -51,6 +55,12 @@ export const AuthController = {
             const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN);
 
             // Save Refresh Token to DB
+            console.log('[Login] Saving refresh token...');
+            if (!(prisma as any).refreshToken) {
+                console.error('[Login CRITICAL] prisma.refreshToken is undefined!');
+                throw new Error('Prisma Client incomplete (refreshToken missing)');
+            }
+
             await (prisma as any).refreshToken.create({
                 data: {
                     token: refreshToken,
@@ -58,6 +68,7 @@ export const AuthController = {
                     expiresAt: expiresAt
                 }
             });
+            console.log('[Login] Refresh token saved.');
 
             // Hide password
             const { password: _, ...userWithoutPassword } = user;
@@ -68,7 +79,8 @@ export const AuthController = {
                 refreshToken
             }, 'Sesión iniciada correctamente');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al iniciar sesión', error.statusCode || 500);
+            console.error('[Login Error]', error);
+            return ApiResponse.error(res, `INTERNAL ERROR: ${error.message}`, error.statusCode || 500, { stack: error.stack });
         }
     },
 
@@ -82,7 +94,8 @@ export const AuthController = {
             const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
             if (!employee) throw new AppError('Empleado no encontrado', 404);
             if (!employee.dni) throw new AppError('El empleado no tiene DNI registrado', 400);
-            if (!employee.email) throw new AppError('El empleado no tiene email personal para enviar las credenciales', 400);
+            // if (!employee.email) throw new AppError('El empleado no tiene email personal para enviar las credenciales', 400);
+
 
             // Generate Random Password
             const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
@@ -110,8 +123,9 @@ export const AuthController = {
                 });
             } else {
                 // Create new user
+                const empEmail = employee.email || `${employee.dni}@system.local`;
                 // Check if email is taken by another user (shouldn't happen 1:1 usually but check safety)
-                const existingEmail = await prisma.user.findUnique({ where: { email: employee.email } });
+                const existingEmail = await prisma.user.findUnique({ where: { email: empEmail } });
 
                 if (existingEmail) {
                     // Determine if we should link or fail. 
@@ -133,7 +147,7 @@ export const AuthController = {
                 } else {
                     user = await prisma.user.create({
                         data: {
-                            email: employee.email,
+                            email: empEmail,
                             dni: employee.dni,
                             password: hashedPassword,
                             role: 'user', // Default role
@@ -145,23 +159,31 @@ export const AuthController = {
             }
 
             // SIMULATE EMAIL SENDING
-            console.log(`
-            ==================================================
-            [MOCK EMAIL SERVICE] SENDING TO: ${employee.email}
-            SUBJECT: Credenciales de Acceso - Portal del Empleado
-            --------------------------------------------------
-            Hola ${employee.name},
-
-            Se ha habilitado tu acceso al portal del empleado.
-            
-            Usuario (DNI): ${employee.dni}
-            Contraseña: ${tempPassword}
-
-            Accede aquí: http://localhost:5173/login
-            ==================================================
-            `);
-
-            return ApiResponse.success(res, { email: employee.email }, 'Acceso generado correctamente. Credenciales enviadas por correo.');
+            if (employee.email) {
+                console.log(`
+                ==================================================
+                [MOCK EMAIL SERVICE] SENDING TO: ${employee.email}
+                SUBJECT: Credenciales de Acceso - Portal del Empleado
+                --------------------------------------------------
+                Hola ${employee.name},
+    
+                Se ha habilitado tu acceso al portal del empleado.
+                
+                Usuario (DNI): ${employee.dni}
+                Contraseña: ${tempPassword}
+    
+                Accede aquí: http://localhost:5173/login
+                ==================================================
+                `);
+                return ApiResponse.success(res, { email: employee.email, hasEmail: true }, 'Acceso generado. Credenciales enviadas por correo.');
+            } else {
+                // Return password directly if no email
+                return ApiResponse.success(res, {
+                    hasEmail: false,
+                    password: tempPassword,
+                    username: employee.dni
+                }, 'Acceso generado. Copia la contraseña.');
+            }
 
         } catch (error: any) {
             console.error(error);

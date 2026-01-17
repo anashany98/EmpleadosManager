@@ -1,0 +1,217 @@
+[2026-01-15T15:29:03.550Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-15T15:37:43.853Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-15T15:37:43.898Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T07:03:36.457Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T07:03:36.471Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T13:45:47.547Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T13:45:47.562Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:26:09.092Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:26:09.121Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:40:20.688Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:40:20.701Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:40:21.017Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:40:21.091Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:45:56.988Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:45:57.028Z] PrismaClientKnownRequestError: 
+Invalid `prisma.company.findMany()` invocation in
+C:\Users\Usuari\Desktop\NominasApp\backend\src\controllers\CompanyController.ts:8:52
+
+  5 export const CompanyController = {
+  6     getAll: async (req: Request, res: Response, next: NextFunction) => {
+  7         try {
+→ 8             const companies = await prisma.company.findMany(
+The column `main.Company.officeLatitude` does not exist in the current database.
+    at $n.handleRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\.prisma\client\runtime\library.js:130:9633)
+[2026-01-16T15:49:29.187Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-16T15:49:29.200Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)

@@ -55,9 +55,13 @@ model Company {
   country     String?
   email       String?
   phone       String?
+  officeLatitude  Float?
+  officeLongitude Float?
+  allowedRadius   Int?       @default(100) // Meters
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   employees Employee[]
+  onboardingTemplates OnboardingTemplate[] // Optional: if we want company-specific templates later, but for now just global? The plan didn't specify company relation for templates yet. 
 }
 
 model PermissionProfile {
@@ -93,7 +97,10 @@ model Employee {
   drivingLicenseExpiration DateTime?
   emergencyContactName     String?
   emergencyContactPhone    String?
+  companyPhone             String?
   companyId                String?
+  company                  Company?              @relation(fields: [companyId], references: [id])
+  onboadings               EmployeeOnboarding[]
   department               String?
   category                 String?
   contractType             String?
@@ -121,7 +128,6 @@ model Employee {
   documents                Document[]
   manager                  Employee?             @relation("Hierarchy", fields: [managerId], references: [id])
   subordinates             Employee[]            @relation("Hierarchy")
-  company                  Company?              @relation(fields: [companyId], references: [id])
   projectWork              EmployeeProjectWork[]
   expenses                 Expense[]
   medicalReviews           MedicalReview[]
@@ -511,4 +517,29 @@ model Notification {
   createdAt DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OnboardingTemplate {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  items       String   // JSON: string[] (List of tasks)
+  isActive    Boolean  @default(true)
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EmployeeOnboarding {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  title       String
+  items       String   // JSON: { text: string, completed: boolean }[]
+  status      String   @default("PENDING") // PENDING, COMPLETED, IN_PROGRESS
+  progress    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime?
 }

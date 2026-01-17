@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
     ArrowLeft, Save, Loader2, CreditCard, Building,
-    Clock, Plus, Trash2, Scale, ShieldCheck, Lock
+    Clock, Plus, Trash2, Scale, ShieldCheck, Lock, Key
 } from 'lucide-react';
 import { isHoliday } from '../utils/holidays';
 
@@ -45,7 +45,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
 
     // Permissions
     const isAdmin = user?.role === 'admin';
-    const isOwner = user?.employeeId === id;
+    // const isOwner = user?.employeeId === id;
     const canEdit = isAdmin; // Only admin can edit for now
 
     const [isEditing, setIsEditing] = useState(isNew);
@@ -53,8 +53,28 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState('personal');
 
+    const [generatingAccess, setGeneratingAccess] = useState(false);
+    // const [accessModal, setAccessModal] = useState<{ isOpen: boolean, password?: string, username?: string }>({ isOpen: false });
+
+    const handleGenerateAccess = async () => {
+        setGeneratingAccess(true);
+        try {
+            const res = await api.post('/auth/generate-access', { employeeId: id });
+            if (res.data?.hasEmail) {
+                toast.success('Disfruta del acceso. Se ha enviado un correo al empleado.');
+            } else {
+                // setAccessModal({ isOpen: true, password: res.data?.password, username: res.data?.username });
+                toast.success(`Clave generada: ${res.data?.password}`, { duration: 10000 });
+            }
+        } catch (error: any) {
+            toast.error(error.message || 'Error al generar acceso');
+        } finally {
+            setGeneratingAccess(false);
+        }
+    };
+
     const [formData, setFormData] = useState({
-        firstName: '', lastName: '', dni: '', email: '', phone: '', address: '', city: '', postalCode: '',
+        firstName: '', lastName: '', dni: '', email: '', phone: '', companyPhone: '', address: '', city: '', postalCode: '',
         subaccount465: '', socialSecurityNumber: '', iban: '',
         companyId: '', department: '', category: '', contractType: '', agreementType: '', jobTitle: '',
         entryDate: '', exitDate: '', callDate: '', contractInterruptionDate: '', lowDate: '', lowReason: '',
@@ -121,6 +141,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                 dni: data.dni || '',
                 email: data.email || '',
                 phone: data.phone || '',
+                companyPhone: data.companyPhone || '',
                 address: data.address || '',
                 city: data.city || '',
                 postalCode: data.postalCode || '',
@@ -248,6 +269,14 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
 
                     {canEdit && (
                         <div className="flex gap-3">
+                            <button
+                                onClick={handleGenerateAccess}
+                                disabled={generatingAccess}
+                                className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-semibold rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors flex items-center gap-2 border border-indigo-100 dark:border-indigo-900/30"
+                            >
+                                {generatingAccess ? <Loader2 size={18} className="animate-spin" /> : <Key size={18} />}
+                                Generar Clave
+                            </button>
                             <button
                                 onClick={async () => {
                                     const ok = await confirmAction({
@@ -447,6 +476,10 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono</label>
                                             <input name="phone" value={formData.phone} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono de Empresa</label>
+                                            <input name="companyPhone" value={formData.companyPhone} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: 600..." />
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Género</label>
@@ -798,13 +831,7 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
 
     // Strategy: I will add the useEffect logic. Then I will use a separate tool call to add the import at the top of the file.
 
-    useEffect(() => {
-        const checkRateType = async () => {
-            // We need isHoliday. 
-            // Since I haven't added the import yet, this code would fail to compile if I referenced isHoliday directly without import.
-            // I will leave this placeholder comment and do the import in the next step? No, that's bad DX.
-        };
-    }, []);
+
 
     // Better Strategy: modifying the file content to include the logic assuming I'll fix the import immediately.
 
@@ -815,7 +842,6 @@ function OvertimeTracker({ employeeId, category }: { employeeId: string, categor
         const isWeekend = day === 0 || day === 6;
 
         // We'll trust the import is there (I will add it in the next tool call)
-        // @ts-ignore
         if (isWeekend || isHoliday(d)) {
             setRateType('HOLIDAY');
         } else {

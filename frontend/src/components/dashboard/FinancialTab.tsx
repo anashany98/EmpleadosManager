@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { DollarSign, TrendingUp, CreditCard } from 'lucide-react';
 import { api } from '../../api/client';
 import { motion } from 'framer-motion';
@@ -11,11 +11,11 @@ interface FinancialTabProps {
 
 export default function FinancialTab({ selectedCompany }: FinancialTabProps) {
     const [costs, setCosts] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    // const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         const fetchCosts = async () => {
-            setLoading(true);
+            // setLoading(true);
             try {
                 // Fetch cost analytics (now available from previous task)
                 const res = await api.get('/dashboard/analytics/costs');
@@ -23,7 +23,7 @@ export default function FinancialTab({ selectedCompany }: FinancialTabProps) {
             } catch (error) {
                 console.error('Failed to load financial analytics', error);
             } finally {
-                setLoading(false);
+                // setLoading(false);
             }
         };
 

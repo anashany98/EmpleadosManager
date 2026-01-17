@@ -20,8 +20,8 @@ export default function VacationRequests() {
     const [activeTab, setActiveTab] = useState<'MY_REQUESTS' | 'MANAGE' | 'CALENDAR'>(user?.role === 'admin' ? 'CALENDAR' : 'MY_REQUESTS');
     const [myRequests, setMyRequests] = useState<any[]>([]);
     const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-    const [allVacations, setAllVacations] = useState<any[]>([]); // For Admin Calendar
-    const [loading, setLoading] = useState(true);
+    const [calendarVacations, setCalendarVacations] = useState<any[]>([]); // For Calendar
+    // const [loading, setLoading] = useState(true);
 
     // Form / Modal State
     const [showModal, setShowModal] = useState(false);
@@ -38,7 +38,7 @@ export default function VacationRequests() {
     }, [activeTab]);
 
     const fetchData = async () => {
-        setLoading(true);
+        // setLoading(true);
         try {
             if (activeTab === 'MY_REQUESTS') {
                 const res = await api.get('/vacations/my-vacations');
@@ -47,15 +47,16 @@ export default function VacationRequests() {
                 const res = await api.get('/vacations/manage');
                 if (res.success) setPendingRequests(res.data);
             } else if (activeTab === 'CALENDAR') {
-                // Admin gets everything
-                const res = await api.get('/vacations');
-                if (res.success) setAllVacations(res.data);
+                // Admin gets everything, Employee gets theirs
+                const endpoint = user?.role === 'admin' ? '/vacations' : '/vacations/my-vacations';
+                const res = await api.get(endpoint);
+                if (res.success) setCalendarVacations(res.data);
             }
         } catch (error) {
             console.error(error);
             // toast.error("Error al cargar solicitudes");
         } finally {
-            setLoading(false);
+            // setLoading(false);
         }
     };
 
@@ -152,14 +153,12 @@ export default function VacationRequests() {
                         </button>
                     )}
 
-                    {user?.role === 'admin' && (
-                        <button
-                            onClick={() => setActiveTab('CALENDAR')}
-                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'CALENDAR' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
-                        >
-                            Calendario Global
-                        </button>
-                    )}
+                    <button
+                        onClick={() => setActiveTab('CALENDAR')}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'CALENDAR' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
+                    >
+                        {user?.role === 'admin' ? 'Calendario Global' : 'Calendario'}
+                    </button>
 
                     {(user?.role === 'admin' || user?.role === 'manager') && (
                         <button
@@ -173,9 +172,10 @@ export default function VacationRequests() {
             </div>
 
             {activeTab === 'CALENDAR' && (
-                <AdminCalendarView
-                    vacations={allVacations}
+                <CalendarView
+                    vacations={calendarVacations}
                     onSelectRequest={(req) => setSelectedRequest(req)}
+                    isAdmin={user?.role === 'admin'}
                 />
             )}
 
@@ -309,8 +309,8 @@ export default function VacationRequests() {
     );
 }
 
-// Sub-component for Admin Calendar Logic
-function AdminCalendarView({ vacations, onSelectRequest }: { vacations: any[], onSelectRequest: (r: any) => void }) {
+// Sub-component for Calendar Logic
+function CalendarView({ vacations, onSelectRequest, isAdmin }: { vacations: any[], onSelectRequest: (r: any) => void, isAdmin: boolean }) {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
@@ -338,7 +338,9 @@ function AdminCalendarView({ vacations, onSelectRequest }: { vacations: any[], o
                     </span>
                     <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-sm"><span className="text-xs">▶</span></button>
                 </div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden md:block">Vista Global</div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden md:block">
+                    {isAdmin ? 'Vista Global' : 'Mi Calendario'}
+                </div>
             </div>
 
             <div className="grid grid-cols-7 mb-2">
@@ -370,7 +372,7 @@ function AdminCalendarView({ vacations, onSelectRequest }: { vacations: any[], o
                                     const conf = ABSENCE_TYPES[ev.type] || ABSENCE_TYPES.VACATION;
                                     const isPending = ev.status === 'PENDING';
                                     const isRejected = ev.status === 'REJECTED';
-                                    const isApproved = ev.status === 'APPROVED';
+                                    // const isApproved = ev.status === 'APPROVED';
 
                                     return (
                                         <button

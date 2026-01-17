@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, LayoutDashboard, Users, Network, Building2, Calendar as CalendarIcon, Clock, Package, History, FileText, FileSpreadsheet, Settings, Shield, Inbox, Plane } from 'lucide-react';
+import { LogOut, LayoutDashboard, Users, Network, Building2, Calendar as CalendarIcon, Clock, Package, History, FileText, FileSpreadsheet, Settings, Shield, Inbox, Plane, DollarSign } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -18,6 +18,7 @@ export const navItems = [
     { path: '/companies', label: 'Empresas', icon: <Building2 size={20} />, module: 'companies' },
     { path: '/calendar', label: 'Calendario', icon: <CalendarIcon size={20} />, module: 'calendar' },
     { path: '/timesheet', label: 'Fichajes', icon: <Clock size={20} />, module: 'timesheet' },
+    { path: '/expenses', label: 'Gastos', icon: <DollarSign size={20} />, module: 'timesheet' }, // Assuming 'timesheet' or similar standard module access for now, or 'expenses' if split
     { path: '/assets', label: 'Inventario', icon: <Package size={20} />, module: 'assets' },
     { path: '/inbox', label: 'Bandeja de Entrada', icon: <Inbox size={20} />, module: 'employees' },
     { path: '/audit', label: 'Auditoría', icon: <History size={20} />, module: 'audit' },
@@ -65,7 +66,7 @@ export function Sidebar({ sidebarOpen, setSidebarOpen, darkMode }: SidebarProps)
                 <nav className="p-4 space-y-1 mt-4 h-[calc(100vh-160px)] overflow-y-auto custom-scrollbar">
                     {navItems.filter(item => {
                         if (!user) return false;
-                        if (user.role === 'admin') return true;
+                        if (user.role?.toLowerCase() === 'admin') return true;
 
                         // Admin only items
                         if (item.module === 'admin' || item.module === 'settings') return false;

@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, X, Check, Clock, FileText, Info } from 'lucide-react';
+import { ShieldAlert, X, Check, Clock, FileText, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
 import { useNavigate } from 'react-router-dom';
@@ -69,7 +69,7 @@ export default function AlertCenter() {
                 onClick={() => setIsOpen(!isOpen)}
                 className="relative p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-                <Bell size={20} className="text-slate-600 dark:text-slate-400" />
+                <ShieldAlert size={20} className="text-slate-600 dark:text-slate-400" />
                 {unreadCount > 0 && (
                     <span className="absolute top-1 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white dark:ring-slate-900">
                         {unreadCount}
@@ -91,7 +91,7 @@ export default function AlertCenter() {
                             className="absolute right-0 mt-2 w-80 md:w-96 z-[100] bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden"
                         >
                             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                                <h3 className="font-semibold text-slate-900 dark:text-white">Notificaciones</h3>
+                                <h3 className="font-semibold text-slate-900 dark:text-white">Alertas del Sistema</h3>
                                 <div className="text-xs text-slate-500">
                                     {unreadCount} nuevas
                                 </div>
@@ -100,7 +100,7 @@ export default function AlertCenter() {
                             <div className="max-h-[70vh] overflow-y-auto">
                                 {alerts.length === 0 ? (
                                     <div className="p-8 text-center text-slate-500 dark:text-slate-400">
-                                        <Bell size={24} className="mx-auto mb-2 opacity-50" />
+                                        <ShieldAlert size={24} className="mx-auto mb-2 opacity-50" />
                                         <p>No tienes notificaciones</p>
                                     </div>
                                 ) : (

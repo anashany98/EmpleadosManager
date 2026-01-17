@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import {
-    Circle, CheckCircle2, AlertCircle, Clock, FileText,
-    Briefcase, Calendar, GraduationCap, Receipt, HeartPulse,
+    Circle, FileText,
+    Calendar, GraduationCap, Receipt, HeartPulse,
     UserPlus, UserMinus, ShieldAlert, History
 } from 'lucide-react';
 import { format } from 'date-fns';
