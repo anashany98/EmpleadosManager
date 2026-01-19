@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-COPY package.json ./
+# Copy backend package.json from root context
+COPY backend/package.json ./
 
 # Remove windows package-lock to avoid conflicts
 RUN rm -f package-lock.json
@@ -20,10 +21,13 @@ RUN rm -f package-lock.json
 # Install dependencies
 RUN npm install
 
-# Copy database schema
+# Copy database schema from root context
 COPY database ./database
 
-# Generate Prisma Client
+# Copy backend source code
+COPY backend/ .
+
+# Generate Prisma Client (schema is now at ./database/...)
 RUN npx prisma generate --schema=./database/prisma/schema.prisma
 
 # Increase memory for build

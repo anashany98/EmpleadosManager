@@ -20,8 +20,8 @@ services:
   # Backend (Node.js API)
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: nominas_backend
     ports:
       - "16161:3000"
