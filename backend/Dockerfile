@@ -1,7 +1,6 @@
-# Stage 1: Build
-FROM node:22-bullseye AS builder
+FROM node:22-bullseye
 
-# Install system dependencies for canvas (Build time)
+# Install system dependencies for canvas
 RUN apt-get update && apt-get install -y \
     build-essential \
     libcairo2-dev \
@@ -13,49 +12,28 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy backend package.json from root context
-COPY backend/package.json ./
+# Copy root config files
+COPY package*.json ./
+COPY docker-compose.yml ./
 
-# Remove windows package-lock to avoid conflicts
-RUN rm -f package-lock.json
-
-# Install dependencies (including devDependencies)
-RUN npm install
-
-# Copy database schema from root context
+# Copy database schema
 COPY database ./database
 
-# Copy backend source code
-COPY backend/ .
+# Copy backend package.json and install
+COPY backend/package.json ./backend/
+RUN cd backend && npm install
+
+# Copy backend source
+COPY backend ./backend
 
 # Generate Prisma Client
-RUN npx prisma generate --schema=./database/prisma/schema.prisma
+RUN cd backend && npx prisma generate --schema=../database/prisma/schema.prisma
 
-# Increase memory for build
+# Increase memory and build
 ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN cd backend && npm run build
 
-# Run build (emits even with errors if configured in tsconfig)
-RUN npm run build
-
-# Stage 2: Runtime
-FROM node:22-bullseye-slim
-
-# Install ONLY runtime dependencies for canvas
-RUN apt-get update && apt-get install -y \
-    libcairo2 \
-    libjpeg62-turbo \
-    libpango-1.0-0 \
-    libgif7 \
-    librsvg2-2 \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# Copy built files and runtime dependencies
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/database ./database
+WORKDIR /app/backend
 
 EXPOSE 3000
 

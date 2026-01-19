@@ -118,9 +118,23 @@ app.use('/api/onboarding', protect, onboardingRoutes);
 app.use(errorMiddleware);
 
 
-app.listen(Number(PORT), '0.0.0.0', () => {
-    console.log(`Backend running on http://0.0.0.0:${PORT}`);
-});
+// Database Connection Check
+async function startServer() {
+    try {
+        console.log('Checking database connection...');
+        await prisma.$connect();
+        console.log('Database connected successfully.');
+
+        app.listen(Number(PORT), '0.0.0.0', () => {
+            console.log(`Backend running on http://0.0.0.0:${PORT}`);
+        });
+    } catch (error) {
+        console.error('Failed to connect to database:', error);
+        process.exit(1);
+    }
+}
+
+startServer();
 // Trigger restart 2
 
 // Trigger restart 3
