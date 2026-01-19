@@ -33,6 +33,7 @@ services:
       - postgres
     networks:
       - nominas_network
+      - coolify
     restart: always
 
   # Frontend (Vite React - Nginx)
@@ -54,6 +55,8 @@ services:
 networks:
   nominas_network:
     driver: bridge
+  coolify:
+    external: true
 
 volumes:
   postgres_data:
