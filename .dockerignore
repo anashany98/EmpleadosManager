@@ -29,3 +29,12 @@ npm-debug.log*
 
 # Gemini
 .gemini
+
+# Heavy folders and data
+uploads/
+backup/
+data/
+*.sqlite
+*.db
+temp/
+tmp/
