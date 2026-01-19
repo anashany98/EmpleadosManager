@@ -10,5 +10,14 @@
         "strict": false,
         "noImplicitAny": false,
         "skipLibCheck": true
-    }
+    },
+    "include": [
+        "src/**/*"
+    ],
+    "exclude": [
+        "node_modules",
+        "database",
+        "**/*.spec.ts",
+        "dist"
+    ]
 }
