@@ -15,6 +15,7 @@
     },
     "dependencies": {
         "@prisma/client": "^5.x",
+        "@types/nodemailer": "^7.0.5",
         "@types/pdfkit": "^0.17.4",
         "@types/qrcode": "^1.5.6",
         "archiver": "^7.0.1",
@@ -32,6 +33,7 @@
         "jsqr": "^1.4.0",
         "mailparser": "^3.9.1",
         "multer": "^1.4.5-lts.1",
+        "nodemailer": "^7.0.12",
         "pdf-lib": "^1.17.1",
         "pdfjs-dist": "^5.4.530",
         "pdfkit": "^0.17.2",

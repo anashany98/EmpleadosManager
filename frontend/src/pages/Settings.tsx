@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { Settings, DollarSign, Upload, AlertCircle, Folder, Mail, Save } from 'lucide-react';
+import { Settings, DollarSign, Upload, AlertCircle, Folder, Mail, Save, Send } from 'lucide-react';
 import ChecklistManager from '../components/onboarding/ChecklistManager';
 import BackupManager from '../components/BackupManager';
 
@@ -12,6 +12,8 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true);
     const [importing, setImporting] = useState(false);
     const [savingInbox, setSavingInbox] = useState(false);
+    const [savingSmtp, setSavingSmtp] = useState(false);
+    const [sendingTest, setSendingTest] = useState(false);
 
     // Inbox config state
     const [inboxConfig, setInboxConfig] = useState({
@@ -26,19 +28,42 @@ export default function SettingsPage() {
         }
     });
 
+    // SMTP Config State
+    const [smtpConfig, setSmtpConfig] = useState({
+        host: '',
+        port: 587,
+        secure: false, // TLS
+        user: '',
+        pass: '',
+        from: '"NominasApp" <noreply@nominasapp.com>'
+    });
+    const [testEmail, setTestEmail] = useState('');
+
     useEffect(() => {
         fetchData();
     }, []);
 
     const fetchData = async () => {
         try {
-            const [ratesRes, configRes] = await Promise.all([
+            const [ratesRes, configRes, smtpRes] = await Promise.all([
                 api.get('/overtime/rates'),
-                api.get('/config/inbox_settings')
+                api.get('/config/inbox_settings'),
+                api.get('/config/smtp').catch(() => ({ data: {} })) // Handle error if route not ready
             ]);
             setRates(ratesRes.data || ratesRes || []);
             if (configRes.data) {
                 setInboxConfig(prev => ({ ...prev, ...configRes.data }));
+            }
+            if (smtpRes.data && smtpRes.data.success) {
+                const s = smtpRes.data.data;
+                setSmtpConfig({
+                    host: s.SMTP_HOST || '',
+                    port: parseInt(s.SMTP_PORT) || 587,
+                    secure: s.SMTP_SECURE === 'true',
+                    user: s.SMTP_USER || '',
+                    pass: s.SMTP_PASS || '',
+                    from: s.SMTP_FROM || ''
+                });
             }
         } catch (error) {
             console.error(error);
@@ -56,6 +81,39 @@ export default function SettingsPage() {
             toast.error('Error al guardar configuración');
         } finally {
             setSavingInbox(false);
+        }
+    };
+
+    const handleSaveSmtpConfig = async () => {
+        setSavingSmtp(true);
+        try {
+            await api.post('/config/smtp', smtpConfig);
+            toast.success('Configuración SMTP guardada');
+        } catch (error) {
+            toast.error('Error al guardar SMTP');
+        } finally {
+            setSavingSmtp(false);
+        }
+    };
+
+    const handleTestEmail = async () => {
+        if (!testEmail) {
+            toast.error('Introduce un email para la prueba');
+            return;
+        }
+        setSendingTest(true);
+        try {
+            const res = await api.post('/config/smtp/test', { to: testEmail });
+            if (res.data.data?.previewUrl) {
+                toast.success('Correo Fake enviado. Mira la consola para el link (Ethereal)');
+                window.open(res.data.data.previewUrl, '_blank');
+            } else {
+                toast.success('Correo enviado correctamente');
+            }
+        } catch (error: any) {
+            toast.error(error.response?.data?.message || 'Error al enviar prueba');
+        } finally {
+            setSendingTest(false);
         }
     };
 
@@ -115,7 +173,7 @@ export default function SettingsPage() {
     if (loading) return <div className="p-10 text-center animate-pulse">Cargando configuración...</div>;
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-8 animate-in fade-in duration-500 pb-20">
             <div className="flex items-center gap-3 mb-2">
                 <div className="p-2 bg-blue-600 rounded-lg text-white">
                     <Settings size={24} />
@@ -233,14 +291,125 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            {/* Onboarding Templates */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-6">
-                <ChecklistManager />
-            </div>
-
-            {/* Backups */}
+            {/* Configuración de Correo (SMTP) */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                <BackupManager />
+                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        <Mail className="text-orange-500" size={20} />
+                        <h2 className="font-bold text-slate-900 dark:text-white text-lg">Configuración de Envío de Correos (SMTP)</h2>
+                    </div>
+                    <button
+                        onClick={handleSaveSmtpConfig}
+                        disabled={savingSmtp}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                    >
+                        <Save size={18} />
+                        {savingSmtp ? 'Guardando...' : 'Guardar SMTP'}
+                    </button>
+                </div>
+
+                <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="col-span-2">
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Servidor SMTP</label>
+                                <input
+                                    type="text"
+                                    value={smtpConfig.host}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, host: e.target.value })}
+                                    placeholder={!smtpConfig.host ? "Ej: smtp.gmail.com (Vacío = Modo Fake)" : ""}
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1 italic">Si dejas esto vacío, el sistema usará una cuenta "Fake" de Ethereal.</p>
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Puerto</label>
+                                <input
+                                    type="number"
+                                    value={smtpConfig.port}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, port: parseInt(e.target.value) })}
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Usuario</label>
+                                <input
+                                    type="text"
+                                    value={smtpConfig.user}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, user: e.target.value })}
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Contraseña</label>
+                                <input
+                                    type="password"
+                                    value={smtpConfig.pass}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, pass: e.target.value })}
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Remitente (From)</label>
+                                <input
+                                    type="text"
+                                    value={smtpConfig.from}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, from: e.target.value })}
+                                    placeholder='"Nombre" <email@dom.com>'
+                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                />
+                            </div>
+                            <div className="flex items-center pt-6">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={smtpConfig.secure}
+                                        onChange={(e) => setSmtpConfig({ ...smtpConfig, secure: e.target.checked })}
+                                        className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                                    />
+                                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Usar SSL/TLS</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                        <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+                            <Send size={16} />
+                            Probar Configuración
+                        </h3>
+                        <div className="flex gap-2">
+                            <input
+                                type="email"
+                                placeholder="tu-email@ejemplo.com"
+                                value={testEmail}
+                                onChange={(e) => setTestEmail(e.target.value)}
+                                className="flex-1 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                            />
+                            <button
+                                onClick={handleTestEmail}
+                                disabled={sendingTest}
+                                className="px-4 py-2 bg-slate-900 dark:bg-slate-700 text-white rounded-xl text-sm font-bold flex items-center gap-2 hover:opacity-90 disabled:opacity-50"
+                            >
+                                {sendingTest ? (
+                                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                ) : (
+                                    <Send size={16} />
+                                )}
+                                Enviar
+                            </button>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-2">
+                            Se enviará un correo de prueba al email indicado usando la configuración actual guardada.
+                        </p>
+                    </div>
+                </div>
             </div>
 
             {/* Configuración de Bandeja de Entrada */}
@@ -248,12 +417,12 @@ export default function SettingsPage() {
                 <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <Folder className="text-blue-500" size={20} />
-                        <h2 className="font-bold text-slate-900 dark:text-white text-lg">Configuración de Bandeja de Entrada</h2>
+                        <h2 className="font-bold text-slate-900 dark:text-white text-lg">Configuración de Bandeja de Entrada (IMAP)</h2>
                     </div>
                     <button
                         onClick={handleSaveInboxConfig}
                         disabled={savingInbox}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all"
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50"
                     >
                         <Save size={18} />
                         {savingInbox ? 'Guardando...' : 'Guardar Cambios'}
@@ -283,7 +452,7 @@ export default function SettingsPage() {
                             </div>
                         </div>
 
-                        {/* Email Config */}
+                        {/* Email Config (IMAP) */}
                         <div className="space-y-4">
                             <h3 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                                 <Mail size={18} className="text-slate-400" />
@@ -352,24 +521,16 @@ export default function SettingsPage() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="p-8 rounded-2xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-xl shadow-blue-500/20">
-                    <h3 className="text-xl font-bold mb-2">Próximas Funciones</h3>
-                    <ul className="space-y-2 opacity-90 text-sm">
-                        <li>• Configuración de conceptos contables</li>
-                        <li>• Personalización de plantillas de Excel</li>
-                        <li>• Gestión de usuarios y permisos</li>
-                        <li>• Notificaciones automáticas</li>
-                    </ul>
-                </div>
-
-                <div className="p-8 rounded-2xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800">
-                    <h3 className="text-xl font-bold mb-2 text-slate-900 dark:text-white text-lg">Ayuda</h3>
-                    <p className="text-slate-500 text-sm">
-                        Los precios establecidos aquí se aplicarán automáticamente en el calculador de horas extras de la ficha de cada empleado según su categoría asignada.
-                    </p>
-                </div>
+            {/* Onboarding Templates */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-6">
+                <ChecklistManager />
             </div>
+
+            {/* Backups */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
+                <BackupManager />
+            </div>
+
         </div>
     );
 }
