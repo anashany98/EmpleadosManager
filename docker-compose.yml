@@ -24,7 +24,7 @@ services:
       dockerfile: Dockerfile
     container_name: nominas_backend
     ports:
-      - "161616:3000"
+      - "16161:3000"
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password123}@postgres:5432/${POSTGRES_DB:-nominas_db}
       - PORT=3000
@@ -43,7 +43,7 @@ services:
         - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/api}
     container_name: nominas_frontend
     ports:
-      - "171717:80"
+      - "17171:80"
     depends_on:
       - backend
     networks:
