@@ -4,7 +4,8 @@ FROM node:18-alpine as builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm install
+# Force install dev dependencies (Docker often sets NODE_ENV=production which skips them)
+RUN npm install --include=dev
 
 COPY . .
 
@@ -12,6 +13,10 @@ COPY . .
 ARG VITE_API_URL
 ENV VITE_API_URL=$VITE_API_URL
 
+# Increase memory limit for the build process
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
+# Run build
 RUN npm run build
 
 # Stage 2: Serve
