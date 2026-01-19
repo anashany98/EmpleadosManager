@@ -6,15 +6,16 @@ services:
     image: postgres:15-alpine
     container_name: nominas_db
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: password123
-      POSTGRES_DB: nominas_db
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password123}
+      POSTGRES_DB: ${POSTGRES_DB:-nominas_db}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - nominas_network
+    restart: always
 
   # Backend (Node.js API)
   backend:
@@ -25,35 +26,29 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - DATABASE_URL=postgresql://admin:password123@postgres:5432/nominas_db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password123}@postgres:5432/${POSTGRES_DB:-nominas_db}
       - PORT=3000
     depends_on:
       - postgres
-    volumes:
-      - ./backend:/app
-      - /app/node_modules
     networks:
       - nominas_network
-    command: npm run dev
+    restart: always
 
-  # Frontend (Vite React)
+  # Frontend (Vite React - Nginx)
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:3000/api}
     container_name: nominas_frontend
     ports:
-      - "5173:5173"
-    environment:
-      - VITE_API_URL=http://localhost:3000/api
+      - "80:80"
     depends_on:
       - backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     networks:
       - nominas_network
-    command: npm run dev
+    restart: always
 
 networks:
   nominas_network:

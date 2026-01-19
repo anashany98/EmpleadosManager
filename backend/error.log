@@ -215,3 +215,311 @@ The column `main.Company.officeLatitude` does not exist in the current database.
     at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
     at Generator.next (<anonymous>)
     at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:28:43.039Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:28:43.068Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:28:46.402Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:28:47.434Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:28:49.444Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:28:53.468Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:21.663Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:21.670Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:23.429Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:23.435Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:24.274Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:24.276Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:24.282Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:24.287Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:24.683Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:24.691Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:26.242Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:26.246Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:26.251Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:26.256Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:27.531Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:27.540Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:28.179Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:28.186Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:30.954Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:30.956Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:30.962Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)
+[2026-01-19T07:33:30.965Z] SyntaxError: "[object Object]" is not valid JSON
+    at JSON.parse (<anonymous>)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:69:34
+    at Layer.handle [as handle_request] (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\layer.js:95:5)
+    at trim_prefix (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:328:13)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:286:9
+    at Function.process_params (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:346:12)
+    at next (C:\Users\Usuari\Desktop\NominasApp\backend\node_modules\express\lib\router\index.js:280:10)
+    at C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:42:9
+    at Generator.next (<anonymous>)
+    at fulfilled (C:\Users\Usuari\Desktop\NominasApp\backend\src\middlewares\authMiddleware.ts:5:58)

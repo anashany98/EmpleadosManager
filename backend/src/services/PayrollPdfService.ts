@@ -77,6 +77,9 @@ export const PayrollPdfService = {
 
             // --- Body: Earnings and Deductions ---
             let currentY = 210;
+            const PAGE_BOTTOM_LIMIT = 700;
+            const MARGIN_TOP = 50;
+
             doc.fontSize(10).font('Helvetica-Bold');
             doc.text('Concepto', 50, currentY);
             doc.text('Devengos', 350, currentY, { align: 'right', width: 60 });
@@ -100,7 +103,25 @@ export const PayrollPdfService = {
                 { concept: 'Retención IRPF', amount: data.irpf, type: 'DEDUCTION' }
             ];
 
+            const checkPageBreak = () => {
+                if (currentY > PAGE_BOTTOM_LIMIT) {
+                    doc.addPage();
+                    currentY = MARGIN_TOP;
+                    // Re-draw headers for continuity
+                    doc.fontSize(10).font('Helvetica-Bold');
+                    doc.text('Concepto', 50, currentY);
+                    doc.text('Devengos', 350, currentY, { align: 'right', width: 60 });
+                    doc.text('Deducciones', 450, currentY, { align: 'right', width: 60 });
+                    currentY += 15;
+                    doc.moveTo(50, currentY).lineTo(550, currentY).stroke();
+                    currentY += 10;
+                    doc.font('Helvetica');
+                }
+            };
+
             itemsToRender.forEach((item: any) => {
+                checkPageBreak();
+
                 doc.text(item.concept, 50, currentY);
 
                 if (item.type === 'EARNING') {
@@ -112,6 +133,12 @@ export const PayrollPdfService = {
                 }
                 currentY += 15;
             });
+
+            // Ensure space for totals (approx 100px needed)
+            if (currentY + 100 > PAGE_BOTTOM_LIMIT) {
+                doc.addPage();
+                currentY = MARGIN_TOP;
+            }
 
             // --- Footer: Totals ---
             currentY += 20;
@@ -130,8 +157,19 @@ export const PayrollPdfService = {
             doc.fontSize(12).text('LÍQUIDO A PERCIBIR', 360, currentY + 8);
             doc.fontSize(12).text(data.neto.toFixed(2) + ' €', 480, currentY + 8, { align: 'right', width: 40 });
 
-            // Footer signature
-            doc.fontSize(8).text('Documento generado automáticamente por NominasApp', 50, 750, { align: 'center', color: 'grey' });
+            // Footer signature (on every page? or just the last? Currently hardcoded to 750)
+            // Ideally, we put it at the bottom of the current page if it fits, or fixed at bottom
+            // But since we are paginating, let's put it at the bottom of the *current* page relative to the margin,
+            // or fixed 750 if likely A4.
+            // Let's just keep it simple: Add it to the page where totals ended.
+            // If currentY is deep down, we might be close to 750.
+
+            const footerY = 750;
+            if (currentY > footerY - 20) {
+                // if we are past the footer area, add page
+                doc.addPage();
+            }
+            doc.fontSize(8).text('Documento generado automáticamente por NominasApp', 50, footerY, { align: 'center', color: 'grey' });
 
             doc.end();
         });
