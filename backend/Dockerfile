@@ -20,7 +20,11 @@ RUN rm -f package-lock.json
 # Install dependencies
 RUN npm install
 
-COPY . .
+# Copy database schema
+COPY database ./database
+
+# Generate Prisma Client
+RUN npx prisma generate --schema=./database/prisma/schema.prisma
 
 # Increase memory for build
 ENV NODE_OPTIONS="--max-old-space-size=4096"
