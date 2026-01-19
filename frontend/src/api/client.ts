@@ -1,5 +1,8 @@
 export const BASE_URL = import.meta.env.VITE_API_URL || '';
-export const API_URL = `${BASE_URL}/api`;
+// Avoid double /api if VITE_API_URL already ends with it
+export const API_URL = BASE_URL.endsWith('/api') || BASE_URL.endsWith('/api/')
+    ? BASE_URL.replace(/\/$/, '')
+    : `${BASE_URL.replace(/\/$/, '')}/api`;
 // console.log('API_URL:', API_URL);
 
 const getHeaders = (isFormData = false) => {
