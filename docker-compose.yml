@@ -28,6 +28,7 @@ services:
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-password123}@postgres:5432/${POSTGRES_DB:-nominas_db}
       - PORT=3000
+      - JWT_SECRET=${JWT_SECRET:-super-secret-key-change-me}
     depends_on:
       - postgres
     networks:
