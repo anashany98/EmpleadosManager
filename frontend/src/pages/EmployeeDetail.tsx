@@ -13,6 +13,12 @@ const PROVINCIAS = [
     'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias', 'Ávila', 'Badajoz', 'Baleares', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba', 'Cuenca', 'Gerona', 'Granada', 'Guadalajara', 'Guipúzcoa', 'Huelva', 'Huesca', 'Jaén', 'La Coruña', 'La Rioja', 'Las Palmas', 'León', 'Lérida', 'Lugo', 'Madrid', 'Málaga', 'Murcia', 'Navarra', 'Orense', 'Palencia', 'Pontevedra', 'Salamanca', 'Santa Cruz de Tenerife', 'Segovia', 'Sevilla', 'Soria', 'Tarragona', 'Teruel', 'Toledo', 'Valencia', 'Valladolid', 'Vizcaya', 'Zamora', 'Zaragoza', 'Ceuta', 'Melilla'
 ];
 
+const PAISES = ['España', 'Portugal', 'Francia', 'Italia', 'Alemania', 'Reino Unido', 'Otro'];
+
+const MUNICIPIOS_MALLORCA = [
+    'Alaró', 'Alcúdia', 'Algaida', 'Andratx', 'Ariany', 'Artà', 'Banyalbufar', 'Binissalem', 'Búger', 'Bunyola', 'Calvià', 'Campanet', 'Campos', 'Capdepera', 'Consell', 'Costitx', 'Deià', 'Escorca', 'Esporles', 'Estellencs', 'Felanitx', 'Fornalutx', 'Inca', 'Lloret de Vistalegre', 'Lloseta', 'Llubí', 'Llucmajor', 'Manacor', 'Mancor de la Vall', 'Maria de la Salut', 'Marratxí', 'Montuïri', 'Muro', 'Palma', 'Petra', 'Pollença', 'Porreres', 'Puigpunyent', 'Sa Pobla', 'Sant Joan', 'Sant Llorenç des Cardassar', 'Santa Eugènia', 'Santa Margalida', 'Santa María del Camí', 'Santanyí', 'Selva', 'Sencelles', 'Ses Salines', 'Sineu', 'Sóller', 'Son Servera', 'Valldemossa', 'Vilafranca de Bonany'
+];
+
 const DEPARTAMENTOS = ['Ventas', 'Administración', 'Producción', 'Logística', 'IT', 'Recursos Humanos', 'Mantenimiento', 'Otros'];
 const PUESTOS = ['Gerente', 'Director', 'Responsable', 'Técnico', 'Operario', 'Auxiliar', 'Administrativo', 'Vendedor', 'Otros'];
 const CATEGORIAS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4', 'Grupo 5', 'Grupo 6', 'Grupo 7', 'Oficial de 1ª', 'Oficial de 2ª', 'Oficial de 3ª', 'Peón', 'Otros'];
@@ -78,12 +84,14 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
         subaccount465: '', socialSecurityNumber: '', iban: '',
         companyId: '', department: '', category: '', contractType: '', agreementType: '', jobTitle: '',
         entryDate: '', exitDate: '', callDate: '', contractInterruptionDate: '', lowDate: '', lowReason: '',
-        dniExpiration: '', birthDate: '', province: '', registeredIn: '',
+        dniExpiration: '', birthDate: '', country: 'España', province: '', registeredIn: '',
         drivingLicense: false, drivingLicenseType: '', drivingLicenseExpiration: '',
         emergencyContactName: '', emergencyContactPhone: '',
         workingDayType: 'COMPLETE',
         weeklyHours: '',
         gender: '',
+        annualGrossSalary: '',
+        monthlyGrossSalary: '',
         managerId: '',
         active: true
     });
@@ -162,6 +170,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                 lowReason: data.lowReason || '',
                 dniExpiration: data.dniExpiration ? data.dniExpiration.split('T')[0] : '',
                 birthDate: data.birthDate ? data.birthDate.split('T')[0] : '',
+                country: data.country || 'España',
                 province: data.province || '',
                 registeredIn: data.registeredIn || '',
                 drivingLicense: data.drivingLicense || false,
@@ -172,6 +181,8 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                 workingDayType: data.workingDayType || 'COMPLETE',
                 weeklyHours: data.weeklyHours || '',
                 gender: data.gender || '',
+                annualGrossSalary: data.annualGrossSalary || '',
+                monthlyGrossSalary: data.monthlyGrossSalary || '',
                 managerId: data.managerId || '',
                 active: data.active
             });
@@ -188,7 +199,24 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
             const checked = (e.target as HTMLInputElement).checked;
             setFormData(prev => ({ ...prev, [name]: checked }));
         } else {
-            setFormData(prev => ({ ...prev, [name]: value }));
+            setFormData(prev => {
+                const newData = { ...prev, [name]: value };
+
+                // Salary Auto-calculation
+                if (name === 'annualGrossSalary' && value) {
+                    const annual = parseFloat(value);
+                    if (!isNaN(annual)) {
+                        newData.monthlyGrossSalary = (annual / 12).toFixed(2);
+                    }
+                } else if (name === 'monthlyGrossSalary' && value) {
+                    const monthly = parseFloat(value);
+                    if (!isNaN(monthly)) {
+                        newData.annualGrossSalary = (monthly * 12).toFixed(2);
+                    }
+                }
+
+                return newData;
+            });
         }
     };
 
@@ -203,9 +231,9 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                 weeklyHours: formData.weeklyHours ? Number(formData.weeklyHours) : null,
                 companyId: formData.companyId ? formData.companyId : null,
                 managerId: formData.managerId ? formData.managerId : null,
-                // Ensure empty strings for optional dates are sent as null or handle by backend if it accepts empty strings? 
-                // Zod might complain about empty strings for dates if they are not validated as dates.
-                // But specifically fixing the reported errors first.
+                // Ensure number fields are sent as numbers or null
+                annualGrossSalary: formData.annualGrossSalary ? Number(formData.annualGrossSalary) : 0,
+                monthlyGrossSalary: formData.monthlyGrossSalary ? Number(formData.monthlyGrossSalary) : 0,
             };
 
             if (isNew) {
@@ -458,16 +486,32 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Fecha Nacimiento</label>
                                             <input type="date" name="birthDate" value={formData.birthDate} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
                                         </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Provincia</label>
-                                            <select name="province" value={formData.province} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                                                <option value="">Seleccionar...</option>
-                                                {PROVINCIAS.map(p => <option key={p} value={p}>{p}</option>)}
-                                            </select>
+                                        {/* Country & Province Container */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">País</label>
+                                                <select name="country" value={formData.country} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                                                    {PAISES.map(p => <option key={p} value={p}>{p}</option>)}
+                                                </select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Provincia</label>
+                                                {formData.country === 'España' ? (
+                                                    <select name="province" value={formData.province} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
+                                                        <option value="">Seleccionar...</option>
+                                                        {PROVINCIAS.map(p => <option key={p} value={p}>{p}</option>)}
+                                                    </select>
+                                                ) : (
+                                                    <input name="province" value={formData.province} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Provincia / Estado" />
+                                                )}
+                                            </div>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Empadronado en</label>
-                                            <input name="registeredIn" value={formData.registeredIn} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+                                            <input list="municipios-list" name="registeredIn" value={formData.registeredIn} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+                                            <datalist id="municipios-list">
+                                                {MUNICIPIOS_MALLORCA.map(m => <option key={m} value={m} />)}
+                                            </datalist>
                                         </div>
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Email</label>
@@ -639,6 +683,38 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                         <div className="md:col-span-2 space-y-2">
                                             <label className="text-sm font-medium text-slate-700 dark:text-slate-300">IBAN</label>
                                             <input name="iban" value={formData.iban} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+                                        </div>
+                                        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                                    Sueldo Bruto Anual
+                                                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500">€/Año</span>
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    name="annualGrossSalary"
+                                                    value={formData.annualGrossSalary}
+                                                    onChange={handleChange}
+                                                    className="w-full px-4 py-2 rounded-xl border border-green-200 dark:border-green-900/50 bg-green-50/30 dark:bg-green-900/10 font-bold text-green-700 dark:text-green-400"
+                                                    placeholder="Ej: 24000"
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                                                    Sueldo Bruto Mensual
+                                                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500">€/Mes (12 pagas)</span>
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    name="monthlyGrossSalary"
+                                                    value={formData.monthlyGrossSalary}
+                                                    onChange={handleChange}
+                                                    className="w-full px-4 py-2 rounded-xl border border-green-200 dark:border-green-900/50 bg-green-50/30 dark:bg-green-900/10 font-bold text-green-700 dark:text-green-400"
+                                                    placeholder="Ej: 2000"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 )}

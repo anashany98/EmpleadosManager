@@ -119,6 +119,9 @@ model Employee {
   weeklyHours              Float?
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @updatedAt
+  country                  String?               @default("España")
+  annualGrossSalary        Decimal?              @default(0)
+  monthlyGrossSalary       Decimal?              @default(0)
   accountingEntries        AccountingEntry[]
   alerts                   Alert[]
   assets                   Asset[]
@@ -126,7 +129,7 @@ model Employee {
   checklistTasks           ChecklistTask[]
   contractExtensions       ContractExtension[]
   documents                Document[]
-  manager                  Employee?             @relation("Hierarchy", fields: [managerId], references: [id])
+  manager                  Employee?             @relation("Hierarchy", fields: [managerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   subordinates             Employee[]            @relation("Hierarchy")
   projectWork              EmployeeProjectWork[]
   expenses                 Expense[]
@@ -159,8 +162,8 @@ model EmployeeProjectWork {
   notes      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([employeeId])
   @@index([projectId])
@@ -198,7 +201,7 @@ model ChecklistTask {
   deadline    DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([employeeId, type])
 }
@@ -215,7 +218,7 @@ model Expense {
   paymentMethod String   @default("CASH")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([employeeId])
   @@index([status])
@@ -231,7 +234,7 @@ model Document {
   expiryDate DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
-  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([employeeId])
   @@index([category])
@@ -246,7 +249,7 @@ model MedicalReview {
   fileUrl        String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model Training {
@@ -299,8 +302,8 @@ model PayrollImportBatch {
   updatedAt        DateTime          @updatedAt
   entries          AccountingEntry[]
   exports          Export[]
-  createdBy        User              @relation(fields: [createdById], references: [id])
-  mappingProfile   MappingProfile?   @relation(fields: [mappingProfileId], references: [id])
+  createdBy        User              @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mappingProfile   MappingProfile?   @relation(fields: [mappingProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   rows             PayrollRow[]
 }
 
@@ -317,8 +320,8 @@ model PayrollRow {
   extraData       String?
   status          String             @default("PENDING")
   validationNotes String?
-  employee        Employee?          @relation(fields: [employeeId], references: [id])
-  batch           PayrollImportBatch @relation(fields: [batchId], references: [id])
+  employee        Employee?          @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batch           PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   items           PayrollItem[]
 }
 
@@ -330,7 +333,7 @@ model PayrollItem {
   type         String      // "EARNING", "DEDUCTION"
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
-  payrollRow   PayrollRow  @relation(fields: [payrollRowId], references: [id], onDelete: Cascade)
+  payrollRow   PayrollRow  @relation(fields: [payrollRowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([payrollRowId])
 }
@@ -346,8 +349,8 @@ model AccountingEntry {
   totalHaber Decimal
   status     String                @default("DRAFT")
   createdAt  DateTime              @default(now())
-  employee   Employee?             @relation(fields: [employeeId], references: [id])
-  batch      PayrollImportBatch    @relation(fields: [batchId], references: [id])
+  employee   Employee?             @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batch      PayrollImportBatch    @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   lines      AccountingEntryLine[]
 }
 
@@ -360,7 +363,7 @@ model AccountingEntryLine {
   haber    Decimal
   document String?
   order    Int
-  entry    AccountingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entry    AccountingEntry @relation(fields: [entryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model Export {
@@ -370,8 +373,8 @@ model Export {
   filename    String
   generatedAt DateTime           @default(now())
   createdById String
-  createdBy   User               @relation(fields: [createdById], references: [id])
-  batch       PayrollImportBatch @relation(fields: [batchId], references: [id])
+  createdBy   User               @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batch       PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model AuditLog {
@@ -383,8 +386,8 @@ model AuditLog {
   userId           String?
   targetEmployeeId String?
   createdAt        DateTime  @default(now())
-  targetEmployee   Employee? @relation("TargetEmployee", fields: [targetEmployeeId], references: [id])
-  user             User?     @relation(fields: [userId], references: [id])
+  targetEmployee   Employee? @relation("TargetEmployee", fields: [targetEmployeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user             User?     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model CategoryRate {
@@ -421,7 +424,7 @@ model ContractExtension {
   fileUrl         String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([employeeId])
 }
@@ -440,7 +443,7 @@ model Alert {
   isDismissed Boolean   @default(false)
   createdAt   DateTime  @default(now())
   expiresAt   DateTime?
-  employee    Employee? @relation(fields: [employeeId], references: [id])
+  employee    Employee? @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([isRead, severity])
   @@index([createdAt])
@@ -534,7 +537,7 @@ model OnboardingTemplate {
 model EmployeeOnboarding {
   id          String   @id @default(uuid())
   employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   title       String
   items       String   // JSON: { text: string, completed: boolean }[]
   status      String   @default("PENDING") // PENDING, COMPLETED, IN_PROGRESS
