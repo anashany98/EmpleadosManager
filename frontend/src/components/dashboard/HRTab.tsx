@@ -202,35 +202,61 @@ export default function HRTab({ metrics }: HRTabProps) {
             </div>
 
             {/* Details Alerts */}
-            {contracts && (contracts.expiring30 > 0 || contracts.expiring60 > 0 || contracts.trialPeriodEnding > 0) && (
-                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-6">
-                    <h3 className="text-lg font-bold text-amber-900 dark:text-amber-100 mb-4 flex items-center gap-2">
-                        <Clock size={20} />
-                        Alertas de Contratos
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {contracts.expiring30 > 0 && (
-                            <div className="bg-white dark:bg-slate-900 rounded-xl p-4">
-                                <p className="text-sm text-slate-600 dark:text-slate-400">30 días</p>
-                                <p className="text-2xl font-bold text-red-600 dark:text-red-400">{contracts.expiring30}</p>
-                                <p className="text-xs text-slate-500 mt-1">contratos venciendo</p>
-                            </div>
-                        )}
-                        {contracts.expiring60 > 0 && (
-                            <div className="bg-white dark:bg-slate-900 rounded-xl p-4">
-                                <p className="text-sm text-slate-600 dark:text-slate-400">60 días</p>
-                                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{contracts.expiring60}</p>
-                                <p className="text-xs text-slate-500 mt-1">contratos venciendo</p>
-                            </div>
-                        )}
-                        {contracts.trialPeriodEnding > 0 && (
-                            <div className="bg-white dark:bg-slate-900 rounded-xl p-4">
-                                <p className="text-sm text-slate-600 dark:text-slate-400">Período de prueba</p>
-                                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{contracts.trialPeriodEnding}</p>
-                                <p className="text-xs text-slate-500 mt-1">finalizando pronto</p>
-                            </div>
-                        )}
+            {(contracts?.expiring30 > 0 || contracts?.expiring60 > 0 || contracts?.trialPeriodEnding > 0 || contracts?.details?.length > 0) && (
+                <div className="space-y-4">
+                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-6">
+                        <h3 className="text-lg font-bold text-amber-900 dark:text-amber-100 mb-4 flex items-center gap-2">
+                            <Clock size={20} />
+                            Alertas de Contratos
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {contracts.expiring30 > 0 && (
+                                <div className="bg-white dark:bg-slate-900 rounded-xl p-4">
+                                    <p className="text-sm text-slate-600 dark:text-slate-400">30 días</p>
+                                    <p className="text-2xl font-bold text-red-600 dark:text-red-400">{contracts.expiring30}</p>
+                                    <p className="text-xs text-slate-500 mt-1">contratos venciendo</p>
+                                </div>
+                            )}
+                            {contracts.expiring60 > 0 && (
+                                <div className="bg-white dark:bg-slate-900 rounded-xl p-4">
+                                    <p className="text-sm text-slate-600 dark:text-slate-400">60 días</p>
+                                    <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">{contracts.expiring60}</p>
+                                    <p className="text-xs text-slate-500 mt-1">contratos venciendo</p>
+                                </div>
+                            )}
+                            {contracts.trialPeriodEnding > 0 && (
+                                <div className="bg-white dark:bg-slate-900 rounded-xl p-4">
+                                    <p className="text-sm text-slate-600 dark:text-slate-400">Período de prueba</p>
+                                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{contracts.trialPeriodEnding}</p>
+                                    <p className="text-xs text-slate-500 mt-1">finalizando pronto</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
+
+                    {contracts?.details?.length > 0 && (
+                        <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl p-6">
+                            <h3 className="text-lg font-bold text-rose-900 dark:text-rose-100 mb-4 flex items-center gap-2">
+                                <AlertTriangle size={20} />
+                                Caducidad de Documentos y PRL
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                {contracts.details.map((detail: any, idx: number) => (
+                                    <div key={idx} className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-rose-100 dark:border-rose-900/30 flex justify-between items-center">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-rose-500 uppercase tracking-widest">{detail.type}</p>
+                                            <p className="text-xs font-bold text-slate-900 dark:text-white mt-0.5">{detail.name}</p>
+                                            <p className="text-[10px] text-slate-500">{new Date(detail.expiryDate).toLocaleDateString()}</p>
+                                        </div>
+                                        <div className={`px-2 py-1 rounded text-[10px] font-bold ${new Date(detail.expiryDate) < new Date() ? 'bg-red-500 text-white' : 'bg-rose-100 text-rose-600'
+                                            }`}>
+                                            {new Date(detail.expiryDate) < new Date() ? 'CADUCADO' : 'AVISO'}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { Plane, Calendar as CalendarIcon, Check, X, Clock, FileText, Stethoscope, Baby, MoreHorizontal } from 'lucide-react';
+import { Plane, Calendar as CalendarIcon, Check, X, Clock, FileText, Stethoscope, Baby, MoreHorizontal, Filter } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const ABSENCE_TYPES: any = {
@@ -21,6 +21,8 @@ export default function VacationRequests() {
     const [myRequests, setMyRequests] = useState<any[]>([]);
     const [pendingRequests, setPendingRequests] = useState<any[]>([]);
     const [calendarVacations, setCalendarVacations] = useState<any[]>([]); // For Calendar
+    const [departments, setDepartments] = useState<string[]>([]);
+    const [selectedDept, setSelectedDept] = useState('ALL');
     // const [loading, setLoading] = useState(true);
 
     // Form / Modal State
@@ -67,6 +69,25 @@ export default function VacationRequests() {
             fetchEmployeeStats();
         }
     }, [activeTab, user]);
+
+    useEffect(() => {
+        if (activeTab === 'CALENDAR' && user?.role === 'admin') {
+            fetchDepartments();
+        }
+    }, [activeTab, user]);
+
+    const fetchDepartments = async () => {
+        try {
+            const res = await api.get('/employees/departments');
+            if (res.success) setDepartments(res.data);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    const filteredCalendarVacations = selectedDept === 'ALL'
+        ? calendarVacations
+        : calendarVacations.filter((v: any) => v.employee?.department === selectedDept);
 
     const fetchEmployeeStats = async () => {
         try {
@@ -173,9 +194,12 @@ export default function VacationRequests() {
 
             {activeTab === 'CALENDAR' && (
                 <CalendarView
-                    vacations={calendarVacations}
+                    vacations={filteredCalendarVacations}
                     onSelectRequest={(req) => setSelectedRequest(req)}
                     isAdmin={user?.role === 'admin'}
+                    departments={departments}
+                    selectedDept={selectedDept}
+                    onDeptChange={setSelectedDept}
                 />
             )}
 
@@ -310,7 +334,21 @@ export default function VacationRequests() {
 }
 
 // Sub-component for Calendar Logic
-function CalendarView({ vacations, onSelectRequest, isAdmin }: { vacations: any[], onSelectRequest: (r: any) => void, isAdmin: boolean }) {
+function CalendarView({
+    vacations,
+    onSelectRequest,
+    isAdmin,
+    departments,
+    selectedDept,
+    onDeptChange
+}: {
+    vacations: any[],
+    onSelectRequest: (r: any) => void,
+    isAdmin: boolean,
+    departments: string[],
+    selectedDept: string,
+    onDeptChange: (d: string) => void
+}) {
     const [currentDate, setCurrentDate] = useState(new Date());
 
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
@@ -338,8 +376,25 @@ function CalendarView({ vacations, onSelectRequest, isAdmin }: { vacations: any[
                     </span>
                     <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-sm"><span className="text-xs">▶</span></button>
                 </div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden md:block">
-                    {isAdmin ? 'Vista Global' : 'Mi Calendario'}
+                <div className="flex items-center gap-4">
+                    {isAdmin && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800">
+                            <Filter size={14} className="text-slate-400" />
+                            <select
+                                value={selectedDept}
+                                onChange={(e) => onDeptChange(e.target.value)}
+                                className="bg-transparent text-[10px] font-bold outline-none text-slate-700 dark:text-slate-200"
+                            >
+                                <option value="ALL">TODOS LOS DEPTOS.</option>
+                                {departments.map(d => (
+                                    <option key={d} value={d}>{d.toUpperCase()}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+                    <div className="text-xs font-bold text-slate-400 uppercase tracking-widest hidden md:block">
+                        {isAdmin ? 'Vista Global' : 'Mi Calendario'}
+                    </div>
                 </div>
             </div>
 

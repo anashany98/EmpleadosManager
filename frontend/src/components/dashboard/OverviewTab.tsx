@@ -43,7 +43,7 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
         },
         {
             title: 'Alertas',
-            value: (metrics?.contracts?.dniExpiring || 0) + (metrics?.contracts?.licenseExpiring || 0),
+            value: (metrics?.contracts?.dniExpiring || 0) + (metrics?.contracts?.licenseExpiring || 0) + (metrics?.contracts?.medicalReviewExpiring || 0),
             icon: <AlertTriangle size={20} className="text-white" />,
             color: 'bg-amber-500',
         },

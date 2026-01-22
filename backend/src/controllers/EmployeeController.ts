@@ -31,6 +31,20 @@ export const EmployeeController = {
         }
     },
 
+    getDepartments: async (req: Request, res: Response) => {
+        try {
+            const results = await prisma.employee.findMany({
+                where: { active: true, department: { not: null } },
+                select: { department: true },
+                distinct: ['department']
+            });
+            const departments = results.map(r => r.department).filter(Boolean).sort();
+            return ApiResponse.success(res, departments);
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al obtener departamentos', 500);
+        }
+    },
+
     // Obtener jerarquía (para organigrama)
     getHierarchy: async (req: Request, res: Response) => {
         try {
@@ -131,7 +145,7 @@ export const EmployeeController = {
                 dniExpiration, birthDate, province, registeredIn,
                 drivingLicense, drivingLicenseType, drivingLicenseExpiration,
                 emergencyContactName, emergencyContactPhone,
-                workingDayType, weeklyHours, gender, managerId
+                workingDayType, weeklyHours, gender, managerId, privateNotes
             } = req.body;
 
             const userId = (req as any).user?.id;
@@ -176,6 +190,7 @@ export const EmployeeController = {
                     weeklyHours: weeklyHours ? parseFloat(weeklyHours) : null,
                     gender: gender || null,
                     managerId: managerId || null,
+                    privateNotes: privateNotes || null,
                     active: true
                 }
             });
@@ -205,7 +220,7 @@ export const EmployeeController = {
                 'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
                 'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
                 'drivingLicenseType', 'emergencyContactName', 'emergencyContactPhone', 'gender',
-                'managerId', 'lowReason', 'workingDayType'
+                'managerId', 'lowReason', 'workingDayType', 'privateNotes'
             ];
 
             stringFields.forEach(field => {

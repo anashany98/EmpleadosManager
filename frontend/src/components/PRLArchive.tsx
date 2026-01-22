@@ -10,12 +10,14 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
     const confirmAction = useConfirm();
     const [reviews, setReviews] = useState<any[]>([]);
     const [trainings, setTrainings] = useState<any[]>([]);
+    const [assets, setAssets] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
     // Form states
     const [showReviewForm, setShowReviewForm] = useState(false);
     const [showTrainingForm, setShowTrainingForm] = useState(false);
+    const [showAssetForm, setShowAssetForm] = useState(false);
 
     // Review form
     const [revDate, setRevDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -28,18 +30,25 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
     const [trDate, setTrDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [trHours, setTrHours] = useState('');
 
+    // Asset/EPI form
+    const [asName, setAsName] = useState('');
+    const [asSize, setAsSize] = useState('');
+    const [asDate, setAsDate] = useState(format(new Date(), 'yyyy-MM-dd'));
+
     useEffect(() => {
         fetchData();
     }, [employeeId]);
 
     const fetchData = async () => {
         try {
-            const [revs, trains] = await Promise.all([
+            const [revs, trains, asRes] = await Promise.all([
                 api.get(`/employees/${employeeId}/medical-reviews`),
-                api.get(`/employees/${employeeId}/trainings`)
+                api.get(`/employees/${employeeId}/trainings`),
+                api.get(`/assets?employeeId=${employeeId}`)
             ]);
             setReviews(revs.data || revs || []);
             setTrainings(trains.data || trains || []);
+            setAssets(asRes.data || asRes || []);
         } catch (error) {
             console.error(error);
         } finally {
@@ -89,6 +98,30 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
         }
     };
 
+    const handleSubmitAsset = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!asName) return toast.error('El nombre del material es obligatorio');
+        setSaving(true);
+        try {
+            await api.post(`/assets`, {
+                employeeId,
+                name: asName,
+                category: 'EPI',
+                size: asSize || null,
+                assignedDate: asDate
+            });
+            toast.success('Material registrado');
+            setShowAssetForm(false);
+            setAsName('');
+            setAsSize('');
+            fetchData();
+        } catch (error) {
+            toast.error('Error al guardar el material');
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleDeleteReview = async (id: string) => {
         const ok = await confirmAction({
             title: 'Eliminar Revisión Médica',
@@ -123,7 +156,24 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
         }
     };
 
-    if (loading) return <div className="p-10 text-center animate-pulse">Cargando datos PRL...</div>;
+    const handleDeleteAsset = async (id: string) => {
+        const ok = await confirmAction({
+            title: 'Eliminar Registro de Material',
+            message: '¿Estás seguro de eliminar este registro?',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+
+        if (!ok) return;
+        try {
+            await api.delete(`/assets/${id}`);
+            fetchData();
+        } catch (error) {
+            toast.error('Error al eliminar');
+        }
+    };
+
+    if (loading) return <div className="p-10 text-center animate-pulse text-slate-500">Cargando datos PRL...</div>;
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -293,12 +343,12 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
                         <div key={tr.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex justify-between items-center group">
                             <div>
                                 <h4 className="font-bold text-slate-900 dark:text-white text-sm">{tr.name}</h4>
-                                <div className="flex items-center gap-3 mt-1">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase">{tr.type}</span>
-                                    <span className="text-[10px] text-slate-500 flex items-center gap-1">
+                                <div className="flex items-center gap-3 mt-1 text-[10px]">
+                                    <span className="font-bold text-slate-400 uppercase">{tr.type}</span>
+                                    <span className="text-slate-500 flex items-center gap-1">
                                         <Calendar size={10} /> {format(new Date(tr.date), 'dd/MM/yyyy')}
                                     </span>
-                                    {tr.hours && (tr.hours > 0 && <span className="text-[10px] text-indigo-600 font-bold">{tr.hours}h</span>)}
+                                    {tr.hours && (tr.hours > 0 && <span className="text-indigo-600 font-bold">{tr.hours}h</span>)}
                                 </div>
                             </div>
                             <button onClick={() => handleDeleteTraining(tr.id)} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all p-1">
@@ -307,6 +357,87 @@ export default function PRLArchive({ employeeId }: { employeeId: string }) {
                         </div>
                     )) : (
                         <p className="text-sm text-slate-400 italic py-4">No hay cursos registrados</p>
+                    )}
+                </div>
+            </div>
+
+            {/* Entrega de EPIS y Material */}
+            <div className="lg:col-span-2 space-y-6 pt-8 border-t border-slate-100 dark:border-slate-800">
+                <div className="flex justify-between items-center">
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        <Plus className="text-emerald-600" size={24} /> Entrega de EPIS y Equipamiento
+                    </h3>
+                    <button
+                        onClick={() => setShowAssetForm(!showAssetForm)}
+                        className={`p-1.5 rounded-lg transition-all ${showAssetForm ? 'bg-slate-100 dark:bg-slate-800 text-slate-500' : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 hover:bg-emerald-100'}`}
+                    >
+                        {showAssetForm ? <X size={20} /> : <Plus size={20} />}
+                    </button>
+                </div>
+
+                {showAssetForm && (
+                    <form onSubmit={handleSubmitAsset} className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-4 animate-in slide-in-from-top-2 duration-200">
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Material / EPI</label>
+                            <input
+                                type="text"
+                                required
+                                placeholder="Ej: Botas de seguridad"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs"
+                                value={asName}
+                                onChange={(e) => setAsName(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Talla / Modelo</label>
+                            <input
+                                type="text"
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs"
+                                value={asSize}
+                                onChange={(e) => setAsSize(e.target.value)}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-slate-400 uppercase">Fecha Entrega</label>
+                            <input
+                                type="date"
+                                required
+                                className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs"
+                                value={asDate}
+                                onChange={(e) => setAsDate(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex items-end">
+                            <button
+                                disabled={saving}
+                                type="submit"
+                                className="w-full bg-emerald-600 text-white font-bold py-2 rounded-xl text-xs flex items-center justify-center gap-2 hover:bg-emerald-700 transition-colors h-[38px]"
+                            >
+                                {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                Registrar Entrega
+                            </button>
+                        </div>
+                    </form>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {assets.length > 0 ? assets.map(asset => (
+                        <div key={asset.id} className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex justify-between items-center group">
+                            <div>
+                                <h4 className="font-bold text-slate-900 dark:text-white text-sm">{asset.name}</h4>
+                                <div className="flex items-center gap-3 mt-1 text-[10px]">
+                                    {asset.size && <span className="font-bold text-emerald-600">Talla: {asset.size}</span>}
+                                    <span className="text-slate-500 flex items-center gap-1">
+                                        <Calendar size={10} /> {asset.assignedDate ? format(new Date(asset.assignedDate), 'dd/MM/yyyy') : '-'}
+                                    </span>
+                                </div>
+                            </div>
+                            <button onClick={() => handleDeleteAsset(asset.id)} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all p-1">
+                                <Trash2 size={14} />
+                            </button>
+                        </div>
+                    )) : (
+                        <p className="text-sm text-slate-400 italic py-4 col-span-full text-center">No hay registros de equipamiento</p>
                     )}
                 </div>
             </div>

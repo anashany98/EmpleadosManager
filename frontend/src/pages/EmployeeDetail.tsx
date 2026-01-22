@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
     ArrowLeft, Save, Loader2, CreditCard, Building,
-    Clock, Plus, Trash2, Scale, ShieldCheck, Lock, Key
+    Clock, Plus, Trash2, Scale, ShieldCheck, Lock, Key, Phone, MessageCircle
 } from 'lucide-react';
 import { isHoliday } from '../utils/holidays';
 
@@ -93,6 +93,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
         annualGrossSalary: '',
         monthlyGrossSalary: '',
         managerId: '',
+        privateNotes: '',
         active: true
     });
 
@@ -184,6 +185,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                 annualGrossSalary: data.annualGrossSalary || '',
                 monthlyGrossSalary: data.monthlyGrossSalary || '',
                 managerId: data.managerId || '',
+                privateNotes: data.privateNotes || '',
                 active: data.active
             });
         } catch (error) {
@@ -281,6 +283,20 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                             <div className="flex flex-wrap items-center gap-4 mt-2 text-slate-500 dark:text-slate-400 text-sm">
                                 <span className="flex items-center gap-1"><CreditCard size={14} /> {employeeView.dni}</span>
                                 <span className="flex items-center gap-1"><Building size={14} /> {employeeView.department}</span>
+                                {employeeView.phone && (
+                                    <div className="flex items-center gap-2">
+                                        <span className="flex items-center gap-1"><Phone size={14} /> {employeeView.phone}</span>
+                                        <a
+                                            href={`https://api.whatsapp.com/send?phone=${employeeView.phone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${employeeView.phone.replace(/\D/g, '')}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-1 px-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors flex items-center gap-1 text-[10px] font-bold"
+                                            title="Abrir WhatsApp"
+                                        >
+                                            <MessageCircle size={10} /> WhatsApp
+                                        </a>
+                                    </div>
+                                )}
                                 {employeeView.gender && (
                                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${employeeView.gender === 'MALE'
                                         ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
@@ -344,7 +360,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                 'resumen',
                                 'nominas',
                                 'cronograma',
-                                ...(isAdmin ? ['generar', 'expediente', 'prl', 'obras', 'activos', 'checklists', 'seguridad', 'privacidad'] : ['prl']),
+                                ...(isAdmin ? ['generar', 'expediente', 'prl', 'obras', 'activos', 'checklists', 'seguridad', 'privacidad', 'notas-rrhh'] : ['prl']),
                                 'fichajes',
                                 'vacaciones'
                             ].map((tab) => (
@@ -408,6 +424,14 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                 {activeTab === 'nominas' && <EmployeePayrollViewer employeeId={id || ''} />}
                                 {activeTab === 'seguridad' && <SecuritySection employeeId={id || ''} employeeName={`${employeeView.firstName} ${employeeView.lastName}`} />}
                                 {activeTab === 'privacidad' && <PrivacySection employeeId={id || ''} employeeName={`${employeeView.firstName} ${employeeView.lastName}`} />}
+                                {activeTab === 'notas-rrhh' && (
+                                    <RRHHNotesSection
+                                        value={formData.privateNotes}
+                                        onChange={(val) => setFormData(prev => ({ ...prev, privateNotes: val }))}
+                                        onSave={handleSubmit as any}
+                                        saving={saving}
+                                    />
+                                )}
                             </motion.div>
                         </AnimatePresence>
                     </div>
@@ -518,11 +542,35 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                             <input name="email" value={formData.email} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono</label>
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono</label>
+                                                {formData.phone && (
+                                                    <a
+                                                        href={`https://api.whatsapp.com/send?phone=${formData.phone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${formData.phone.replace(/\D/g, '')}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-[10px] text-green-600 font-bold hover:underline flex items-center gap-1"
+                                                    >
+                                                        <MessageCircle size={10} /> WhatsApp
+                                                    </a>
+                                                )}
+                                            </div>
                                             <input name="phone" value={formData.phone} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono de Empresa</label>
+                                            <div className="flex justify-between items-center">
+                                                <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono de Empresa</label>
+                                                {formData.companyPhone && (
+                                                    <a
+                                                        href={`https://api.whatsapp.com/send?phone=${formData.companyPhone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${formData.companyPhone.replace(/\D/g, '')}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-[10px] text-green-600 font-bold hover:underline flex items-center gap-1"
+                                                    >
+                                                        <MessageCircle size={10} /> WhatsApp
+                                                    </a>
+                                                )}
+                                            </div>
                                             <input name="companyPhone" value={formData.companyPhone} onChange={handleChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: 600..." />
                                         </div>
                                         <div className="space-y-2">
@@ -1173,4 +1221,36 @@ function SecuritySection({ employeeId, employeeName }: { employeeId: string, emp
         </div>
     );
 }
+
+function RRHHNotesSection({ value, onChange, onSave, saving }: { value: string, onChange: (val: string) => void, onSave: () => void, saving: boolean }) {
+    return (
+        <div className="space-y-6">
+            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 p-6 rounded-2xl">
+                <h3 className="text-lg font-bold text-amber-900 dark:text-amber-400 flex items-center gap-2 mb-4">
+                    <Save size={20} className="text-amber-600" /> Notas Administrativas Privadas
+                </h3>
+                <p className="text-sm text-amber-700 dark:text-amber-500 mb-4 italic">
+                    * Estas notas son estrictamente confidenciales y solo visibles por el equipo de RRHH / Administración.
+                </p>
+                <textarea
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder="Escribe aquí notas sobre el empleado (comportamiento, incidencias, recordatorios...)"
+                    className="w-full h-64 p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-amber-500 outline-none text-slate-700 dark:text-slate-200"
+                />
+                <div className="flex justify-end mt-4">
+                    <button
+                        onClick={onSave}
+                        disabled={saving}
+                        className="px-6 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition-all flex items-center gap-2 disabled:opacity-50"
+                    >
+                        {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                        Guardar Nota
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 

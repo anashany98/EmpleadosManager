@@ -65,6 +65,24 @@ export class EmployeeDashboardController {
                     type: 'LICENCIA'
                 }));
 
+            const medicalReviewsExpiring = await prisma.medicalReview.findMany({
+                where: {
+                    nextReviewDate: {
+                        lte: thirtyDaysFromNow,
+                        gte: now
+                    },
+                    employee: where
+                },
+                include: { employee: true }
+            });
+
+            const medicalExpiringDetails = medicalReviewsExpiring.map(r => ({
+                id: r.employeeId,
+                name: r.employee.name || `${r.employee.firstName} ${r.employee.lastName}`,
+                expiryDate: r.nextReviewDate,
+                type: 'MEDICA'
+            }));
+
             const contracts = {
                 expiring30: 0,
                 expiring60: 0,
@@ -72,7 +90,8 @@ export class EmployeeDashboardController {
                 trialPeriodEnding: 0,
                 dniExpiring: dniExpiringDetails.length,
                 licenseExpiring: licenseExpiringDetails.length,
-                details: [...dniExpiringDetails, ...licenseExpiringDetails]
+                medicalReviewExpiring: medicalExpiringDetails.length,
+                details: [...dniExpiringDetails, ...licenseExpiringDetails, ...medicalExpiringDetails]
             };
 
             // Financial overview - simplified without baseSalary field

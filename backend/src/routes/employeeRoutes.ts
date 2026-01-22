@@ -15,6 +15,7 @@ import { validateResource } from '../middlewares/validateResource';
 import { createEmployeeSchema, updateEmployeeSchema } from '../schemas/employeeSchemas';
 
 router.get('/', EmployeeController.getAll);
+router.get('/departments', EmployeeController.getDepartments);
 router.get('/hierarchy', EmployeeController.getHierarchy);
 router.post('/import', upload.single('file'), EmployeeController.importEmployees);
 router.get('/template', EmployeeController.downloadTemplate);

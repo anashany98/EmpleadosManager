@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import {
     FileSpreadsheet, Upload, Plus, Search,
     CreditCard, Building2, MoreHorizontal, User,
-    Loader2
+    Loader2, MessageCircle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import BulkActionToolbar, { EMPLOYEE_BULK_ACTIONS } from '../components/BulkActionToolbar';
@@ -20,6 +20,7 @@ interface Employee {
     dni: string;
     subaccount465: string;
     department?: string;
+    phone?: string;
     active: boolean;
 }
 
@@ -255,10 +256,24 @@ export default function EmployeeList() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="font-semibold text-slate-900 dark:text-white">
-                                                <Link to={`/employees/${emp.id}`} className="hover:text-blue-600 transition-colors">
-                                                    {emp.name || `${emp.firstName} ${emp.lastName}`}
-                                                </Link>
+                                            <div className="flex items-center gap-3">
+                                                <div className="font-semibold text-slate-900 dark:text-white">
+                                                    <Link to={`/employees/${emp.id}`} className="hover:text-blue-600 transition-colors">
+                                                        {emp.name || `${emp.firstName} ${emp.lastName}`}
+                                                    </Link>
+                                                </div>
+                                                {emp.phone && (
+                                                    <a
+                                                        href={`https://api.whatsapp.com/send?phone=${emp.phone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${emp.phone.replace(/\D/g, '')}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="p-1.5 bg-green-500 text-white rounded-full hover:bg-green-600 transition-all hover:scale-110 active:scale-90 shadow-sm"
+                                                        title={`Contactar a ${emp.phone}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <MessageCircle size={12} />
+                                                    </a>
+                                                )}
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-mono text-xs">{emp.dni}</td>
@@ -335,7 +350,18 @@ export default function EmployeeList() {
                                             {emp.dni}
                                         </p>
                                     </div>
-                                    <div className="ml-auto">
+                                    <div className="ml-auto flex items-center gap-2">
+                                        {emp.phone && (
+                                            <a
+                                                href={`https://api.whatsapp.com/send?phone=${emp.phone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${emp.phone.replace(/\D/g, '')}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-2 bg-green-500 text-white rounded-full"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <MessageCircle size={14} />
+                                            </a>
+                                        )}
                                         <span className={`w-2 h-2 rounded-full block ${emp.active ? 'bg-emerald-500 box-shadow-emerald' : 'bg-slate-400'}`}></span>
                                     </div>
                                 </div>
