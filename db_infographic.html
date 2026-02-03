@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Mapa del Ecosistema NominasApp</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: #0f172a;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 40px;
+        }
+
+        .island {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+
+        .node-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+            font-size: 20px;
+        }
+
+        .connector {
+            position: absolute;
+            border: 2px dashed rgba(255, 255, 255, 0.1);
+            z-index: -1;
+        }
+
+        .pulse {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4);
+            }
+
+            70% {
+                box-shadow: 0 0 0 20px rgba(79, 70, 229, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(79, 70, 229, 0);
+            }
+        }
+    </style>
+</head>
+
+<body class="p-10">
+    <div class="relative max-w-6xl w-full grid grid-cols-3 gap-12">
+
+        <!-- COLUMNA 1: GESTIÓN DIARIA -->
+        <div class="space-y-8">
+            <h2 class="text-blue-400 font-bold uppercase tracking-widest text-sm mb-4">Gestión Diaria</h2>
+
+            <div class="island hover:scale-105 transition-transform">
+                <div class="node-icon bg-blue-500/20 text-blue-400"><i class="fas fa-clock"></i></div>
+                <h3 class="font-bold text-lg">Control Horario</h3>
+                <p class="text-slate-400 text-sm mt-2">Fichajes de entrada/salida y pausas de comida.</p>
+            </div>
+
+            <div class="island hover:scale-105 transition-transform">
+                <div class="node-icon bg-yellow-500/20 text-yellow-400"><i class="fas fa-umbrella-beach"></i></div>
+                <h3 class="font-bold text-lg">Vacaciones y Bajas</h3>
+                <p class="text-slate-400 text-sm mt-2">Calendario de ausencias, festivos y bajas médicas.</p>
+            </div>
+
+            <div class="island hover:scale-105 transition-transform">
+                <div class="node-icon bg-purple-500/20 text-purple-400"><i class="fas fa-project-diagram"></i></div>
+                <h3 class="font-bold text-lg">Asignación a Obras</h3>
+                <p class="text-slate-400 text-sm mt-2">Imputación de horas de trabajo a proyectos específicos.</p>
+            </div>
+        </div>
+
+        <!-- COLUMNA 2: NÚCLEO CENTRAL -->
+        <div class="flex flex-col justify-center items-center relative gap-12">
+
+            <!-- Empresa -->
+            <div class="island w-full text-center border-blue-500/30">
+                <div class="node-icon bg-blue-600 mx-auto text-white shadow-lg shadow-blue-500/50"><i
+                        class="fas fa-building"></i></div>
+                <h2 class="font-extrabold text-xl">Tu Empresa</h2>
+            </div>
+
+            <!-- EMPLEADO (CENTRO) -->
+            <div class="island w-full text-center border-indigo-500 pulse bg-indigo-600/10">
+                <div
+                    class="node-icon bg-indigo-600 mx-auto text-white shadow-lg shadow-indigo-500/50 transform scale-125 mb-6">
+                    <i class="fas fa-user-tie text-2xl"></i></div>
+                <h1 class="font-black text-2xl mb-2">EL EMPLEADO</h1>
+                <p class="text-indigo-300 text-xs font-bold uppercase">Corazón del Sistema</p>
+                <div class="mt-4 flex gap-2 justify-center">
+                    <span class="bg-indigo-400/20 px-2 py-1 rounded text-[10px] text-indigo-200">DATOS PERSONALES</span>
+                    <span class="bg-indigo-400/20 px-2 py-1 rounded text-[10px] text-indigo-200">BANCO</span>
+                </div>
+            </div>
+
+            <!-- Nóminas -->
+            <div class="island w-full text-center border-rose-500/30">
+                <div class="node-icon bg-rose-600 mx-auto text-white shadow-lg shadow-rose-500/50"><i
+                        class="fas fa-file-invoice-dollar"></i></div>
+                <h3 class="font-bold text-lg">Módulo de Nóminas</h3>
+                <p class="text-slate-400 text-xs mt-2 italic">Importación automática desde Excel</p>
+            </div>
+        </div>
+
+        <!-- COLUMNA 3: RECURSOS Y LEGAL -->
+        <div class="space-y-8 text-right">
+            <h2 class="text-emerald-400 font-bold uppercase tracking-widest text-sm mb-4">Recursos y Legal</h2>
+
+            <div class="island hover:scale-105 transition-transform text-right flex flex-col items-end">
+                <div class="node-icon bg-emerald-500/20 text-emerald-400"><i class="fas fa-folder-open"></i></div>
+                <h3 class="font-bold text-lg">Documentación</h3>
+                <p class="text-slate-400 text-sm mt-2">DNI, Contratos, PRL y certificados en la nube.</p>
+            </div>
+
+            <div class="island hover:scale-105 transition-transform text-right flex flex-col items-end">
+                <div class="node-icon bg-orange-500/20 text-orange-400"><i class="fas fa-laptop-code"></i></div>
+                <h3 class="font-bold text-lg">Equipamiento (EPIs)</h3>
+                <p class="text-slate-400 text-sm mt-2">Control de ropa, herramientas y dispositivos entregados.</p>
+            </div>
+
+            <div class="island hover:scale-105 transition-transform text-right flex flex-col items-end">
+                <div class="node-icon bg-cyan-500/20 text-cyan-400"><i class="fas fa-chart-line"></i></div>
+                <h3 class="font-bold text-lg">Contabilidad</h3>
+                <p class="text-slate-400 text-sm mt-2">Generación automática de asientos para Contasol.</p>
+            </div>
+        </div>
+
+    </div>
+</body>
+
+</html>

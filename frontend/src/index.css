@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300;
+  }
+
+  /* Force consistent form element styling to prevent visibility issues */
+  input,
+  select,
+  textarea {
+    @apply text-slate-900 dark:text-white bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700;
+  }
+
+  /* Specifically fix option text visibility in Windows/Chrome dark mode */
+  select option {
+    @apply bg-white text-slate-900 dark:bg-slate-800 dark:text-white;
+  }
+}
+
+@layer utilities {
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 dark:bg-slate-700 rounded-full transition-colors hover:bg-slate-400 dark:hover:bg-slate-600;
+  }
+
+  /* Utility to hide scrollbar but keep functionality */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

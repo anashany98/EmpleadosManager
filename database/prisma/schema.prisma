@@ -1,0 +1,563 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../backend/node_modules/.prisma/client"
+}
+
+generator client_root {
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id          String               @id @default(uuid())
+  email       String               @unique
+  dni         String?              @unique // Login alternative
+  employeeId  String?              // Link to specific employee record
+  password    String
+  role        String               @default("user")
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  permissions String?
+  auditLogs   AuditLog[]
+  exports     Export[]
+  batches     PayrollImportBatch[]
+  refreshTokens RefreshToken[]
+  notifications Notification[]
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Company {
+  id        String     @id @default(uuid())
+  name      String
+  cif       String     @unique
+  logoUrl   String?
+  legalRep    String?    // Apoderado
+  address     String?
+  postalCode  String?
+  city        String?
+  province    String?
+  country     String?
+  email       String?
+  phone       String?
+  officeLatitude  Float?
+  officeLongitude Float?
+  allowedRadius   Int?       @default(100) // Meters
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  employees Employee[]
+  onboardingTemplates OnboardingTemplate[] // Optional: if we want company-specific templates later, but for now just global? The plan didn't specify company relation for templates yet. 
+}
+
+model PermissionProfile {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  permissions String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Employee {
+  id                       String                @id @default(uuid())
+  dni                      String                @unique
+  name                     String
+  firstName                String?
+  lastName                 String?
+  email                    String?
+  phone                    String?
+  address                  String?
+  city                     String?
+  postalCode               String?
+  province                 String?
+  registeredIn             String?
+  birthDate                DateTime?
+  gender                   String?
+  subaccount465            String?               @unique
+  active                   Boolean               @default(true)
+  socialSecurityNumber     String?
+  iban                     String?
+  dniExpiration            DateTime?
+  drivingLicense           Boolean               @default(false)
+  drivingLicenseType       String?
+  drivingLicenseExpiration DateTime?
+  emergencyContactName     String?
+  emergencyContactPhone    String?
+  companyPhone             String?
+  companyId                String?
+  company                  Company?              @relation(fields: [companyId], references: [id])
+  onboadings               EmployeeOnboarding[]
+  department               String?
+  category                 String?
+  contractType             String?
+  agreementType            String?
+  jobTitle                 String?
+  contractEndDate          DateTime?
+  managerId                String?
+  entryDate                DateTime?
+  exitDate                 DateTime?
+  callDate                 DateTime?
+  contractInterruptionDate DateTime?
+  lowDate                  DateTime?
+  lowReason                String?
+  vacationDaysTotal        Int                   @default(30)
+  workingDayType           String?
+  weeklyHours              Float?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  country                  String?               @default("España")
+  annualGrossSalary        Decimal?              @default(0)
+  monthlyGrossSalary       Decimal?              @default(0)
+  privateNotes             String?
+  accountingEntries        AccountingEntry[]
+  alerts                   Alert[]
+  assets                   Asset[]
+  targetAuditLogs          AuditLog[]            @relation("TargetEmployee")
+  checklistTasks           ChecklistTask[]
+  contractExtensions       ContractExtension[]
+  documents                Document[]
+  manager                  Employee?             @relation("Hierarchy", fields: [managerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  subordinates             Employee[]            @relation("Hierarchy")
+  projectWork              EmployeeProjectWork[]
+  expenses                 Expense[]
+  medicalReviews           MedicalReview[]
+  overtimeEntries          OvertimeEntry[]
+  payrollRows              PayrollRow[]
+  timeEntries              TimeEntry[]
+  trainings                Training[]
+  vacations                Vacation[]
+  emergencyContacts        EmergencyContact[]
+}
+
+model EmergencyContact {
+  id           String   @id @default(uuid())
+  employeeId   String
+  name         String
+  phone        String
+  relationship String?  // Padre, Madre, Pareja...
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+}
+
+model Project {
+  id           String                @id @default(uuid())
+  code         String                @unique
+  name         String
+  destination  String?
+  active       Boolean               @default(true)
+  createdAt    DateTime              @default(now())
+  updatedAt    DateTime              @updatedAt
+  employeeWork EmployeeProjectWork[]
+}
+
+model EmployeeProjectWork {
+  id         String   @id @default(uuid())
+  employeeId String
+  projectId  String
+  startDate  DateTime
+  endDate    DateTime
+  hours      Float    @default(8.0)
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+  @@index([projectId])
+  @@index([startDate, endDate])
+}
+
+model Asset {
+  id              String         @id @default(uuid())
+  employeeId      String?
+  category        String
+  name            String
+  serialNumber    String?
+  size            String?
+  assignedDate    DateTime?
+  returnDate      DateTime?
+  status          String         @default("ASSIGNED")
+  notes           String?
+  inventoryItemId String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  employee        Employee?      @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId])
+}
+
+model ChecklistTask {
+  id          String    @id @default(uuid())
+  employeeId  String
+  type        String
+  title       String
+  description String?
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  deadline    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId, type])
+}
+
+model Expense {
+  id            String   @id @default(uuid())
+  employeeId    String
+  date          DateTime @default(now())
+  category      String
+  amount        Float
+  description   String?
+  receiptUrl    String?
+  status        String   @default("PENDING")
+  paymentMethod String   @default("CASH")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+  @@index([status])
+}
+
+model Document {
+  id         String    @id @default(uuid())
+  employeeId String
+  name       String
+  category   String
+  fileUrl    String
+  uploadDate DateTime  @default(now())
+  expiryDate DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+  @@index([category])
+}
+
+model MedicalReview {
+  id             String    @id @default(uuid())
+  employeeId     String
+  date           DateTime
+  result         String?
+  nextReviewDate DateTime?
+  fileUrl        String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Training {
+  id         String   @id @default(uuid())
+  employeeId String
+  type       String
+  name       String
+  date       DateTime
+  hours      Int?
+  fileUrl    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Vacation {
+  id         String   @id @default(uuid())
+  employeeId String
+  startDate  DateTime
+  endDate    DateTime
+  type       String   @default("VACATION")
+  days       Int      @default(0)
+  reason     String?
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model MappingProfile {
+  id        String               @id @default(uuid())
+  name      String
+  rules     String
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  batches   PayrollImportBatch[]
+}
+
+model PayrollImportBatch {
+  id               String            @id @default(uuid())
+  year             Int
+  month            Int
+  sourceFilename   String
+  status           String            @default("UPLOADED")
+  resultSummary    String?
+  notes            String?
+  mappingProfileId String?
+  createdById      String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  entries          AccountingEntry[]
+  exports          Export[]
+  createdBy        User              @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mappingProfile   MappingProfile?   @relation(fields: [mappingProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  rows             PayrollRow[]
+}
+
+model PayrollRow {
+  id              String             @id @default(uuid())
+  batchId         String
+  rawEmployeeName String?
+  employeeId      String?
+  bruto           Decimal            @default(0)
+  ssEmpresa       Decimal            @default(0)
+  ssTrabajador    Decimal            @default(0)
+  irpf            Decimal            @default(0)
+  neto            Decimal            @default(0)
+  extraData       String?
+  status          String             @default("PENDING")
+  validationNotes String?
+  employee        Employee?          @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batch           PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  items           PayrollItem[]
+}
+
+model PayrollItem {
+  id           String      @id @default(uuid())
+  payrollRowId String
+  concept      String
+  amount       Decimal
+  type         String      // "EARNING", "DEDUCTION"
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  payrollRow   PayrollRow  @relation(fields: [payrollRowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([payrollRowId])
+}
+
+model AccountingEntry {
+  id         String                @id @default(uuid())
+  batchId    String
+  employeeId String?
+  concept    String
+  document   String?
+  date       DateTime
+  totalDebe  Decimal
+  totalHaber Decimal
+  status     String                @default("DRAFT")
+  createdAt  DateTime              @default(now())
+  employee   Employee?             @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batch      PayrollImportBatch    @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  lines      AccountingEntryLine[]
+}
+
+model AccountingEntryLine {
+  id       String          @id @default(uuid())
+  entryId  String
+  account  String
+  concept  String
+  debe     Decimal
+  haber    Decimal
+  document String?
+  order    Int
+  entry    AccountingEntry @relation(fields: [entryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Export {
+  id          String             @id @default(uuid())
+  batchId     String
+  type        String
+  filename    String
+  generatedAt DateTime           @default(now())
+  createdById String
+  createdBy   User               @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  batch       PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model AuditLog {
+  id               String    @id @default(uuid())
+  action           String
+  entity           String
+  entityId         String
+  metadata         String?
+  userId           String?
+  targetEmployeeId String?
+  createdAt        DateTime  @default(now())
+  targetEmployee   Employee? @relation("TargetEmployee", fields: [targetEmployeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user             User?     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model CategoryRate {
+  id                  String   @id @default(uuid())
+  category            String   @unique
+  overtimeRate        Float    @default(0.0)
+  holidayOvertimeRate Float    @default(0.0)
+  updatedAt           DateTime @updatedAt
+}
+
+model OvertimeEntry {
+  id         String   @id @default(uuid())
+  employeeId String
+  hours      Float
+  rate       Float
+  total      Float
+  date       DateTime @default(now())
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([date])
+  @@index([employeeId, date])
+}
+
+model ContractExtension {
+  id              String    @id @default(uuid())
+  employeeId      String
+  extensionDate   DateTime  @default(now())
+  newEndDate      DateTime
+  previousEndDate DateTime?
+  notes           String?
+  fileUrl         String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([employeeId])
+}
+
+
+
+model Alert {
+  id          String    @id @default(uuid())
+  employeeId  String?
+  type        String
+  severity    String
+  title       String
+  message     String
+  actionUrl   String?
+  isRead      Boolean   @default(false)
+  isDismissed Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime?
+  employee    Employee? @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([isRead, severity])
+  @@index([createdAt])
+}
+
+model InventoryItem {
+  id          String              @id @default(uuid())
+  category    String
+  name        String
+  size        String?
+  quantity    Int                 @default(0)
+  minQuantity Int                 @default(5)
+  description String?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  assets      Asset[]
+  movements   InventoryMovement[]
+
+  @@unique([name, size])
+}
+
+model InventoryMovement {
+  id              String        @id @default(uuid())
+  inventoryItemId String
+  type            String
+  quantity        Int
+  userId          String?
+  employeeId      String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryItemId])
+}
+
+model InboxDocument {
+  id           String    @id @default(uuid())
+  filename     String
+  originalName String
+  source       String
+  receivedAt   DateTime  @default(now())
+  fileUrl      String
+  processed    Boolean   @default(false)
+  processedAt  DateTime?
+}
+
+model Configuration {
+  id    String @id @default("global")
+  key   String @unique
+  value String
+}
+
+model TimeEntry {
+  id         String   @id @default(uuid())
+  employeeId String
+  type       String   // IN, OUT, BREAK_START, BREAK_END, LUNCH_START, LUNCH_END
+  timestamp  DateTime @default(now())
+  latitude   Float?
+  longitude  Float?
+  location   String?
+  device     String?
+  
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, SUCCESS, WARNING, ERROR
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model OnboardingTemplate {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  items       String   // JSON: string[] (List of tasks)
+  isActive    Boolean  @default(true)
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model EmployeeOnboarding {
+  id          String   @id @default(uuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  title       String
+  items       String   // JSON: { text: string, completed: boolean }[]
+  status      String   @default("PENDING") // PENDING, COMPLETED, IN_PROGRESS
+  progress    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  completedAt DateTime?
+}

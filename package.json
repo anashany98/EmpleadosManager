@@ -1,0 +1,22 @@
+{
+  "name": "nominas-app-monorepo",
+  "version": "1.0.0",
+  "description": "Aplicación para gestión de nóminas y exportación a Contasol",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "prisma": "^5.22.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  },
+  "prisma": {
+    "seed": "npx ts-node database/prisma/seed.ts"
+  }
+}

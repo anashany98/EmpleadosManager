@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # Base de Datos PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: nominas_db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password123}
+      POSTGRES_DB: ${POSTGRES_DB:-nominas_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nominas_network
+    restart: always
+
+  # Backend (Node.js API)
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: nominas_backend
+    ports:
+      - "16161:3000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-postgresql://admin:password123@postgres:5432/nominas_db}
+      - PORT=3000
+      - JWT_SECRET=${JWT_SECRET:-super-secret-key-change-me}
+    depends_on:
+      - postgres
+    networks:
+      - nominas_network
+      - coolify
+    restart: always
+
+  # Frontend (Vite React - Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:3000}
+    container_name: nominas_frontend
+    ports:
+      - "17171:80"
+    depends_on:
+      - backend
+    networks:
+      - nominas_network
+    restart: always
+
+networks:
+  nominas_network:
+    driver: bridge
+  coolify:
+    external: true
+
+volumes:
+  postgres_data:

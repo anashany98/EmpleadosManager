@@ -1,0 +1,40 @@
+# Ignore node_modules to prevent overwriting linux binaries with windows ones
+**/node_modules
+node_modules
+
+# Ignore git metadata
+.git
+.gitignore
+
+# Ignore build artifacts
+dist
+build
+coverage
+
+# Ignore env files (secrets should be passed via environment variables)
+.env
+.env.*
+
+# Ignore logs
+*.log
+npm-debug.log*
+
+# Ignore IDE files
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Gemini
+.gemini
+
+# Heavy folders and data
+uploads/
+backup/
+data/
+*.sqlite
+*.db
+temp/
+tmp/

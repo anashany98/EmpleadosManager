@@ -1,0 +1,12 @@
+{
+    "watch": [
+        "src"
+    ],
+    "ext": "ts,json",
+    "ignore": [
+        "src/**/*.spec.ts",
+        "node_modules",
+        "uploads"
+    ],
+    "exec": "node --max-old-space-size=4096 -r ts-node/register src/index.ts"
+}
