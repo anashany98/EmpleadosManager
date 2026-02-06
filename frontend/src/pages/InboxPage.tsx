@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api, BASE_URL } from '../api/client';
+import { api, API_URL } from '../api/client';
 import { toast } from 'sonner';
 import { Inbox, FileText, User as UserIcon, Calendar, CheckCircle, Trash2, Tag } from 'lucide-react';
 import { useConfirm } from '../context/ConfirmContext';
@@ -216,7 +216,7 @@ export default function InboxPage() {
                             </div>
                             <div className="flex-1 min-h-0 relative">
                                 <iframe
-                                    src={`${BASE_URL}${selectedDoc.fileUrl}`}
+                                    src={`${API_URL.replace(/\/+$/, '')}/inbox/${selectedDoc.id}/download`}
                                     className="w-full h-full border-none"
                                     title="Vista previa del documento"
                                 />

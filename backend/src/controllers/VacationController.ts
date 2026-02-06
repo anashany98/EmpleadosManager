@@ -4,11 +4,16 @@ import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { HolidayService } from '../services/HolidayService';
 import { NotificationService } from '../services/NotificationService';
+import { AnomalyService } from '../services/AnomalyService';
 
 export const VacationController = {
     // Obtener todas las vacaciones (Global)
     getAll: async (req: Request, res: Response) => {
         try {
+            const user = (req as any).user;
+            if (!user || user.role !== 'admin') {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
             const vacations = await prisma.vacation.findMany({
                 include: { employee: true },
                 orderBy: { startDate: 'desc' }
@@ -23,6 +28,24 @@ export const VacationController = {
     getByEmployee: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
         try {
+            const user = (req as any).user;
+            if (!user) return ApiResponse.error(res, 'No autorizado', 403);
+
+            const isSelf = user.employeeId && user.employeeId === employeeId;
+            const isAdmin = user.role === 'admin';
+            let isManager = false;
+            if (!isAdmin && !isSelf && user.employeeId) {
+                const target = await prisma.employee.findUnique({
+                    where: { id: employeeId },
+                    select: { managerId: true }
+                });
+                isManager = !!target && target.managerId === user.employeeId;
+            }
+
+            if (!isAdmin && !isSelf && !isManager) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
+
             const vacations = await prisma.vacation.findMany({
                 where: { employeeId },
                 orderBy: { startDate: 'desc' }
@@ -51,6 +74,21 @@ export const VacationController = {
 
             if (!employeeId || !startDate || !endDate) {
                 return res.status(400).json({ error: 'Faltan campos requeridos (employeeId, startDate, endDate)' });
+            }
+
+            // Access control: admin, self, or manager of employee
+            const isSelf = user?.employeeId && user.employeeId === employeeId;
+            const isAdmin = user?.role === 'admin';
+            let isManager = false;
+            if (!isAdmin && !isSelf && user?.employeeId) {
+                const target = await prisma.employee.findUnique({
+                    where: { id: employeeId },
+                    select: { managerId: true }
+                });
+                isManager = !!target && target.managerId === user.employeeId;
+            }
+            if (!isAdmin && !isSelf && !isManager) {
+                return res.status(403).json({ error: 'No autorizado' });
             }
 
             const start = new Date(startDate);
@@ -117,6 +155,8 @@ export const VacationController = {
                 include: { employee: true } // Include employee for name in notification
             });
 
+            AnomalyService.detectVacation(vacation).catch(err => console.error('[Anomaly] vacation', err));
+
             // NOTIFY ADMINS
             const empName = vacation.employee?.name || 'Un empleado';
             await NotificationService.notifyAdmins(
@@ -136,6 +176,15 @@ export const VacationController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
+            const user = (req as any).user;
+            const vacation = await prisma.vacation.findUnique({ where: { id } });
+            if (!vacation) return res.status(404).json({ error: 'No encontrado' });
+            const isAdmin = user?.role === 'admin';
+            const isOwner = user?.employeeId && user.employeeId === vacation.employeeId;
+            if (!isAdmin && !isOwner) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
+
             await prisma.vacation.delete({ where: { id } });
             res.json({ message: 'Vacaciones eliminadas' });
         } catch (error) {
@@ -152,6 +201,26 @@ export const VacationController = {
         }
 
         try {
+            const user = (req as any).user;
+            const vacationRecord = await prisma.vacation.findUnique({
+                where: { id },
+                select: { employeeId: true }
+            });
+            if (!vacationRecord) throw new AppError('Solicitud no encontrada', 404);
+
+            const isAdmin = user?.role === 'admin';
+            let isManager = false;
+            if (!isAdmin && user?.employeeId) {
+                const target = await prisma.employee.findUnique({
+                    where: { id: vacationRecord.employeeId },
+                    select: { managerId: true }
+                });
+                isManager = !!target && target.managerId === user.employeeId;
+            }
+            if (!isAdmin && !isManager) {
+                throw new AppError('No autorizado', 403);
+            }
+
             const vacation = await prisma.vacation.update({
                 where: { id },
                 data: { status },

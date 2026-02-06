@@ -2,6 +2,11 @@
 import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { StorageService } from './StorageService';
+
+const execFileAsync = promisify(execFile);
 
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
 const SNAPSHOT_DIR = path.join(BACKUP_DIR, 'snapshots');
@@ -19,6 +24,7 @@ interface BackupResult {
     fileName: string;
     size: number;
     type: 'SNAPSHOT' | 'FULL';
+    remoteKey?: string;
 }
 
 export const BackupService = {
@@ -27,25 +33,77 @@ export const BackupService = {
      */
     createSnapshot: async (): Promise<BackupResult> => {
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const fileName = `nominas_snapshot_${timestamp}.db`;
+        const fileName = `nominas_snapshot_${timestamp}.dump`;
         const destPath = path.join(SNAPSHOT_DIR, fileName);
+        const databaseUrl = process.env.DATABASE_URL || '';
+
+        if (databaseUrl.startsWith('postgres')) {
+            const url = new URL(databaseUrl);
+            const user = url.username;
+            const password = url.password;
+            const host = url.hostname;
+            const port = url.port || '5432';
+            const db = url.pathname.replace('/', '');
+
+            await execFileAsync(process.env.PG_DUMP_PATH || 'pg_dump', [
+                '-Fc',
+                '-h', host,
+                '-p', port,
+                '-U', user,
+                '-f', destPath,
+                db
+            ], {
+                env: { ...process.env, PGPASSWORD: password }
+            });
+
+            const stats = fs.statSync(destPath);
+            BackupService.pruneBackups(SNAPSHOT_DIR, 24);
+            const result: BackupResult = { filePath: destPath, fileName, size: stats.size, type: 'SNAPSHOT' };
+
+            if (process.env.BACKUP_UPLOAD === 'true' && StorageService.provider === 's3') {
+                const buffer = fs.readFileSync(destPath);
+                const { key } = await StorageService.saveBuffer({
+                    folder: 'backups/snapshots',
+                    originalName: fileName,
+                    buffer,
+                    contentType: 'application/octet-stream'
+                });
+                result.remoteKey = key;
+            }
+
+            return result;
+        }
+
+        // Fallback: SQLite copy (dev only)
         const sourceDb = path.join(process.cwd(), 'database/prisma/dev.db');
 
         return new Promise((resolve, reject) => {
             fs.copyFile(sourceDb, destPath, (err) => {
                 if (err) return reject(err);
-
                 const stats = fs.statSync(destPath);
-
-                // Prune old snapshots (keep last 24 - assuming hourly/bi-hourly)
                 BackupService.pruneBackups(SNAPSHOT_DIR, 24);
-
-                resolve({
+                const result: BackupResult = {
                     filePath: destPath,
                     fileName: fileName,
                     size: stats.size,
                     type: 'SNAPSHOT'
-                });
+                };
+
+                if (process.env.BACKUP_UPLOAD === 'true' && StorageService.provider === 's3') {
+                    const buffer = fs.readFileSync(destPath);
+                    StorageService.saveBuffer({
+                        folder: 'backups/snapshots',
+                        originalName: fileName,
+                        buffer,
+                        contentType: 'application/octet-stream'
+                    }).then(({ key }) => {
+                        result.remoteKey = key;
+                        resolve(result);
+                    }).catch(reject);
+                    return;
+                }
+
+                resolve(result);
             });
         });
     },
@@ -60,6 +118,8 @@ export const BackupService = {
         const output = fs.createWriteStream(destPath);
         const archive = archiver('zip', { zlib: { level: 9 } });
 
+        const snapshot = await BackupService.createSnapshot();
+
         return new Promise((resolve, reject) => {
             output.on('close', () => {
                 const stats = fs.statSync(destPath);
@@ -67,35 +127,36 @@ export const BackupService = {
                 // Prune old full backups (keep last 30)
                 BackupService.pruneBackups(FULL_BACKUP_DIR, 30);
 
-                resolve({
+                const result: BackupResult = {
                     filePath: destPath,
                     fileName: fileName,
                     size: stats.size,
                     type: 'FULL'
-                });
+                };
+
+                if (process.env.BACKUP_UPLOAD === 'true' && StorageService.provider === 's3') {
+                    const buffer = fs.readFileSync(destPath);
+                    StorageService.saveBuffer({
+                        folder: 'backups/full',
+                        originalName: fileName,
+                        buffer,
+                        contentType: 'application/zip'
+                    }).then(({ key }) => {
+                        result.remoteKey = key;
+                        resolve(result);
+                    }).catch(reject);
+                    return;
+                }
+
+                resolve(result);
             });
 
             archive.on('error', (err: any) => reject(err));
 
             archive.pipe(output);
 
-            // Add Database
-            const dbPath = path.join(process.cwd(), 'database/prisma/dev.db');
-            if (fs.existsSync(dbPath)) {
-                archive.file(dbPath, { name: 'dev.db' });
-            }
-
-            // Add Uploads
-            const uploadsPath = path.join(process.cwd(), 'uploads');
-            if (fs.existsSync(uploadsPath)) {
-                archive.directory(uploadsPath, 'uploads');
-            }
-
-            // Add Data
-            const dataPath = path.join(process.cwd(), 'data');
-            if (fs.existsSync(dataPath)) {
-                archive.directory(dataPath, 'data');
-            }
+            // Add Database dump
+            archive.file(snapshot.filePath, { name: snapshot.fileName });
 
             archive.finalize();
         });

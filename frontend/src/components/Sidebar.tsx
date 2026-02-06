@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LogOut, LayoutDashboard, Users, Network, Building2, Calendar as CalendarIcon, Clock, Package, History, FileText, FileSpreadsheet, Settings, Shield, Inbox, Plane, DollarSign } from 'lucide-react';
+import { LogOut, LayoutDashboard, Users, Network, Building2, Calendar as CalendarIcon, Clock, Package, History, FileText, FileSpreadsheet, Settings, Shield, Inbox, Plane, DollarSign, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -23,6 +23,7 @@ export const navItems = [
     { path: '/inbox', label: 'Bandeja de Entrada', icon: <Inbox size={20} />, module: 'employees' },
     { path: '/audit', label: 'Auditoría', icon: <History size={20} />, module: 'audit' },
     { path: '/reports', label: 'Reportes', icon: <FileText size={20} />, module: 'reports' },
+    { path: '/anomalies', label: 'Anomalías', icon: <AlertTriangle size={20} />, module: 'admin' },
     { path: '/import', label: 'Importar Nómina', icon: <FileSpreadsheet size={20} />, module: 'payroll' },
     { path: '/users', label: 'Usuarios', icon: <Shield size={20} />, module: 'admin' },
     { path: '/settings', label: 'Configuración', icon: <Settings size={20} />, module: 'settings' },

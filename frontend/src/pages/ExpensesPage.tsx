@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { api } from '../api/client';
+import { api, API_URL } from '../api/client';
 import { Plus, Receipt, Filter, CheckCircle2, XCircle, Clock, FileText, CreditCard, DollarSign } from 'lucide-react';
 import { toast } from 'sonner';
 import ExpenseModal from '../components/expenses/ExpenseModal';
@@ -229,7 +229,7 @@ export default function ExpensesPage() {
                                             <div className="flex items-center justify-end gap-2">
                                                 {expense.receiptUrl && (
                                                     <a
-                                                        href={`http://localhost:3000${expense.receiptUrl}`}
+                                                        href={`${API_URL}/expenses/${expense.id}/receipt`}
                                                         target="_blank"
                                                         rel="noreferrer"
                                                         className="p-2 hover:bg-white dark:hover:bg-slate-800 rounded-xl text-slate-400 hover:text-blue-600 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700"

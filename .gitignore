@@ -23,6 +23,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+backend/error.log
 
 # Editor directories and files
 .vscode/*
@@ -39,6 +40,16 @@ lerna-debug.log*
 database/prisma/dev.db
 database/prisma/dev.db-journal
 database/prisma/migrations/
+database/prisma/*.db
+database/prisma/database/
+
+# Uploads & backups
+uploads/
+backend/uploads/
+backend/backups/
+backups/
+backend/data/
+data/
 
 # OS
 Thumbs.db
@@ -53,4 +64,3 @@ backend/src/scripts/reproduce_pdf.ts
 backend/src/scripts/reproduce_pdf_overflow.ts
 backend/src/scripts/verify_pdf_content.ts
 backend/test_script_output.pdf
-

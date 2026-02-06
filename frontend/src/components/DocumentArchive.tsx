@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api, BASE_URL } from '../api/client';
+import { api, API_URL } from '../api/client';
 import { toast } from 'sonner';
 import { FileText, Upload, Trash2, Download, Filter, Calendar, AlertTriangle, Loader2, Eye } from 'lucide-react';
 import DocumentPreview from './DocumentPreview';
@@ -133,17 +133,10 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
     const handleDownload = async (doc: any) => {
         try {
             // Helper to clean URL, strip double slashes
-            const getDownloadUrl = (path: string) => {
-                if (!path) return '';
-                if (path.startsWith('http')) return path;
-                const cleanBase = BASE_URL.replace(/\/+$/, '');
-                const cleanPath = path.startsWith('/') ? path : `/${path}`;
-                return `${cleanBase}${cleanPath}`;
-            };
-            const url = getDownloadUrl(doc.fileUrl);
+            const url = `${API_URL.replace(/\/+$/, '')}/documents/${doc.id}/download`;
 
             // Try to download using fetch to avoid tab opening issues
-            const response = await fetch(url);
+            const response = await fetch(url, { credentials: 'include' });
             if (!response.ok) throw new Error('Download failed');
 
             const blob = await response.blob();
@@ -158,9 +151,8 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
         } catch (error) {
             console.error(error);
             // Fallback to simple link
-            const cleanBase = BASE_URL.replace(/\/+$/, '');
-            const cleanPath = doc.fileUrl.startsWith('/') ? doc.fileUrl : `/${doc.fileUrl}`;
-            window.open(`${cleanBase}${cleanPath}`, '_blank');
+            const cleanBase = API_URL.replace(/\/+$/, '');
+            window.open(`${cleanBase}/documents/${doc.id}/download`, '_blank');
         }
     };
 
@@ -275,7 +267,7 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
                                         <div className="flex gap-1">
                                             <button
                                                 onClick={() => {
-                                                    setPreviewUrl(doc.fileUrl);
+                                                    setPreviewUrl(`/api/documents/${doc.id}/download`);
                                                     setPreviewTitle(doc.name);
                                                 }}
                                                 className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"

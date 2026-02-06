@@ -12,11 +12,9 @@ import {
     LineChart,
     Users
 } from 'lucide-react';
-import { api } from '../api/client';
+import { api, API_URL } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
 type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS' | 'GENDER_GAP';
 
@@ -124,13 +122,18 @@ export default function Reports() {
             const params = { ...filters, format: 'xlsx' };
             const queryString = new URLSearchParams(params as any).toString();
 
-            window.open(`${'http://192.168.1.38:3000/api'}${endpoint}?${queryString}`, '_blank');
+            window.open(`${API_URL}${endpoint}?${queryString}`, '_blank');
         } catch (err) {
             toast.error('Error al exportar Excel');
         }
     };
 
-    const handleExportPDF = () => {
+    const handleExportPDF = async () => {
+        const [{ default: jsPDF }, autoTableModule] = await Promise.all([
+            import('jspdf'),
+            import('jspdf-autotable')
+        ]);
+        const autoTable = (autoTableModule as any).default || autoTableModule;
         const doc = new jsPDF();
         const title = categories.find(c => c.id === activeTab)?.name || 'Reporte';
 

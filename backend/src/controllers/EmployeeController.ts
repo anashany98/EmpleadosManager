@@ -12,10 +12,24 @@ export const EmployeeController = {
     // Obtener todos los empleados
     getAll: async (req: Request, res: Response) => {
         try {
-            const employees = await prisma.employee.findMany({
-                where: { active: true },
-                orderBy: { name: 'asc' }
-            });
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const skip = (page - 1) * limit;
+
+            // Optimización: Si no piden paginación explícita (frontend legacy),
+            // devolvemos todo pero limitado a 500 por seguridad contra DOS.
+            const isPaginationRequested = req.query.page !== undefined;
+            const effectiveLimit = isPaginationRequested ? limit : 500;
+
+            const [total, employees] = await Promise.all([
+                prisma.employee.count({ where: { active: true } }),
+                prisma.employee.findMany({
+                    where: { active: true },
+                    orderBy: { name: 'asc' },
+                    skip: isPaginationRequested ? skip : undefined,
+                    take: effectiveLimit
+                })
+            ]);
 
             // Decrypt sensitive data
             const decryptedEmployees = employees.map(emp => ({
@@ -24,7 +38,21 @@ export const EmployeeController = {
                 iban: EncryptionService.decrypt(emp.iban)
             }));
 
+            if (isPaginationRequested) {
+                return ApiResponse.success(res, {
+                    data: decryptedEmployees,
+                    meta: {
+                        total,
+                        page,
+                        limit: effectiveLimit,
+                        totalPages: Math.ceil(total / effectiveLimit)
+                    }
+                });
+            }
+
+            // Backward compatibility: return array directly
             return ApiResponse.success(res, decryptedEmployees);
+
         } catch (error: any) {
             console.error('Error fetching employees:', error);
             return ApiResponse.error(res, error.message || 'Error al obtener empleados', 500);
@@ -240,7 +268,7 @@ export const EmployeeController = {
                 'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
                 'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
                 'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
-                'drivingLicenseType', 'emergencyContactName', 'emergencyContactPhone', 'gender',
+                'drivingLicenseType', 'gender',
                 'managerId', 'lowReason', 'workingDayType', 'privateNotes'
             ];
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api } from '../../api/client';
+import { api, BASE_URL } from '../../api/client';
 import {
     Circle, FileText,
     Calendar, GraduationCap, Receipt, HeartPulse,
@@ -130,7 +130,9 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
 
                         {event.fileUrl && (
                             <a
-                                href={event.fileUrl}
+                                href={event.fileUrl.startsWith('http')
+                                    ? event.fileUrl
+                                    : `${BASE_URL.replace(/\/+$/, '').replace(/\/api$/, '')}${event.fileUrl.startsWith('/') ? '' : '/'}${event.fileUrl}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="mt-3 inline-flex items-center gap-2 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"

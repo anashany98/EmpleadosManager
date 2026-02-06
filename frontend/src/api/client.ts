@@ -5,13 +5,21 @@ export const API_URL = BASE_URL.endsWith('/api') || BASE_URL.endsWith('/api/')
     : `${BASE_URL.replace(/\/$/, '')}/api`;
 // console.log('API_URL:', API_URL);
 
-const getHeaders = (isFormData = false) => {
+const getCookie = (name: string) => {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop()!.split(';').shift() || '';
+    return '';
+};
+
+const getHeaders = (isFormData = false, method: string = 'GET') => {
     const headers: any = {};
     if (!isFormData) headers['Content-Type'] = 'application/json';
 
-    const token = localStorage.getItem('token');
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
+    const upper = method.toUpperCase();
+    if (upper !== 'GET' && upper !== 'HEAD' && upper !== 'OPTIONS') {
+        const csrfToken = getCookie('csrf_token');
+        if (csrfToken) headers['X-CSRF-Token'] = csrfToken;
     }
     return headers;
 };
@@ -35,17 +43,19 @@ const customFetch = async (endpoint: string, options: any = {}): Promise<any> =>
     const url = `${API_URL}${endpoint}`;
 
     // Config fetch
+    const method = options.method || 'GET';
     const config: RequestInit = {
-        method: options.method || 'GET',
-        headers: getHeaders(options.body instanceof FormData),
-        body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined)
+        method,
+        headers: getHeaders(options.body instanceof FormData, method),
+        body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
+        credentials: 'include'
     };
 
     try {
         const res = await fetch(url, config);
 
         // Handle 401 (Unauthorized) - Only if not logging in or refreshing
-        if (res.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
+        if (res.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/me')) {
             if (isRefreshing) {
                 // If already refreshing, queue this request
                 return new Promise((resolve, reject) => {
@@ -58,21 +68,12 @@ const customFetch = async (endpoint: string, options: any = {}): Promise<any> =>
             }
 
             isRefreshing = true;
-            const refreshToken = localStorage.getItem('refreshToken');
-
-            if (!refreshToken) {
-                // No refresh token, force logout
-                localStorage.removeItem('token');
-                window.location.href = '/login';
-                throw new Error('Sesión expirada');
-            }
-
             try {
                 // Attempt refresh
                 const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ refreshToken })
+                    credentials: 'include'
                 });
 
                 if (!refreshRes.ok) {
@@ -86,13 +87,8 @@ const customFetch = async (endpoint: string, options: any = {}): Promise<any> =>
                 // It returns ApiResponse.success(res, { token, refreshToken })
                 const newTokens = data.data;
 
-                localStorage.setItem('token', newTokens.token);
-                if (newTokens.refreshToken) {
-                    localStorage.setItem('refreshToken', newTokens.refreshToken);
-                }
-
                 isRefreshing = false;
-                processQueue(null, newTokens.token);
+                processQueue(null, null);
 
                 // Retry original request
                 return customFetch(endpoint, options);
@@ -101,10 +97,12 @@ const customFetch = async (endpoint: string, options: any = {}): Promise<any> =>
                 isRefreshing = false;
                 processQueue(refreshErr, null);
 
-                // Complete logout
-                localStorage.removeItem('token');
-                localStorage.removeItem('refreshToken');
-                window.location.href = '/login';
+                // Complete logout (avoid reload loop if already on auth pages)
+                const path = window.location.pathname;
+                const isAuthPage = path.startsWith('/login') || path.startsWith('/request-reset') || path.startsWith('/reset-password');
+                if (!isAuthPage) {
+                    window.location.href = '/login';
+                }
                 throw refreshErr;
             }
         }

@@ -1,38 +1,66 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+import 'express-async-errors';
 import express, { Request, Response } from 'express';
 import path from 'path';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { prisma } from './lib/prisma';
 import { errorMiddleware } from './middlewares/errorMiddleware';
 import { protect, restrictTo, checkPermission } from './middlewares/authMiddleware';
+import { csrfProtection } from './middlewares/csrfMiddleware';
 
 
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 
 const app = express();
+app.disable('x-powered-by');
 
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy for secure cookies behind reverse proxies
+app.set('trust proxy', 1);
+
 // Security Middleware
 app.use(helmet({
-    crossOriginResourcePolicy: { policy: "cross-origin" } // Allow local file serving
+    crossOriginResourcePolicy: { policy: "same-site" }
 }));
 
 // Intranet Rate Limiting (Lenient)
 const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 300, // Limit each IP to 300 requests per windowMs (Higher for internal usage)
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 1000, // High limit for Intranet usage (many users behind same NAT)
     standardHeaders: true,
     legacyHeaders: false,
-    message: 'Too many requests from this IP, please try again after 15 minutes'
+    message: 'Too many requests from this IP, please try again after 1 minute'
 });
 app.use(limiter);
 
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
+if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
+    throw new Error('FATAL: CORS_ORIGIN must be set in production.');
+}
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true
+}));
+app.use(cookieParser());
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(csrfProtection);
 
 // Health Check
 app.get('/api/health', (req: Request, res: Response) => {
@@ -71,9 +99,9 @@ import configRoutes from './routes/configRoutes';
 import { inventoryRoutes } from './routes/inventoryRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import onboardingRoutes from './routes/onboardingRoutes';
+import anomalyRoutes from './routes/anomalyRoutes';
 
 // Rutas API
-import fileRoutes from './routes/fileRoutes';
 
 // ... other imports
 
@@ -85,8 +113,7 @@ app.use('/api/document-templates', documentTemplateRoutes);
 app.use('/api/inbox', inboxRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/notifications', notificationRoutes);
-// Secure Files
-app.use('/api/files', fileRoutes);
+app.use('/api/anomalies', anomalyRoutes);
 
 // Static folders
 // app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'))); // REMOVED FOR SECURITY
@@ -95,19 +122,19 @@ app.use('/assets', express.static(path.join(process.cwd(), 'assets')));
 
 // Protected Routes
 app.use('/api/dashboard/v2', protect, employeeDashboardRoutes);
-app.use('/api/employees', protect, checkPermission('employees', 'read'), employeeRoutes);
-app.use('/api/payroll', protect, checkPermission('payroll', 'read'), payrollRoutes);
+app.use('/api/employees', protect, employeeRoutes);
+app.use('/api/payroll', protect, payrollRoutes);
 app.use('/api/mappings', protect, checkPermission('payroll', 'write'), mappingProfileRoutes);
 app.use('/api/dashboard', protect, dashboardRoutes);
-app.use('/api/vacations', protect, checkPermission('employees', 'read'), vacationRoutes);
+app.use('/api/vacations', protect, vacationRoutes);
 app.use('/api/companies', protect, checkPermission('companies', 'read'), companyRoutes);
 app.use('/api/audit', protect, restrictTo('admin'), auditRoutes);
 app.use('/api/overtime', protect, checkPermission('employees', 'read'), overtimeRoutes);
 app.use('/api/time-entries', timeEntryRoutes);
 app.use('/api/alerts', protect, alertRoutes);
 app.use('/api/reports', protect, checkPermission('reports', 'read'), reportRoutes);
-app.use('/api/documents', protect, checkPermission('employees', 'read'), documentRoutes);
-app.use('/api/expenses', protect, checkPermission('employees', 'read'), expenseRoutes);
+app.use('/api/documents', protect, documentRoutes);
+app.use('/api/expenses', protect, expenseRoutes);
 app.use('/api/assets', protect, checkPermission('assets', 'read'), assetRoutes);
 app.use('/api/checklists', protect, checkPermission('employees', 'read'), checklistRoutes);
 app.use('/api/projects', protect, checkPermission('projects', 'read'), projectRoutes);

@@ -4,7 +4,10 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { EmailService } from '../services/EmailService';
 import crypto from 'crypto';
+import { issueCsrfToken } from '../middlewares/csrfMiddleware';
+import { validatePassword } from '../utils/passwordPolicy';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -15,6 +18,46 @@ const REFRESH_TOKEN_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
 
 const generateRefreshToken = () => {
     return crypto.randomBytes(40).toString('hex');
+};
+
+const hashToken = (token: string) =>
+    crypto.createHash('sha256').update(token).digest('hex');
+
+const generateTempPassword = () => {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghijkmnopqrstuvwxyz';
+    const numbers = '23456789';
+    const symbols = '!@#$%*_-';
+    const pick = (chars: string) => chars[Math.floor(Math.random() * chars.length)];
+    const body = crypto.randomBytes(8).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
+    return `${pick(upper)}${pick(lower)}${pick(numbers)}${pick(symbols)}${body}`;
+};
+
+const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || 'lax') as 'lax' | 'strict' | 'none';
+
+const buildCookieOptions = (maxAge: number) => ({
+    httpOnly: true,
+    secure: COOKIE_SAMESITE === 'none' ? true : COOKIE_SECURE,
+    sameSite: COOKIE_SAMESITE,
+    domain: COOKIE_DOMAIN || undefined,
+    path: '/',
+    maxAge
+});
+
+const clearCookieOptions = {
+    httpOnly: true,
+    secure: COOKIE_SAMESITE === 'none' ? true : COOKIE_SECURE,
+    sameSite: COOKIE_SAMESITE,
+    domain: COOKIE_DOMAIN || undefined,
+    path: '/'
+};
+
+const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME || 'csrf_token';
+const ensureCsrfCookie = (req: Request, res: Response) => {
+    const existing = (req as any).cookies?.[CSRF_COOKIE_NAME];
+    if (!existing) issueCsrfToken(res);
 };
 
 export const AuthController = {
@@ -41,9 +84,6 @@ export const AuthController = {
                 }
             });
 
-            // Debug log (remove in prod)
-            console.log(`[Login] Attempt for ${trimmedId}. User found: ${!!user}`);
-
             if (!user || !(await bcrypt.compare(password, user.password))) {
                 throw new AppError('Credenciales incorrectas', 401);
             }
@@ -58,7 +98,6 @@ export const AuthController = {
             const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN);
 
             // Save Refresh Token to DB
-            console.log('[Login] Saving refresh token...');
             if (!(prisma as any).refreshToken) {
                 console.error('[Login CRITICAL] prisma.refreshToken is undefined!');
                 throw new Error('Prisma Client incomplete (refreshToken missing)');
@@ -66,30 +105,39 @@ export const AuthController = {
 
             await (prisma as any).refreshToken.create({
                 data: {
-                    token: refreshToken,
+                    token: hashToken(refreshToken),
                     userId: user.id,
                     expiresAt: expiresAt
                 }
             });
-            console.log('[Login] Refresh token saved.');
+
+            // Set HttpOnly cookies
+            res.cookie('access_token', accessToken, buildCookieOptions(15 * 60 * 1000));
+            res.cookie('refresh_token', refreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
+            issueCsrfToken(res);
 
             // Hide password
             const { password: _, ...userWithoutPassword } = user;
 
-            return ApiResponse.success(res, {
-                user: userWithoutPassword,
-                token: accessToken,
-                refreshToken
-            }, 'Sesión iniciada correctamente');
+            const payload: any = { user: userWithoutPassword };
+            if (process.env.RETURN_TOKENS === 'true') {
+                payload.token = accessToken;
+                payload.refreshToken = refreshToken;
+            }
+            return ApiResponse.success(res, payload, 'Sesión iniciada correctamente');
         } catch (error: any) {
             console.error('[Login Error]', error);
-            return ApiResponse.error(res, `INTERNAL ERROR: ${error.message}`, error.statusCode || 500, { stack: error.stack });
+            return ApiResponse.error(res, error.message || 'Error al iniciar sesión', error.statusCode || 500);
         }
     },
 
     // Generar/Habilitar Acceso para Empleado
     generateAccess: async (req: Request, res: Response) => {
         try {
+            const requester = (req as any).user;
+            if (!requester || requester.role !== 'admin') {
+                throw new AppError('No autorizado', 403);
+            }
             const { employeeId } = req.body;
 
             if (!employeeId) throw new AppError('ID de empleado requerido', 400);
@@ -101,7 +149,7 @@ export const AuthController = {
 
 
             // Generate Random Password
-            const tempPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-4).toUpperCase();
+            const tempPassword = generateTempPassword();
             const hashedPassword = await bcrypt.hash(tempPassword, 10);
 
             // Check if user exists linked to this employee or DNI
@@ -161,32 +209,36 @@ export const AuthController = {
                 }
             }
 
-            // SIMULATE EMAIL SENDING
             if (employee.email) {
-                console.log(`
-                ==================================================
-                [MOCK EMAIL SERVICE] SENDING TO: ${employee.email}
-                SUBJECT: Credenciales de Acceso - Portal del Empleado
-                --------------------------------------------------
-                Hola ${employee.name},
-    
-                Se ha habilitado tu acceso al portal del empleado.
-                
-                Usuario (DNI): ${employee.dni}
-                Contraseña: ${tempPassword}
-    
-                Accede aquí: http://localhost:5173/login
-                ==================================================
-                `);
+                const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
+                const html = `
+                    <p>Hola ${employee.name},</p>
+                    <p>Se ha habilitado tu acceso al portal del empleado.</p>
+                    <p><strong>Usuario (DNI):</strong> ${employee.dni}</p>
+                    <p><strong>Contraseña temporal:</strong> ${tempPassword}</p>
+                    <p>Accede aquí: <a href="${loginUrl}">${loginUrl}</a></p>
+                    <p>Por seguridad, cambia la contraseña tras iniciar sesión.</p>
+                `;
+
+                await EmailService.sendMail(
+                    employee.email,
+                    'Credenciales de Acceso - Portal del Empleado',
+                    html
+                );
+
                 return ApiResponse.success(res, { email: employee.email, hasEmail: true }, 'Acceso generado. Credenciales enviadas por correo.');
-            } else {
-                // Return password directly if no email
-                return ApiResponse.success(res, {
-                    hasEmail: false,
-                    password: tempPassword,
-                    username: employee.dni
-                }, 'Acceso generado. Copia la contraseña.');
             }
+
+            if (process.env.NODE_ENV === 'production') {
+                throw new AppError('El empleado no tiene email. No se pueden entregar credenciales de forma segura.', 400);
+            }
+
+            // Dev only: return password if no email
+            return ApiResponse.success(res, {
+                hasEmail: false,
+                password: tempPassword,
+                username: employee.dni
+            }, 'Acceso generado. Copia la contraseña.');
 
         } catch (error: any) {
             console.error(error);
@@ -196,17 +248,33 @@ export const AuthController = {
 
     refresh: async (req: Request, res: Response) => {
         try {
-            const { refreshToken } = req.body;
+            const { refreshToken: refreshTokenBody } = req.body;
+            const refreshToken = refreshTokenBody || (req as any).cookies?.refresh_token;
 
             if (!refreshToken) {
                 throw new AppError('Refresh Token no proporcionado', 400);
             }
 
             // Find token in DB
-            const storedToken = await (prisma as any).refreshToken.findUnique({
-                where: { token: refreshToken },
+            const hashed = hashToken(refreshToken);
+            let storedToken = await (prisma as any).refreshToken.findUnique({
+                where: { token: hashed },
                 include: { user: true }
             });
+
+            // Legacy fallback: token stored in plain text
+            if (!storedToken) {
+                storedToken = await (prisma as any).refreshToken.findUnique({
+                    where: { token: refreshToken },
+                    include: { user: true }
+                });
+                if (storedToken) {
+                    await (prisma as any).refreshToken.update({
+                        where: { id: storedToken.id },
+                        data: { token: hashed }
+                    });
+                }
+            }
 
             if (!storedToken || storedToken.revoked || new Date() > new Date(storedToken.expiresAt)) {
                 // Should we revoke the family if reused? For now just deny.
@@ -236,16 +304,22 @@ export const AuthController = {
             // Create new
             await (prisma as any).refreshToken.create({
                 data: {
-                    token: newRefreshToken,
+                    token: hashToken(newRefreshToken),
                     userId: user.id,
                     expiresAt: newExpiresAt
                 }
             });
 
-            return ApiResponse.success(res, {
-                token: newAccessToken,
-                refreshToken: newRefreshToken
-            }, 'Token renovado correctamente');
+            res.cookie('access_token', newAccessToken, buildCookieOptions(15 * 60 * 1000));
+            res.cookie('refresh_token', newRefreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
+            issueCsrfToken(res);
+
+            const payload: any = { token: newAccessToken, refreshToken: newRefreshToken };
+            if (process.env.RETURN_TOKENS !== 'true') {
+                delete payload.token;
+                delete payload.refreshToken;
+            }
+            return ApiResponse.success(res, payload, 'Token renovado correctamente');
 
         } catch (error: any) {
             return ApiResponse.error(res, error.message || 'Error al renovar token', 401);
@@ -254,7 +328,8 @@ export const AuthController = {
 
     logout: async (req: Request, res: Response) => {
         try {
-            const { refreshToken } = req.body;
+            const { refreshToken: refreshTokenBody } = req.body;
+            const refreshToken = refreshTokenBody || (req as any).cookies?.refresh_token;
             if (refreshToken) {
                 // Revoke token if provided
                 // Try catch in case it doesn't exist or is already deleted
@@ -262,10 +337,20 @@ export const AuthController = {
                     // We don't delete, we revoke (soft delete principle for audit)
                     // But if we want to save space we could delete. Let's revoke.
                     // First find it to make sure it exists to avoid error on update
-                    const found = await (prisma as any).refreshToken.findUnique({ where: { token: refreshToken } });
+                    const hashed = hashToken(refreshToken);
+                    let found = await (prisma as any).refreshToken.findUnique({ where: { token: hashed } });
+                    if (!found) {
+                        found = await (prisma as any).refreshToken.findUnique({ where: { token: refreshToken } });
+                        if (found) {
+                            await (prisma as any).refreshToken.update({
+                                where: { id: found.id },
+                                data: { token: hashed }
+                            });
+                        }
+                    }
                     if (found) {
                         await (prisma as any).refreshToken.update({
-                            where: { token: refreshToken },
+                            where: { id: found.id },
                             data: { revoked: true }
                         });
                     }
@@ -274,6 +359,9 @@ export const AuthController = {
                 }
             }
 
+            res.clearCookie('access_token', clearCookieOptions);
+            res.clearCookie('refresh_token', clearCookieOptions);
+            res.clearCookie(CSRF_COOKIE_NAME, { ...clearCookieOptions, httpOnly: false });
             return ApiResponse.success(res, null, 'Sesión cerrada correctamente');
         } catch (error: any) {
             return ApiResponse.error(res, error.message || 'Error al cerrar sesión', 500);
@@ -320,17 +408,22 @@ export const AuthController = {
             // 3. "Send" Email
             const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
 
-            console.log(`
-            ==================================================
-            PASSWORD RESET REQUEST FOR: ${employee.name} (${employee.email})
-            --------------------------------------------------
-            Link: ${resetLink}
-            ==================================================
-            `);
+            const html = `
+                <p>Hola ${employee.name},</p>
+                <p>Hemos recibido una solicitud para restablecer tu contraseña.</p>
+                <p>Haz clic en el siguiente enlace para continuar:</p>
+                <p><a href="${resetLink}">${resetLink}</a></p>
+                <p>Este enlace caduca en 15 minutos.</p>
+                <p>Si no solicitaste este cambio, ignora este mensaje.</p>
+            `;
 
-            // In a real app, use nodemailer here.
+            await EmailService.sendMail(
+                employee.email,
+                'Restablecimiento de contraseña',
+                html
+            );
 
-            return ApiResponse.success(res, { debugLink: resetLink }, 'Si los datos coinciden, recibirás un correo con las instrucciones.');
+            return ApiResponse.success(res, null, 'Si los datos coinciden, recibirás un correo con las instrucciones.');
 
         } catch (error: any) {
             console.error(error);
@@ -344,6 +437,11 @@ export const AuthController = {
 
             if (!token || !newPassword) {
                 throw new AppError('Token y nueva contraseña requeridos', 400);
+            }
+
+            const policy = validatePassword(newPassword);
+            if (!policy.ok) {
+                throw new AppError(policy.message || 'Contraseña no válida', 400);
             }
 
             // 1. Verify Token
@@ -405,6 +503,7 @@ export const AuthController = {
 
     getMe: async (req: Request, res: Response) => {
         try {
+            ensureCsrfCookie(req, res);
             // user is attached to req by protect middleware
             const user = (req as any).user;
             if (!user) {

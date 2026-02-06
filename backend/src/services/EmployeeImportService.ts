@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { AuditService } from './AuditService';
+import { EncryptionService } from './EncryptionService';
 import XLSX from 'xlsx';
 
 export const EmployeeImportService = {
@@ -57,15 +58,15 @@ export const EmployeeImportService = {
                         name: String(name),
                         firstName: String(rawName || ''),
                         lastName: String(lastName || ''),
-                        subaccount465: subaccount,
+                        subaccount465: subaccount || null,
                         email: row['Email'] ? String(row['Email']) : null,
                         phone: row['Teléfono'] ? String(row['Teléfono']) : null,
                         address: row['Dirección'] ? String(row['Dirección']) : null,
                         city: row['Ciudad'] ? String(row['Ciudad']) : null,
                         postalCode: row['Código Postal'] ? String(row['Código Postal']) : null,
                         province: row['Provincia'] ? String(row['Provincia']) : null,
-                        socialSecurityNumber: row['Seguridad Social'] ? String(row['Seguridad Social']) : null,
-                        iban: row['IBAN'] ? String(row['IBAN']) : null,
+                        socialSecurityNumber: row['Seguridad Social'] ? EncryptionService.encrypt(String(row['Seguridad Social'])) : null,
+                        iban: row['IBAN'] ? EncryptionService.encrypt(String(row['IBAN'])) : null,
                         gender,
 
                         // Dates
@@ -90,10 +91,7 @@ export const EmployeeImportService = {
                         drivingLicenseType: row['Tipo Carnet'] ? String(row['Tipo Carnet']) : null,
                         drivingLicenseExpiration: parseDate(row['Vencimiento Carnet']),
 
-                        // Emergency Contact
-                        emergencyContactName: row['Contacto Emergencia Nombre'] ? String(row['Contacto Emergencia Nombre']) : null,
-                        emergencyContactPhone: row['Contacto Emergencia Teléfono'] ? String(row['Contacto Emergencia Teléfono']) : null,
-
+                        // Emergency contacts handled below (relation)
                         // Relations
                         companyId: row['Empresa (ID)'] ? String(row['Empresa (ID)']) : undefined,
                         managerId: row['ID Responsable'] ? String(row['ID Responsable']) : null,
@@ -102,6 +100,21 @@ export const EmployeeImportService = {
                     };
 
                     const existing = await prisma.employee.findUnique({ where: { dni } });
+
+                    const contactName = row['Contacto Emergencia Nombre'] ? String(row['Contacto Emergencia Nombre']) : null;
+                    const contactPhone = row['Contacto Emergencia Teléfono'] ? String(row['Contacto Emergencia Teléfono']) : null;
+                    const contactRel = row['Contacto Emergencia Relación'] ? String(row['Contacto Emergencia Relación']) : null;
+
+                    if (contactName || contactPhone) {
+                        employeeData.emergencyContacts = {
+                            deleteMany: {},
+                            create: [{
+                                name: contactName || 'Contacto',
+                                phone: contactPhone || '',
+                                relationship: contactRel || null
+                            }]
+                        };
+                    }
 
                     if (existing) {
                         await prisma.employee.update({

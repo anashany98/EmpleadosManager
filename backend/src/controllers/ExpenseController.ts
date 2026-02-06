@@ -1,10 +1,10 @@
 import { Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
 import { createWorker } from 'tesseract.js';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { StorageService } from '../services/StorageService';
+import { AnomalyService } from '../services/AnomalyService';
 
 export const ExpenseController = {
     // Procesar OCR para sugerir datos
@@ -14,7 +14,7 @@ export const ExpenseController = {
 
         try {
             const worker = await createWorker('spa');
-            const { data: { text } } = await worker.recognize(file.path);
+            const { data: { text } } = await worker.recognize(file.buffer);
             await worker.terminate();
 
             // Limpieza básica del texto OCR para mejorar la detección
@@ -80,18 +80,44 @@ export const ExpenseController = {
         }
 
         try {
+            const user = (req as any).user;
+            if (user.role !== 'admin' && user.employeeId !== employeeId) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
+            const safeEmployeeId = String(employeeId).replace(/[^a-zA-Z0-9-]/g, '');
+            if (safeEmployeeId !== employeeId) {
+                return res.status(400).json({ error: 'employeeId inválido' });
+            }
+
+            let receiptKey: string | null = null;
+            if (file) {
+                const { key } = await StorageService.saveBuffer({
+                    folder: `expenses/EXP_${safeEmployeeId}`,
+                    originalName: file.originalname,
+                    buffer: file.buffer,
+                    contentType: file.mimetype
+                });
+                receiptKey = key;
+            }
+            const parsedAmount = parseFloat(amount);
+            if (Number.isNaN(parsedAmount)) {
+                return res.status(400).json({ error: 'Importe inválido' });
+            }
+
             const expense = await prisma.expense.create({
                 data: {
                     employeeId,
                     category,
-                    amount: parseFloat(amount),
+                    amount: parsedAmount,
                     description,
                     date: date ? new Date(date) : new Date(),
                     paymentMethod: paymentMethod || 'CASH',
-                    receiptUrl: file ? `/uploads/expenses/${file.filename}` : null,
+                    receiptUrl: receiptKey,
                     status: 'PENDING'
                 }
             });
+
+            AnomalyService.detectExpense(expense).catch(err => console.error('[Anomaly] expense', err));
 
             res.status(201).json(expense);
         } catch (error) {
@@ -104,9 +130,17 @@ export const ExpenseController = {
     getByEmployee: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
         try {
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const isPaginationRequested = req.query.page !== undefined;
+            const skip = (page - 1) * limit;
+            const take = isPaginationRequested ? limit : 500;
+
             const expenses = await prisma.expense.findMany({
                 where: { employeeId },
-                orderBy: { date: 'desc' }
+                orderBy: { date: 'desc' },
+                skip: isPaginationRequested ? skip : undefined,
+                take
             });
             res.json(expenses);
         } catch (error) {
@@ -117,13 +151,21 @@ export const ExpenseController = {
     // Obtener todos los gastos (Admin view)
     getAll: async (req: Request, res: Response) => {
         try {
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const isPaginationRequested = req.query.page !== undefined;
+            const skip = (page - 1) * limit;
+            const take = isPaginationRequested ? limit : 500;
+
             const expenses = await prisma.expense.findMany({
                 include: {
                     employee: {
                         select: { name: true, firstName: true, lastName: true }
                     }
                 },
-                orderBy: { createdAt: 'desc' }
+                orderBy: { createdAt: 'desc' },
+                skip: isPaginationRequested ? skip : undefined,
+                take
             });
             res.json(expenses);
         } catch (error) {
@@ -155,21 +197,50 @@ export const ExpenseController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
+            const user = (req as any).user;
             const expense = await prisma.expense.findUnique({ where: { id } });
             if (!expense) return res.status(404).json({ error: 'Gasto no encontrado' });
+            if (user.role !== 'admin' && user.employeeId !== expense.employeeId) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
 
-            // Eliminar archivo físico si existe
+            // Eliminar archivo físico / S3 si existe
             if (expense.receiptUrl) {
-                const filePath = path.join(__dirname, '../../', expense.receiptUrl);
-                if (fs.existsSync(filePath)) {
-                    fs.unlinkSync(filePath);
-                }
+                await StorageService.deleteFile(expense.receiptUrl);
             }
 
             await prisma.expense.delete({ where: { id } });
             res.json({ message: 'Gasto eliminado' });
         } catch (error) {
             res.status(500).json({ error: 'Error al eliminar gasto' });
+        }
+    },
+
+    // Descargar recibo
+    getReceipt: async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const { id } = req.params;
+            const expense = await prisma.expense.findUnique({ where: { id } });
+            if (!expense || !expense.receiptUrl) return res.status(404).json({ error: 'Recibo no encontrado' });
+
+            if (user.role !== 'admin' && user.employeeId !== expense.employeeId) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
+
+            if (StorageService.provider === 'local') {
+                const fs = require('fs');
+                const path = require('path');
+                const filePath = path.join(process.cwd(), 'uploads', expense.receiptUrl);
+                if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
+                return res.download(filePath);
+            }
+
+            const signedUrl = await StorageService.getSignedDownloadUrl(expense.receiptUrl);
+            if (!signedUrl) return res.status(500).json({ error: 'No se pudo generar URL' });
+            return res.redirect(signedUrl);
+        } catch (error) {
+            return res.status(500).json({ error: 'Error al obtener recibo' });
         }
     }
 };

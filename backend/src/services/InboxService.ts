@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import jsQR from 'jsqr';
+import { StorageService } from './StorageService';
 // import { getDocument } from 'pdfjs-dist/legacy/build/pdf';
 // import { createCanvas, Image as CanvasImage } from 'canvas';
 
@@ -12,15 +13,11 @@ import { NotificationService } from './NotificationService';
 
 export class InboxService {
     private inboxDir = path.join(process.cwd(), 'data', 'inbox');
-    private documentsDir = path.join(process.cwd(), 'uploads', 'documents');
 
     constructor() {
         // Ensure directories exist
         if (!fs.existsSync(this.inboxDir)) {
             fs.mkdirSync(this.inboxDir, { recursive: true });
-        }
-        if (!fs.existsSync(this.documentsDir)) {
-            fs.mkdirSync(this.documentsDir, { recursive: true });
         }
     }
 
@@ -126,13 +123,32 @@ export class InboxService {
                         qrData = await this.scanImageForQR(buffer);
                     }
 
+                    // Store in central storage (S3/local)
+                    const lowerExt = ext.toLowerCase();
+                    const contentType = lowerExt === '.pdf'
+                        ? 'application/pdf'
+                        : (['.png', '.jpg', '.jpeg'].includes(lowerExt)
+                            ? (lowerExt === '.png' ? 'image/png' : 'image/jpeg')
+                            : undefined);
+                    const { key } = await StorageService.saveBuffer({
+                        folder: 'inbox',
+                        originalName: newFilename,
+                        buffer,
+                        contentType
+                    });
+
+                    // Remove local file if using S3 to avoid data leakage on disk
+                    if (StorageService.provider === 's3' && fs.existsSync(destPath)) {
+                        fs.unlinkSync(destPath);
+                    }
+
                     // Create Inbox Entry
                     const inboxDoc = await (prisma as any).inboxDocument.create({
                         data: {
                             filename: newFilename,
                             originalName: file,
                             source: 'SCANNER',
-                            fileUrl: `/inbox/${newFilename}`
+                            fileUrl: key
                         }
                     });
 
@@ -198,18 +214,9 @@ export class InboxService {
             throw new Error('Documento no encontrado o ya procesado');
         }
 
-        const sourcePath = path.join(this.inboxDir, inboxDoc.filename);
-        const destFilename = `${uuidv4()}_${inboxDoc.filename}`;
-        const destPath = path.join(this.documentsDir, destFilename);
-
-        // Move file to permanent storage
-        if (fs.existsSync(sourcePath)) {
-            fs.renameSync(sourcePath, destPath);
-        } else {
-            console.error('File missing from inbox:', sourcePath);
-            // If file missing but record exists, we might want to just fail or update record.
-            // For now, let's assume valid flow.
-            // But if auto-assigned immediately after rename in syncFolder, sourcePath might be correct.
+        const fileKey = inboxDoc.fileUrl;
+        if (!fileKey) {
+            throw new Error('Documento sin archivo asociado');
         }
 
         // Create permanent Document entry
@@ -218,7 +225,7 @@ export class InboxService {
                 employeeId,
                 name: name || inboxDoc.originalName,
                 category,
-                fileUrl: `/uploads/documents/${destFilename}`,
+                fileUrl: fileKey,
                 expiryDate: expiryDate ? new Date(expiryDate) : null
             }
         });

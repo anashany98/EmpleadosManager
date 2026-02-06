@@ -25,8 +25,16 @@ export class EmailService {
             });
 
             // Convert array to map for easier access
+            const normalize = (val: string) => {
+                try {
+                    return JSON.parse(val);
+                } catch {
+                    return val;
+                }
+            };
+
             const configMap = configs.reduce((acc, curr) => {
-                acc[curr.key] = curr.value;
+                acc[curr.key] = normalize(curr.value);
                 return acc;
             }, {} as Record<string, string>);
 
@@ -49,8 +57,12 @@ export class EmailService {
     private static async getTransporter(): Promise<Transporter> {
         const config = await this.getConfig();
 
-        // If no config in DB, use Ethereal (Fake)
+        // If no config in DB, do not allow sending in production
         if (!config) {
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error('SMTP no configurado en producción');
+            }
+
             if (!this.transporter || this.lastConfigHash !== 'ethereal') {
                 console.log('📧 No SMTP config found. Creating Ethereal test account...');
                 const testAccount = await nodemailer.createTestAccount();

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api/client';
+import { api, API_URL } from '../api/client';
 import { toast } from 'sonner';
 import {
     Trash2,
@@ -353,7 +353,7 @@ export default function ExpenseManager({ employeeId, isAdmin = false }: { employ
                                 <div className="flex items-center gap-2 w-full md:w-auto justify-end border-t md:border-t-0 pt-2 md:pt-0">
                                     {expense.receiptUrl && (
                                         <a
-                                            href={'http://192.168.1.38:3000' + expense.receiptUrl}
+                                            href={`${API_URL.replace(/\/+$/, '')}/expenses/${expense.id}/receipt`}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"

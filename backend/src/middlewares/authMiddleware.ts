@@ -13,8 +13,8 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         let token;
         if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
-        } else if (req.query.token) {
-            token = req.query.token as string;
+        } else if ((req as any).cookies?.access_token) {
+            token = (req as any).cookies.access_token as string;
         }
 
         if (!token) {
@@ -33,9 +33,16 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         }
 
         // Parse permissions from string to object if they exist
+        let parsedPermissions: any = {};
+        try {
+            parsedPermissions = user.permissions ? JSON.parse(user.permissions as string) : {};
+        } catch {
+            parsedPermissions = {};
+        }
+
         const userWithParsedPermissions = {
             ...user,
-            permissions: user.permissions ? JSON.parse(user.permissions as string) : {}
+            permissions: parsedPermissions
         };
 
         (req as any).user = userWithParsedPermissions;
@@ -66,7 +73,15 @@ export const checkPermission = (module: string, level: 'read' | 'write') => {
             return next(new AppError('No tienes permisos configurados.', 403));
         }
 
-        const permissions = JSON.parse(user.permissions);
+        let permissions: any = {};
+        try {
+            permissions = typeof user.permissions === 'string'
+                ? JSON.parse(user.permissions)
+                : user.permissions;
+        } catch {
+            permissions = {};
+        }
+
         const userLevel = permissions[module] || 'none';
 
         if (level === 'write' && userLevel !== 'write') {
@@ -78,5 +93,25 @@ export const checkPermission = (module: string, level: 'read' | 'write') => {
         }
 
         next();
+    };
+};
+
+export const allowSelfOrRole = (roles: string[] = ['admin'], paramName: string = 'id') => {
+    return (req: Request, res: Response, next: NextFunction) => {
+        const user = (req as any).user;
+        const resourceId = req.params[paramName];
+
+        // 1. Check if user has allowed role
+        if (roles.includes(user.role)) {
+            return next();
+        }
+
+        // 2. Check if user owns the resource (Self-Service)
+        // user.employeeId should match the requested ID
+        if (user.employeeId && user.employeeId === resourceId) {
+            return next();
+        }
+
+        return next(new AppError('No tienes permiso para acceder a este recurso.', 403));
     };
 };

@@ -6,6 +6,7 @@ import { api } from '../../api/client';
 import { WhosOutWidget } from './WhosOutWidget';
 import TimeTrackerWidget from '../TimeTrackerWidget';
 import OnboardingWidget from '../dashboard/OnboardingWidget';
+import MyPayslipsWidget from './MyPayslipsWidget';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface OverviewTabProps {
@@ -207,23 +208,38 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                         </div>
                     </>
                 ) : (
-                    <div className="p-8 flex flex-col items-center justify-center h-full text-center">
-                        <div className="bg-blue-50 dark:bg-blue-900/20 p-6 rounded-full mb-6">
-                            <Sparkles size={48} className="text-blue-600 dark:text-blue-400" />
+                    <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-950/20">
+                        {/* Quick Links Header */}
+                        <div className="p-4 grid grid-cols-2 gap-4 shrink-0">
+                            <Link to="/profile" className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-blue-500 hover:shadow-md transition-all group">
+                                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg group-hover:scale-110 transition-transform">
+                                    <Users className="text-blue-600 dark:text-blue-400" size={20} />
+                                </div>
+                                <div>
+                                    <span className="text-xs font-bold block text-slate-900 dark:text-white">Mi Perfil</span>
+                                    <span className="text-[10px] text-slate-500 block">Datos personales y contratos</span>
+                                </div>
+                            </Link>
+                            <Link to="/vacations" className="flex items-center gap-3 p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-emerald-500 hover:shadow-md transition-all group">
+                                <div className="p-2 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg group-hover:scale-110 transition-transform">
+                                    <Clock className="text-emerald-600 dark:text-emerald-400" size={20} />
+                                </div>
+                                <div>
+                                    <span className="text-xs font-bold block text-slate-900 dark:text-white">Vacaciones</span>
+                                    <span className="text-[10px] text-slate-500 block">Solicitar días libres</span>
+                                </div>
+                            </Link>
                         </div>
-                        <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">¡Hola, {user?.email.split('@')[0]}!</h3>
-                        <p className="text-slate-500 dark:text-slate-400 max-w-sm">
-                            Bienvenido a tu panel personal. Aquí puedes gestionar tus fichajes, ver tus vacaciones y acceder a tus documentos.
-                        </p>
-                        <div className="mt-8 grid grid-cols-2 gap-4 w-full max-w-lg">
-                            <Link to="/profile" className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-blue-500 transition-all text-center">
-                                <Users className="mx-auto mb-2 text-blue-500" size={24} />
-                                <span className="text-xs font-bold block text-slate-700 dark:text-slate-200">Mi Perfil</span>
-                            </Link>
-                            <Link to="/vacations" className="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-blue-500 transition-all text-center">
-                                <Clock className="mx-auto mb-2 text-emerald-500" size={24} />
-                                <span className="text-xs font-bold block text-slate-700 dark:text-slate-200">Vacaciones</span>
-                            </Link>
+
+                        {/* Payslips List */}
+                        <div className="flex-1 min-h-0 px-4 pb-4">
+                            {user?.employeeId ? (
+                                <MyPayslipsWidget employeeId={user.employeeId} />
+                            ) : (
+                                <div className="h-full flex items-center justify-center text-slate-400 text-xs">
+                                    No tienes un perfil de empleado vinculado. Contacta con RRHH.
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -274,6 +290,6 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                     <div className="absolute -bottom-4 -right-4 w-20 h-20 bg-pink-500/10 rounded-full blur-2xl pointer-events-none"></div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

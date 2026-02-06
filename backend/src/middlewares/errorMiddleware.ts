@@ -14,16 +14,7 @@ export const errorMiddleware = (
 
     console.error('UNEXPECTED ERROR:', err);
 
-    // Logging to file for debugging
-    try {
-        const fs = require('fs');
-        const path = require('path');
-        const logPath = path.join(__dirname, '../../error.log');
-        const logMsg = `[${new Date().toISOString()}] ${err.stack || err}\n`;
-        fs.appendFileSync(logPath, logMsg);
-    } catch (e) {
-        console.error('Failed to write to error log', e);
-    }
+    // Log to stdout (container-friendly)
 
     return ApiResponse.error(
         res,

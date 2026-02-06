@@ -1,11 +1,10 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import path from 'path';
-import fs from 'fs';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 
 import { createWorker } from 'tesseract.js';
+import { StorageService } from '../services/StorageService';
 
 
 
@@ -17,7 +16,7 @@ export const DocumentController = {
 
         try {
             const worker = await createWorker('spa');
-            const { data: { text } } = await worker.recognize(file.path);
+            const { data: { text } } = await worker.recognize(file.buffer);
             await worker.terminate();
 
             const cleanText = text.replace(/\s+/g, ' ').toLowerCase();
@@ -60,15 +59,30 @@ export const DocumentController = {
         const file = req.file;
 
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
+        if (!employeeId) throw new AppError('employeeId requerido', 400);
 
         try {
-            const subfolder = employeeId ? `EXP_${employeeId}/` : '';
+            const user = (req as any).user;
+            if (user.role !== 'admin' && user.employeeId !== employeeId) {
+                throw new AppError('No autorizado', 403);
+            }
+            const safeEmployeeId = employeeId.replace(/[^a-zA-Z0-9-]/g, '');
+            if (safeEmployeeId !== employeeId) {
+                throw new AppError('employeeId inválido', 400);
+            }
+            const subfolder = employeeId ? `EXP_${safeEmployeeId}` : 'general';
+            const { key } = await StorageService.saveBuffer({
+                folder: `documents/${subfolder}`,
+                originalName: file.originalname,
+                buffer: file.buffer,
+                contentType: file.mimetype
+            });
             const document = await prisma.document.create({
                 data: {
                     employeeId,
                     name: name || file.originalname,
                     category: category || 'OTHER',
-                    fileUrl: `/uploads/documents/${subfolder}${file.filename}`,
+                    fileUrl: key,
                     expiryDate: expiryDate ? new Date(expiryDate) : null
                 }
             });
@@ -83,10 +97,34 @@ export const DocumentController = {
     getByEmployee: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
         try {
-            const documents = await prisma.document.findMany({
-                where: { employeeId },
-                orderBy: { createdAt: 'desc' }
-            });
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const isPaginationRequested = req.query.page !== undefined;
+            const skip = (page - 1) * limit;
+            const take = isPaginationRequested ? limit : 500;
+
+            const [total, documents] = await Promise.all([
+                prisma.document.count({ where: { employeeId } }),
+                prisma.document.findMany({
+                    where: { employeeId },
+                    orderBy: { createdAt: 'desc' },
+                    skip: isPaginationRequested ? skip : undefined,
+                    take
+                })
+            ]);
+
+            if (isPaginationRequested) {
+                return ApiResponse.success(res, {
+                    data: documents,
+                    meta: {
+                        total,
+                        page,
+                        limit: take,
+                        totalPages: Math.ceil(total / take)
+                    }
+                });
+            }
+
             return ApiResponse.success(res, documents);
         } catch (error) {
             throw new AppError('Error al obtener documentos', 500);
@@ -96,13 +134,16 @@ export const DocumentController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
+            const user = (req as any).user;
             const document = await prisma.document.findUnique({ where: { id } });
             if (!document) throw new AppError('Documento no encontrado', 404);
+            if (user.role !== 'admin' && user.employeeId !== document.employeeId) {
+                throw new AppError('No autorizado', 403);
+            }
 
-            // Eliminar archivo físico
-            const filePath = path.join(process.cwd(), document.fileUrl);
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
+            // Eliminar archivo físico / S3
+            if (document.fileUrl) {
+                await StorageService.deleteFile(document.fileUrl);
             }
 
             await prisma.document.delete({ where: { id } });
@@ -110,6 +151,44 @@ export const DocumentController = {
         } catch (error) {
             if (error instanceof AppError) throw error;
             throw new AppError('Error al eliminar documento', 500);
+        }
+    },
+
+    download: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        const user = (req as any).user;
+
+        try {
+            const document = await prisma.document.findUnique({
+                where: { id },
+                include: { employee: true }
+            });
+
+            if (!document) throw new AppError('Documento no encontrado', 404);
+
+            // Security Check: Admin or Owner
+            if (user.role !== 'admin' && user.employeeId !== document.employeeId) {
+                throw new AppError('No tiene permisos para descargar este documento', 403);
+            }
+
+            if (StorageService.provider === 'local') {
+                const fs = require('fs');
+                const path = require('path');
+                const filePath = path.join(process.cwd(), 'uploads', document.fileUrl);
+                if (!fs.existsSync(filePath)) {
+                    console.error(`File missing at: ${filePath}`);
+                    throw new AppError('El archivo físico no existe', 404);
+                }
+                return res.download(filePath, document.name);
+            }
+
+            const signedUrl = await StorageService.getSignedDownloadUrl(document.fileUrl);
+            if (!signedUrl) throw new AppError('No se pudo generar URL de descarga', 500);
+            return res.redirect(signedUrl);
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            console.error('Download error:', error);
+            throw new AppError('Error al descargar el documento', 500);
         }
     }
 };

@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
+import { NotificationStream } from '../services/NotificationStream';
 
 export const createNotification = async (userId: string, title: string, message: string, type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR' = 'INFO', link?: string) => {
     try {
@@ -14,6 +15,29 @@ export const createNotification = async (userId: string, title: string, message:
 };
 
 export const NotificationController = {
+    stream: async (req: Request, res: Response) => {
+        const user = (req as any).user;
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders?.();
+
+        // Send initial ping
+        res.write(`event: heartbeat\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
+
+        NotificationStream.addClient(user.id, res);
+
+        const heartbeat = setInterval(() => {
+            res.write(`event: heartbeat\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`);
+        }, 25000);
+
+        req.on('close', () => {
+            clearInterval(heartbeat);
+            NotificationStream.removeClient(user.id, res);
+        });
+    },
     getMine: async (req: Request, res: Response) => {
         try {
             const user = (req as any).user;

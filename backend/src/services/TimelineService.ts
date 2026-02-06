@@ -119,7 +119,7 @@ export const TimelineService = {
                 type: 'CONTRACT',
                 title: 'Prórroga de Contrato',
                 description: `Nueva fecha fin: ${ext.newEndDate.toLocaleDateString()}. ${ext.notes || ''}`,
-                fileUrl: ext.fileUrl
+                fileUrl: null
             });
         });
 
@@ -157,7 +157,7 @@ export const TimelineService = {
                 type: 'MEDICAL',
                 title: 'Revisión Médica',
                 description: `Resultado: ${rev.result || 'Pendiente'}`,
-                fileUrl: rev.fileUrl
+                fileUrl: null
             });
         });
 
@@ -169,7 +169,7 @@ export const TimelineService = {
                 type: 'TRAINING',
                 title: `Formación: ${tr.name}`,
                 description: `${tr.type} | ${tr.hours || 0} horas`,
-                fileUrl: tr.fileUrl
+                fileUrl: null
             });
         });
 
@@ -183,7 +183,7 @@ export const TimelineService = {
                 description: exp.description || '',
                 amount: exp.amount,
                 status: exp.status,
-                fileUrl: exp.receiptUrl
+                fileUrl: exp.receiptUrl ? `/api/expenses/${exp.id}/receipt` : null
             });
         });
 

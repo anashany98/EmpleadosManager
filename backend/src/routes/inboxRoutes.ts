@@ -11,10 +11,23 @@ if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
 }
 
-const upload = multer({ dest: tempDir }); // Temp storage, controller will move it
+const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+const upload = multer({
+    dest: tempDir,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (allowedExtensions.includes(ext)) {
+            cb(null, true);
+        } else {
+            cb(new Error(`Tipo de archivo no permitido. Permitidos: ${allowedExtensions.join(', ')}`));
+        }
+    }
+}); // Temp storage, controller will move it
 
 router.post('/upload', protect, checkPermission('employees', 'write'), upload.single('file'), InboxController.upload);
 router.get('/pending', protect, checkPermission('employees', 'read'), InboxController.getAllPending);
+router.get('/:id/download', protect, checkPermission('employees', 'read'), InboxController.download);
 router.post('/:id/assign', protect, checkPermission('employees', 'write'), InboxController.assign);
 router.delete('/:id', protect, checkPermission('employees', 'write'), InboxController.delete);
 

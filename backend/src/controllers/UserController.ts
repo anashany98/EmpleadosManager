@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { validatePassword } from '../utils/passwordPolicy';
 
 export const UserController = {
     list: async (req: Request, res: Response) => {
@@ -17,10 +18,18 @@ export const UserController = {
             orderBy: { createdAt: 'desc' }
         });
 
-        const parsedUsers = users.map(user => ({
-            ...user,
-            permissions: user.permissions ? JSON.parse(user.permissions) : {}
-        }));
+        const parsedUsers = users.map(user => {
+            let parsed: any = {};
+            try {
+                parsed = user.permissions ? JSON.parse(user.permissions) : {};
+            } catch {
+                parsed = {};
+            }
+            return {
+                ...user,
+                permissions: parsed
+            };
+        });
 
         return ApiResponse.success(res, parsedUsers);
     },
@@ -30,6 +39,11 @@ export const UserController = {
 
         if (!email || !password) {
             throw new AppError('Email y contraseña son obligatorios', 400);
+        }
+
+        const policy = validatePassword(password);
+        if (!policy.ok) {
+            throw new AppError(policy.message || 'Contraseña no válida', 400);
         }
 
         const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -61,6 +75,10 @@ export const UserController = {
         if (role) data.role = role;
         if (permissions) data.permissions = JSON.stringify(permissions);
         if (password) {
+            const policy = validatePassword(password);
+            if (!policy.ok) {
+                throw new AppError(policy.message || 'Contraseña no válida', 400);
+            }
             data.password = await bcrypt.hash(password, 10);
         }
 
@@ -78,6 +96,18 @@ export const UserController = {
 
         // Prevent deleting the last admin or the current user (if needed)
         // For now simple delete
+        const userToDelete = await prisma.user.findUnique({ where: { id } });
+        if (!userToDelete) {
+            throw new AppError('Usuario no encontrado', 404);
+        }
+
+        if (userToDelete.role === 'admin') {
+            const adminCount = await prisma.user.count({ where: { role: 'admin' } });
+            if (adminCount <= 1) {
+                throw new AppError('No se puede eliminar el último administrador', 400);
+            }
+        }
+
         await prisma.user.delete({ where: { id } });
 
         return ApiResponse.success(res, null, 'Usuario eliminado correctamente');

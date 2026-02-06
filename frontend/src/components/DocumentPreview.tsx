@@ -13,7 +13,10 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title = 'Pre
     if (!fileUrl) return null;
 
     // Ensure the URL is absolute for the iframe
-    const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/${fileUrl}`;
+    const rawBase = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/+$/, '');
+    const baseUrl = rawBase.endsWith('/api') ? rawBase.slice(0, -4) : rawBase;
+    const cleanPath = fileUrl.startsWith('/') ? fileUrl : `/${fileUrl}`;
+    const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${baseUrl}${cleanPath}`;
 
     const handleDownload = () => {
         const link = document.createElement('a');

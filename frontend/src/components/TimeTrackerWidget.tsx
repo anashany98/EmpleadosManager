@@ -1,9 +1,9 @@
-
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { Play, Square, Coffee, Utensils, MapPin, Loader2, Clock } from 'lucide-react';
-// import { motion } from 'framer-motion';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { OfflineClockQueue } from '../utils/offlineClockQueue';
 
 export default function TimeTrackerWidget() {
     const [status, setStatus] = useState<'OFF' | 'WORKING' | 'BREAK' | 'LUNCH'>('OFF');
@@ -11,14 +11,30 @@ export default function TimeTrackerWidget() {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [elapsed, setElapsed] = useState('00:00:00');
+    const [pendingCount, setPendingCount] = useState(0);
+    const isOnline = useNetworkStatus();
 
     useEffect(() => {
-        fetchStatus();
         const interval = setInterval(updateTimer, 1000);
         return () => clearInterval(interval);
     }, [lastEntry, status]);
 
+    useEffect(() => {
+        setPendingCount(OfflineClockQueue.count());
+    }, []);
+
+    useEffect(() => {
+        if (isOnline) {
+            fetchStatus();
+            flushPending();
+        } else {
+            setLoading(false);
+            hydrateOfflineState();
+        }
+    }, [isOnline]);
+
     const fetchStatus = async () => {
+        setLoading(true);
         try {
             const res = await api.get('/time-entries/status');
             if (res.success) {
@@ -51,8 +67,64 @@ export default function TimeTrackerWidget() {
         );
     };
 
+    const getNextStatus = (type: string) => {
+        switch (type) {
+            case 'IN':
+            case 'BREAK_END':
+            case 'LUNCH_END':
+                return 'WORKING';
+            case 'BREAK_START':
+                return 'BREAK';
+            case 'LUNCH_START':
+                return 'LUNCH';
+            case 'OUT':
+            default:
+                return 'OFF';
+        }
+    };
+
+    const applyLocalClock = (type: string) => {
+        setStatus(getNextStatus(type));
+        setLastEntry({
+            type,
+            timestamp: new Date().toISOString(),
+            location: 'Registrado sin conexión'
+        });
+    };
+
+    const hydrateOfflineState = () => {
+        const pending = OfflineClockQueue.getAll();
+        if (pending.length === 0) return;
+        const last = pending[pending.length - 1];
+        applyLocalClock(last.type);
+        setPendingCount(pending.length);
+    };
+
+    const flushPending = async () => {
+        if (!navigator.onLine) return;
+        const pending = OfflineClockQueue.getAll();
+        if (pending.length === 0) return;
+
+        for (const item of pending) {
+            try {
+                await api.post('/time-entries/clock', item.payload);
+                OfflineClockQueue.remove(item.id);
+            } catch (error) {
+                break;
+            }
+        }
+
+        const remaining = OfflineClockQueue.count();
+        setPendingCount(remaining);
+        if (remaining === 0) {
+            toast.success('Fichajes pendientes sincronizados');
+            fetchStatus();
+        }
+    };
+
     const handleClock = async (type: string) => {
         setActionLoading(true);
+        let payload: any = null;
         try {
             // STRICT GEOLOCATION ENFORCEMENT
             if (!navigator.geolocation) {
@@ -87,7 +159,7 @@ export default function TimeTrackerWidget() {
                     const pos: any = await new Promise((resolve, reject) => {
                         navigator.geolocation.getCurrentPosition(resolve, reject, {
                             timeout: 10000,
-                            enableHighAccuracy: false // Try relying on wifi/cellular
+                            enableHighAccuracy: false
                         });
                     });
                     locationData = {
@@ -101,18 +173,54 @@ export default function TimeTrackerWidget() {
                 }
             }
 
-            const res = await api.post('/time-entries/clock', {
+            payload = {
                 type,
                 ...locationData,
-                device: navigator.userAgent
-            });
+                device: navigator.userAgent,
+                timestamp: new Date().toISOString()
+            };
+
+            if (!isOnline) {
+                OfflineClockQueue.enqueue({
+                    type,
+                    payload
+                });
+                setPendingCount(OfflineClockQueue.count());
+                applyLocalClock(type);
+                toast.info('Sin conexión: fichaje guardado y se enviará al recuperar Internet.');
+                return;
+            }
+
+            const res = await api.post('/time-entries/clock', payload);
 
             if (res.success) {
                 toast.success('Fichaje registrado correctamente');
                 fetchStatus();
             }
         } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Error al fichar');
+            const isNetworkError =
+                !navigator.onLine ||
+                (typeof error?.message === 'string' &&
+                    (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')));
+
+            if (isNetworkError) {
+                const fallbackPayload = payload || {
+                    type,
+                    latitude: null,
+                    longitude: null,
+                    device: navigator.userAgent,
+                    timestamp: new Date().toISOString()
+                };
+                OfflineClockQueue.enqueue({
+                    type,
+                    payload: fallbackPayload
+                });
+                setPendingCount(OfflineClockQueue.count());
+                applyLocalClock(type);
+                toast.info('Sin conexión: fichaje guardado y se enviará al recuperar Internet.');
+            } else {
+                toast.error(error.response?.data?.message || 'Error al fichar');
+            }
         } finally {
             setActionLoading(false);
         }
@@ -212,10 +320,21 @@ export default function TimeTrackerWidget() {
                 )}
             </div>
 
+            <div className="mt-4 flex items-center justify-between text-[11px] font-semibold">
+                <div className={`px-2 py-1 rounded-full border ${isOnline ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                    {isOnline ? 'En línea' : 'Sin conexión'}
+                </div>
+                {pendingCount > 0 && (
+                    <div className="px-2 py-1 rounded-full border bg-slate-50 text-slate-600 border-slate-200">
+                        {pendingCount} fichaje(s) pendiente(s)
+                    </div>
+                )}
+            </div>
+
             {/* Geolocation visual feedback */}
             <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[10px] text-slate-300 dark:text-slate-700 pointer-events-none">
                 <MapPin size={10} />
-                GPS Enabled
+                GPS requerido
             </div>
         </div>
     );

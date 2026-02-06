@@ -8,6 +8,7 @@ const router = Router();
 router.use(protect);
 
 router.get('/', NotificationController.getMine);
+router.get('/stream', NotificationController.stream);
 router.put('/:id/read', NotificationController.markRead);
 router.put('/read-all', NotificationController.markAllRead);
 

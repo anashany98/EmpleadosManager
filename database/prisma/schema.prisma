@@ -9,8 +9,8 @@ generator client_root {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -95,8 +95,6 @@ model Employee {
   drivingLicense           Boolean               @default(false)
   drivingLicenseType       String?
   drivingLicenseExpiration DateTime?
-  emergencyContactName     String?
-  emergencyContactPhone    String?
   companyPhone             String?
   companyId                String?
   company                  Company?              @relation(fields: [companyId], references: [id])
@@ -141,6 +139,9 @@ model Employee {
   trainings                Training[]
   vacations                Vacation[]
   emergencyContacts        EmergencyContact[]
+  anomalies                AnomalyEvent[]
+
+  @@index([companyId])
 }
 
 model EmergencyContact {
@@ -308,6 +309,7 @@ model PayrollImportBatch {
   year             Int
   month            Int
   sourceFilename   String
+  sourceFileUrl    String?
   status           String            @default("UPLOADED")
   resultSummary    String?
   notes            String?
@@ -522,6 +524,8 @@ model TimeEntry {
   device     String?
   
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, timestamp])
 }
 
 model Notification {
@@ -560,4 +564,22 @@ model EmployeeOnboarding {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   completedAt DateTime?
+}
+
+model AnomalyEvent {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  employeeId String?
+  score      Int      @default(0)
+  reasons    String   // JSON array of strings or objects
+  status     String   @default("OPEN") // OPEN, REVIEWED, RESOLVED, FALSE_POSITIVE
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  @@unique([entityType, entityId])
+  @@index([status])
+  @@index([employeeId])
 }

@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libgif-dev \
     librsvg2-dev \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -36,5 +37,6 @@ RUN cd backend && npm run build
 WORKDIR /app/backend
 
 EXPOSE 3000
+ENV NODE_ENV=production
 
 CMD ["npm", "start"]

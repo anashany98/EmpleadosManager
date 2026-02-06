@@ -73,8 +73,13 @@ export const ConfigController = {
         const { filename, type } = req.query;
         if (!filename || !type) return ApiResponse.error(res, 'Faltan parámetros');
 
-        const folder = type === 'FULL' ? 'full' : 'snapshots';
-        const filePath = path.join(process.cwd(), 'backups', folder, filename as string);
+        const folder = type === 'FULL' ? 'full' : type === 'SNAPSHOT' ? 'snapshots' : null;
+        if (!folder) return ApiResponse.error(res, 'Tipo inválido', 400);
+
+        const safeName = path.basename(filename as string);
+        if (safeName !== filename) return ApiResponse.error(res, 'Nombre de archivo inválido', 400);
+
+        const filePath = path.join(process.cwd(), 'backups', folder, safeName);
 
         if (!fs.existsSync(filePath)) {
             return ApiResponse.error(res, 'Archivo no encontrado', 404);

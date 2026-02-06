@@ -5,7 +5,8 @@ import { MappingService } from '../services/MappingService';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AuditService } from '../services/AuditService';
 import { PayrollPdfService } from '../services/PayrollPdfService';
-import fs from 'fs';
+import { StorageService } from '../services/StorageService';
+import { EncryptionService } from '../services/EncryptionService';
 
 
 export const PayrollController = {
@@ -19,7 +20,7 @@ export const PayrollController = {
             const userId = (req as any).user?.id || 'system';
 
             // Leemos buffer para sacar headers de forma asíncrona
-            const buffer = await fs.promises.readFile(req.file.path);
+            const buffer = req.file.buffer;
             const headers = ExcelParser.getHeaders(buffer);
 
             // Crear el Batch
@@ -33,12 +34,26 @@ export const PayrollController = {
                 }
             });
 
+            // Persist original file for mapping (S3/local)
+            const { key } = await StorageService.saveBuffer({
+                folder: `payroll/imports/${batch.id}`,
+                originalName: req.file.originalname,
+                buffer,
+                contentType: req.file.mimetype
+            });
+
+            await prisma.payrollImportBatch.update({
+                where: { id: batch.id },
+                data: { sourceFileUrl: key }
+            });
+
             await AuditService.log('UPLOAD', 'PAYROLL_BATCH', batch.id, { filename: req.file.originalname }, userId);
 
             return ApiResponse.success(res, {
                 batchId: batch.id,
                 headers,
-                filename: req.file.filename,
+                // legacy field kept for frontend compatibility
+                filename: key,
             }, 'Archivo subido correctamente. Por favor configura el mapeo.');
 
         } catch (error: any) {
@@ -54,15 +69,29 @@ export const PayrollController = {
         const userId = (req as any).user?.id || 'system';
 
         try {
-            const filePath = `uploads/${filename}`;
+            const batch = await prisma.payrollImportBatch.findUnique({ where: { id } });
+            if (!batch) return ApiResponse.error(res, 'Lote no encontrado', 404);
 
-            try {
-                await fs.promises.access(filePath);
-            } catch {
+            let buffer: Buffer | null = null;
+
+            if (batch.sourceFileUrl) {
+                buffer = await StorageService.getBuffer(batch.sourceFileUrl);
+            } else if (filename) {
+                // Legacy fallback: local temp file (pre-S3)
+                const fs = await import('fs');
+                const filePath = `uploads/${filename}`;
+                try {
+                    await fs.promises.access(filePath);
+                    buffer = await fs.promises.readFile(filePath);
+                } catch {
+                    buffer = null;
+                }
+            }
+
+            if (!buffer) {
                 return ApiResponse.error(res, 'El archivo original ha caducado o no existe', 404);
             }
 
-            const buffer = await fs.promises.readFile(filePath);
             const rawData = ExcelParser.parseBuffer(buffer);
 
             // Transformar
@@ -231,6 +260,12 @@ export const PayrollController = {
             if (!payroll) return ApiResponse.error(res, 'Nómina no encontrada', 404);
             if (!payroll.employee) return ApiResponse.error(res, 'Empleado no asociado a la nómina', 400);
 
+            // Security Check
+            const user = (req as any).user;
+            if (user.role !== 'admin' && (!user.employeeId || user.employeeId !== payroll.employeeId)) {
+                return ApiResponse.error(res, 'No tiene permiso para descargar esta nómina', 403);
+            }
+
             // Default company if missing
             const companyData = payroll.employee.company;
 
@@ -253,7 +288,7 @@ export const PayrollController = {
                 employee: {
                     name: payroll.employee.name,
                     dni: payroll.employee.dni,
-                    socialSecurityNumber: payroll.employee.socialSecurityNumber || '',
+                    socialSecurityNumber: EncryptionService.decrypt(payroll.employee.socialSecurityNumber) || '',
                     jobTitle: payroll.employee.jobTitle || 'Empleado',
                     category: payroll.employee.category || undefined,
                     seniorityDate: payroll.employee.entryDate || undefined

@@ -1,6 +1,19 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
+import { AnomalyService } from '../services/AnomalyService';
+
+const parseTimestamp = (value: any) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    const now = Date.now();
+    const maxPastMs = 24 * 60 * 60 * 1000;
+    const maxFutureMs = 5 * 60 * 1000;
+    if (date.getTime() > now + maxFutureMs) return null;
+    if (now - date.getTime() > maxPastMs) return null;
+    return date;
+};
 
 export const TimeEntryController = {
     getStatus: async (req: Request, res: Response) => {
@@ -10,13 +23,11 @@ export const TimeEntryController = {
                 return ApiResponse.error(res, 'Usuario no vinculado a un empleado', 400);
             }
 
-            // Get the last entry for this employee
             const lastEntry = await prisma.timeEntry.findFirst({
                 where: { employeeId: user.employeeId },
                 orderBy: { timestamp: 'desc' },
             });
 
-            // Determine status based on last entry type
             let status = 'OFF';
             if (lastEntry) {
                 switch (lastEntry.type) {
@@ -47,7 +58,7 @@ export const TimeEntryController = {
     clock: async (req: Request, res: Response) => {
         try {
             const user = (req as any).user;
-            const { type, latitude, longitude, location, device } = req.body;
+            const { type, latitude, longitude, location, device, timestamp } = req.body;
 
             if (!user.employeeId) {
                 return ApiResponse.error(res, 'Usuario no vinculado a un empleado', 400);
@@ -57,8 +68,13 @@ export const TimeEntryController = {
                 return ApiResponse.error(res, 'Tipo de fichaje inválido', 400);
             }
 
+            const parsedTimestamp = parseTimestamp(timestamp);
+            const lat = latitude !== null && latitude !== undefined ? Number(latitude) : null;
+            const lon = longitude !== null && longitude !== undefined ? Number(longitude) : null;
+            const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+
             // Geofencing Check
-            if (latitude && longitude && (type === 'IN' || type === 'OUT')) {
+            if (hasCoords && (type === 'IN' || type === 'OUT')) {
                 const employee = await prisma.employee.findUnique({
                     where: { id: user.employeeId },
                     include: { company: true }
@@ -66,7 +82,7 @@ export const TimeEntryController = {
 
                 if (employee?.company?.officeLatitude && employee?.company?.officeLongitude) {
                     const distance = getDistanceFromLatLonInM(
-                        latitude, longitude,
+                        lat as number, lon as number,
                         employee.company.officeLatitude,
                         employee.company.officeLongitude
                     );
@@ -92,17 +108,19 @@ export const TimeEntryController = {
                 }
             }
 
-            // Create entry
             const entry = await prisma.timeEntry.create({
                 data: {
                     employeeId: user.employeeId,
                     type,
-                    latitude,
-                    longitude,
+                    latitude: hasCoords ? (lat as number) : null,
+                    longitude: hasCoords ? (lon as number) : null,
                     location,
-                    device
+                    device,
+                    ...(parsedTimestamp ? { timestamp: parsedTimestamp } : {})
                 }
             });
+
+            AnomalyService.detectTimeEntry(entry).catch(err => console.error('[Anomaly] timeEntry', err));
 
             return ApiResponse.success(res, entry);
         } catch (error: any) {
@@ -117,6 +135,9 @@ export const TimeEntryController = {
             if (!user.employeeId) return ApiResponse.error(res, 'No vinculado', 400);
 
             const { start, end, from, to } = req.query;
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 50;
+            const skip = (page - 1) * limit;
             const startDate = start || from;
             const endDate = end || to;
             let query: any = { employeeId: user.employeeId };
@@ -130,7 +151,9 @@ export const TimeEntryController = {
 
             const history = await prisma.timeEntry.findMany({
                 where: query,
-                orderBy: { timestamp: 'desc' }
+                orderBy: { timestamp: 'desc' },
+                skip: req.query.page ? skip : undefined,
+                take: req.query.page ? limit : 500
             });
 
             return ApiResponse.success(res, history);
@@ -142,14 +165,14 @@ export const TimeEntryController = {
 
 function getDistanceFromLatLonInM(lat1: number, lon1: number, lat2: number, lon2: number) {
     const R = 6371e3; // metres
-    const φ1 = lat1 * Math.PI / 180; // φ, λ in radians
-    const φ2 = lat2 * Math.PI / 180;
-    const Δφ = (lat2 - lat1) * Math.PI / 180;
-    const Δλ = (lon2 - lon1) * Math.PI / 180;
+    const phi1 = lat1 * Math.PI / 180;
+    const phi2 = lat2 * Math.PI / 180;
+    const deltaPhi = (lat2 - lat1) * Math.PI / 180;
+    const deltaLambda = (lon2 - lon1) * Math.PI / 180;
 
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-        Math.cos(φ1) * Math.cos(φ2) *
-        Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    const a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+        Math.cos(phi1) * Math.cos(phi2) *
+        Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
     const d = R * c; // in metres

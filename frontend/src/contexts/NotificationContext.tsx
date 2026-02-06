@@ -12,21 +12,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (!user) return;
 
         console.log('[Notification] Connecting to EventStream...');
-        const token = localStorage.getItem('token');
-
-        // Native EventSource does not support headers easily for Bearer token.
-        // Option 1: Pass token in query param (?token=...)
-        // Option 2: Use polyfill event-source-polyfill
-        // For simplicity and standard compliance, we usually use cookies or query param.
-        // Let's use query param since our middleware can check it.
-        // Note: We need to update authMiddleware if it doesn't check query. 
-        // Let's check authMiddleware first, default protecting usually checks header.
-        // If strict on header, we need polyfill.
-        // BUT, for now let's try polyfill-less approach:
-        // We will assume 'event-source-polyfill' is NOT installed.
-        // We will pass `?token=${token}`.
-
-        const eventSource = new EventSource(`${API_URL}/notifications/stream?token=${token}`);
+        const eventSource = new EventSource(`${API_URL}/notifications/stream`, { withCredentials: true } as any);
 
         eventSource.onopen = () => {
             console.log('[Notification] Connected.');

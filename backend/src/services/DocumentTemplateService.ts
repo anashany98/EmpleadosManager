@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
+import { StorageService } from './StorageService';
 
 const getLogoPath = () => {
     const assetsPath = path.join(__dirname, '../../assets/logo.png');
@@ -40,8 +41,18 @@ const addQRCodeToPDF = async (doc: typeof PDFDocument, data: any, employeeId: st
     }
 };
 
+const buildPdfBuffer = (doc: any): Promise<Buffer> => {
+    return new Promise((resolve, reject) => {
+        const chunks: Buffer[] = [];
+        doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+        doc.end();
+    });
+};
+
 export const DocumentTemplateService = {
-    generateUniform: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<string> => {
+    generateUniform: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
@@ -49,7 +60,7 @@ export const DocumentTemplateService = {
 
         if (!employee) throw new Error('Empleado no encontrado');
 
-        const filePath = await DocumentTemplateService.generateUniformInternal(employeeId, customItems);
+        const doc = await DocumentTemplateService.generateUniformInternal(employeeId, customItems);
         const items = (customItems && customItems.length > 0) ? customItems : [];
 
         // --- INVENTORY AUTOMATION ---
@@ -78,10 +89,11 @@ export const DocumentTemplateService = {
         });
 
         await Promise.all(assetPromises);
-        return filePath;
+        return doc;
+
     },
 
-    generateUniformInternal: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<string> => {
+    generateUniformInternal: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
@@ -91,13 +103,6 @@ export const DocumentTemplateService = {
 
         const doc = new PDFDocument({ margin: 50 });
         const fileName = `Entrega_Uniforme_${employee.dni}_${Date.now()}.pdf`;
-        const dirPath = path.join(process.cwd(), 'uploads', `EXP_${employeeId}`);
-
-        if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-
-        const filePath = path.join(dirPath, fileName);
-        const stream = fs.createWriteStream(filePath);
-        doc.pipe(stream);
 
         // QR Code
         await addQRCodeToPDF(doc, { t: 'UNIFORME' }, employeeId);
@@ -143,24 +148,25 @@ export const DocumentTemplateService = {
         doc.moveDown(4);
         doc.text(`En Palma de Mallorca, a ${new Date().toLocaleDateString('es-ES')}`, { align: 'left' });
 
-        doc.end();
-
-        return new Promise((resolve, reject) => {
-            stream.on('finish', async () => {
-                await prisma.document.create({
-                    data: {
-                        name: 'Entrega Uniforme (Generado)',
-                        category: 'OTHER',
-                        fileUrl: `uploads/EXP_${employeeId}/${fileName}`,
-                        employeeId: employeeId
-                    }
-                });
-                resolve(filePath);
-            });
-            stream.on('error', reject);
+        const pdfBuffer = await buildPdfBuffer(doc);
+        const { key } = await StorageService.saveBuffer({
+            folder: `documents/EXP_${employeeId}`,
+            originalName: fileName,
+            buffer: pdfBuffer,
+            contentType: 'application/pdf'
         });
+
+        const docRecord = await prisma.document.create({
+            data: {
+                name: 'Entrega Uniforme (Generado)',
+                category: 'OTHER',
+                fileUrl: key,
+                employeeId: employeeId
+            }
+        });
+        return docRecord;
     },
-    generateEPI: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<string> => {
+    generateEPI: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
@@ -168,7 +174,7 @@ export const DocumentTemplateService = {
 
         if (!employee) throw new Error('Empleado no encontrado');
 
-        const filePath = await DocumentTemplateService.generateEPIInternal(employeeId, customItems);
+        const doc = await DocumentTemplateService.generateEPIInternal(employeeId, customItems);
         const items = (customItems && customItems.length > 0) ? customItems : [];
 
         // --- INVENTORY AUTOMATION ---
@@ -197,10 +203,10 @@ export const DocumentTemplateService = {
         });
 
         await Promise.all(assetPromises);
-        return filePath;
+        return doc;
     },
 
-    generateEPIInternal: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<string> => {
+    generateEPIInternal: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
@@ -210,12 +216,6 @@ export const DocumentTemplateService = {
 
         const doc = new PDFDocument({ margin: 50 });
         const fileName = `Entrega_EPIs_${employee.dni}_${Date.now()}.pdf`;
-        const dirPath = path.join(process.cwd(), 'uploads', `EXP_${employeeId}`);
-
-        if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-        const filePath = path.join(dirPath, fileName);
-        const stream = fs.createWriteStream(filePath);
-        doc.pipe(stream);
 
         // QR Code
         await addQRCodeToPDF(doc, { t: 'EPI' }, employeeId);
@@ -261,25 +261,26 @@ export const DocumentTemplateService = {
         doc.moveDown(4);
         doc.text(`En Palma de Mallorca, a ${new Date().toLocaleDateString('es-ES')}`, { align: 'left' });
 
-        doc.end();
-
-        return new Promise((resolve, reject) => {
-            stream.on('finish', async () => {
-                await prisma.document.create({
-                    data: {
-                        name: 'Entrega EPIs (Generado)',
-                        category: 'PRL',
-                        fileUrl: `uploads/EXP_${employeeId}/${fileName}`,
-                        employeeId: employeeId
-                    }
-                });
-                resolve(filePath);
-            });
-            stream.on('error', reject);
+        const pdfBuffer = await buildPdfBuffer(doc);
+        const { key } = await StorageService.saveBuffer({
+            folder: `documents/EXP_${employeeId}`,
+            originalName: fileName,
+            buffer: pdfBuffer,
+            contentType: 'application/pdf'
         });
+
+        const docRecord = await prisma.document.create({
+            data: {
+                name: 'Entrega EPIs (Generado)',
+                category: 'PRL',
+                fileUrl: key,
+                employeeId: employeeId
+            }
+        });
+        return docRecord;
     },
 
-    generateModel145: async (employeeId: string): Promise<string> => {
+    generateModel145: async (employeeId: string): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
@@ -372,27 +373,27 @@ export const DocumentTemplateService = {
         const finalPdfBytes = await pdfDocWithMeta.save();
 
         const fileName = `Modelo_145_${employee.dni}_${Date.now()}.pdf`;
-        const dirPath = path.join(process.cwd(), 'uploads', `EXP_${employeeId}`);
+        const { key } = await StorageService.saveBuffer({
+            folder: `documents/EXP_${employeeId}`,
+            originalName: fileName,
+            buffer: Buffer.from(finalPdfBytes),
+            contentType: 'application/pdf'
+        });
 
-        if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-
-        const filePath = path.join(dirPath, fileName);
-        fs.writeFileSync(filePath, finalPdfBytes);
-
-        await prisma.document.create({
+        const doc = await prisma.document.create({
             data: {
                 name: 'Modelo 145 (Relleno)',
                 category: 'CONTRACT',
-                fileUrl: `uploads/EXP_${employeeId}/${fileName}`,
+                fileUrl: key,
                 employeeId: employeeId
             }
         });
 
-        return filePath;
+        return doc;
     },
 
-    generateTechDevice: async (employeeId: string, deviceName: string, serialNumber: string): Promise<string> => {
-        const filePath = await DocumentTemplateService.generateTechDeviceInternal(employeeId, deviceName, serialNumber);
+    generateTechDevice: async (employeeId: string, deviceName: string, serialNumber: string): Promise<any> => {
+        const doc = await DocumentTemplateService.generateTechDeviceInternal(employeeId, deviceName, serialNumber);
 
         // --- INVENTORY AUTOMATION ---
         try {
@@ -419,10 +420,10 @@ export const DocumentTemplateService = {
             });
         } catch (err) { console.error('Error creating asset for Tech Device:', err); }
 
-        return filePath;
+        return doc;
     },
 
-    generateTechDeviceInternal: async (employeeId: string, deviceName: string, serialNumber: string): Promise<string> => {
+    generateTechDeviceInternal: async (employeeId: string, deviceName: string, serialNumber: string): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
@@ -432,12 +433,6 @@ export const DocumentTemplateService = {
 
         const doc = new PDFDocument({ margin: 50 });
         const fileName = `Entrega_Material_Tecnologico_${employee.dni}_${Date.now()}.pdf`;
-        const dirPath = path.join(process.cwd(), 'uploads', `EXP_${employeeId}`);
-
-        if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
-        const filePath = path.join(dirPath, fileName);
-        const stream = fs.createWriteStream(filePath);
-        doc.pipe(stream);
 
         // QR Code
         await addQRCodeToPDF(doc, { t: 'TECH_DEVICE', name: deviceName, sn: serialNumber }, employeeId);
@@ -478,21 +473,22 @@ export const DocumentTemplateService = {
         doc.text('Firma Trabajador', 50, startY + 15);
         doc.text(`En Palma de Mallorca, a ${new Date().toLocaleDateString('es-ES')}`, 50, startY + 80);
 
-        doc.end();
-
-        return new Promise((resolve, reject) => {
-            stream.on('finish', async () => {
-                await prisma.document.create({
-                    data: {
-                        name: `Entrega ${deviceName}`,
-                        category: 'OTHER',
-                        fileUrl: `uploads/EXP_${employeeId}/${fileName}`,
-                        employeeId: employeeId
-                    }
-                });
-                resolve(filePath);
-            });
-            stream.on('error', reject);
+        const pdfBuffer = await buildPdfBuffer(doc);
+        const { key } = await StorageService.saveBuffer({
+            folder: `documents/EXP_${employeeId}`,
+            originalName: fileName,
+            buffer: pdfBuffer,
+            contentType: 'application/pdf'
         });
+
+        const docRecord = await prisma.document.create({
+            data: {
+                name: `Entrega ${deviceName}`,
+                category: 'OTHER',
+                fileUrl: key,
+                employeeId: employeeId
+            }
+        });
+        return docRecord;
     }
 };

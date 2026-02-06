@@ -1,4 +1,3 @@
-
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Upload, Receipt, Loader2, CheckCircle2, DollarSign, Calendar, ScanLine, Image as ImageIcon } from 'lucide-react';
@@ -47,13 +46,9 @@ export default function ExpenseModal({ isOpen, onClose, onSuccess, employeeId }:
             formData.append('receipt', file);
 
             const res = await api.post('/expenses/ocr', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' } // Browser sets boundary automatically if we pass FormData? 
+                headers: { 'Content-Type': 'multipart/form-data' }
                 // Client.ts handles "instanceof FormData" check to remove json content-type
             });
-
-            // const { suggestedAmount, suggestedDate, text } = res.data;
-            // Adjust based on client.ts return value. It returns res.json()
-            // AuthController returned ApiResponse.success => { success: true, data: {...} }
 
             const data = res.data || res;
 

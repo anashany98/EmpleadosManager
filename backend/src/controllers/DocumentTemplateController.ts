@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { DocumentTemplateService } from '../services/DocumentTemplateService';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AppError } from '../utils/AppError';
-import path from 'path';
 
 export const DocumentTemplateController = {
     listTemplates: async (req: Request, res: Response) => {
@@ -23,29 +22,35 @@ export const DocumentTemplateController = {
         }
 
         try {
-            let filePath = '';
+            let doc: any = null;
 
             if (templateId === 'epi') {
                 const items = data?.items || [];
-                filePath = await DocumentTemplateService.generateEPI(employeeId, items);
+                doc = await DocumentTemplateService.generateEPI(employeeId, items);
             } else if (templateId === 'uniform') {
                 const items = data?.items || [];
-                filePath = await DocumentTemplateService.generateUniform(employeeId, items);
+                doc = await DocumentTemplateService.generateUniform(employeeId, items);
             } else if (templateId === '145') {
-                filePath = await DocumentTemplateService.generateModel145(employeeId);
+                // returns Document object now
+                const doc = await DocumentTemplateService.generateModel145(employeeId);
+                return ApiResponse.success(res, {
+                    message: 'Documento generado correctamente',
+                    fileName: doc.name,
+                    fileUrl: `/api/documents/${doc.id}/download`
+                });
             } else if (templateId === 'tech_device') {
                 const { deviceName, serialNumber } = data || {};
-                if (!deviceName || !serialNumber) {
-                    throw new AppError('Nombre del dispositivo y número de serie son obligatorios', 400);
-                }
-                filePath = await DocumentTemplateService.generateTechDevice(employeeId, deviceName, serialNumber);
+                // ...
+                doc = await DocumentTemplateService.generateTechDevice(employeeId, deviceName, serialNumber);
             } else {
                 throw new AppError('Plantilla no reconocida', 400);
             }
 
+            // Return a download link for generated documents
             return ApiResponse.success(res, {
                 message: 'Documento generado y archivado correctamente',
-                fileName: path.basename(filePath)
+                fileName: doc?.name || 'Documento generado',
+                fileUrl: doc?.id ? `/api/documents/${doc.id}/download` : undefined
             });
         } catch (error: any) {
             console.error('Error generating document:', error);

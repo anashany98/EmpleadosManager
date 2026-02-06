@@ -2,15 +2,14 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { inboxService } from '../services/InboxService';
+import { StorageService } from '../services/StorageService';
 
 export const InboxController = {
     getAllPending: async (req: Request, res: Response) => {
         try {
             // First sync with folder and poll emails
-            await Promise.all([
-                inboxService.syncFolder(),
-                inboxService.pollEmails()
-            ]);
+            inboxService.syncFolder().catch(err => console.error('[Inbox] Sync error:', err));
+            inboxService.pollEmails().catch(err => console.error('[Inbox] Email poll error:', err));
 
             const pending = await prisma.inboxDocument.findMany({
                 where: { processed: false },
@@ -55,7 +54,8 @@ export const InboxController = {
                 fs.mkdirSync(inboxPath, { recursive: true });
             }
 
-            const targetPath = path.join(inboxPath, req.file.originalname);
+            const safeName = path.basename(req.file.originalname);
+            const targetPath = path.join(inboxPath, safeName);
             fs.renameSync(req.file.path, targetPath);
 
             // InboxService watcher should pick it up automatically
@@ -77,11 +77,36 @@ export const InboxController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
+            const doc = await prisma.inboxDocument.findUnique({ where: { id } });
+            if (doc?.fileUrl) {
+                await StorageService.deleteFile(doc.fileUrl);
+            }
             await prisma.inboxDocument.delete({ where: { id } });
-            // Note: We might want to delete the physical file too if it's a rejection
             return ApiResponse.success(res, null, 'Documento descartado');
         } catch (error) {
             return ApiResponse.error(res, 'Error al eliminar documento');
+        }
+    },
+
+    download: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        try {
+            const doc = await prisma.inboxDocument.findUnique({ where: { id } });
+            if (!doc || !doc.fileUrl) return ApiResponse.error(res, 'Documento no encontrado', 404);
+
+            if (StorageService.provider === 'local') {
+                const fs = require('fs');
+                const path = require('path');
+                const filePath = path.join(process.cwd(), 'uploads', doc.fileUrl);
+                if (!fs.existsSync(filePath)) return ApiResponse.error(res, 'Archivo no encontrado', 404);
+                return res.sendFile(filePath);
+            }
+
+            const signedUrl = await StorageService.getSignedDownloadUrl(doc.fileUrl);
+            if (!signedUrl) return ApiResponse.error(res, 'No se pudo generar URL', 500);
+            return res.redirect(signedUrl);
+        } catch (error: any) {
+            return ApiResponse.error(res, error.message || 'Error al descargar documento', 500);
         }
     }
 };

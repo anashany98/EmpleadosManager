@@ -21,7 +21,7 @@ export default function LoginPage() {
 
         try {
             const response = await api.post('/auth/login', { identifier: email, password });
-            login(response.data.token, response.data.refreshToken, response.data.user);
+            login('', '', response.data.user);
             toast.success('¡Bienvenido de nuevo!');
             navigate('/');
         } catch (error: any) {

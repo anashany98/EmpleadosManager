@@ -18,6 +18,10 @@ export class ReportController {
 
             const startDate = new Date(start as string);
             const endDate = new Date(end as string);
+            const maxRangeDays = 366;
+            if ((endDate.getTime() - startDate.getTime()) > maxRangeDays * 24 * 60 * 60 * 1000) {
+                return res.status(400).json({ error: `El rango máximo permitido es de ${maxRangeDays} días` });
+            }
             const data = await ReportService.getAttendanceData(startDate, endDate, { companyId, department });
 
             if (format === 'xlsx') {
@@ -47,6 +51,10 @@ export class ReportController {
 
             const startDate = new Date(start as string);
             const endDate = new Date(end as string);
+            const maxRangeDays = 366;
+            if ((endDate.getTime() - startDate.getTime()) > maxRangeDays * 24 * 60 * 60 * 1000) {
+                return res.status(400).json({ error: `El rango máximo permitido es de ${maxRangeDays} días` });
+            }
             const data = await ReportService.getOvertimeData(startDate, endDate, { companyId, department });
 
             if (format === 'xlsx') {
@@ -125,6 +133,10 @@ export class ReportController {
 
             const startDate = new Date(start as string);
             const endDate = new Date(end as string);
+            const maxRangeDays = 366;
+            if ((endDate.getTime() - startDate.getTime()) > maxRangeDays * 24 * 60 * 60 * 1000) {
+                return res.status(400).json({ error: `El rango máximo permitido es de ${maxRangeDays} días` });
+            }
             const data = await ReportService.getDetailedAbsenceData(startDate, endDate, { companyId, department });
 
             if (format === 'xlsx') {
