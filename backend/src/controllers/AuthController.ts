@@ -93,17 +93,19 @@ export const AuthController = {
                 expiresIn: ACCESS_TOKEN_EXPIRES_IN,
             });
 
+
+
             // Generate Refresh Token
             const refreshToken = generateRefreshToken();
             const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN);
 
             // Save Refresh Token to DB
-            if (!(prisma as any).refreshToken) {
+            if (!prisma.refreshToken) {
                 console.error('[Login CRITICAL] prisma.refreshToken is undefined!');
                 throw new Error('Prisma Client incomplete (refreshToken missing)');
             }
 
-            await (prisma as any).refreshToken.create({
+            await prisma.refreshToken.create({
                 data: {
                     token: hashToken(refreshToken),
                     userId: user.id,
@@ -234,11 +236,15 @@ export const AuthController = {
             }
 
             // Dev only: return password if no email
-            return ApiResponse.success(res, {
-                hasEmail: false,
-                password: tempPassword,
-                username: employee.dni
-            }, 'Acceso generado. Copia la contraseña.');
+            if (process.env.NODE_ENV === 'development') {
+                return ApiResponse.success(res, {
+                    hasEmail: false,
+                    password: tempPassword,
+                    username: employee.dni
+                }, 'Acceso generado. Copia la contraseña (SOLO DESARROLLO).');
+            }
+
+            return ApiResponse.success(res, { hasEmail: false }, 'Acceso generado. El empleado no tiene email, contacta al administrador.');
 
         } catch (error: any) {
             console.error(error);
@@ -257,19 +263,19 @@ export const AuthController = {
 
             // Find token in DB
             const hashed = hashToken(refreshToken);
-            let storedToken = await (prisma as any).refreshToken.findUnique({
+            let storedToken = await prisma.refreshToken.findUnique({
                 where: { token: hashed },
                 include: { user: true }
             });
 
             // Legacy fallback: token stored in plain text
             if (!storedToken) {
-                storedToken = await (prisma as any).refreshToken.findUnique({
+                storedToken = await prisma.refreshToken.findUnique({
                     where: { token: refreshToken },
                     include: { user: true }
                 });
                 if (storedToken) {
-                    await (prisma as any).refreshToken.update({
+                    await prisma.refreshToken.update({
                         where: { id: storedToken.id },
                         data: { token: hashed }
                     });
@@ -296,13 +302,13 @@ export const AuthController = {
             const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN);
 
             // Revoke old
-            await (prisma as any).refreshToken.update({
+            await prisma.refreshToken.update({
                 where: { id: storedToken.id },
                 data: { revoked: true }
             });
 
             // Create new
-            await (prisma as any).refreshToken.create({
+            await prisma.refreshToken.create({
                 data: {
                     token: hashToken(newRefreshToken),
                     userId: user.id,
@@ -338,18 +344,18 @@ export const AuthController = {
                     // But if we want to save space we could delete. Let's revoke.
                     // First find it to make sure it exists to avoid error on update
                     const hashed = hashToken(refreshToken);
-                    let found = await (prisma as any).refreshToken.findUnique({ where: { token: hashed } });
+                    let found = await prisma.refreshToken.findUnique({ where: { token: hashed } });
                     if (!found) {
-                        found = await (prisma as any).refreshToken.findUnique({ where: { token: refreshToken } });
+                        found = await prisma.refreshToken.findUnique({ where: { token: refreshToken } });
                         if (found) {
-                            await (prisma as any).refreshToken.update({
+                            await prisma.refreshToken.update({
                                 where: { id: found.id },
                                 data: { token: hashed }
                             });
                         }
                     }
                     if (found) {
-                        await (prisma as any).refreshToken.update({
+                        await prisma.refreshToken.update({
                             where: { id: found.id },
                             data: { revoked: true }
                         });

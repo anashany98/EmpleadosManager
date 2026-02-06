@@ -162,16 +162,3 @@ async function startServer() {
 }
 
 startServer();
-// Trigger restart 2
-
-// Trigger restart 3
-
-// Trigger restart 4
-
-// Trigger restart 5
-
-// Trigger restart 6
-
-// Trigger restart 7
-
-// Trigger restart 8
