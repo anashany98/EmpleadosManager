@@ -4,6 +4,7 @@ import path from 'path';
 import QRCode from 'qrcode';
 import { prisma } from '../lib/prisma';
 import { StorageService } from './StorageService';
+import { InventoryService } from './InventoryService';
 
 const getLogoPath = () => {
     const assetsPath = path.join(__dirname, '../../assets/logo.png');
@@ -30,7 +31,7 @@ const addQRCodeToPDF = async (doc: typeof PDFDocument, data: any, employeeId: st
 
         // Add to PDF (bottom right)
         // A4 is roughly 595 x 842 points
-        doc.image(qrBuffer, 470, 720, { width: 75 });
+        doc.image(qrBuffer, 495, 720, { width: 50 });
 
         // Add metadata for backend parsing (pdfkit doesn't support setting subject directly easily, 
         // but we can add it to information dictionary if needed or just rely on image for now.
@@ -52,101 +53,99 @@ const buildPdfBuffer = (doc: any): Promise<Buffer> => {
 };
 
 export const DocumentTemplateService = {
-    generateUniform: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<any> => {
-        const employee = await prisma.employee.findUnique({
-            where: { id: employeeId },
-            include: { company: true }
-        });
-
-        if (!employee) throw new Error('Empleado no encontrado');
-
-        const doc = await DocumentTemplateService.generateUniformInternal(employeeId, customItems);
-        const items = (customItems && customItems.length > 0) ? customItems : [];
+    generateUniform: async (employeeId: string, items?: Array<{ id?: string; name: string; size?: string }>, authorName?: string): Promise<any> => {
+        const doc = await DocumentTemplateService.generateUniformInternal(employeeId, items, authorName);
 
         // --- INVENTORY AUTOMATION ---
-        const assetPromises = items.map(async item => {
-            const itemName = item.name.trim();
-            try {
-                const inventoryItem = await prisma.inventoryItem.findFirst({ where: { name: itemName } });
-                if (inventoryItem) {
-                    await prisma.inventoryItem.update({
-                        where: { id: inventoryItem.id },
-                        data: { quantity: { decrement: 1 } }
-                    });
-                }
-            } catch (err) { console.warn(`Could not deduct stock for ${itemName}`, err); }
+        if (items && items.length > 0) {
+            await Promise.all(items.map(async item => {
+                try {
+                    if (item.id) {
+                        // Precise deduction by ID with alerts
+                        await InventoryService.recordMovement({
+                            itemId: item.id,
+                            type: 'ASSIGNMENT',
+                            quantity: 1,
+                            userId: authorName || 'SYSTEM',
+                            employeeId,
+                            notes: `Acta Uniforme: ${item.name} ${item.size ? `(${item.size})` : ''}`
+                        });
 
-            return prisma.asset.create({
-                data: {
-                    employeeId: employeeId,
-                    category: 'UNIFORM',
-                    name: itemName,
-                    status: 'ASSIGNED',
-                    assignedDate: new Date(),
-                    notes: `Generado automáticamente al crear Acta de Entrega Uniforme${item.size ? ` (Talla: ${item.size})` : ''}`
-                }
-            });
-        });
+                        await prisma.asset.create({
+                            data: {
+                                employeeId, category: 'UNIFORM', name: item.name, status: 'ASSIGNED',
+                                inventoryItemId: item.id, assignedDate: new Date(),
+                                notes: `Acta Uniforme: ${item.name} ${item.size ? `(${item.size})` : ''}`
+                            }
+                        });
 
-        await Promise.all(assetPromises);
+                    } else {
+                        // Fallback by name (legacy)
+                        const inv = await prisma.inventoryItem.findFirst({ where: { name: item.name.trim() } });
+                        if (inv) {
+                            await InventoryService.recordMovement({
+                                itemId: inv.id,
+                                type: 'ASSIGNMENT',
+                                quantity: 1,
+                                userId: authorName || 'SYSTEM',
+                                employeeId,
+                                notes: `Acta Uniforme (Legacy): ${item.name}`
+                            });
+                        }
+                    }
+                } catch (err) { console.warn(`Stock error for ${item.name}`, err); }
+            }));
+        }
         return doc;
-
     },
 
-    generateUniformInternal: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<any> => {
+    generateUniformInternal: async (employeeId: string, customItems?: Array<{ id?: string; name: string; size?: string }>, authorName?: string): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
         });
-
         if (!employee) throw new Error('Empleado no encontrado');
 
         const doc = new PDFDocument({ margin: 50 });
         const fileName = `Entrega_Uniforme_${employee.dni}_${Date.now()}.pdf`;
 
-        // QR Code
         await addQRCodeToPDF(doc, { t: 'UNIFORME' }, employeeId);
-
         const logoPath = getLogoPath();
-        let headerOffset = 0;
-        if (logoPath) {
-            doc.image(logoPath, 50, 40, { width: 100 });
-            headerOffset = 60;
-        }
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
 
-        doc.y = 50 + headerOffset;
-        doc.fontSize(20).text('ACTA DE ENTREGA DE UNIFORME Y ROPA DE TRABAJO', { align: 'center' });
+        doc.y = logoPath ? 120 : 50;
+        doc.fontSize(16).font('Helvetica-Bold').text('ACTA DE ENTREGA DE UNIFORME', { align: 'center' });
         doc.moveDown();
 
-        doc.fontSize(12).font('Helvetica-Bold').text('DATOS DE LA EMPRESA:');
-        doc.font('Helvetica').text(`Nombre: ${employee.company?.name || 'N/A'}`);
-        doc.text(`CIF: ${employee.company?.cif || 'N/A'}`);
+        // ... (Standard Header: Company/Employee)
+        doc.fontSize(10).font('Helvetica-Bold').text('EMPRESA:');
+        doc.font('Helvetica').text(`${employee.company?.name || 'N/A'} - CIF: ${employee.company?.cif || 'N/A'}`);
+        doc.moveDown(0.5);
+        doc.font('Helvetica-Bold').text('TRABAJADOR:');
+        doc.font('Helvetica').text(`${employee.firstName} ${employee.lastName} - DNI: ${employee.dni}`);
         doc.moveDown();
 
-        doc.font('Helvetica-Bold').text('DATOS DEL TRABAJADOR:');
-        doc.font('Helvetica-Bold').text(`Nombre: ${employee.firstName} ${employee.lastName}`);
-        doc.font('Helvetica').text(`DNI: ${employee.dni}`);
-        doc.text(`Puesto: ${employee.jobTitle || 'N/A'}`);
-        doc.moveDown();
-
-        doc.font('Helvetica').text('D./Dña. declara haber recibido por parte de la empresa las siguientes prendas de uniforme y ropa de trabajo:', { align: 'justify' });
+        doc.text('Recibí de la empresa las siguientes prendas:', { align: 'justify' });
         doc.moveDown();
 
         const items = (customItems && customItems.length > 0) ? customItems : [];
         items.forEach(item => {
             const label = item.size ? `${item.name} (Talla: ${item.size})` : item.name;
-            doc.text(`- ${label}`);
+            doc.text(`• ${label}`, { indent: 20 });
         });
         doc.moveDown();
 
-        doc.text('El trabajador se compromete a la correcta conservación y limpieza de las prendas entregadas, debiendo devolverlas en caso de cese de la relación laboral.', { align: 'justify' });
-        doc.moveDown(2);
+        doc.fontSize(8).text('El trabajador se compromete a su uso obligado y conservación.', { align: 'justify' });
 
-        const startY = doc.y;
-        doc.text('Firma Empresa:', 50, startY);
-        doc.text('Firma Trabajador:', 350, startY);
+        // Signatures
         doc.moveDown(4);
-        doc.text(`En Palma de Mallorca, a ${new Date().toLocaleDateString('es-ES')}`, { align: 'left' });
+        const startY = doc.y;
+        const place = employee.company?.city || 'Palma';
+
+        doc.text(`En ${place}, a ${new Date().toLocaleDateString('es-ES')}`);
+        doc.moveDown();
+        doc.text('Firma Empresa:', 50, doc.y);
+        doc.text('Firma Trabajador:', 350, doc.y - 12);
 
         const pdfBuffer = await buildPdfBuffer(doc);
         const { key } = await StorageService.saveBuffer({
@@ -156,131 +155,197 @@ export const DocumentTemplateService = {
             contentType: 'application/pdf'
         });
 
-        const docRecord = await prisma.document.create({
+        return prisma.document.create({
             data: {
-                name: 'Entrega Uniforme (Generado)',
-                category: 'OTHER',
-                fileUrl: key,
-                employeeId: employeeId
+                name: 'Entrega Uniforme', category: 'OTHER', fileUrl: key, employeeId
             }
         });
-        return docRecord;
     },
-    generateEPI: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<any> => {
-        const employee = await prisma.employee.findUnique({
-            where: { id: employeeId },
-            include: { company: true }
-        });
 
-        if (!employee) throw new Error('Empleado no encontrado');
-
-        const doc = await DocumentTemplateService.generateEPIInternal(employeeId, customItems);
-        const items = (customItems && customItems.length > 0) ? customItems : [];
+    generateEPI: async (employeeId: string, items?: Array<{ id?: string; name: string; size?: string }>, authorName?: string): Promise<any> => {
+        const doc = await DocumentTemplateService.generateEPIInternal(employeeId, items, authorName);
 
         // --- INVENTORY AUTOMATION ---
-        const assetPromises = items.map(async item => {
-            const itemName = item.name.trim();
-            try {
-                const inventoryItem = await prisma.inventoryItem.findFirst({ where: { name: itemName } });
-                if (inventoryItem) {
-                    await prisma.inventoryItem.update({
-                        where: { id: inventoryItem.id },
-                        data: { quantity: { decrement: 1 } }
-                    });
-                }
-            } catch (err) { console.warn(`Could not deduct stock for ${itemName}`, err); }
+        if (items && items.length > 0) {
+            await Promise.all(items.map(async item => {
+                try {
+                    if (item.id) {
+                        await InventoryService.recordMovement({
+                            itemId: item.id,
+                            type: 'ASSIGNMENT',
+                            quantity: 1,
+                            userId: authorName || 'SYSTEM',
+                            employeeId,
+                            notes: `Acta EPI: ${item.name} ${item.size ? `(${item.size})` : ''}`
+                        });
 
-            return prisma.asset.create({
-                data: {
-                    employeeId: employeeId,
-                    category: 'EPI',
-                    name: itemName,
-                    status: 'ASSIGNED',
-                    assignedDate: new Date(),
-                    notes: `Generado automáticamente al crear Acta de Entrega EPI${item.size ? ` (Talla: ${item.size})` : ''}`
-                }
-            });
-        });
-
-        await Promise.all(assetPromises);
+                        await prisma.asset.create({
+                            data: {
+                                employeeId, category: 'EPI', name: item.name, status: 'ASSIGNED',
+                                inventoryItemId: item.id, assignedDate: new Date(),
+                                notes: `Acta EPI: ${item.name} ${item.size ? `(${item.size})` : ''}`
+                            }
+                        });
+                    } else {
+                        // Fallback
+                        const inv = await prisma.inventoryItem.findFirst({ where: { name: item.name.trim() } });
+                        if (inv) {
+                            await InventoryService.recordMovement({
+                                itemId: inv.id,
+                                type: 'ASSIGNMENT',
+                                quantity: 1,
+                                userId: authorName || 'SYSTEM',
+                                employeeId,
+                                notes: `Acta EPI (Legacy): ${item.name}`
+                            });
+                        }
+                    }
+                } catch (err) { console.warn(`Stock error for ${item.name}`, err); }
+            }));
+        }
         return doc;
     },
 
-    generateEPIInternal: async (employeeId: string, customItems?: Array<{ name: string; size?: string }>): Promise<any> => {
+    generateEPIInternal: async (employeeId: string, customItems?: Array<{ id?: string; name: string; size?: string }>, authorName?: string): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
         });
-
         if (!employee) throw new Error('Empleado no encontrado');
 
         const doc = new PDFDocument({ margin: 50 });
         const fileName = `Entrega_EPIs_${employee.dni}_${Date.now()}.pdf`;
 
-        // QR Code
         await addQRCodeToPDF(doc, { t: 'EPI' }, employeeId);
-
         const logoPath = getLogoPath();
-        let headerOffset = 0;
-        if (logoPath) {
-            doc.image(logoPath, 50, 40, { width: 100 });
-            headerOffset = 60;
-        }
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
 
-        doc.y = 50 + headerOffset;
-        doc.fontSize(20).text('ACTA DE ENTREGA DE EQUIPOS DE PROTECCIÓN INDIVIDUAL (EPI)', { align: 'center' });
+        doc.y = logoPath ? 120 : 50;
+        doc.fontSize(16).font('Helvetica-Bold').text('ACTA DE ENTREGA DE EPIS', { align: 'center' });
         doc.moveDown();
 
-        doc.fontSize(12).font('Helvetica-Bold').text('DATOS DE LA EMPRESA:');
-        doc.font('Helvetica').text(`Nombre: ${employee.company?.name || 'N/A'}`);
-        doc.text(`CIF: ${employee.company?.cif || 'N/A'}`);
+        doc.fontSize(10).font('Helvetica-Bold').text('EMPRESA:');
+        doc.font('Helvetica').text(`${employee.company?.name || 'N/A'}`);
+        doc.moveDown(0.5);
+        doc.font('Helvetica-Bold').text('TRABAJADOR:');
+        doc.font('Helvetica').text(`${employee.firstName} ${employee.lastName} - DNI: ${employee.dni}`);
         doc.moveDown();
 
-        doc.font('Helvetica-Bold').text('DATOS DEL TRABAJADOR:');
-        doc.font('Helvetica-Bold').text(`Nombre: ${employee.firstName} ${employee.lastName}`);
-        doc.font('Helvetica').text(`DNI: ${employee.dni}`);
-        doc.text(`Puesto: ${employee.jobTitle || 'N/A'}`);
-        doc.moveDown();
-
-        doc.font('Helvetica').text('D./Dña. declara haber recibido por parte de la empresa los siguientes Equipos de Protección Individual, así como la información sobre su uso y mantenimiento:', { align: 'justify' });
+        doc.text('He recibido los siguientes Equipos de Protección Individual y he sido informado sobre su uso:', { align: 'justify' });
         doc.moveDown();
 
         const items = (customItems && customItems.length > 0) ? customItems : [];
         items.forEach(item => {
-            const label = item.size ? `${item.name} (Talla: ${item.size})` : item.name;
-            doc.text(`- ${label}`);
+            doc.text(`• ${item.name} ${item.size ? `(${item.size})` : ''}`, { indent: 20 });
         });
         doc.moveDown();
 
-        doc.text('El trabajador se compromete a utilizar y cuidar correctamente los equipos entregados, informando a su superior de cualquier defecto o pérdida de los mismos.', { align: 'justify' });
+        // Signatures
+        doc.moveDown(4);
+        const startY = doc.y;
+
+        doc.text('Firma Empresa:', 50, startY);
+        doc.text('Firma Trabajador:', 350, startY);
+
+        const pdfBuffer = await buildPdfBuffer(doc);
+        const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });
+
+        return prisma.document.create({ data: { name: 'Entrega EPIs', category: 'PRL', fileUrl: key, employeeId } });
+    },
+
+    generateNDA: async (employeeId: string, authorName?: string): Promise<any> => {
+        const employee = await prisma.employee.findUnique({ where: { id: employeeId }, include: { company: true } });
+        if (!employee) throw new Error('Empleado no encontrado');
+
+        const doc = new PDFDocument({ margin: 50 });
+        const fileName = `NDA_${employee.dni}_${Date.now()}.pdf`;
+        await addQRCodeToPDF(doc, { t: 'NDA' }, employeeId);
+
+        const logoPath = getLogoPath();
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+
+        doc.y = 120;
+        doc.fontSize(16).font('Helvetica-Bold').text('ACUERDO DE CONFIDENCIALIDAD', { align: 'center' });
         doc.moveDown(2);
+
+        doc.fontSize(10).font('Helvetica').text('REUNIDOS', { align: 'center', underline: true });
+        doc.moveDown();
+        doc.text(`De una parte, ${employee.company?.name || 'LA EMPRESA'}, con CIF ${employee.company?.cif || '...'}.`);
+        doc.text(`De otra parte, D./Dña. ${employee.firstName} ${employee.lastName}, con DNI ${employee.dni} (en adelante, EL TRABAJADOR).`);
+        doc.moveDown(2);
+
+        doc.text('EXPONEN', { align: 'center', underline: true });
+        doc.moveDown();
+        doc.text('Que debido a la relación laboral, el Trabajador tendrá acceso a información confidencial de la Empresa (clientes, know-how, datos financieros, etc.).', { align: 'justify' });
+        doc.moveDown();
+
+        doc.text('CLÁUSULAS', { align: 'center', underline: true });
+        doc.moveDown();
+        doc.text('1. El Trabajador se compromete a guardar el más estricto secreto respecto a toda la información confidencial a la que tenga acceso.', { align: 'justify' });
+        doc.moveDown();
+        doc.text('2. La obligación de confidencialidad subsistirá incluso después de finalizar la relación laboral.', { align: 'justify' });
+        doc.moveDown();
+        doc.text('3. El incumplimiento de este deber podrá ser sancionado conforme al Estatuto de los Trabajadores.', { align: 'justify' });
+        doc.moveDown(4);
 
         const startY = doc.y;
         doc.text('Firma Empresa:', 50, startY);
         doc.text('Firma Trabajador:', 350, startY);
-        doc.moveDown(4);
-        doc.text(`En Palma de Mallorca, a ${new Date().toLocaleDateString('es-ES')}`, { align: 'left' });
 
         const pdfBuffer = await buildPdfBuffer(doc);
-        const { key } = await StorageService.saveBuffer({
-            folder: `documents/EXP_${employeeId}`,
-            originalName: fileName,
-            buffer: pdfBuffer,
-            contentType: 'application/pdf'
-        });
+        const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });
 
-        const docRecord = await prisma.document.create({
-            data: {
-                name: 'Entrega EPIs (Generado)',
-                category: 'PRL',
-                fileUrl: key,
-                employeeId: employeeId
-            }
-        });
-        return docRecord;
+        return prisma.document.create({ data: { name: 'Acuerdo Confidencialidad (NDA)', category: 'CONTRACT', fileUrl: key, employeeId } });
     },
 
-    generateModel145: async (employeeId: string): Promise<any> => {
+    generateRGPD: async (employeeId: string, authorName?: string): Promise<any> => {
+        const employee = await prisma.employee.findUnique({ where: { id: employeeId }, include: { company: true } });
+        if (!employee) throw new Error('Empleado no encontrado');
+
+        const doc = new PDFDocument({ margin: 50 });
+        const fileName = `RGPD_${employee.dni}_${Date.now()}.pdf`;
+        await addQRCodeToPDF(doc, { t: 'RGPD' }, employeeId);
+
+        const logoPath = getLogoPath();
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+
+        doc.y = 120;
+        doc.fontSize(16).font('Helvetica-Bold').text('INFORMACIÓN SOBRE PROTECCIÓN DE DATOS', { align: 'center' });
+        doc.moveDown(2);
+
+        doc.fontSize(10).font('Helvetica').text('Responsable del Tratamiento:', { underline: true });
+        doc.text(`${employee.company?.name || 'LA EMPRESA'} - CIF: ${employee.company?.cif || '...'}`);
+        doc.moveDown();
+
+        doc.text('Finalidad del Tratamiento:', { underline: true });
+        doc.text('Gestión de la relación laboral, nóminas, prevención de riesgos y cumplimiento de obligaciones legales.', { align: 'justify' });
+        doc.moveDown();
+
+        doc.text('Legitimación:', { underline: true });
+        doc.text('Ejecución del contrato de trabajo y cumplimiento de obligaciones legales.', { align: 'justify' });
+        doc.moveDown();
+
+        doc.text('Destinatarios:', { underline: true });
+        doc.text('Administraciones públicas (Seguridad Social, Hacienda), bancos para el pago de nóminas y entidades colaboradoras (Mutuas).', { align: 'justify' });
+        doc.moveDown();
+
+        doc.text('Derechos:', { underline: true });
+        doc.text('Puede ejercer sus derechos de acceso, rectificación, supresión y oposición dirigiéndose a la dirección de la empresa.', { align: 'justify' });
+        doc.moveDown(3);
+
+        doc.text('He leído y acepto el tratamiento de mis datos personales.', { align: 'center' });
+        doc.moveDown(2);
+
+        const startY = doc.y;
+        doc.text('Firma Trabajador:', 350, startY);
+
+        const pdfBuffer = await buildPdfBuffer(doc);
+        const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });
+
+        return prisma.document.create({ data: { name: 'Cláusula RGPD', category: 'CONTRACT', fileUrl: key, employeeId } });
+    },
+
+    generateModel145: async (employeeId: string, authorName?: string): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
@@ -301,7 +366,8 @@ export const DocumentTemplateService = {
         const day = today.getDate().toString().padStart(2, '0');
         const month = today.toLocaleString('es-ES', { month: 'long' });
         const year = today.getFullYear().toString();
-        const place = 'Palma de Mallorca';
+        const place = employee.company?.city || 'Palma de Mallorca';
+        const author = authorName || employee.company?.legalRep || 'Matias Jure';
 
         try {
             const nameField = form.getTextField('Apellidos y Nombre');
@@ -349,7 +415,7 @@ export const DocumentTemplateService = {
             pages.forEach(page => {
                 // Signature line - Adjusted lower and checks removed "Fdo:" prefix
                 // User requested to remove the date drawing on the left as it overlaps.
-                page.drawText('Matias Jure', {
+                page.drawText(author, {
                     x: 350,
                     y: 75,
                     size: 10,
@@ -392,17 +458,32 @@ export const DocumentTemplateService = {
         return doc;
     },
 
-    generateTechDevice: async (employeeId: string, deviceName: string, serialNumber: string): Promise<any> => {
-        const doc = await DocumentTemplateService.generateTechDeviceInternal(employeeId, deviceName, serialNumber);
+    generateTechDevice: async (employeeId: string, deviceName: string, serialNumber: string, authorName?: string, itemId?: string): Promise<any> => {
+        const doc = await DocumentTemplateService.generateTechDeviceInternal(employeeId, deviceName, serialNumber, authorName);
 
         // --- INVENTORY AUTOMATION ---
         try {
-            const inventoryItem = await prisma.inventoryItem.findFirst({ where: { name: deviceName } });
-            if (inventoryItem) {
-                await prisma.inventoryItem.update({
-                    where: { id: inventoryItem.id },
-                    data: { quantity: { decrement: 1 } }
+            if (itemId) {
+                await InventoryService.recordMovement({
+                    itemId: itemId,
+                    type: 'ASSIGNMENT',
+                    quantity: 1,
+                    userId: authorName || 'SYSTEM',
+                    employeeId,
+                    notes: `Acta Material Tecnológico: ${deviceName}`
                 });
+            } else {
+                const inventoryItem = await prisma.inventoryItem.findFirst({ where: { name: deviceName } });
+                if (inventoryItem) {
+                    await InventoryService.recordMovement({
+                        itemId: inventoryItem.id,
+                        type: 'ASSIGNMENT',
+                        quantity: 1,
+                        userId: authorName || 'SYSTEM',
+                        employeeId,
+                        notes: `Acta Material Tecnológico (Legacy): ${deviceName}`
+                    });
+                }
             }
         } catch (err) { console.warn('Could not deduct stock for Tech Device:', err); }
 
@@ -414,6 +495,7 @@ export const DocumentTemplateService = {
                     name: deviceName,
                     serialNumber,
                     status: 'ASSIGNED',
+                    inventoryItemId: itemId || null,
                     assignedDate: new Date(),
                     notes: 'Generado automáticamente al crear Acta de Entrega Material Tecnológico'
                 }
@@ -423,7 +505,7 @@ export const DocumentTemplateService = {
         return doc;
     },
 
-    generateTechDeviceInternal: async (employeeId: string, deviceName: string, serialNumber: string): Promise<any> => {
+    generateTechDeviceInternal: async (employeeId: string, deviceName: string, serialNumber: string, authorName?: string): Promise<any> => {
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
             include: { company: true }
@@ -467,11 +549,16 @@ export const DocumentTemplateService = {
         doc.moveDown(0.5);
         doc.text('3. A la finalización de la relación laboral, el trabajador devolverá el equipo y sus accesorios en el mismo estado en que se le entregó, salvo el desgaste normal por el uso.', { align: 'justify' });
 
+        const place = employee.company?.city || 'Palma de Mallorca';
+        const author = authorName || employee.company?.legalRep || 'La Dirección';
+
         doc.moveDown(4);
         const startY = doc.y;
         doc.text('Recibí:', 50, startY);
         doc.text('Firma Trabajador', 50, startY + 15);
-        doc.text(`En Palma de Mallorca, a ${new Date().toLocaleDateString('es-ES')}`, 50, startY + 80);
+        doc.fontSize(8).text(author, 350, startY + 45); // Representative name
+
+        doc.fontSize(12).text(`En ${place}, a ${new Date().toLocaleDateString('es-ES')}`, 50, startY + 80);
 
         const pdfBuffer = await buildPdfBuffer(doc);
         const { key } = await StorageService.saveBuffer({
@@ -490,5 +577,64 @@ export const DocumentTemplateService = {
             }
         });
         return docRecord;
+    },
+
+    signDocument: async (documentId: string, signatureDataUrl: string): Promise<any> => {
+        const document = await prisma.document.findUnique({
+            where: { id: documentId },
+            include: { employee: true }
+        });
+
+        if (!document) throw new Error('Documento no encontrado');
+
+        const { PDFDocument: PDFLibDocument } = await import('pdf-lib');
+
+        // Get file from storage
+        let pdfBytes: Buffer;
+        if (StorageService.provider === 'local') {
+            const filePath = path.join(process.cwd(), 'uploads', document.fileUrl);
+            pdfBytes = fs.readFileSync(filePath);
+        } else {
+            // S3 download logic would go here
+            throw new Error('Digital signature only supported on local storage for now');
+        }
+
+        const pdfDoc = await PDFLibDocument.load(pdfBytes);
+        const signatureImage = await pdfDoc.embedPng(signatureDataUrl);
+
+        const pages = pdfDoc.getPages();
+        const firstPage = pages[0]; // Usually sign on first page or we could logic it
+
+        // Find signature placeholder or just draw at bottom
+        // Standard position for our generated docs (approx)
+        firstPage.drawImage(signatureImage, {
+            x: 350,
+            y: 80,
+            width: 150,
+            height: 50,
+        });
+
+        const finalPdfBytes = await pdfDoc.save();
+
+        // Save as NEW document (avoid overwriting original for audit purposes)
+        const fileName = `FIRMADO_${document.name.replace('.pdf', '')}_${Date.now()}.pdf`;
+        const { key } = await StorageService.saveBuffer({
+            folder: `documents/EXP_${document.employeeId}`,
+            originalName: fileName,
+            buffer: Buffer.from(finalPdfBytes),
+            contentType: 'application/pdf'
+        });
+
+        const signedDoc = await prisma.document.create({
+            data: {
+                employeeId: document.employeeId,
+                name: `FIRMADO: ${document.name}`,
+                category: document.category,
+                fileUrl: key,
+                expiryDate: document.expiryDate
+            }
+        });
+
+        return signedDoc;
     }
 };

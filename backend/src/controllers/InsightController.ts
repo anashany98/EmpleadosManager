@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('InsightController');
 
 export class InsightController {
     async getDashboardInsights(req: Request, res: Response) {
@@ -160,7 +163,7 @@ export class InsightController {
 
             return ApiResponse.success(res, insights);
         } catch (error: any) {
-            console.error('Error generating insights:', error);
+            log.error({ error }, 'Error generating insights');
             return ApiResponse.error(res, 'Error al generar insights', 500);
         }
     }
@@ -200,7 +203,7 @@ export class InsightController {
 
             return ApiResponse.success(res, result);
         } catch (error: any) {
-            console.error('Error fetching absences:', error);
+            log.error({ error }, 'Error fetching absences');
             return ApiResponse.error(res, 'Error al obtener ausencias', 500);
         }
     }
@@ -229,7 +232,7 @@ export class InsightController {
 
             return ApiResponse.success(res, upcoming);
         } catch (error: any) {
-            console.error('Error fetching birthdays:', error);
+            log.error({ error }, 'Error fetching birthdays');
             return ApiResponse.error(res, 'Error al obtener cumpleaños', 500);
         }
     }
@@ -310,7 +313,7 @@ export class InsightController {
 
             return ApiResponse.success(res, celebrations);
         } catch (error: any) {
-            console.error('Error fetching celebrations:', error);
+            log.error({ error }, 'Error fetching celebrations');
             return ApiResponse.error(res, 'Error al obtener celebraciones', 500);
         }
     }
@@ -364,7 +367,7 @@ export class InsightController {
             });
 
         } catch (error: any) {
-            console.error('Error calculating turnover:', error);
+            log.error({ error }, 'Error calculating turnover');
             return ApiResponse.error(res, 'Error al calcular rotación', 500);
         }
     }
@@ -410,7 +413,7 @@ export class InsightController {
             });
 
         } catch (error: any) {
-            console.error('Error calculating absenteeism:', error);
+            log.error({ error }, 'Error calculating absenteeism');
             return ApiResponse.error(res, 'Error al calcular absentismo', 500);
         }
     }
@@ -459,7 +462,7 @@ export class InsightController {
             return ApiResponse.success(res, result);
 
         } catch (error: any) {
-            console.error('Error calculating costs:', error);
+            log.error({ error }, 'Error calculating costs');
             return ApiResponse.error(res, 'Error al calcular costes', 500);
         }
     }

@@ -2,6 +2,9 @@ import { Request, Response } from 'express';
 import { ContractService } from '../services/ContractService';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AppError } from '../utils/AppError';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('ContractController');
 
 export const ContractController = {
     /**
@@ -24,7 +27,7 @@ export const ContractController = {
 
             return ApiResponse.success(res, extension, 'Contrato extendido correctamente', 201);
         } catch (error: any) {
-            console.error('Error extending contract:', error);
+            log.error({ error }, 'Error extending contract');
             return ApiResponse.error(res, error.message || 'Error al extender el contrato', 500);
         }
     },
@@ -38,7 +41,7 @@ export const ContractController = {
             const history = await ContractService.getContractHistory(id);
             return ApiResponse.success(res, history);
         } catch (error: any) {
-            console.error('Error fetching contract history:', error);
+            log.error({ error }, 'Error fetching contract history');
             return ApiResponse.error(res, error.message || 'Error al obtener el historial de contratos', 500);
         }
     },

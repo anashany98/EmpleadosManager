@@ -14,6 +14,7 @@ const router = Router();
 import { validateResource } from '../middlewares/validateResource';
 import { checkPermission, allowSelfOrRole } from '../middlewares/authMiddleware';
 import { createEmployeeSchema, updateEmployeeSchema } from '../schemas/employeeSchemas';
+import { idParamSchema } from '../schemas/commonSchemas';
 
 // Admin / HR Access
 router.get('/', checkPermission('employees', 'read'), EmployeeController.getAll);
@@ -23,14 +24,14 @@ router.post('/import', checkPermission('employees', 'write'), upload.single('fil
 router.get('/template', checkPermission('employees', 'read'), EmployeeController.downloadTemplate);
 
 // Self-Service Capable Routes
-router.get('/:id', allowSelfOrRole(['admin'], 'id'), EmployeeController.getById);
-router.get('/:id/portability-report', allowSelfOrRole(['admin'], 'id'), EmployeeController.getPortabilityReport);
+router.get('/:id', validateResource(idParamSchema), allowSelfOrRole(['admin'], 'id'), EmployeeController.getById);
+router.get('/:id/portability-report', validateResource(idParamSchema), allowSelfOrRole(['admin'], 'id'), EmployeeController.getPortabilityReport);
 
 // Write Access (Strict)
 router.post('/', checkPermission('employees', 'write'), validateResource(createEmployeeSchema), EmployeeController.create);
-router.put('/:id', checkPermission('employees', 'write'), validateResource(updateEmployeeSchema), EmployeeController.update);
-router.patch('/:id', checkPermission('employees', 'write'), validateResource(updateEmployeeSchema), EmployeeController.update);
-router.delete('/:id', checkPermission('employees', 'write'), EmployeeController.delete);
+router.put('/:id', checkPermission('employees', 'write'), validateResource(idParamSchema), validateResource(updateEmployeeSchema), EmployeeController.update);
+router.patch('/:id', checkPermission('employees', 'write'), validateResource(idParamSchema), validateResource(updateEmployeeSchema), EmployeeController.update);
+router.delete('/:id', checkPermission('employees', 'write'), validateResource(idParamSchema), EmployeeController.delete);
 router.post('/bulk-update', checkPermission('employees', 'write'), EmployeeController.bulkUpdate);
 
 // Contract Management

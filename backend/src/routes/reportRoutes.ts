@@ -5,6 +5,7 @@ import { ReportController } from '../controllers/ReportController';
 const router = Router();
 
 router.get('/attendance', ReportController.getAttendance);
+router.get('/attendance-summary', ReportController.getAttendanceSummary);
 router.get('/overtime', ReportController.getOvertime);
 router.get('/vacations', ReportController.getVacations);
 router.get('/costs', ReportController.getCosts);

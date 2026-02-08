@@ -37,6 +37,102 @@ export class ReportService {
     }
 
     /**
+     * Calculates daily summaries for employees, pairing IN/OUT entries.
+     */
+    static async getAttendanceDailySummary(start: Date, end: Date, filters: { employeeId?: string; companyId?: string } = {}) {
+        const where: any = {
+            timestamp: { gte: start, lte: end }
+        };
+
+        if (filters.employeeId) where.employeeId = filters.employeeId;
+        if (filters.companyId) where.employee = { companyId: filters.companyId };
+
+        const entries = await prisma.timeEntry.findMany({
+            where,
+            include: {
+                employee: {
+                    select: { id: true, name: true, firstName: true, lastName: true }
+                }
+            },
+            orderBy: [{ employeeId: 'asc' }, { timestamp: 'asc' }]
+        });
+
+        const summaries: any[] = [];
+        const entriesByEmployee: Record<string, typeof entries> = {};
+
+        // Group by employee
+        entries.forEach(e => {
+            if (!entriesByEmployee[e.employeeId]) entriesByEmployee[e.employeeId] = [];
+            entriesByEmployee[e.employeeId].push(e);
+        });
+
+        for (const empId in entriesByEmployee) {
+            const empEntries = entriesByEmployee[empId];
+            const empInfo = empEntries[0].employee;
+
+            // Group by day (YYYY-MM-DD)
+            const byDay: Record<string, typeof entries> = {};
+            empEntries.forEach(e => {
+                const day = e.timestamp.toISOString().split('T')[0];
+                if (!byDay[day]) byDay[day] = [];
+                byDay[day].push(e);
+            });
+
+            for (const day in byDay) {
+                const dayEntries = byDay[day];
+                let totalMs = 0;
+                let lastIn: Date | null = null;
+                const segments: any[] = [];
+                let hasIncomplete = false;
+
+                dayEntries.forEach((e) => {
+                    if (e.type === 'IN' || e.type === 'BREAK_END' || e.type === 'LUNCH_END') {
+                        lastIn = e.timestamp;
+                    } else if (e.type === 'OUT' || e.type === 'BREAK_START' || e.type === 'LUNCH_START') {
+                        if (lastIn) {
+                            const diff = e.timestamp.getTime() - lastIn.getTime();
+                            totalMs += diff;
+                            segments.push({
+                                start: lastIn,
+                                end: e.timestamp,
+                                type: e.type.includes('BREAK') ? 'BREAK' : (e.type.includes('LUNCH') ? 'LUNCH' : 'WORK')
+                            });
+                            lastIn = null;
+                        } else {
+                            // OUT without IN
+                            hasIncomplete = true;
+                        }
+                    }
+                });
+
+                // Check if still clocked in at end of record list for that day
+                if (lastIn) {
+                    const isToday = new Date().toISOString().split('T')[0] === day;
+                    if (!isToday) hasIncomplete = true;
+
+                    segments.push({
+                        start: lastIn,
+                        end: null,
+                        type: 'ACTIVE'
+                    });
+                }
+
+                summaries.push({
+                    employeeId: empId,
+                    employeeName: empInfo.firstName && empInfo.lastName ? `${empInfo.firstName} ${empInfo.lastName}` : (empInfo.name || 'Empleado'),
+                    date: day,
+                    totalHours: Number((totalMs / (1000 * 60 * 60)).toFixed(2)),
+                    status: hasIncomplete ? 'INCOMPLETE' : 'COMPLETE',
+                    segments
+                });
+            }
+        }
+
+        return summaries;
+    }
+
+
+    /**
      * Gets overtime data and calculated costs.
      */
     static async getOvertimeData(start: Date, end: Date, filters: any = {}) {

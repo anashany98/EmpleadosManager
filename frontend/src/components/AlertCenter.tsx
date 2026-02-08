@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldAlert, X, Check, Clock, FileText, Info } from 'lucide-react';
+import { ShieldAlert, X, Check, Clock, FileText, Info, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
 import { useNavigate } from 'react-router-dom';
@@ -55,6 +55,7 @@ export default function AlertCenter() {
             case 'LICENSE_EXPIRING': return <FileText className="text-purple-500" />;
             case 'TRIAL_PERIOD_ENDING': return <UserCheck className="text-green-500" />;
             case 'VACATION_QUOTA_LOW': return <Calendar className="text-orange-500" />;
+            case 'LOW_STOCK': return <Package className="text-red-500" />;
             default: return <Info className="text-slate-500" />;
         }
     };

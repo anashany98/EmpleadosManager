@@ -171,12 +171,13 @@ EmpleadosManager/
 
 ## 🔐 Seguridad
 
-> ⚠️ **IMPORTANTE**: Esta versión NO incluye autenticación. Para uso en producción, se recomienda:
-> - Implementar autenticación JWT
-> - Añadir control de acceso basado en roles
-> - Usar HTTPS
-> - Validar todos los inputs
-> - Sanitizar uploads de archivos
+> [!IMPORTANT]
+> El sistema implementa las siguientes medidas de seguridad para proteger los datos:
+> - **Autenticación Robusta**: Uso de JWT con Refresh Tokens.
+> - **Protección CSRF**: Implementada mediante middleware.
+> - **Cifrado**: Datos sensibles (DNI, SS) cifrados en reposo.
+> - **Políticas de Contraseña**: Validación de complejidad obligatoria.
+> - **Control de Acceso**: Roles de administrador, manager y usuario común.
 
 ## 🚀 Despliegue
 
@@ -204,14 +205,13 @@ npm run build
 
 ## 📝 Roadmap
 
-- [ ] Sistema de autenticación y roles
-- [ ] Portal de autoservicio para empleados
-- [ ] Gestión de documentos adjuntos
-- [ ] Reportes avanzados (Excel, PDF)
-- [ ] Notificaciones por email
-- [ ] App móvil
-- [ ] Integración con sistemas de nómina externos
-- [ ] API pública con documentación
+- [x] Sistema de autenticación y roles
+- [x] Portal de autoservicio para empleados
+- [x] Gestión de nóminas y exportación PDF
+- [/] Gestión de documentos adjuntos (Próximamente)
+- [/] Tests automatizados (En progreso)
+- [ ] Aplicación móvil (Roadmap)
+- [ ] Notificaciones por email avanzadas (Roadmap)
 
 ## 🤝 Contribuir
 

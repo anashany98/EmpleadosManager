@@ -2,6 +2,11 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AnomalyService } from '../services/AnomalyService';
+import { AuditService } from '../services/AuditService';
+import { AuthenticatedRequest } from '../types/express';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('TimeEntryController');
 
 const parseTimestamp = (value: any) => {
     if (!value) return null;
@@ -18,7 +23,7 @@ const parseTimestamp = (value: any) => {
 export const TimeEntryController = {
     getStatus: async (req: Request, res: Response) => {
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             if (!user.employeeId) {
                 return ApiResponse.error(res, 'Usuario no vinculado a un empleado', 400);
             }
@@ -50,14 +55,14 @@ export const TimeEntryController = {
 
             return ApiResponse.success(res, { status, lastEntry });
         } catch (error: any) {
-            console.error('Error getting status:', error);
+            log.error({ error }, 'Error getting status');
             return ApiResponse.error(res, 'Error al obtener estado', 500);
         }
     },
 
     clock: async (req: Request, res: Response) => {
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             const { type, latitude, longitude, location, device, timestamp } = req.body;
 
             if (!user.employeeId) {
@@ -102,7 +107,7 @@ export const TimeEntryController = {
                                 }
                             });
                         } catch (alertError) {
-                            console.error('Error creating geofence alert:', alertError);
+                            log.error({ alertError }, 'Error creating geofence alert');
                         }
                     }
                 }
@@ -120,18 +125,18 @@ export const TimeEntryController = {
                 }
             });
 
-            AnomalyService.detectTimeEntry(entry).catch(err => console.error('[Anomaly] timeEntry', err));
+            AnomalyService.detectTimeEntry(entry).catch(err => log.error({ err }, 'Anomaly detection failed'));
 
             return ApiResponse.success(res, entry);
         } catch (error: any) {
-            console.error('Error clocking:', error);
+            log.error({ error }, 'Error clocking');
             return ApiResponse.error(res, 'Error al registrar fichaje', 500);
         }
     },
 
     getHistory: async (req: Request, res: Response) => {
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             if (!user.employeeId) return ApiResponse.error(res, 'No vinculado', 400);
 
             const { start, end, from, to } = req.query;
@@ -159,6 +164,39 @@ export const TimeEntryController = {
             return ApiResponse.success(res, history);
         } catch (error) {
             return ApiResponse.error(res, 'Error al obtener historial', 500);
+        }
+    },
+
+    createManual: async (req: Request, res: Response) => {
+        try {
+            const { employeeId, type, timestamp, location, comment } = req.body;
+            const adminId = (req as AuthenticatedRequest).user?.id || 'system';
+
+            if (!employeeId || !type || !timestamp) {
+                return ApiResponse.error(res, 'Faltan campos obligatorios', 400);
+            }
+
+            const entry = await prisma.timeEntry.create({
+                data: {
+                    employeeId,
+                    type,
+                    timestamp: new Date(timestamp),
+                    location: location || 'Corrección Admin',
+                    device: `Admin Fix (${adminId})`,
+                }
+            });
+
+            await AuditService.log('MANUAL_CLOCK', 'TIME_ENTRY', entry.id, {
+                employeeId,
+                type,
+                timestamp,
+                comment
+            }, adminId);
+
+            return ApiResponse.success(res, entry, 'Fichaje manual creado correctamente');
+        } catch (error: any) {
+            log.error({ error }, 'Error in createManual');
+            return ApiResponse.error(res, 'Error al crear fichaje manual', 500);
         }
     }
 };

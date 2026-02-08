@@ -28,6 +28,7 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
     const [showUpload, setShowUpload] = useState(false);
     const [previewUrl, setPreviewUrl] = useState<string | null>(null);
     const [previewTitle, setPreviewTitle] = useState('');
+    const [previewDocId, setPreviewDocId] = useState<string | null>(null);
 
     // Form states
     const [newName, setNewName] = useState('');
@@ -267,8 +268,14 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
                                         <div className="flex gap-1">
                                             <button
                                                 onClick={() => {
-                                                    setPreviewUrl(`/api/documents/${doc.id}/download`);
+                                                    // Explicitly construct absolute URL for preview to avoid double /api issues
+                                                    // and force inline display
+                                                    const baseUrl = API_URL.replace(/\/$/, ''); // Remove trailing slash if any
+                                                    const url = `${baseUrl}/documents/${doc.id}/download?inline=true`;
+
+                                                    setPreviewUrl(url);
                                                     setPreviewTitle(doc.name);
+                                                    setPreviewDocId(doc.id);
                                                 }}
                                                 className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-all"
                                                 title="Previsualizar"
@@ -326,7 +333,14 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
                 isOpen={!!previewUrl}
                 fileUrl={previewUrl || ''}
                 title={previewTitle}
-                onClose={() => setPreviewUrl(null)}
+                documentId={previewDocId || undefined}
+                employeeId={employeeId}
+                canSign={!!previewTitle && !previewTitle.startsWith('FIRMADO:')}
+                onClose={() => {
+                    setPreviewUrl(null);
+                    setPreviewDocId(null);
+                    fetchDocuments(); // Refresh list after potential signing
+                }}
             />
         </div>
     );

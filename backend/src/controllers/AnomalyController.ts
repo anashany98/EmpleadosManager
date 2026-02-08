@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('AnomalyController');
 
 const parseReasons = (reasons: string | null) => {
     if (!reasons) return [];
@@ -54,7 +57,7 @@ export const AnomalyController = {
                 }
             });
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error fetching anomalies');
             return ApiResponse.error(res, 'Error al obtener anomalías', 500);
         }
     },
@@ -79,7 +82,7 @@ export const AnomalyController = {
 
             return ApiResponse.success(res, data);
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error fetching employee anomalies');
             return ApiResponse.error(res, 'Error al obtener anomalías del empleado', 500);
         }
     },
@@ -100,7 +103,7 @@ export const AnomalyController = {
 
             return ApiResponse.success(res, updated, 'Estado actualizado');
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error updating anomaly status');
             return ApiResponse.error(res, 'Error al actualizar estado', 500);
         }
     }

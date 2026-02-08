@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('MappingProfileController');
 
 export class MappingProfileController {
     // Get all profiles
@@ -36,7 +39,7 @@ export class MappingProfileController {
 
             res.status(201).json({ ...profile, rules: JSON.parse(profile.rules) });
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error creating profile');
             res.status(500).json({ error: 'Error creating profile' });
         }
     }

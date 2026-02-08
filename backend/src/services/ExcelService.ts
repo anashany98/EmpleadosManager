@@ -47,6 +47,47 @@ export class ExcelService {
     }
 
     /**
+     * Generates an Excel workbook for the calculated Attendance Summary.
+     */
+    static async generateAttendanceSummaryReport(data: any[]) {
+        const workbook = new ExcelJS.Workbook();
+        const sheet = workbook.addWorksheet('Resumen de Asistencia');
+
+        sheet.columns = [
+            { header: 'Empleado', key: 'name', width: 30 },
+            { header: 'Fecha', key: 'date', width: 15 },
+            { header: 'Horas Totales', key: 'hours', width: 15 },
+            { header: 'Estado', key: 'status', width: 15 },
+            { header: 'Detalle Segmentos', key: 'segments', width: 50 }
+        ];
+
+        sheet.getRow(1).font = { bold: true };
+        sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+        sheet.getRow(1).font = { color: { argb: 'FFFFFFFF' }, bold: true };
+
+        data.forEach(item => {
+            const segmentStr = item.segments.map((s: any) =>
+                `${new Date(s.start).toLocaleTimeString()} - ${s.end ? new Date(s.end).toLocaleTimeString() : '?'}`
+            ).join(' | ');
+
+            const row = sheet.addRow({
+                name: item.employeeName,
+                date: item.date,
+                hours: item.totalHours,
+                status: item.status === 'COMPLETE' ? 'Completo' : 'Incompleto',
+                segments: segmentStr
+            });
+
+            if (item.status === 'INCOMPLETE') {
+                row.getCell('D').font = { color: { argb: 'FFFF0000' }, bold: true };
+            }
+        });
+
+        return await workbook.xlsx.writeBuffer();
+    }
+
+
+    /**
      * Generates an Excel workbook for Overtime Report.
      */
     static async generateOvertimeReport(data: any[]) {

@@ -1,9 +1,30 @@
-
 import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
+import { OnboardingService } from '../services/OnboardingService';
 
 export const OnboardingController = {
+    // Automation
+    startOnboardingProcess: async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { employeeId, options } = req.body;
+
+            if (!employeeId || !options) {
+                return ApiResponse.error(res, 'Faltan datos requeridos (employeeId, options)', 400);
+            }
+
+            const user = (req as any).user;
+            // Inject author name into options if not present
+            options.authorName = user?.name || 'RRHH / Admin';
+
+            const results = await OnboardingService.startOnboarding(employeeId, options);
+
+            return ApiResponse.success(res, results, 'Proceso de onboarding iniciado');
+        } catch (error) {
+            next(error);
+        }
+    },
+
     // Templates
     getTemplates: async (req: Request, res: Response, next: NextFunction) => {
         try {

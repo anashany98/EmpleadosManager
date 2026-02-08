@@ -4,6 +4,9 @@ import { ApiResponse } from '../utils/ApiResponse';
 import { BackupService } from '../services/BackupService';
 import path from 'path';
 import fs from 'fs';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('ConfigController');
 
 export const ConfigController = {
     getConfig: async (req: Request, res: Response) => {
@@ -19,7 +22,7 @@ export const ConfigController = {
 
             return ApiResponse.success(res, JSON.parse(config.value));
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error fetching config');
             return ApiResponse.error(res, 'Error al obtener la configuración');
         }
     },
@@ -40,7 +43,7 @@ export const ConfigController = {
 
             return ApiResponse.success(res, JSON.parse(config.value), 'Configuración guardada correctamente');
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error saving config');
             return ApiResponse.error(res, 'Error al guardar la configuración');
         }
     },
@@ -54,7 +57,7 @@ export const ConfigController = {
 
             return ApiResponse.success(res, result, 'Backup creado correctamente');
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error creating backup');
             return ApiResponse.error(res, 'Error al crear el backup');
         }
     },
@@ -64,7 +67,7 @@ export const ConfigController = {
             const backups = await BackupService.getBackups();
             return ApiResponse.success(res, backups);
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error listing backups');
             return ApiResponse.error(res, 'Error al listar backups');
         }
     },

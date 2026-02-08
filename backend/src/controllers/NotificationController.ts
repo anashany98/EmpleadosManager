@@ -3,6 +3,10 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { NotificationStream } from '../services/NotificationStream';
+import { AuthenticatedRequest } from '../types/express';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('NotificationController');
 
 export const createNotification = async (userId: string, title: string, message: string, type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR' = 'INFO', link?: string) => {
     try {
@@ -10,13 +14,13 @@ export const createNotification = async (userId: string, title: string, message:
             data: { userId, title, message, type, link }
         });
     } catch (error) {
-        console.error('Error creating notification:', error);
+        log.error({ error }, 'Error creating notification');
     }
 };
 
 export const NotificationController = {
     stream: async (req: Request, res: Response) => {
-        const user = (req as any).user;
+        const { user } = req as AuthenticatedRequest;
 
         res.setHeader('Content-Type', 'text/event-stream');
         res.setHeader('Cache-Control', 'no-cache');
@@ -40,7 +44,7 @@ export const NotificationController = {
     },
     getMine: async (req: Request, res: Response) => {
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             const notifications = await prisma.notification.findMany({
                 where: { userId: user.id },
                 orderBy: { createdAt: 'desc' },
@@ -54,14 +58,14 @@ export const NotificationController = {
 
             return ApiResponse.success(res, { notifications, unreadCount });
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error fetching notifications');
             return ApiResponse.error(res, 'Error al obtener notificaciones', 500);
         }
     },
 
     markRead: async (req: Request, res: Response) => {
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             const { id } = req.params;
 
             await prisma.notification.updateMany({
@@ -77,7 +81,7 @@ export const NotificationController = {
 
     markAllRead: async (req: Request, res: Response) => {
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             await prisma.notification.updateMany({
                 where: { userId: user.id, read: false },
                 data: { read: true }

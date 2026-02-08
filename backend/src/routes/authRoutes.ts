@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { AuthController } from '../controllers/AuthController';
 import { protect, restrictTo } from '../middlewares/authMiddleware';
 import rateLimit from 'express-rate-limit';
+import { validateResource } from '../middlewares/validateResource';
+import { loginSchema, passwordResetRequestSchema, passwordResetSchema, generateAccessSchema } from '../schemas/authSchemas';
 
 const router = Router();
 
@@ -21,12 +23,12 @@ const passwordLimiter = rateLimit({
     message: 'Demasiadas solicitudes. Intenta de nuevo en 15 minutos.'
 });
 
-router.post('/login', loginLimiter, AuthController.login);
+router.post('/login', loginLimiter, validateResource(loginSchema), AuthController.login);
 router.post('/refresh', AuthController.refresh);
 router.post('/logout', AuthController.logout);
-router.post('/request-password-reset', passwordLimiter, AuthController.requestPasswordReset);
-router.post('/reset-password', passwordLimiter, AuthController.resetPassword);
-router.post('/generate-access', protect, restrictTo('admin'), AuthController.generateAccess);
+router.post('/request-password-reset', passwordLimiter, validateResource(passwordResetRequestSchema), AuthController.requestPasswordReset);
+router.post('/reset-password', passwordLimiter, validateResource(passwordResetSchema), AuthController.resetPassword);
+router.post('/generate-access', protect, restrictTo('admin'), validateResource(generateAccessSchema), AuthController.generateAccess);
 router.get('/me', protect, AuthController.getMe);
 
 export default router;

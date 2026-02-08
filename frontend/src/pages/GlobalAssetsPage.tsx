@@ -94,7 +94,7 @@ export default function GlobalAssetsPage() {
 
     // Inventory Form State
     const [showAddModal, setShowAddModal] = useState(false);
-    const [newItem, setNewItem] = useState({ name: '', category: 'EPI', quantity: 0, minQuantity: 5, size: '' });
+    const [newItem, setNewItem] = useState({ name: '', category: 'EPI', quantity: 0, minQuantity: 5, size: '', description: '' });
 
     const [showAssignModal, setShowAssignModal] = useState(false);
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
@@ -128,7 +128,7 @@ export default function GlobalAssetsPage() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['inventory'] });
             setShowAddModal(false);
-            setNewItem({ name: '', category: 'EPI', quantity: 0, minQuantity: 5, size: '' });
+            setNewItem({ name: '', category: 'EPI', quantity: 0, minQuantity: 5, size: '', description: '' });
             toast.success('Producto añadido al almacén');
         },
         onError: (err: any) => toast.error(err.response?.data?.message || 'Error al crear el producto')
@@ -584,6 +584,24 @@ export default function GlobalAssetsPage() {
                                         {categories.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>{CATEGORY_MAP[c] || c}</option>)}
                                     </select>
                                 </div>
+                                {(newItem.category === 'TECH') && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Tipo de Dispositivo</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: Portátil, Monitor, Móvil..."
+                                            value={newItem.description.split('\n')[0] || ''}
+                                            onChange={(e) => {
+                                                const lines = newItem.description.split('\n');
+                                                lines[0] = e.target.value;
+                                                setNewItem({ ...newItem, description: lines.join('\n') });
+                                            }}
+                                            className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                        />
+                                    </div>
+                                )}
+                            </div>
+                            {(newItem.category === 'CLOTHING' || newItem.category === 'UNIFORM' || newItem.category === 'EPI' || newItem.category === 'UNIFORME') && (
                                 <div className="space-y-2">
                                     <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Talla (ropa)</label>
                                     <input
@@ -594,54 +612,54 @@ export default function GlobalAssetsPage() {
                                         className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
                                     />
                                 </div>
-                            </div>
+                            )}
+                        </div>
 
+                        <div className="space-y-2">
+                            <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Nombre del Producto</label>
+                            <input
+                                type="text"
+                                value={newItem.name}
+                                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                                className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Nombre del Producto</label>
+                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Stock Inicial</label>
                                 <input
-                                    type="text"
-                                    value={newItem.name}
-                                    onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                                    type="number"
+                                    value={newItem.quantity}
+                                    onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) })}
                                     className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
                                 />
                             </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Stock Inicial</label>
-                                    <input
-                                        type="number"
-                                        value={newItem.quantity}
-                                        onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Alerta Stock Bajo</label>
-                                    <input
-                                        type="number"
-                                        value={newItem.minQuantity}
-                                        onChange={(e) => setNewItem({ ...newItem, minQuantity: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                                    />
-                                </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Alerta Stock Bajo</label>
+                                <input
+                                    type="number"
+                                    value={newItem.minQuantity}
+                                    onChange={(e) => setNewItem({ ...newItem, minQuantity: parseInt(e.target.value) })}
+                                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                />
                             </div>
                         </div>
+                    </div>
 
-                        <div className="flex gap-3 pt-4">
-                            <button
-                                onClick={() => setShowAddModal(false)}
-                                className="flex-1 px-6 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-750 transition-all"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={() => createItemMutation.mutate(newItem)}
-                                className="flex-1 px-6 py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-200 dark:shadow-none hover:bg-emerald-700 transition-all"
-                            >
-                                Guardar Producto
-                            </button>
-                        </div>
+                    <div className="flex gap-3 pt-4">
+                        <button
+                            onClick={() => setShowAddModal(false)}
+                            className="flex-1 px-6 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-750 transition-all"
+                        >
+                            Cancelar
+                        </button>
+                        <button
+                            onClick={() => createItemMutation.mutate(newItem)}
+                            className="flex-1 px-6 py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-200 dark:shadow-none hover:bg-emerald-700 transition-all"
+                        >
+                            Guardar Producto
+                        </button>
                     </div>
                 </div>
             )}

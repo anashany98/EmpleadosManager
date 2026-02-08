@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Clock, AlertTriangle, Sparkles, Cake } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
 import { WhosOutWidget } from './WhosOutWidget';
 import TimeTrackerWidget from '../TimeTrackerWidget';
@@ -16,13 +16,19 @@ interface OverviewTabProps {
 }
 
 export default function OverviewTab({ selectedCompany, metrics }: OverviewTabProps) {
+    const navigate = useNavigate();
     const { user } = useAuth();
     const isEmployee = user?.role === 'employee';
     const [insights, setInsights] = useState<any[]>([]);
     const [currentInsightIndex, setCurrentInsightIndex] = useState(0);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
+    const [kioskActivity, setKioskActivity] = useState<any[]>([]);
+
+
+    const [recentBatches, setRecentBatches] = useState<any[]>([]);
+    const [attendanceSummary, setAttendanceSummary] = useState<any[]>([]);
     const [celebrations, setCelebrations] = useState<any[]>([]);
-    const [activityTab, setActivityTab] = useState<'BATCHES' | 'AUDIT'>('BATCHES');
+    const [activityTab, setActivityTab] = useState<'BATCHES' | 'AUDIT' | 'KIOSK' | 'ANOMALIES'>('BATCHES');
 
     // Derived state from metrics
     const absencesData = metrics?.attendance?.onLeaveToday && typeof metrics.attendance.onLeaveToday === 'object'
@@ -50,29 +56,34 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
         },
     ];
 
-    const recentBatches = [
-        { id: 1, name: 'N_Noviembre_2024.xlsx', date: '22/12/2024', status: 'COMPLETADO', rows: 24, user: 'Admin' },
-        { id: 2, name: 'N_Octubre_2024.xlsx', date: '25/11/2024', status: 'COMPLETADO', rows: 22, user: 'Admin' },
-    ];
+
 
     useEffect(() => {
         const fetchOperationalData = async () => {
+            if (isEmployee) return; // Employees don't need this admin data
+
             const query = selectedCompany ? `?companyId=${selectedCompany}` : '';
             try {
-                const [insRes, celRes, audRes] = await Promise.all([
+                const [insRes, celRes, audRes, kioskRes, summaryRes, batchesRes] = await Promise.all([
                     api.get(`/dashboard/insights${query}`).catch(() => ({ data: [] })),
                     api.get('/dashboard/celebrations').catch(() => ({ data: [] })),
-                    api.get('/dashboard/audit').catch(() => ({ data: [] }))
+                    api.get('/dashboard/audit').catch(() => ({ data: [] })),
+                    api.get('/kiosk/activity').catch(() => ({ data: [] })),
+                    api.get(`/reports/attendance-summary?start=${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}&end=${new Date().toISOString()}${selectedCompany ? `&companyId=${selectedCompany}` : ''}`).catch(() => ({ data: [] })),
+                    api.get('/payroll?limit=5').catch(() => ({ data: [] }))
                 ]);
                 setInsights(insRes.data || []);
                 setCelebrations(celRes.data || []);
                 setAuditLogs(audRes.data || []);
+                setKioskActivity(kioskRes.data || []);
+                setAttendanceSummary(summaryRes.data || []);
+                setRecentBatches(batchesRes.data || []);
             } catch (e) {
                 console.error(e);
             }
         };
         fetchOperationalData();
-    }, [selectedCompany]);
+    }, [selectedCompany, isEmployee]);
 
     // Insight rotation
     useEffect(() => {
@@ -162,6 +173,23 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                                 >
                                     Actividad
                                 </button>
+                                <button
+                                    onClick={() => setActivityTab('KIOSK')}
+                                    className={`pb-2 -mb-2.5 border-b-2 transition-colors ${activityTab === 'KIOSK' ? 'border-amber-500 text-amber-600' : 'border-transparent hover:text-slate-700'}`}
+                                >
+                                    Kiosco Pulse
+                                </button>
+                                <button
+                                    onClick={() => setActivityTab('ANOMALIES')}
+                                    className={`pb-2 -mb-2.5 border-b-2 transition-colors ${activityTab === 'ANOMALIES' ? 'border-red-500 text-red-600' : 'border-transparent hover:text-slate-700'}`}
+                                >
+                                    Anomalías
+                                    {attendanceSummary.filter(s => s.status === 'INCOMPLETE').length > 0 && (
+                                        <span className="ml-1.5 px-1.5 py-0.5 bg-red-100 text-red-600 text-[8px] rounded-full animate-pulse">
+                                            {attendanceSummary.filter(s => s.status === 'INCOMPLETE').length}
+                                        </span>
+                                    )}
+                                </button>
                             </div>
                         </div>
                         <div className="flex-1 overflow-y-auto">
@@ -178,7 +206,7 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                                             <tr key={batch.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
                                                 <td className="px-4 py-3">
                                                     <div className="font-medium text-slate-900 dark:text-slate-200">{batch.name}</div>
-                                                    <div className="text-[10px] text-slate-400 mt-0.5">{batch.date} • {batch.rows} empleados</div>
+                                                    <div className="text-[10px] text-slate-400 mt-0.5">{new Date(batch.date).toLocaleDateString()} • {batch.rows} emps</div>
                                                 </td>
                                                 <td className="px-4 py-3 text-right">
                                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800">
@@ -189,7 +217,7 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                                         ))}
                                     </tbody>
                                 </table>
-                            ) : (
+                            ) : activityTab === 'AUDIT' ? (
                                 <div className="p-4 space-y-4">
                                     {auditLogs.map((log, idx) => (
                                         <div key={idx} className="flex gap-3 text-xs group">
@@ -204,8 +232,63 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                                         </div>
                                     ))}
                                 </div>
+                            ) : activityTab === 'KIOSK' ? (
+                                <div className="p-4 space-y-4">
+                                    {kioskActivity.length === 0 ? (
+                                        <div className="text-center py-10 text-slate-400 text-xs italic">
+                                            Sin actividad reciente en el Kiosco
+                                        </div>
+                                    ) : (
+                                        kioskActivity.map((item, idx) => (
+                                            <div key={idx} className="flex items-center gap-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 relative overflow-hidden group">
+                                                <div className={`w-1 h-full absolute left-0 top-0 ${item.type === 'IN' ? 'bg-green-500' : 'bg-rose-500'}`}></div>
+                                                <div className="p-2 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
+                                                    <Clock size={16} className={item.type === 'IN' ? 'text-green-500' : 'text-rose-500'} />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{item.employeeName}</p>
+                                                    <p className="text-[10px] text-slate-500">
+                                                        {item.type === 'IN' ? 'Entrada' : 'Salida'} • {new Date(item.timestamp).toLocaleTimeString()} • {item.method}
+                                                    </p>
+                                                </div>
+                                                <div className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors uppercase">
+                                                    Kiosco
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="p-4 space-y-4">
+                                    {attendanceSummary.filter(s => s.status === 'INCOMPLETE').length === 0 ? (
+                                        <div className="text-center py-10 text-slate-400 text-xs italic">
+                                            No hay anomalías de fichaje detectadas
+                                        </div>
+                                    ) : (
+                                        attendanceSummary.filter(s => s.status === 'INCOMPLETE').map((item, idx) => (
+                                            <div key={idx} className="flex items-center gap-4 p-3 bg-red-50 dark:bg-red-900/10 rounded-2xl border border-red-100 dark:border-red-900 relative overflow-hidden group">
+                                                <div className="p-2 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
+                                                    <AlertTriangle size={16} className="text-red-500" />
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{item.employeeName}</p>
+                                                    <p className="text-[10px] text-red-600">
+                                                        Fichaje Incompleto • {new Date(item.date).toLocaleDateString()}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => navigate(`/reconciliation?employeeId=${item.employeeId}&date=${item.date}`)}
+                                                    className="text-[10px] font-bold text-slate-400 hover:text-red-500 transition-colors uppercase"
+                                                >
+                                                    Revisar
+                                                </button>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
                             )}
                         </div>
+
                     </>
                 ) : (
                     <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-950/20">

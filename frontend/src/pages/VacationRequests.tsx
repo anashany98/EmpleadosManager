@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api/client';
+import { api, API_URL } from '../api/client';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
-import { Plane, Calendar as CalendarIcon, Check, X, Clock, FileText, Stethoscope, Baby, MoreHorizontal, Filter } from 'lucide-react';
+import { Plane, Calendar as CalendarIcon, Check, X, Clock, FileText, Stethoscope, Baby, MoreHorizontal, Filter, Paperclip, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const ABSENCE_TYPES: any = {
@@ -34,6 +34,7 @@ export default function VacationRequests() {
     const [endDate, setEndDate] = useState('');
     const [type, setType] = useState('VACATION');
     const [reason, setReason] = useState('');
+    const [attachment, setAttachment] = useState<File | null>(null);
 
     useEffect(() => {
         fetchData();
@@ -118,13 +119,17 @@ export default function VacationRequests() {
     const handleCreate = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
-            await api.post('/vacations', {
-                employeeId: user?.employeeId, // Inject ID
-                startDate: new Date(startDate).toISOString(),
-                endDate: new Date(endDate).toISOString(),
-                type,
-                reason
-            });
+            const formData = new FormData();
+            formData.append('employeeId', user?.employeeId || '');
+            formData.append('startDate', new Date(startDate).toISOString());
+            formData.append('endDate', new Date(endDate).toISOString());
+            formData.append('type', type);
+            formData.append('reason', reason);
+            if (attachment) {
+                formData.append('attachment', attachment);
+            }
+
+            await api.post('/vacations', formData);
 
             toast.success("Solicitud enviada");
             setShowModal(false);
@@ -135,6 +140,7 @@ export default function VacationRequests() {
             setStartDate('');
             setEndDate('');
             setReason('');
+            setAttachment(null);
         } catch (error: any) {
             toast.error(error.message || "Error al crear solicitud");
         }
@@ -298,6 +304,26 @@ export default function VacationRequests() {
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-slate-500 uppercase">Motivo</label>
                                     <textarea value={reason} onChange={e => setReason(e.target.value)} className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium h-24 resize-none" placeholder="Opcional..." />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-bold text-slate-500 uppercase">Adjunto (Justificante)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="file"
+                                            onChange={e => setAttachment(e.target.files?.[0] || null)}
+                                            className="hidden"
+                                            id="vacation-attachment"
+                                        />
+                                        <label
+                                            htmlFor="vacation-attachment"
+                                            className="flex items-center gap-2 w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-500/50 transition-colors cursor-pointer"
+                                        >
+                                            <Paperclip size={18} className="text-slate-400" />
+                                            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+                                                {attachment ? attachment.name : 'Seleccionar archivo...'}
+                                            </span>
+                                        </label>
+                                    </div>
                                 </div>
                                 <div className="pt-2">
                                     <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-0.5 transition-all">Enviar Solicitud</button>
@@ -478,6 +504,16 @@ function RequestCard({ req, isManager, onApprove, onReject }: any) {
                     <span className="flex items-center gap-1"><CalendarIcon size={14} /> {start.toLocaleDateString()} - {end.toLocaleDateString()}</span>
                     <span className="font-medium text-slate-700 dark:text-slate-300">({req.days} días)</span>
                     {req.reason && <span className="italic truncate max-w-[200px]">— {req.reason}</span>}
+                    {req.fileUrl && (
+                        <a
+                            href={`${API_URL}/vacations/${req.id}/attachment`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-bold"
+                        >
+                            <ExternalLink size={14} /> Ver Adjunto
+                        </a>
+                    )}
                 </div>
             </div>
 

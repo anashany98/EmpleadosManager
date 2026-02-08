@@ -5,6 +5,10 @@ import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { StorageService } from '../services/StorageService';
 import { AnomalyService } from '../services/AnomalyService';
+import { AuthenticatedRequest } from '../types/express';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('ExpenseController');
 
 export const ExpenseController = {
     // Procesar OCR para sugerir datos
@@ -65,7 +69,7 @@ export const ExpenseController = {
                 suggestedDate
             }, 'OCR de recibo completado');
         } catch (error) {
-            console.error('Error OCR Gastos:', error);
+            log.error({ error }, 'Error OCR Gastos');
             throw new AppError('Error al procesar el recibo mediante OCR', 500);
         }
     },
@@ -80,7 +84,7 @@ export const ExpenseController = {
         }
 
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             if (user.role !== 'admin' && user.employeeId !== employeeId) {
                 return res.status(403).json({ error: 'No autorizado' });
             }
@@ -117,11 +121,11 @@ export const ExpenseController = {
                 }
             });
 
-            AnomalyService.detectExpense(expense).catch(err => console.error('[Anomaly] expense', err));
+            AnomalyService.detectExpense(expense).catch(err => log.error({ err }, 'Anomaly expense detection failed'));
 
             res.status(201).json(expense);
         } catch (error) {
-            console.error('Error al subir gasto:', error);
+            log.error({ error }, 'Error al subir gasto');
             res.status(500).json({ error: 'Error al registrar el gasto' });
         }
     },
@@ -197,7 +201,7 @@ export const ExpenseController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             const expense = await prisma.expense.findUnique({ where: { id } });
             if (!expense) return res.status(404).json({ error: 'Gasto no encontrado' });
             if (user.role !== 'admin' && user.employeeId !== expense.employeeId) {
@@ -219,7 +223,7 @@ export const ExpenseController = {
     // Descargar recibo
     getReceipt: async (req: Request, res: Response) => {
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             const { id } = req.params;
             const expense = await prisma.expense.findUnique({ where: { id } });
             if (!expense || !expense.receiptUrl) return res.status(404).json({ error: 'Recibo no encontrado' });

@@ -1,12 +1,12 @@
-
 import { prisma } from '../lib/prisma';
+import { loggers } from './LoggerService';
 
-
+const log = loggers.alert;
 
 export class AlertService {
     // Check for expiring contracts and generate alerts
     async generateContractAlerts() {
-        console.log('Generating multi-category alerts (Document Semaphore)...');
+        log.info('Generating multi-category alerts (Document Semaphore)...');
         const now = new Date();
         const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
         const fifteenDaysFromNow = new Date(now.getTime() + 15 * 24 * 60 * 60 * 1000);
@@ -100,6 +100,34 @@ export class AlertService {
         }
     }
 
+    // Check for low stock and generate alerts
+    async generateStockAlerts() {
+        log.info('Generating stock alerts...');
+        const lowStockItems = await prisma.inventoryItem.findMany({
+            where: {
+                quantity: {
+                    lte: prisma.inventoryItem.fields.minQuantity
+                }
+            }
+        });
+
+        for (const item of lowStockItems) {
+            await this.createAlert({
+                employeeId: undefined, // System alert
+                type: 'LOW_STOCK',
+                severity: 'HIGH',
+                title: 'Stock Bajo',
+                message: `El ítem de inventario "${item.name}" (${item.size || 'N/A'}) tiene stock bajo (${item.quantity}).`,
+                actionUrl: `/inventory`
+            });
+        }
+    }
+
+    async runAllChecks() {
+        await this.generateContractAlerts();
+        await this.generateStockAlerts();
+    }
+
     async createAlert(data: {
         employeeId?: string;
         type: string;
@@ -108,11 +136,12 @@ export class AlertService {
         message: string;
         actionUrl?: string;
     }) {
-        // Avoid duplicate alerts (same type/employee in last 24h)
+        // Avoid duplicate alerts (same type/employee/title in last 24h)
         const existing = await prisma.alert.findFirst({
             where: {
                 employeeId: data.employeeId,
                 type: data.type,
+                title: data.title, // Check title too for stock alerts distinction
                 createdAt: {
                     gte: new Date(Date.now() - 24 * 60 * 60 * 1000)
                 }
@@ -126,7 +155,7 @@ export class AlertService {
                     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Expires in 7 days
                 }
             });
-            console.log(`Alert created: ${data.title}`);
+            log.info({ title: data.title }, 'Alert created');
         }
     }
 

@@ -1,331 +1,307 @@
+// ... imports
 import { useState, useEffect } from 'react';
+import { FileText, ShieldCheck, Shirt, Smartphone, Loader2, Search, Check, AlertCircle, Sparkles, MapPin, Lock, Scale } from 'lucide-react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { FileText, Loader2, Printer } from 'lucide-react';
-import DocumentPreview from './DocumentPreview';
-
-interface Template {
-    id: string;
-    name: string;
-    category: string;
-}
 
 interface DocumentGeneratorProps {
     employeeId: string;
     onDocumentGenerated?: () => void;
 }
 
+type DocType = 'UNIFORM' | 'EPI' | 'TECH_DEVICE' | 'MODEL_145' | 'NDA' | 'RGPD';
+
 export default function DocumentGenerator({ employeeId, onDocumentGenerated }: DocumentGeneratorProps) {
-    const [templates, setTemplates] = useState<Template[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [generating, setGenerating] = useState<string | null>(null);
-    const [showDialog, setShowDialog] = useState<string | null>(null);
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-    const [previewTitle, setPreviewTitle] = useState('');
-    const [formData, setFormData] = useState<any>({});
-    const [inventory, setInventory] = useState<any[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [docType, setDocType] = useState<DocType>('UNIFORM');
+    const [inventoryItems, setInventoryItems] = useState<any[]>([]);
+    const [selectedItems, setSelectedItems] = useState<any[]>([]);
+    const [authorName, setAuthorName] = useState('');
+
+    // Tech Device State
+    const [selectedTechItem, setSelectedTechItem] = useState<any>(null);
+    const [deviceName, setDeviceName] = useState('');
+    const [serialNumber, setSerialNumber] = useState('');
+
+    const [itemSearch, setItemSearch] = useState('');
 
     useEffect(() => {
-        const fetchTemplates = async () => {
-            try {
-                // api.get returns the json body directly
-                const response = await api.get('/document-templates/list');
-                setTemplates(response.data || []);
-            } catch (error) {
-                console.error('Error fetching templates:', error);
-            } finally {
-                setLoading(false);
-            }
-        };
+        loadInventory();
+        loadDefaultSettings();
+    }, [employeeId]);
 
-        const fetchInventory = async () => {
-            try {
-                const response = await api.get('/inventory');
-                const data = response.data?.data || response.data || [];
-                // Include all categories that are relevant for item-based generations
-                setInventory(data.filter((item: any) =>
-                    ['EPI', 'UNIFORM', 'UNIFORME', 'CLOTHING'].includes(item.category)
-                ));
-            } catch (error) {
-                console.error('Error fetching inventory:', error);
-            }
-        };
-
-        fetchTemplates();
-        fetchInventory();
-    }, []);
-
-    const handleGenerateClick = (templateId: string) => {
-        if (templateId === '145') {
-            generateDocument(templateId);
-        } else {
-            setFormData({}); // Reset form
-            setShowDialog(templateId);
-        }
-    };
-
-    const generateDocument = async (templateId: string, data?: any) => {
-        setGenerating(templateId);
+    const loadInventory = async () => {
         try {
-            const res = await api.post('/document-templates/generate', {
-                employeeId,
-                templateId,
-                data
-            });
+            const res = await api.get('/inventory');
+            setInventoryItems(res.data || []);
+        } catch (err) {
+            console.error('Error loading inventory', err);
+        }
+    };
 
-            const url = res.fileUrl || res.data?.fileUrl || res.data?.data?.fileUrl;
+    const loadDefaultSettings = async () => {
+        try {
+            const res = await api.get(`/employees/${employeeId}`);
+            const emp = res.data || res;
+            if (emp.company?.legalRep) setAuthorName(emp.company.legalRep);
+        } catch (err) {
+            console.error('Error loading employee info', err);
+        }
+    };
 
-            if (url) {
-                setPreviewUrl(url);
-                const template = templates.find(t => t.id === templateId);
-                setPreviewTitle(template?.name || 'Documento Generado');
-                toast.success(res.message || 'Documento generado correctamente');
-            } else {
-                toast.success(res.message || 'Documento generado correctamente');
+    const handleGenerate = async () => {
+        setLoading(true);
+        try {
+            let endpoint = '';
+            let payload: any = { employeeId, authorName };
+
+            switch (docType) {
+                case 'UNIFORM':
+                    endpoint = '/documents/generate-uniform';
+                    // Pass ID for accurate stock deduction
+                    payload.items = selectedItems.map(i => ({ id: i.id, name: i.name, size: i.size || '' }));
+                    break;
+                case 'EPI':
+                    endpoint = '/documents/generate-epi';
+                    payload.items = selectedItems.map(i => ({ id: i.id, name: i.name, size: i.size || '' }));
+                    break;
+                case 'TECH_DEVICE':
+                    endpoint = '/documents/generate-tech';
+                    payload.deviceName = deviceName;
+                    payload.serialNumber = serialNumber;
+                    if (selectedTechItem) {
+                        payload.itemId = selectedTechItem.id; // Link to stock
+                    }
+                    break;
+                case 'MODEL_145':
+                    endpoint = '/documents/generate-145';
+                    break;
+                case 'NDA':
+                    endpoint = '/documents/generate-nda';
+                    break;
+                case 'RGPD':
+                    endpoint = '/documents/generate-rgpd';
+                    break;
             }
 
-            setShowDialog(null);
-
-            if (onDocumentGenerated) {
-                onDocumentGenerated();
-            }
-        } catch (error: any) {
-            toast.error(error.message || 'Error al generar el documento');
+            await api.post(endpoint, payload);
+            toast.success('Documento generado correctamente');
+            if (onDocumentGenerated) onDocumentGenerated();
+        } catch (err: any) {
+            toast.error('Error generating document: ' + err.message);
         } finally {
-            setGenerating(null);
+            setLoading(false);
         }
     };
 
-    const handleItemSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        const typePrefix = showDialog === 'epi' ? 'epi_' : 'uniform_';
-        const sizePrefix = showDialog === 'epi' ? 'size_' : 'size_u_';
-
-        const selectedItems = inventory
-            .filter(item => {
-                const isCorrectCategory = showDialog === 'epi' ? item.category === 'EPI' : ['UNIFORM', 'UNIFORME', 'CLOTHING'].includes(item.category);
-                return isCorrectCategory && formData[`${typePrefix}${item.id}`] === true;
-            })
-            .map(item => ({
-                name: item.name,
-                size: formData[`${sizePrefix}${item.id}`] || ''
-            }));
-
-        if (formData.customItem) {
-            selectedItems.push({ name: formData.customItem, size: formData.customSize || '' });
+    const toggleItem = (item: any) => {
+        if (selectedItems.find(i => i.id === item.id)) {
+            setSelectedItems(selectedItems.filter(i => i.id !== item.id));
+        } else {
+            setSelectedItems([...selectedItems, { ...item, size: '' }]);
         }
-
-        if (selectedItems.length === 0) {
-            return toast.error('Selecciona al menos un material');
-        }
-
-        generateDocument(showDialog as string, { items: selectedItems });
     };
 
-    const handleTechSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        generateDocument('tech_device', formData);
+    const updateItemSize = (id: string, size: string) => {
+        setSelectedItems(selectedItems.map(i => i.id === id ? { ...i, size } : i));
     };
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center p-8 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                <Loader2 size={24} className="animate-spin text-blue-500" />
-            </div>
-        );
-    }
 
     return (
-        <div className="space-y-6 relative">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-xl font-bold text-slate-900 dark:text-white">Generar Documentos</h2>
-                    <p className="text-sm text-slate-500">Genera PDFs personalizados listos para imprimir y firmar</p>
-                </div>
+        <div className="space-y-8 animate-in fade-in duration-500">
+            {/* Header / Type Selector */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                {[
+                    { id: 'UNIFORM', icon: Shirt, label: 'Uniforme', color: 'blue' },
+                    { id: 'EPI', icon: ShieldCheck, label: 'EPIS', color: 'orange' },
+                    { id: 'TECH_DEVICE', icon: Smartphone, label: 'Tecnología', color: 'purple' },
+                    { id: 'MODEL_145', icon: FileText, label: 'Modelo 145', color: 'emerald' },
+                    { id: 'NDA', icon: Lock, label: 'Confidencialidad', color: 'red' },
+                    { id: 'RGPD', icon: Scale, label: 'Datos (RGPD)', color: 'indigo' }
+                ].map((type) => (
+                    <button
+                        key={type.id}
+                        onClick={() => setDocType(type.id as DocType)}
+                        className={`p-4 rounded-[2rem] border-2 transition-all flex flex-col items-center gap-2 text-center group ${docType === type.id
+                            ? `bg-${type.color}-50 dark:bg-${type.color}-950/20 border-${type.color}-500 text-${type.color}-600 dark:text-${type.color}-400 shadow-xl shadow-${type.color}-500/10`
+                            : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200 dark:hover:border-slate-700'
+                            }`}
+                    >
+                        <div className={`p-2.5 rounded-2xl transition-all ${docType === type.id ? `bg-${type.color}-500 text-white` : 'bg-slate-50 dark:bg-slate-800'}`}>
+                            {/* @ts-ignore */}
+                            <type.icon size={20} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest">{type.label}</span>
+                    </button>
+                ))}
             </div>
 
-            {templates.length === 0 ? (
-                <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                    <p className="text-slate-500 italic">No hay plantillas de documentos disponibles en este momento.</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {templates.map((template) => (
-                        <div
-                            key={template.id}
-                            className="group p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl hover:shadow-md transition-all flex items-center justify-between"
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg">
-                                    <FileText size={20} />
-                                </div>
-                                <div>
-                                    <h4 className="font-semibold text-slate-900 dark:text-white">{template.name}</h4>
-                                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                                        {template.category}
-                                    </span>
+            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 shadow-xl border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+                {/* Decoration */}
+                <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -mr-32 -mt-32"></div>
+
+                <div className="relative z-10 space-y-8">
+                    {/* Common Fields */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Autoriza el documento</label>
+                            <input
+                                value={authorName}
+                                onChange={e => setAuthorName(e.target.value)}
+                                className="w-full px-5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"
+                                placeholder="Nombre del Responsable"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ubicación de firma</label>
+                            <div className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-slate-200/50 dark:bg-slate-800/50 text-slate-500">
+                                <MapPin size={16} />
+                                <span className="text-sm font-bold">Auto-detectado por Empresa</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Specific Doc Type Fields */}
+                    {(docType === 'UNIFORM' || docType === 'EPI') && (
+                        <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Seleccionar Material a Entregar</label>
+                                <div className="relative">
+                                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar en inventario..."
+                                        className="w-full pl-12 pr-5 py-4 rounded-3xl bg-slate-50 dark:bg-slate-800 border-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"
+                                        value={itemSearch}
+                                        onChange={e => setItemSearch(e.target.value)}
+                                    />
                                 </div>
                             </div>
 
-                            <button
-                                onClick={() => handleGenerateClick(template.id)}
-                                disabled={generating !== null}
-                                className={`p-2 rounded-lg transition-colors ${generating === template.id
-                                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
-                                    }`}
-                            >
-                                {generating === template.id ? (
-                                    <Loader2 size={18} className="animate-spin" />
-                                ) : (
-                                    <Printer size={18} />
-                                )}
-                            </button>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto p-1 accent-blue-600">
+                                {inventoryItems
+                                    .filter(i => (docType === 'UNIFORM' ? i.category === 'UNIFORM' : i.category === 'EPI'))
+                                    .filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase()))
+                                    .map(item => (
+                                        <button
+                                            key={item.id}
+                                            onClick={() => toggleItem(item)}
+                                            className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center justify-between group ${selectedItems.find(si => si.id === item.id)
+                                                ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500'
+                                                : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 hover:border-slate-200 dark:hover:border-slate-600'
+                                                }`}
+                                        >
+                                            <div>
+                                                <p className={`font-bold text-sm ${selectedItems.find(si => si.id === item.id) ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-200'}`}>{item.name}</p>
+                                                <p className="text-[10px] text-slate-400">Stock: {item.quantity} {item.unit}</p>
+                                            </div>
+                                            {selectedItems.find(si => si.id === item.id) && <Check size={16} className="text-blue-500" />}
+                                        </button>
+                                    ))}
+                            </div>
+
+                            {selectedItems.length > 0 && (
+                                <div className="space-y-4 animate-in fade-in duration-300">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Configurar Tallas / Notas</label>
+                                    {selectedItems.map(item => (
+                                        <div key={item.id} className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                                            <span className="flex-1 font-bold text-sm">{item.name}</span>
+                                            <input
+                                                placeholder="Talla (opcional)"
+                                                className="w-32 px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border-none text-xs font-bold"
+                                                value={item.size || ''}
+                                                onChange={e => updateItemSize(item.id, e.target.value)}
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    ))}
-                </div>
-            )}
+                    )}
 
-            {/* Modal Dialog */}
-            {showDialog && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-2xl w-full max-w-3xl h-[75vh] border border-slate-200 dark:border-slate-700 overflow-hidden flex flex-col">
-                        <div className="mb-6">
-                            <h3 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                                {showDialog === 'epi' ? 'Asignación de EPIs' : (showDialog === 'uniform' ? 'Asignación de Uniforme' : 'Datos del Dispositivo')}
-                            </h3>
-                            <p className="text-slate-500 text-xs mt-1">Selecciona los materiales y especifica las tallas para el acta de entrega.</p>
-                        </div>
+                    {docType === 'TECH_DEVICE' && (
+                        <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-300">
 
-                        {showDialog === 'epi' || showDialog === 'uniform' ? (
-                            <form onSubmit={handleItemSubmit} className="space-y-4 overflow-y-auto pr-2">
-                                <div className="space-y-3">
-                                    {inventory
-                                        .filter(item => showDialog === 'epi' ? item.category === 'EPI' : ['UNIFORM', 'UNIFORME', 'CLOTHING'].includes(item.category))
-                                        .map(item => {
-                                            const typePrefix = showDialog === 'epi' ? 'epi_' : 'uniform_';
-                                            const sizePrefix = showDialog === 'epi' ? 'size_' : 'size_u_';
-                                            return (
-                                                <div key={item.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800 rounded-xl group hover:bg-white dark:hover:bg-slate-750 transition-all border border-transparent hover:border-blue-100 dark:hover:border-blue-900/30">
-                                                    <label className="flex items-center gap-3 cursor-pointer flex-1">
-                                                        <input
-                                                            type="checkbox"
-                                                            onChange={(e) => setFormData({ ...formData, [`${typePrefix}${item.id}`]: e.target.checked })}
-                                                            className="w-5 h-5 rounded-lg border-slate-300 text-blue-600 focus:ring-blue-500"
-                                                        />
-                                                        <div className="flex flex-col">
-                                                            <span className="text-sm font-bold text-slate-900 dark:text-white">{item.name}</span>
-                                                            <span className="text-[10px] text-slate-500 font-medium">Disp: {item.quantity}</span>
-                                                        </div>
-                                                    </label>
-                                                    {formData[`${typePrefix}${item.id}`] && (
-                                                        <input
-                                                            type="text"
-                                                            placeholder="Talla"
-                                                            className="w-20 px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 animate-in zoom-in-95 duration-200"
-                                                            onChange={(e) => setFormData({ ...formData, [`${sizePrefix}${item.id}`]: e.target.value })}
-                                                        />
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    {inventory.filter(item => showDialog === 'epi' ? item.category === 'EPI' : ['UNIFORM', 'UNIFORME', 'CLOTHING'].includes(item.category)).length === 0 && (
-                                        <div className="p-10 text-center opacity-50 italic text-sm">No hay materiales de este tipo registrados en el inventario</div>
-                                    )}
-                                </div>
+                            {/* Inventory Selection for Tech */}
+                            <div className="space-y-3">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vincular con Inventario (Opcional)</label>
+                                <select
+                                    className="w-full px-5 py-4 rounded-3xl bg-slate-50 dark:bg-slate-800 border-none focus:ring-2 focus:ring-purple-500 text-sm font-bold"
+                                    onChange={(e) => {
+                                        const item = inventoryItems.find(i => i.id === e.target.value);
+                                        setSelectedTechItem(item || null);
+                                        if (item) {
+                                            setDeviceName(item.name);
+                                            // You might auto-fill serial number if inventory tracked it, but inventory usually doesn't track SN per SKU unless serialized assets
+                                        }
+                                    }}
+                                >
+                                    <option value="">-- Seleccionar del stock --</option>
+                                    {inventoryItems
+                                        .filter(i => i.category === 'TECH' || i.category === 'OTHER')
+                                        .map(i => (
+                                            <option key={i.id} value={i.id}>{i.name} (Stock: {i.quantity})</option>
+                                        ))
+                                    }
+                                </select>
+                            </div>
 
-                                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 block">Otro (Opcional)</label>
-                                    <div className="flex gap-2">
-                                        <input
-                                            type="text"
-                                            placeholder="Nombre del material..."
-                                            className="flex-[2] p-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm dark:bg-slate-800"
-                                            onChange={(e) => setFormData({ ...formData, customItem: e.target.value })}
-                                        />
-                                        <input
-                                            type="text"
-                                            placeholder="Talla"
-                                            className="flex-1 p-2 border border-slate-200 dark:border-slate-700 rounded-xl text-sm dark:bg-slate-800"
-                                            onChange={(e) => setFormData({ ...formData, customSize: e.target.value })}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex justify-end gap-2 pt-4 sticky bottom-0 bg-white dark:bg-slate-900">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowDialog(null)}
-                                        className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="px-6 py-2 text-sm bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-95"
-                                    >
-                                        Generar Documento
-                                    </button>
-                                </div>
-                            </form>
-                        ) : (
-                            <form onSubmit={handleTechSubmit} className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Nombre del Dispositivo</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Dispositivo</label>
                                     <input
-                                        type="text"
-                                        required
-                                        placeholder="Ej: iPhone 13 Pro"
-                                        className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700"
-                                        onChange={(e) => setFormData({ ...formData, deviceName: e.target.value })}
+                                        value={deviceName}
+                                        onChange={e => setDeviceName(e.target.value)}
+                                        className="w-full px-5 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-purple-500 text-sm font-bold"
+                                        placeholder="Ej: Laptop HP, iPhone 13..."
                                     />
                                 </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Número de Serie / IMEI</label>
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">S/N o IMEI</label>
                                     <input
-                                        type="text"
-                                        required
-                                        placeholder="Ej: SN123456789"
-                                        className="w-full p-2 border rounded-lg dark:bg-slate-800 dark:border-slate-700"
-                                        onChange={(e) => setFormData({ ...formData, serialNumber: e.target.value })}
+                                        value={serialNumber}
+                                        onChange={e => setSerialNumber(e.target.value)}
+                                        className="w-full px-5 py-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-purple-500 text-sm font-bold"
+                                        placeholder="Número de serie"
                                     />
                                 </div>
-                                <div className="p-3 bg-amber-50 text-amber-800 text-xs rounded border border-amber-100">
-                                    Se incluirá automáticamente la cláusula de responsabilidad por pérdida, rotura o robo.
-                                </div>
-                                <div className="flex justify-end gap-2 mt-4">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowDialog(null)}
-                                        className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg"
-                                    >
-                                        Cancelar
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                                    >
-                                        Generar
-                                    </button>
-                                </div>
-                            </form>
-                        )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* NDA / RGPD / Model 145 Infos */}
+                    {['MODEL_145', 'NDA', 'RGPD'].includes(docType) && (
+                        <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-[2rem] border border-slate-200 dark:border-slate-700 flex items-center gap-4 animate-in slide-in-from-bottom-2 duration-300">
+                            <div className={`p-3 rounded-2xl text-white ${docType === 'NDA' ? 'bg-red-500' :
+                                    docType === 'RGPD' ? 'bg-indigo-500' : 'bg-emerald-500'
+                                }`}>
+                                {docType === 'NDA' ? <Lock size={24} /> :
+                                    docType === 'RGPD' ? <Scale size={24} /> : <AlertCircle size={24} />}
+                            </div>
+                            <div>
+                                <p className="font-bold text-slate-900 dark:text-white text-sm">
+                                    {docType === 'NDA' ? 'Acuerdo de Confidencialidad' :
+                                        docType === 'RGPD' ? 'Protección de Datos (RGPD)' : 'Modelo 145 (IRPF)'}
+                                </p>
+                                <p className="text-xs text-slate-500 mt-1">
+                                    {docType === 'NDA' ? 'Genera un contrato de confidencialidad estándar listo para firmar.' :
+                                        docType === 'RGPD' ? 'Cláusula informativa sobre el tratamiento de datos personales.' : 'Autocompletado con los datos fiscales actuales.'}
+                                </p>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className="pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                        <button
+                            onClick={handleGenerate}
+                            disabled={loading || (docType === 'TECH_DEVICE' && !deviceName)}
+                            className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-slate-800 dark:hover:bg-slate-100 transition-all flex items-center gap-3 disabled:opacity-50 group active:scale-95"
+                        >
+                            {loading ? <Loader2 className="animate-spin" /> : <Sparkles className="group-hover:animate-pulse" />}
+                            {loading ? 'Generando...' : 'Generar Documento'}
+                        </button>
                     </div>
                 </div>
-            )}
-
-            <div className="p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-xl">
-                <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
-                    <strong>Nota:</strong> Los documentos generados se guardarán automáticamente en el <strong>Expediente Digital</strong> del empleado como documentos oficiales.
-                </p>
             </div>
-
-            <DocumentPreview
-                isOpen={!!previewUrl}
-                fileUrl={previewUrl || ''}
-                title={previewTitle}
-                onClose={() => setPreviewUrl(null)}
-            />
         </div>
     );
 }

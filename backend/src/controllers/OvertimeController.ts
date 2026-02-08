@@ -2,6 +2,9 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('OvertimeController');
 
 function parseHours(value: any): number {
     if (typeof value === 'number') return value * 24; // Excel stores time as fraction of day (0.5 = 12h)
@@ -134,14 +137,12 @@ export const OvertimeController = {
             const errors: string[] = [];
             const skipped: string[] = [];
 
-            console.log(`📊 Procesando ${data.length} filas del Excel...`);
+            log.info({ count: data.length }, 'Processing Excel rows');
 
             // Log columnas disponibles para debugging
             if (data.length > 0) {
                 const columns = Object.keys(data[0]);
-                console.log(`\n${'='.repeat(50)} `);
-                console.log(`📋 Columnas encontradas: ${columns.join(', ')} `);
-                console.log(`${'='.repeat(50)} \n`);
+                log.debug({ columns }, 'Excel columns found');
             }
 
             const rates = await prisma.categoryRate.findMany();
@@ -170,7 +171,7 @@ export const OvertimeController = {
 
                     if (!employee) {
                         errors.push(`Fila ${rowIndex}: Empleado ${nombreRaw || dni} no encontrado en BD`);
-                        console.warn(`⚠️ Fila ${rowIndex}: DNI ${dni} no encontrado`);
+                        log.warn({ dni, rowIndex }, 'DNI not found');
                         continue;
                     }
 
@@ -242,13 +243,7 @@ export const OvertimeController = {
                     const pausaRaw = getColumn('Pausa');
                     const presRaw = getColumn('Pres'); // Horas de presencia ya calculadas en el Excel
 
-                    console.log(`\n🔍 Fila ${rowIndex} - DATOS RAW: `);
-                    console.log(`   Entrada(mañana): ${entrada1Raw} `);
-                    console.log(`   Salida(mediodía): ${salida1Raw} `);
-                    console.log(`   Entrada(tarde): ${entrada2Raw} `);
-                    console.log(`   Salida(noche): ${salida2Raw} `);
-                    console.log(`   Pres(total): ${presRaw} `);
-                    console.log(`   Pausa: ${pausaRaw} `);
+                    log.debug({ rowIndex, entrada1Raw, salida1Raw, entrada2Raw, salida2Raw, presRaw, pausaRaw }, 'Raw row data');
 
                     if (entrada1Raw || salida1Raw || presRaw) {
                         const checkIn = parseTimeToDate(date, entrada1Raw);
@@ -286,7 +281,7 @@ export const OvertimeController = {
                             totalHours = Math.max(0, grossHours - lunchHours);
                         }
 
-                        console.log(`   ✅ RESULTADO: Total = ${totalHours.toFixed(2)} h(Fuente: ${presRaw ? 'Columna Pres' : 'Calculado'}, Pausa = ${lunchHours.toFixed(2)}h)`);
+                        log.debug({ rowIndex, totalHours: totalHours.toFixed(2), source: presRaw ? 'Pres column' : 'Calculated' }, 'Hours calculated');
 
                         // Sincronizar con el nuevo sistema de fichajes (TimeEntry)
                         // Primero limpiamos posibles registros previos para este día para evitar duplicados en re-importaciones
@@ -373,15 +368,15 @@ export const OvertimeController = {
                     }
 
                     importedCount++;
-                    console.log(`✅ Fila ${rowIndex}: ${employee.name} `);
+                    log.debug({ rowIndex, employeeName: employee.name }, 'Row processed');
                 } catch (e: any) {
                     const errorMsg = `Fila ${rowIndex} (DNI ${dni}): ${e.message || e} `;
                     errors.push(errorMsg);
-                    console.error(`❌ ${errorMsg} `);
+                    log.error({ rowIndex, dni, error: e.message || e }, 'Row processing failed');
                 }
             }
 
-            console.log(`\n📈 Resumen: ${importedCount} importados, ${errors.length} errores, ${skipped.length} saltados`);
+            log.info({ imported: importedCount, errors: errors.length, skipped: skipped.length }, 'Import summary');
 
             res.json({
                 message: `Importación completada.${importedCount} registros añadidos.`,
@@ -390,7 +385,7 @@ export const OvertimeController = {
                 skipped
             });
         } catch (error: any) {
-            console.error('❌ Error fatal en importación:', error);
+            log.error({ error }, 'Fatal import error');
             res.status(500).json({ error: `Error procesando el archivo: ${error.message} ` });
         }
     }

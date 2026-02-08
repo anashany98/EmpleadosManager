@@ -23,7 +23,8 @@ const CSRF_EXEMPT_PATHS = [
     '/api/auth/refresh',
     '/api/auth/logout',
     '/api/auth/request-password-reset',
-    '/api/auth/reset-password'
+    '/api/auth/reset-password',
+    '/api/kiosk'  // Kiosk is a public terminal, uses own auth or public endpoints
 ];
 
 export const issueCsrfToken = (res: Response) => {

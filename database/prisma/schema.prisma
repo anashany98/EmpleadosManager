@@ -140,6 +140,8 @@ model Employee {
   vacations                Vacation[]
   emergencyContacts        EmergencyContact[]
   anomalies                AnomalyEvent[]
+  kioskPin                 String?              // Encrypted PIN for kiosk backup
+  faceDescriptor           Json?                // Array of numbers for face recognition
 
   @@index([companyId])
 }
@@ -289,6 +291,7 @@ model Vacation {
   type       String   @default("VACATION")
   days       Int      @default(0)
   reason     String?
+  fileUrl    String?
   status     String   @default("PENDING")
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt

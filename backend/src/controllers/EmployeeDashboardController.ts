@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('EmployeeDashboardController');
 
 export class EmployeeDashboardController {
     // GET /api/dashboard/employees - Get comprehensive employee metrics
@@ -201,7 +204,7 @@ export class EmployeeDashboardController {
                 growthTrend
             });
         } catch (error: any) {
-            console.error('Error fetching employee metrics:', error);
+            log.error({ error }, 'Error fetching employee metrics');
             return ApiResponse.error(res, 'Failed to fetch employee metrics', 500);
         }
     }

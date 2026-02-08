@@ -19,12 +19,12 @@ export default function Dashboard() {
     const isAdmin = user?.role === 'admin';
 
     useEffect(() => {
-        fetchCompanies();
-    }, []);
+        if (isAdmin) fetchCompanies();
+    }, [isAdmin]);
 
     useEffect(() => {
-        fetchMetrics();
-    }, [selectedCompany]);
+        if (isAdmin) fetchMetrics();
+    }, [selectedCompany, isAdmin]);
 
     const fetchCompanies = async () => {
         try {

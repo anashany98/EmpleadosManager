@@ -10,7 +10,9 @@ const router = Router();
 const upload = multer(createMulterOptions('uploads/payroll/', ['.xlsx', '.xls', '.csv']));
 
 // Admin / Write Access
+router.get('/', checkPermission('payroll', 'read'), PayrollController.getLatestBatches);
 router.post('/upload', checkPermission('payroll', 'write'), upload.single('file'), PayrollController.upload);
+router.post('/generate-from-kiosk', checkPermission('payroll', 'write'), PayrollController.generateFromKiosk);
 router.post('/:id/map', checkPermission('payroll', 'write'), PayrollController.applyMapping);
 router.get('/:id/rows', checkPermission('payroll', 'write'), PayrollController.getRows);
 router.get('/row/:rowId/breakdown', checkPermission('payroll', 'write'), PayrollController.getBreakdown);

@@ -8,6 +8,11 @@ import { EmailService } from '../services/EmailService';
 import crypto from 'crypto';
 import { issueCsrfToken } from '../middlewares/csrfMiddleware';
 import { validatePassword } from '../utils/passwordPolicy';
+import { AuthService } from '../services/AuthService';
+import { AuthenticatedRequest } from '../types/express';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('AuthController');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -64,71 +69,27 @@ export const AuthController = {
     login: async (req: Request, res: Response) => {
         try {
             const { email, dni, password, identifier } = req.body;
-            // Support 'identifier' generic field or specific email/dni fields
             const loginId = identifier || email || dni;
 
             if (!loginId || !password) {
                 throw new AppError('Por favor, proporciona identificador y contraseña', 400);
             }
 
-            // Search by Email OR DNI (trimmed and case-safe for DNI)
-            const trimmedId = loginId.trim();
-            const user = await prisma.user.findFirst({
-                where: {
-                    OR: [
-                        { email: trimmedId },
-                        { dni: trimmedId }, // Exact match
-                        { dni: trimmedId.toLowerCase() }, // Lowercase
-                        { dni: trimmedId.toUpperCase() } // Uppercase
-                    ]
-                }
-            });
-
-            if (!user || !(await bcrypt.compare(password, user.password))) {
-                throw new AppError('Credenciales incorrectas', 401);
-            }
-
-            // Generate Access Token
-            const accessToken = jwt.sign({ id: user.id }, JWT_SECRET, {
-                expiresIn: ACCESS_TOKEN_EXPIRES_IN,
-            });
-
-
-
-            // Generate Refresh Token
-            const refreshToken = generateRefreshToken();
-            const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN);
-
-            // Save Refresh Token to DB
-            if (!prisma.refreshToken) {
-                console.error('[Login CRITICAL] prisma.refreshToken is undefined!');
-                throw new Error('Prisma Client incomplete (refreshToken missing)');
-            }
-
-            await prisma.refreshToken.create({
-                data: {
-                    token: hashToken(refreshToken),
-                    userId: user.id,
-                    expiresAt: expiresAt
-                }
-            });
+            const result = await AuthService.login(loginId, password);
 
             // Set HttpOnly cookies
-            res.cookie('access_token', accessToken, buildCookieOptions(15 * 60 * 1000));
-            res.cookie('refresh_token', refreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
+            res.cookie('access_token', result.accessToken, buildCookieOptions(15 * 60 * 1000));
+            res.cookie('refresh_token', result.refreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
             issueCsrfToken(res);
 
-            // Hide password
-            const { password: _, ...userWithoutPassword } = user;
-
-            const payload: any = { user: userWithoutPassword };
+            const payload: any = { user: result.user };
             if (process.env.RETURN_TOKENS === 'true') {
-                payload.token = accessToken;
-                payload.refreshToken = refreshToken;
+                payload.token = result.accessToken;
+                payload.refreshToken = result.refreshToken;
             }
             return ApiResponse.success(res, payload, 'Sesión iniciada correctamente');
         } catch (error: any) {
-            console.error('[Login Error]', error);
+            log.error({ error }, 'Login failed');
             return ApiResponse.error(res, error.message || 'Error al iniciar sesión', error.statusCode || 500);
         }
     },
@@ -136,7 +97,7 @@ export const AuthController = {
     // Generar/Habilitar Acceso para Empleado
     generateAccess: async (req: Request, res: Response) => {
         try {
-            const requester = (req as any).user;
+            const { user: requester } = req as AuthenticatedRequest;
             if (!requester || requester.role !== 'admin') {
                 throw new AppError('No autorizado', 403);
             }
@@ -247,7 +208,7 @@ export const AuthController = {
             return ApiResponse.success(res, { hasEmail: false }, 'Acceso generado. El empleado no tiene email, contacta al administrador.');
 
         } catch (error: any) {
-            console.error(error);
+            log.error({ error }, 'Error generating access');
             return ApiResponse.error(res, error.message || 'Error al generar acceso', error.statusCode || 500);
         }
     },
@@ -361,7 +322,7 @@ export const AuthController = {
                         });
                     }
                 } catch (e) {
-                    console.error("Error revoking token on logout", e);
+                    log.error({ e }, 'Error revoking token on logout');
                 }
             }
 
@@ -395,7 +356,7 @@ export const AuthController = {
             if (!employee) {
                 // Security: Don't reveal if user exists. Fake success.
                 // But for debugging, we might log it.
-                console.log(`Password reset requested for "${trimmedId}" but no employee found.`);
+                log.debug({ identifier: trimmedId }, 'Password reset requested but no employee found');
                 return ApiResponse.success(res, null, 'Si los datos coinciden, recibirás un correo con las instrucciones.');
             }
 
@@ -432,7 +393,7 @@ export const AuthController = {
             return ApiResponse.success(res, null, 'Si los datos coinciden, recibirás un correo con las instrucciones.');
 
         } catch (error: any) {
-            console.error(error);
+            log.error({ error }, 'Error processing password reset request');
             return ApiResponse.error(res, error.message || 'Error al procesar la solicitud', 500);
         }
     },
@@ -511,7 +472,7 @@ export const AuthController = {
         try {
             ensureCsrfCookie(req, res);
             // user is attached to req by protect middleware
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             if (!user) {
                 throw new AppError('No estás autenticado', 401);
             }

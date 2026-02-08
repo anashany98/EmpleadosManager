@@ -100,6 +100,11 @@ import { inventoryRoutes } from './routes/inventoryRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import onboardingRoutes from './routes/onboardingRoutes';
 import anomalyRoutes from './routes/anomalyRoutes';
+import kioskRoutes from './routes/kioskRoutes';
+import offboardingRoutes from './routes/offboardingRoutes';
+
+app.use('/api/kiosk', kioskRoutes);
+app.use('/api/onboarding', protect, onboardingRoutes);
 
 // Rutas API
 
@@ -141,22 +146,35 @@ app.use('/api/projects', protect, checkPermission('projects', 'read'), projectRo
 app.use('/api/employee-project-work', protect, checkPermission('projects', 'read'), employeeProjectWorkRoutes);
 app.use('/api/inventory', protect, checkPermission('assets', 'read'), inventoryRoutes);
 app.use('/api/onboarding', protect, onboardingRoutes);
+app.use('/api/offboarding', offboardingRoutes);
 
 app.use(errorMiddleware);
 
 
+import { inboxService } from './services/InboxService';
+import { schedulerService } from './services/SchedulerService';
+import { loggers } from './services/LoggerService';
+
+const log = loggers.api;
+
 // Database Connection Check
 async function startServer() {
     try {
-        console.log('Checking database connection...');
+        log.info('Checking database connection...');
         await prisma.$connect();
-        console.log('Database connected successfully.');
+        log.info('Database connected successfully');
+
+        // Start Inbox Service (Watcher + Polling)
+        inboxService.start();
+
+        // Start Scheduler Service (Cron jobs)
+        schedulerService.start();
 
         app.listen(Number(PORT), '0.0.0.0', () => {
-            console.log(`Backend running on http://0.0.0.0:${PORT}`);
+            log.info({ port: PORT, host: '0.0.0.0' }, 'Backend running');
         });
     } catch (error) {
-        console.error('Failed to connect to database:', error);
+        log.fatal({ error }, 'Failed to connect to database');
         process.exit(1);
     }
 }

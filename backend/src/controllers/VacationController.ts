@@ -5,12 +5,18 @@ import { ApiResponse } from '../utils/ApiResponse';
 import { HolidayService } from '../services/HolidayService';
 import { NotificationService } from '../services/NotificationService';
 import { AnomalyService } from '../services/AnomalyService';
+import { StorageService } from '../services/StorageService';
+import { EmailService } from '../services/EmailService';
+import { AuthenticatedRequest } from '../types/express';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('VacationController');
 
 export const VacationController = {
     // Obtener todas las vacaciones (Global)
     getAll: async (req: Request, res: Response) => {
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             if (!user || user.role !== 'admin') {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
@@ -28,7 +34,7 @@ export const VacationController = {
     getByEmployee: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             if (!user) return ApiResponse.error(res, 'No autorizado', 403);
 
             const isSelf = user.employeeId && user.employeeId === employeeId;
@@ -60,7 +66,7 @@ export const VacationController = {
     create: async (req: Request, res: Response) => {
         try {
             let { employeeId, startDate, endDate, type, reason } = req.body;
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
 
             // Si no viene employeeId, intentamos deducirlo del usuario logueado
             if (!employeeId && user && user.email) {
@@ -142,6 +148,18 @@ export const VacationController = {
                 }
             }
 
+            let fileUrl = null;
+            if (req.file) {
+                const safeEmployeeId = employeeId.replace(/[^a-zA-Z0-9-]/g, '');
+                const { key } = await StorageService.saveBuffer({
+                    folder: `vacations/${safeEmployeeId}`,
+                    originalName: req.file.originalname,
+                    buffer: req.file.buffer,
+                    contentType: req.file.mimetype
+                });
+                fileUrl = key;
+            }
+
             const vacation = await prisma.vacation.create({
                 data: {
                     employeeId,
@@ -150,24 +168,51 @@ export const VacationController = {
                     type: type || 'VACATION',
                     days: diffDays,
                     reason: reason || null,
+                    fileUrl,
                     status: 'PENDING'
-                },
+                } as any,
                 include: { employee: true } // Include employee for name in notification
             });
 
-            AnomalyService.detectVacation(vacation).catch(err => console.error('[Anomaly] vacation', err));
+            AnomalyService.detectVacation(vacation as any).catch(err => log.error({ err }, 'Anomaly detection failed'));
 
             // NOTIFY ADMINS
-            const empName = vacation.employee?.name || 'Un empleado';
+            const empName = (vacation as any).employee?.name || 'Un empleado';
             await NotificationService.notifyAdmins(
                 'Nueva Solicitud de Vacaciones',
                 `${empName} ha solicitado ${diffDays} días de ${type || 'vacaciones'}.`,
                 '/vacations'
             );
 
+            // Notify Manager via Email
+            if ((vacation as any).employee?.managerId) {
+                const manager = await prisma.employee.findUnique({
+                    where: { id: (vacation as any).employee.managerId },
+                    select: { email: true, name: true }
+                });
+
+                if (manager?.email) {
+                    const subject = `Nueva Solicitud de Vacaciones: ${empName}`;
+                    const html = `
+                        <div style="font-family: sans-serif; padding: 20px;">
+                            <h2>Nueva Solicitud de Vacaciones</h2>
+                            <p>Hola ${manager.name},</p>
+                            <p><b>${empName}</b> ha solicitado vacaciones del <b>${vacation.startDate.toLocaleDateString()}</b> al <b>${vacation.endDate.toLocaleDateString()}</b>.</p>
+                            <p>Días: ${vacation.days}</p>
+                            <p>Motivo: ${vacation.reason || 'Sin motivo especificado'}</p>
+                            <br/>
+                            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/vacations" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Revisar Solicitud</a>
+                        </div>
+                    `;
+                    EmailService.sendMail(manager.email, subject, html).catch(err => {
+                        log.error({ err }, 'Error sending manager notification email');
+                    });
+                }
+            }
+
             res.json(vacation);
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error creating vacation');
             res.status(500).json({ error: 'Internal server error' });
         }
     },
@@ -176,7 +221,7 @@ export const VacationController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             const vacation = await prisma.vacation.findUnique({ where: { id } });
             if (!vacation) return res.status(404).json({ error: 'No encontrado' });
             const isAdmin = user?.role === 'admin';
@@ -201,7 +246,7 @@ export const VacationController = {
         }
 
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             const vacationRecord = await prisma.vacation.findUnique({
                 where: { id },
                 select: { employeeId: true }
@@ -230,9 +275,10 @@ export const VacationController = {
             // NOTIFY EMPLOYEE
             if (vacation.employee?.email) {
                 const targetUser = await prisma.user.findFirst({ where: { email: vacation.employee.email } });
+                const statusText = status === 'APPROVED' ? 'APROBADA' : 'RECHAZADA';
+                const typeText = status === 'APPROVED' ? 'SUCCESS' : 'ERROR';
+
                 if (targetUser) {
-                    const statusText = status === 'APPROVED' ? 'APROBADA' : 'RECHAZADA';
-                    const typeText = status === 'APPROVED' ? 'SUCCESS' : 'ERROR';
                     await NotificationService.create({
                         userId: targetUser.id,
                         title: `Solicitud de Vacaciones ${statusText}`,
@@ -241,6 +287,24 @@ export const VacationController = {
                         link: '/vacations'
                     });
                 }
+
+                // Send Email Notification
+                const subject = `Solicitud de Vacaciones ${statusText}`;
+                const html = `
+                    <div style="font-family: sans-serif; padding: 20px;">
+                        <h2>Estado de Vacaciones: ${statusText}</h2>
+                        <p>Hola ${vacation.employee.name},</p>
+                        <p>Tu solicitud de vacaciones del <b>${vacation.startDate.toLocaleDateString()}</b> al <b>${vacation.endDate.toLocaleDateString()}</b> ha sido <b>${statusText.toLowerCase()}</b>.</p>
+                        <p>Días totales: ${vacation.days}</p>
+                        ${vacation.status === 'REJECTED' ? '<p>Si tienes alguna duda, contacta con tu responsable.</p>' : ''}
+                        <br/>
+                        <p>Saludos,<br/>Recursos Humanos</p>
+                    </div>
+                `;
+
+                EmailService.sendMail(vacation.employee.email, subject, html).catch(err => {
+                    log.error({ err }, 'Error sending vacation status email');
+                });
             }
             return ApiResponse.success(res, vacation, 'Estado de vacaciones actualizado');
         } catch (error) {
@@ -250,7 +314,7 @@ export const VacationController = {
 
     // Obtener mis vacaciones (basado en el usuario logueado)
     getMyVacations: async (req: Request, res: Response) => {
-        const user = (req as any).user;
+        const { user } = req as AuthenticatedRequest;
         if (!user || !user.email) return ApiResponse.error(res, "Usuario no identificado", 401);
 
         try {
@@ -271,14 +335,14 @@ export const VacationController = {
 
             return ApiResponse.success(res, vacations);
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error getting my vacations');
             return ApiResponse.error(res, 'Error al obtener mis vacaciones', 500);
         }
     },
 
     // Obtener vacaciones para aprobar (Jefes o Admins)
     getManageableVacations: async (req: Request, res: Response) => {
-        const user = (req as any).user;
+        const { user } = req as AuthenticatedRequest;
         if (!user || !user.email) return ApiResponse.error(res, "Usuario no identificado", 401);
 
         try {
@@ -314,8 +378,58 @@ export const VacationController = {
 
             return ApiResponse.success(res, vacations);
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error getting pending vacations');
             return ApiResponse.error(res, 'Error al obtener solicitudes pendientes', 500);
+        }
+    },
+
+    downloadAttachment: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        const { user } = req as AuthenticatedRequest;
+
+        try {
+            const vacation = await prisma.vacation.findUnique({
+                where: { id },
+                include: { employee: true }
+            }) as any;
+
+            if (!vacation || !vacation.fileUrl) throw new AppError('Adjunto no encontrado', 404);
+
+            // Security Check: Admin, Manager of the employee, or Owner
+            const isOwner = user.employeeId === vacation.employeeId;
+            const isAdmin = user.role === 'admin';
+            let isManager = false;
+
+            if (!isAdmin && !isOwner) {
+                // Fetch employee to check managerId if not admin/owner
+                const target = await prisma.employee.findUnique({
+                    where: { id: vacation.employeeId },
+                    select: { managerId: true }
+                });
+                isManager = !!target && !!user.employeeId && target.managerId === user.employeeId;
+            }
+
+            if (!isAdmin && !isOwner && !isManager) {
+                throw new AppError('No tiene permisos para descargar este archivo', 403);
+            }
+
+            if (StorageService.provider === 'local') {
+                const fs = require('fs');
+                const path = require('path');
+                const filePath = path.join(process.cwd(), 'uploads', vacation.fileUrl);
+                if (!fs.existsSync(filePath)) {
+                    throw new AppError('El archivo físico no existe', 404);
+                }
+                return res.download(filePath);
+            }
+
+            const signedUrl = await StorageService.getSignedDownloadUrl(vacation.fileUrl);
+            if (!signedUrl) throw new AppError('No se pudo generar URL de descarga', 500);
+            return res.redirect(signedUrl);
+        } catch (error) {
+            if (error instanceof AppError) throw error;
+            log.error({ error }, 'Download error');
+            throw new AppError('Error al descargar el archivo', 500);
         }
     }
 };

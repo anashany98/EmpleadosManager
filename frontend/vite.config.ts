@@ -5,14 +5,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    host: true, // Listen on all addresses (0.0.0.0)
+    host: true,
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
       },
-      // Also proxy static folders served by backend if needed
       '/inbox': {
         target: 'http://localhost:3000',
         changeOrigin: true,
@@ -22,5 +21,12 @@ export default defineConfig({
         changeOrigin: true,
       }
     }
+  },
+  // @ts-ignore
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
+    include: ['src/**/*.test.{ts,tsx}'],
   }
 })

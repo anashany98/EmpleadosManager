@@ -2,6 +2,9 @@
 import { Request, Response } from 'express';
 import { ReportService } from '../services/ReportService';
 import { ExcelService } from '../services/ExcelService';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('ReportController');
 
 export class ReportController {
     /**
@@ -33,10 +36,45 @@ export class ReportController {
 
             res.json(data);
         } catch (error: any) {
-            console.error('Attendance Report Error:', error);
+            log.error({ error }, 'Attendance Report Error');
             res.status(500).json({ error: 'Failed to generate attendance report', details: error.message });
         }
     }
+
+    /**
+     * GET /api/reports/attendance-summary
+     * Returns calculated daily hours and shift segments.
+     */
+    static async getAttendanceSummary(req: Request, res: Response) {
+        try {
+            const { start, end, companyId, employeeId } = req.query;
+
+            if (!start || !end) {
+                return res.status(400).json({ error: 'Start and end dates are required' });
+            }
+
+            const startDate = new Date(start as string);
+            const endDate = new Date(end as string);
+
+            const data = await ReportService.getAttendanceDailySummary(startDate, endDate, {
+                companyId: companyId as string,
+                employeeId: employeeId as string
+            });
+
+            if (req.query.format === 'xlsx') {
+                const buffer = await ExcelService.generateAttendanceSummaryReport(data);
+                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                res.setHeader('Content-Disposition', `attachment; filename=Resumen_Asistencia.xlsx`);
+                return res.send(buffer);
+            }
+
+            res.json(data);
+        } catch (error: any) {
+            log.error({ error }, 'Attendance Summary Error');
+            res.status(500).json({ error: 'Failed to calculate attendance summary', details: error.message });
+        }
+    }
+
 
     /**
      * GET /api/reports/overtime
@@ -66,7 +104,7 @@ export class ReportController {
 
             res.json(data);
         } catch (error: any) {
-            console.error('Overtime Report Error:', error);
+            log.error({ error }, 'Overtime Report Error');
             res.status(500).json({ error: 'Failed to generate overtime report', details: error.message });
         }
     }
@@ -90,7 +128,7 @@ export class ReportController {
 
             res.json(data);
         } catch (error: any) {
-            console.error('Vacation Report Error:', error);
+            log.error({ error }, 'Vacation Report Error');
             res.status(500).json({ error: 'Failed to generate vacation report', details: error.message });
         }
     }
@@ -115,7 +153,7 @@ export class ReportController {
 
             res.json(data);
         } catch (error: any) {
-            console.error('Cost Report Error:', error);
+            log.error({ error }, 'Cost Report Error');
             res.status(500).json({ error: 'Failed to generate cost report', details: error.message });
         }
     }
@@ -148,7 +186,7 @@ export class ReportController {
 
             res.json(data);
         } catch (error: any) {
-            console.error('Detailed Absences Report Error:', error);
+            log.error({ error }, 'Detailed Absences Report Error');
             res.status(500).json({ error: 'Failed to generate detailed absences report', details: error.message });
         }
     }
@@ -174,7 +212,7 @@ export class ReportController {
 
             res.json({ summary, deptStats });
         } catch (error: any) {
-            console.error('KPI Report Error:', error);
+            log.error({ error }, 'KPI Report Error');
             res.status(500).json({ error: 'Failed to generate KPI report', details: error.message });
         }
     }
@@ -188,7 +226,7 @@ export class ReportController {
             const data = await ReportService.getGenderGapData({ companyId, year });
             res.json(data);
         } catch (error: any) {
-            console.error('Gender Gap Report Error:', error);
+            log.error({ error }, 'Gender Gap Report Error');
             res.status(500).json({ error: 'Failed to generate gender gap report', details: error.message });
         }
     }

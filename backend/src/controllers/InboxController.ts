@@ -3,13 +3,16 @@ import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { inboxService } from '../services/InboxService';
 import { StorageService } from '../services/StorageService';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('InboxController');
 
 export const InboxController = {
     getAllPending: async (req: Request, res: Response) => {
         try {
             // First sync with folder and poll emails
-            inboxService.syncFolder().catch(err => console.error('[Inbox] Sync error:', err));
-            inboxService.pollEmails().catch(err => console.error('[Inbox] Email poll error:', err));
+            inboxService.syncFolder().catch(err => log.error({ err }, 'Sync error'));
+            inboxService.pollEmails().catch(err => log.error({ err }, 'Email poll error'));
 
             const pending = await prisma.inboxDocument.findMany({
                 where: { processed: false },
@@ -17,7 +20,7 @@ export const InboxController = {
             });
             return ApiResponse.success(res, pending);
         } catch (error) {
-            console.error(error);
+            log.error({ error }, 'Error getting pending documents');
             return ApiResponse.error(res, 'Error al obtener documentos pendientes');
         }
     },
@@ -34,7 +37,7 @@ export const InboxController = {
             const document = await inboxService.assignDocument(id, employeeId, category, name, expiryDate);
             return ApiResponse.success(res, document, 'Documento asignado correctamente');
         } catch (error: any) {
-            console.error(error);
+            log.error({ error }, 'Error assigning document');
             return ApiResponse.error(res, error.message || 'Error al asignar documento');
         }
     },
@@ -62,14 +65,14 @@ export const InboxController = {
             // But we can trigger a sync manually to be faster
             try {
                 // Don't await this to avoid blocking the response if it takes too long or fails
-                inboxService.syncFolder().catch(err => console.error('Sync error in background:', err));
+                inboxService.syncFolder().catch(err => log.error({ err }, 'Sync error in background'));
             } catch (syncError) {
-                console.warn('Sync warning after upload:', syncError);
+                log.warn({ syncError }, 'Sync warning after upload');
             }
 
             return ApiResponse.success(res, { filename: req.file.originalname }, 'Archivo subido a la bandeja de entrada');
         } catch (error: any) {
-            console.error(error);
+            log.error({ error }, 'Error uploading file');
             return ApiResponse.error(res, error.message || 'Error al subir el archivo', 500);
         }
     },

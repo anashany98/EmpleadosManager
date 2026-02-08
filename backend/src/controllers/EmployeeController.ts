@@ -7,6 +7,10 @@ import path from 'path';
 import fs from 'fs';
 import * as XLSX from 'xlsx';
 import { EncryptionService } from '../services/EncryptionService';
+import { AuthenticatedRequest } from '../types/express';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('EmployeeController');
 
 export const EmployeeController = {
     // Obtener todos los empleados
@@ -54,7 +58,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, decryptedEmployees);
 
         } catch (error: any) {
-            console.error('Error fetching employees:', error);
+            log.error({ error }, 'Error fetching employees');
             return ApiResponse.error(res, error.message || 'Error al obtener empleados', 500);
         }
     },
@@ -90,7 +94,7 @@ export const EmployeeController = {
             });
             return ApiResponse.success(res, employees);
         } catch (error: any) {
-            console.error('Error fetching hierarchy:', error);
+            log.error({ error }, 'Error fetching hierarchy');
             return ApiResponse.error(res, error.message || 'Error al obtener jerarquía', 500);
         }
     },
@@ -106,12 +110,12 @@ export const EmployeeController = {
             const { EmployeeImportService } = await import('../services/EmployeeImportService');
             const result = await EmployeeImportService.processFile(req.file.buffer);
 
-            const userId = (req as any).user?.id;
+            const userId = (req as AuthenticatedRequest).user?.id;
             await AuditService.log('IMPORT', 'EMPLOYEE', 'MULTIPLE', { count: result.importedCount }, userId);
 
             return ApiResponse.success(res, result, `Importación completada. ${result.importedCount} empleados procesados.`);
         } catch (error: any) {
-            console.error(error);
+            log.error({ error }, 'Error importing employees');
             return ApiResponse.error(res, error.message || 'Error procesando el archivo de empleados', 500);
         }
     },
@@ -119,7 +123,7 @@ export const EmployeeController = {
     // Obtener un empleado con su histórico
     getById: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const user = (req as any).user;
+        const { user } = req as AuthenticatedRequest;
 
         // Security Check: Admin or Self
         if (user.role !== 'admin' && user.employeeId !== id) {
@@ -154,12 +158,12 @@ export const EmployeeController = {
             employee.iban = EncryptionService.decrypt(employee.iban);
 
             // Audit access to sensitive data
-            const userId = (req as any).user?.id;
+            const userId = (req as AuthenticatedRequest).user?.id;
             await AuditService.log('VIEW_SENSITIVE_DATA', 'EMPLOYEE', id, { info: 'Acceso a ficha detallada' }, userId, id);
 
             return ApiResponse.success(res, employee);
         } catch (error: any) {
-            console.error(error);
+            log.error({ error }, 'Error getting employee by id');
             return ApiResponse.error(res, error.message || 'Error al obtener el empleado', 500);
         }
     },
@@ -178,7 +182,7 @@ export const EmployeeController = {
                 workingDayType, weeklyHours, gender, managerId, privateNotes
             } = req.body;
 
-            const userId = (req as any).user?.id;
+            const userId = (req as AuthenticatedRequest).user?.id;
 
             // Validaciones básicas
             const existingDni = await prisma.employee.findUnique({ where: { dni } });
@@ -249,7 +253,7 @@ export const EmployeeController = {
 
             return ApiResponse.success(res, employee, 'Empleado creado correctamente', 201);
         } catch (error: any) {
-            console.error(error);
+            log.error({ error }, 'Error creating employee');
             return ApiResponse.error(res, error.message || 'Error al crear el empleado', 500);
         }
     },
@@ -258,7 +262,7 @@ export const EmployeeController = {
     update: async (req: Request, res: Response) => {
         const { id } = req.params;
         const body = req.body;
-        const userId = (req as any).user?.id;
+        const userId = (req as AuthenticatedRequest).user?.id;
 
         try {
             const updateData: any = {};
@@ -333,7 +337,7 @@ export const EmployeeController = {
 
             return ApiResponse.success(res, employee, 'Empleado actualizado correctamente');
         } catch (error: any) {
-            console.error(error);
+            log.error({ error }, 'Error updating employee');
             return ApiResponse.error(res, error.message || 'Error al actualizar el empleado', 500);
         }
     },
@@ -341,7 +345,7 @@ export const EmployeeController = {
     // Bulk Updates (Actions en lote)
     bulkUpdate: async (req: Request, res: Response) => {
         const { employeeIds, action, data } = req.body;
-        const userId = (req as any).user?.id;
+        const userId = (req as AuthenticatedRequest).user?.id;
 
         if (!employeeIds || !Array.isArray(employeeIds) || employeeIds.length === 0) {
             return ApiResponse.error(res, 'Selecciona al menos un empleado', 400);
@@ -407,7 +411,7 @@ export const EmployeeController = {
 
             return ApiResponse.success(res, { count: results }, `${results} empleados actualizados correctamente`);
         } catch (error: any) {
-            console.error('Bulk update error:', error);
+            log.error({ error }, 'Bulk update error');
             return ApiResponse.error(res, error.message || 'Error en la actualización masiva', 500);
         }
     },
@@ -494,7 +498,7 @@ export const EmployeeController = {
             res.setHeader('Content-Disposition', 'attachment; filename=plantilla_empleados.xlsx');
             return res.send(Buffer.from(excelBuffer));
         } catch (error: any) {
-            console.error('Error generating Excel template:', error);
+            log.error({ error }, 'Error generating Excel template');
             return ApiResponse.error(res, error.message || 'Error al generar la plantilla', 500);
         }
     },
@@ -585,7 +589,7 @@ export const EmployeeController = {
 
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const userId = (req as any).user?.id;
+        const userId = (req as AuthenticatedRequest).user?.id;
         try {
             // Fetch name before deleting for audit
             const employee = await prisma.employee.findUnique({ where: { id }, select: { name: true } });
@@ -607,7 +611,7 @@ export const EmployeeController = {
 
             return ApiResponse.success(res, null, 'Empleado desactivado correctamente');
         } catch (error: any) {
-            console.error('Error deactivating employee:', error);
+            log.error({ error }, 'Error deactivating employee');
             return ApiResponse.error(res, error.message || 'Error al dar de baja al empleado', 500);
         }
     },
@@ -615,7 +619,7 @@ export const EmployeeController = {
     // Generar reporte de portabilidad (RGPD)
     getPortabilityReport: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const userId = (req as any).user?.id;
+        const userId = (req as AuthenticatedRequest).user?.id;
 
         try {
             const employee = await prisma.employee.findUnique({
@@ -656,7 +660,7 @@ export const EmployeeController = {
             res.setHeader('Content-Disposition', `attachment; filename=portabilidad_${employee.lastName}_${employee.firstName}.json`);
             return res.json(reportData);
         } catch (error: any) {
-            console.error('Error generating portability report:', error);
+            log.error({ error }, 'Error generating portability report');
             return ApiResponse.error(res, error.message || 'Error al generar reporte de portabilidad', 500);
         }
     }

@@ -4,14 +4,11 @@ FROM node:22-bullseye AS builder
 WORKDIR /app
 
 # Copy package files
-COPY package.json ./
+# Copy package files
+COPY package.json package-lock.json ./
 
-# IMPORTANT: Do NOT copy package-lock.json from Windows. 
-# We want to generate a fresh one for Linux to ensure correct optional dependencies (esbuild).
-RUN rm -f package-lock.json
-
-# Install dependencies (including devDependencies)
-RUN npm install
+# Install dependencies strictly from lockfile
+RUN npm ci
 
 # Copy source code
 COPY . .

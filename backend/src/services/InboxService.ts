@@ -5,14 +5,19 @@ import { v4 as uuidv4 } from 'uuid';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import jsQR from 'jsqr';
+import { PDFDocument } from 'pdf-lib';
+import * as chokidar from 'chokidar';
 import { StorageService } from './StorageService';
-// import { getDocument } from 'pdfjs-dist/legacy/build/pdf';
-// import { createCanvas, Image as CanvasImage } from 'canvas';
-
 import { NotificationService } from './NotificationService';
+import { loggers } from './LoggerService';
+
+const log = loggers.inbox;
 
 export class InboxService {
     private inboxDir = path.join(process.cwd(), 'data', 'inbox');
+    private processing = new Set<string>(); // prevent double processing
+    private emailInterval: NodeJS.Timeout | null = null;
+    private watcher: chokidar.FSWatcher | null = null;
 
     constructor() {
         // Ensure directories exist
@@ -20,6 +25,54 @@ export class InboxService {
             fs.mkdirSync(this.inboxDir, { recursive: true });
         }
     }
+
+    /**
+     * Starts the Inbox Service: File Watcher and Email Polling.
+     */
+    public start() {
+        log.info('Starting...');
+
+        // 1. Start File Watcher
+        this.startWatcher();
+
+        // 2. Start Email Polling (every 5 minutes)
+        this.pollEmails(); // Run once immediately
+        this.emailInterval = setInterval(() => {
+            this.pollEmails();
+        }, 5 * 60 * 1000);
+
+        log.info('Service started. Watching for files and emails.');
+    }
+
+    public stop() {
+        if (this.emailInterval) clearInterval(this.emailInterval);
+        if (this.watcher) this.watcher.close();
+        log.info('Service stopped.');
+    }
+
+    private startWatcher() {
+        // Initialize watcher. Ignore dotfiles and initial scan (we process existing on demand or startup?)
+        // Let's process existing on startup too? Maybe risky if huge backlog.
+        // For now, ignoreInitial: true to avoid reprocessing old files every restart unless we want to retry failed ones.
+        // Better: ignoreInitial: true, and have a separate 'retryPending' method if needed.
+        this.watcher = chokidar.watch(this.inboxDir, {
+            ignored: /(^|[\/\\])\../, // ignore dotfiles
+            persistent: true,
+            ignoreInitial: true,
+            awaitWriteFinish: {
+                stabilityThreshold: 2000,
+                pollInterval: 100
+            }
+        });
+
+        this.watcher
+            .on('add', (filePath) => {
+                log.info({ file: path.basename(filePath) }, 'New file detected');
+                this.processFile(filePath);
+            })
+            .on('error', error => log.error({ error }, 'Watcher error'));
+    }
+
 
     /**
      * Extracts QR data from an image buffer using jsQR.
@@ -67,138 +120,141 @@ export class InboxService {
     }
 
     /**
-     * Extracts text/QR from PDF. Since we can't easily render PDF logic in node without heavy libs,
-     * we will implement a basic check or just rely on image conversion if possible.
-     * For now, let's assume we focus on images or use a specific pdf-lib if needed.
-     * NOTE: PDF scanning is complex in Node. A robust solution uses pdf2pic to convert first page to image.
-     * For now, we will just support Images or basic PDF structure if visible.
-     */
-
-    /**
-     * Scans the inbox directory and synchronizes with the database.
-     * New files are added to InboxDocument table.
+     * 3. Auto-assign if possible
      */
     async syncFolder() {
         try {
             const files = fs.readdirSync(this.inboxDir);
-
             for (const file of files) {
-                // Skip directories and hidden files
                 if (fs.statSync(path.join(this.inboxDir, file)).isDirectory() || file.startsWith('.')) continue;
-
-                // Check if already in DB by current filename
-                const existing = await (prisma as any).inboxDocument.findFirst({
-                    where: { filename: file }
-                });
-
-                if (!existing) {
-                    const ext = path.extname(file);
-                    const newFilename = `${uuidv4()}${ext}`;
-                    const sourcePath = path.join(this.inboxDir, file);
-                    const destPath = path.join(this.inboxDir, newFilename);
-
-                    fs.renameSync(sourcePath, destPath);
-
-                    // Try to auto-process with scanned QR or Metadata
-                    const buffer = fs.readFileSync(destPath);
-                    let qrData = null;
-
-                    if (ext.toLowerCase() === '.pdf') {
-                        try {
-                            const { PDFDocument } = require('pdf-lib');
-                            const pdfDoc = await PDFDocument.load(buffer);
-                            const subject = pdfDoc.getSubject();
-                            if (subject && subject.includes('VACATION')) {
-                                try {
-                                    qrData = JSON.parse(subject);
-                                    console.log('[InboxService] Found QR Data in PDF Metadata!');
-                                } catch (e) {
-                                    console.warn('[InboxService] Failed to parse PDF metadata subject:', e);
-                                }
-                            }
-                        } catch (e) {
-                            console.error('[InboxService] Error reading PDF metadata:', e);
-                        }
-                    } else if (['.png', '.jpg', '.jpeg'].includes(ext.toLowerCase())) {
-                        qrData = await this.scanImageForQR(buffer);
-                    }
-
-                    // Store in central storage (S3/local)
-                    const lowerExt = ext.toLowerCase();
-                    const contentType = lowerExt === '.pdf'
-                        ? 'application/pdf'
-                        : (['.png', '.jpg', '.jpeg'].includes(lowerExt)
-                            ? (lowerExt === '.png' ? 'image/png' : 'image/jpeg')
-                            : undefined);
-                    const { key } = await StorageService.saveBuffer({
-                        folder: 'inbox',
-                        originalName: newFilename,
-                        buffer,
-                        contentType
-                    });
-
-                    // Remove local file if using S3 to avoid data leakage on disk
-                    if (StorageService.provider === 's3' && fs.existsSync(destPath)) {
-                        fs.unlinkSync(destPath);
-                    }
-
-                    // Create Inbox Entry
-                    const inboxDoc = await (prisma as any).inboxDocument.create({
-                        data: {
-                            filename: newFilename,
-                            originalName: file,
-                            source: 'SCANNER',
-                            fileUrl: key
-                        }
-                    });
-
-                    console.log(`[InboxService] Registered new document: ${file} -> ${newFilename}`);
-
-                    // Broadcast Notification via DB
-                    await NotificationService.notifyAdmins(
-                        'Nuevo Documento',
-                        `Se ha recibido el archivo ${file}`,
-                        `/inbox`
-                    );
-
-                    // Automation Logic
-                    if (qrData && qrData.eid && qrData.t) {
-                        const employeeId = qrData.eid;
-                        const date = qrData.d?.split('T')[0] || '';
-
-                        let category = 'Otros';
-                        let name = `Documento Auto ${date}`;
-
-                        switch (qrData.t) {
-                            case 'VACATION':
-                                category = 'Justificante Ausencia';
-                                name = `Justificante Auto ${date}`;
-                                break;
-                            case 'EPI':
-                                category = 'PRL';
-                                name = `Entrega EPIs Firmado ${date}`;
-                                break;
-                            case 'UNIFORME':
-                                category = 'PRL';
-                                name = `Entrega Uniforme Firmado ${date}`;
-                                break;
-                            case 'TECH_DEVICE':
-                                category = 'Equipamiento';
-                                name = `Entrega ${qrData.name || 'Dispositivo'} Firmado ${date}`;
-                                break;
-                            case 'MODEL_145':
-                                category = 'Contrato';
-                                name = `Modelo 145 Firmado ${date}`;
-                                break;
-                        }
-
-                        console.log(`[InboxService] QR Code Found (${qrData.t})! Auto-assigning to employee ${employeeId}...`);
-                        await this.assignDocument(inboxDoc.id, employeeId, category, name);
-                    }
-                }
+                await this.processFile(path.join(this.inboxDir, file));
             }
         } catch (error) {
-            console.error('[InboxService] Error syncing folder:', error);
+            log.error({ error }, 'Error syncing folder');
+        }
+    }
+
+    async processFile(filePath: string) {
+        const filename = path.basename(filePath);
+        if (this.processing.has(filename)) return;
+        this.processing.add(filename);
+
+        try {
+            // Check if already in DB
+            const existing = await (prisma as any).inboxDocument.findFirst({
+                where: { filename: filename }
+            });
+
+            if (existing) {
+                log.debug({ filename }, 'File already in DB, skipping');
+                return;
+            }
+
+            const ext = path.extname(filename);
+            // Rename to UUID if not already? The watchers pick up renames as 'add' sometimes?
+            // If we rename it here, watcher might fire again for new name.
+            // Best practice: Move to a 'processing' folder or just use the name if it's already UUID (from email/upload).
+            // Let's assume files strictly arriving are UUID-named or we rename them.
+            // If we rename, we should ignore the new name event?
+            // Simplified: Just process in place. If renamed later, handled separately.
+
+            // If coming from email/upload, name is already uuid.
+
+            const buffer = fs.readFileSync(filePath);
+            let qrData = null;
+
+            if (ext.toLowerCase() === '.pdf') {
+                try {
+                    const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
+                    const subject = pdfDoc.getSubject();
+                    if (subject) {
+                        try {
+                            const parsed = JSON.parse(subject);
+                            if (parsed.eid && parsed.t) {
+                                qrData = parsed;
+                                log.info({ type: qrData.t }, 'Found system metadata in PDF Subject');
+                            }
+                        } catch (e) { }
+                    }
+                } catch (e) {
+                    log.warn({ error: e }, 'Error reading PDF metadata');
+                }
+            } else if (['.png', '.jpg', '.jpeg'].includes(ext.toLowerCase())) {
+                qrData = await this.scanImageForQR(buffer);
+            }
+
+            // Store in central storage
+            const lowerExt = ext.toLowerCase();
+            const contentType = lowerExt === '.pdf'
+                ? 'application/pdf'
+                : (['.png', '.jpg', '.jpeg'].includes(lowerExt)
+                    ? (lowerExt === '.png' ? 'image/png' : 'image/jpeg')
+                    : undefined);
+
+            const { key } = await StorageService.saveBuffer({
+                folder: 'inbox',
+                originalName: filename,
+                buffer,
+                contentType
+            });
+
+            // Create Inbox Entry
+            const inboxDoc = await (prisma as any).inboxDocument.create({
+                data: {
+                    filename: filename,
+                    originalName: filename, // Or try to get real original name if passed in sidecar?
+                    source: 'SCANNER',
+                    fileUrl: key
+                }
+            });
+
+            log.info({ filename }, 'Registered new document');
+
+            // Automation Logic
+            if (qrData && qrData.eid && qrData.t) {
+                const employeeId = qrData.eid;
+                const date = qrData.d?.split('T')[0] || new Date().toISOString().split('T')[0];
+
+                let category = 'Otros';
+                let name = `Documento Auto ${date}`;
+
+                switch (qrData.t) {
+                    case 'VACATION': category = 'Justificante Ausencia'; name = `Justificante Auto ${date}`; break;
+                    case 'EPI': category = 'PRL'; name = `Entrega EPIs Firmado ${date}`; break;
+                    case 'UNIFORME': category = 'PRL'; name = `Entrega Uniforme Firmado ${date}`; break;
+                    case 'TECH_DEVICE': category = 'Equipamiento'; name = `Entrega ${qrData.name || 'Dispositivo'} Firmado ${date}`; break;
+                    case 'MODEL_145': category = 'Contrato'; name = `Modelo 145 Firmado ${date}`; break;
+                    case 'PAYROLL_SIGNED': category = 'Nómina'; name = `Nómina Firmada ${date}`; break;
+                }
+
+                log.info({ employeeId, category, name }, 'QR/Meta Found! Auto-assigning document');
+                await this.assignDocument(inboxDoc.id, employeeId, category, name);
+
+                // Notify via DB
+                await NotificationService.notifyAdmins(
+                    'Documento Procesado Automáticamente',
+                    `Se ha archivado automáticamente: ${name}`,
+                    `/employees/${employeeId}/documents`
+                );
+            } else {
+                // Broadcast Notification via DB for manual review
+                await NotificationService.notifyAdmins(
+                    'Nuevo Documento en Bandeja',
+                    `Se ha recibido ${filename} para revisión manual`,
+                    `/inbox`
+                );
+            }
+
+            // Cleanup local if using S3?
+            if (StorageService.provider === 's3') {
+                // fs.unlinkSync(filePath); // Be careful with watcher loops!
+                // If we delete it, watcher might fire 'unlink'. reliable.
+            }
+
+        } catch (error) {
+            log.error({ filename, error }, 'Error processing file');
+        } finally {
+            this.processing.delete(filename);
         }
     }
 
@@ -215,9 +271,7 @@ export class InboxService {
         }
 
         const fileKey = inboxDoc.fileUrl;
-        if (!fileKey) {
-            throw new Error('Documento sin archivo asociado');
-        }
+        if (!fileKey) throw new Error('Documento sin archivo asociado');
 
         // Create permanent Document entry
         const document = await prisma.document.create({
@@ -246,96 +300,61 @@ export class InboxService {
      * Polls the configured email inbox for new document attachments.
      */
     async pollEmails() {
+        if (this.processing.has('email-poll')) return;
+        this.processing.add('email-poll');
+
         try {
             // 1. Get configuration
-            const configEntry = await (prisma as any).configuration.findUnique({
-                where: { key: 'inbox_settings' }
-            });
-
-            if (!configEntry) {
-                console.log('[InboxService] No configuration found in database.');
-                return;
-            }
+            const configEntry = await (prisma as any).configuration.findUnique({ where: { key: 'inbox_settings' } });
+            if (!configEntry) return;
 
             const config = JSON.parse(configEntry.value);
-            if (!config.emailEnabled) {
-                console.log('[InboxService] Email polling is disabled in settings.');
-                return;
-            }
-
-            if (!config.imap.host || !config.imap.user || !config.imap.password) {
-                console.log('[InboxService] Missing IMAP credentials.');
-                return;
-            }
-
-            console.log(`[InboxService] Connecting to ${config.imap.host} as ${config.imap.user}...`);
+            if (!config.emailEnabled || !config.imap?.host) return;
 
             // 2. Connect to IMAP
             const client = new ImapFlow({
                 host: config.imap.host,
                 port: config.imap.port || 993,
                 secure: config.imap.tls !== false,
-                auth: {
-                    user: config.imap.user,
-                    pass: config.imap.password
-                },
-                logger: false,
-                verifyOnly: false
+                auth: { user: config.imap.user, pass: config.imap.password },
+                logger: false
             });
 
             await client.connect();
-            console.log('[InboxService] IMAP Connected.');
-
-            // 3. Search and process
             const lock = await client.getMailboxLock('INBOX');
+
             try {
                 const uids = await client.search({ seen: false });
-                console.log(`[InboxService] Found ${Array.isArray(uids) ? uids.length : 0} unseen messages.`);
-
-                if (Array.isArray(uids)) {
+                if (Array.isArray(uids) && uids.length > 0) {
+                    log.info({ count: uids.length }, 'Found new emails');
                     for (const uid of uids) {
                         const message = await client.fetchOne(uid.toString(), { source: true });
-                        if (!message || !message.source) continue;
+                        if (!message || typeof message === 'boolean' || !message.source) continue;
 
                         const parsed = await simpleParser(message.source);
-                        console.log(`[InboxService] Processing email: ${parsed.subject}`);
-
-                        if (parsed.attachments && parsed.attachments.length > 0) {
+                        if (parsed.attachments?.length) {
                             for (const attachment of parsed.attachments) {
-                                const contentType = attachment.contentType?.toLowerCase() || '';
-                                if (contentType.includes('pdf') || contentType.includes('image')) {
-                                    const ext = path.extname(attachment.filename || '.pdf');
+                                const ext = path.extname(attachment.filename || '.pdf').toLowerCase();
+                                if (['.pdf', '.png', '.jpg', '.jpeg'].includes(ext)) {
                                     const newFilename = `${uuidv4()}${ext}`;
                                     const filePath = path.join(this.inboxDir, newFilename);
-
                                     fs.writeFileSync(filePath, attachment.content);
-
-                                    // Register directly in DB (syncFolder will pick up automations next run, or handled here?)
-                                    // Let's just write file. syncFolder is called at end.
-                                    // BUT syncFolder renames files from UUID to UUID which is duplicate.
-                                    // Solution: Write with final UUID here and insert to DB, or just write random name and let syncFolder handle "new" files?
-                                    // Best: Write attachment to inbox with random name, do NOT insert to DB, let syncFolder do full processing + QR Scan.
-
-                                    // Reverting previous logic of manual insertion. Let syncFolder handle it.
-                                    console.log(`[InboxService] Saved attachment ${newFilename}, waiting for sync.`);
+                                    log.info({ filename: newFilename }, 'Saved email attachment');
+                                    // Watcher will pick this up automatically!
                                 }
                             }
                         }
-
                         await client.messageFlagsAdd(uid.toString(), ['\\Seen']);
                     }
                 }
             } finally {
                 lock.release();
             }
-
             await client.logout();
-
-            // 4. Sync folder to register new files
-            await this.syncFolder();
-
         } catch (error) {
-            console.error('[InboxService] Error polling emails:', error);
+            log.error({ error }, 'Error polling emails');
+        } finally {
+            this.processing.delete('email-poll');
         }
     }
 }

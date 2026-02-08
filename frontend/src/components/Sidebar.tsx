@@ -11,6 +11,7 @@ interface SidebarProps {
 
 export const navItems = [
     { path: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} />, module: 'dashboard' },
+    { path: '/my-documents', label: 'Mis Documentos', icon: <FileText size={20} />, module: 'calendar' }, // Common access
     { path: '/profile', label: 'Mi Perfil', icon: <Users size={20} />, module: 'calendar' }, // Accessible to employees
     { path: '/vacations', label: 'Vacaciones', icon: <Plane size={20} />, module: 'calendar' },
     { path: '/employees', label: 'Empleados', icon: <Users size={20} />, module: 'employees' },

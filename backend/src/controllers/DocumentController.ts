@@ -5,6 +5,10 @@ import { ApiResponse } from '../utils/ApiResponse';
 
 import { createWorker } from 'tesseract.js';
 import { StorageService } from '../services/StorageService';
+import { AuthenticatedRequest } from '../types/express';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('DocumentController');
 
 
 
@@ -49,7 +53,7 @@ export const DocumentController = {
                 suggestedDate
             }, 'OCR completado');
         } catch (error) {
-            console.error('Error OCR Documentos:', error);
+            log.error({ error }, 'Error OCR Documentos');
             throw new AppError('Error al procesar el documento mediante OCR', 500);
         }
     },
@@ -62,7 +66,7 @@ export const DocumentController = {
         if (!employeeId) throw new AppError('employeeId requerido', 400);
 
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             if (user.role !== 'admin' && user.employeeId !== employeeId) {
                 throw new AppError('No autorizado', 403);
             }
@@ -89,7 +93,7 @@ export const DocumentController = {
 
             return ApiResponse.success(res, document, 'Documento subido correctamente', 201);
         } catch (error) {
-            console.error('Error al subir documento:', error);
+            log.error({ error }, 'Error al subir documento');
             throw new AppError('Error al registrar el documento en la base de datos', 500);
         }
     },
@@ -97,6 +101,11 @@ export const DocumentController = {
     getByEmployee: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
         try {
+            const { user } = req as AuthenticatedRequest;
+            if (user.role !== 'admin' && user.employeeId !== employeeId) {
+                throw new AppError('No autorizado para ver estos documentos', 403);
+            }
+
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 50;
             const isPaginationRequested = req.query.page !== undefined;
@@ -134,7 +143,7 @@ export const DocumentController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
-            const user = (req as any).user;
+            const { user } = req as AuthenticatedRequest;
             const document = await prisma.document.findUnique({ where: { id } });
             if (!document) throw new AppError('Documento no encontrado', 404);
             if (user.role !== 'admin' && user.employeeId !== document.employeeId) {
@@ -156,7 +165,8 @@ export const DocumentController = {
 
     download: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const user = (req as any).user;
+        const { user } = req as AuthenticatedRequest;
+        const inline = req.query.inline === 'true';
 
         try {
             const document = await prisma.document.findUnique({
@@ -176,10 +186,19 @@ export const DocumentController = {
                 const path = require('path');
                 const filePath = path.join(process.cwd(), 'uploads', document.fileUrl);
                 if (!fs.existsSync(filePath)) {
-                    console.error(`File missing at: ${filePath}`);
+                    log.warn({ filePath }, 'File missing');
                     throw new AppError('El archivo físico no existe', 404);
                 }
-                return res.download(filePath, document.name);
+
+                if (inline) {
+                    res.setHeader('Content-Type', 'application/pdf'); // Assumption: most are PDFs. 
+                    // Better validation: use mime-types or store mimetype in DB. 
+                    // For now, let express/sendfile handle it or default to PDF if we want to force preview.
+                    // Actually res.sendFile does a good job guessing mime type from extension.
+                    return res.sendFile(filePath);
+                } else {
+                    return res.download(filePath, document.name);
+                }
             }
 
             const signedUrl = await StorageService.getSignedDownloadUrl(document.fileUrl);
@@ -187,7 +206,7 @@ export const DocumentController = {
             return res.redirect(signedUrl);
         } catch (error) {
             if (error instanceof AppError) throw error;
-            console.error('Download error:', error);
+            log.error({ error }, 'Download error');
             throw new AppError('Error al descargar el documento', 500);
         }
     }

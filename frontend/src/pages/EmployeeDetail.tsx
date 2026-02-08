@@ -5,9 +5,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
     ArrowLeft, Save, Loader2, CreditCard, Building,
-    Clock, Plus, Trash2, Scale, ShieldCheck, Lock, Key, Phone, MessageCircle
+    Clock, Plus, Trash2, Scale, ShieldCheck, Lock, Key, Phone, MessageCircle, ScanFace, Sparkles
 } from 'lucide-react';
 import { isHoliday } from '../utils/holidays';
+import { FaceEnrollModal } from '../components/FaceEnrollModal';
 
 const PROVINCIAS = [
     'Álava', 'Albacete', 'Alicante', 'Almería', 'Asturias', 'Ávila', 'Badajoz', 'Baleares', 'Barcelona', 'Burgos', 'Cáceres', 'Cádiz', 'Cantabria', 'Castellón', 'Ciudad Real', 'Córdoba', 'Cuenca', 'Gerona', 'Granada', 'Guadalajara', 'Guipúzcoa', 'Huelva', 'Huesca', 'Jaén', 'La Coruña', 'La Rioja', 'Las Palmas', 'León', 'Lérida', 'Lugo', 'Madrid', 'Málaga', 'Murcia', 'Navarra', 'Orense', 'Palencia', 'Pontevedra', 'Salamanca', 'Santa Cruz de Tenerife', 'Segovia', 'Sevilla', 'Soria', 'Tarragona', 'Teruel', 'Toledo', 'Valencia', 'Valladolid', 'Vizcaya', 'Zamora', 'Zaragoza', 'Ceuta', 'Melilla'
@@ -36,6 +37,8 @@ import EmployeeProjects from '../components/employee/EmployeeProjects';
 import DocumentGenerator from '../components/DocumentGenerator';
 import { useConfirm } from '../context/ConfirmContext';
 import EmployeePayrollViewer from '../components/employee/EmployeePayrollViewer';
+import OnboardingWizard from '../components/OnboardingWizard';
+import OffboardingWizard from '../components/OffboardingWizard';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function EmployeeDetail(props: { employeeId?: string }) {
@@ -60,6 +63,9 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
     const [activeTab, setActiveTab] = useState('personal');
 
     const [generatingAccess, setGeneratingAccess] = useState(false);
+    const [showFaceEnroll, setShowFaceEnroll] = useState(false); // Valid state
+    const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
+    const [showOffboardingWizard, setShowOffboardingWizard] = useState(false);
     // const [accessModal, setAccessModal] = useState<{ isOpen: boolean, password?: string, username?: string }>({ isOpen: false });
 
     const handleGenerateAccess = async () => {
@@ -315,6 +321,13 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                     {canEdit && (
                         <div className="flex gap-3">
                             <button
+                                onClick={() => setShowOnboardingWizard(true)}
+                                className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 font-semibold rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex items-center gap-2 border border-emerald-100 dark:border-emerald-900/30"
+                            >
+                                <Sparkles size={18} />
+                                Onboarding
+                            </button>
+                            <button
                                 onClick={handleGenerateAccess}
                                 disabled={generatingAccess}
                                 className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-semibold rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors flex items-center gap-2 border border-indigo-100 dark:border-indigo-900/30"
@@ -323,28 +336,18 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                 Generar Clave
                             </button>
                             <button
-                                onClick={async () => {
-                                    const ok = await confirmAction({
-                                        title: 'Dar de Baja Empleado',
-                                        message: '¿Estás seguro de que deseas dar de baja a este empleado? Sus datos se conservarán en el sistema pero no aparecerán en el listado activo.',
-                                        confirmText: 'Dar de Baja',
-                                        type: 'danger'
-                                    });
-
-                                    if (ok) {
-                                        try {
-                                            await api.delete(`/employees/${id}`);
-                                            toast.success('Empleado dado de baja correctamente');
-                                            navigate('/employees');
-                                        } catch (err) {
-                                            toast.error('Error al dar de baja al empleado');
-                                        }
-                                    }
-                                }}
+                                onClick={() => setShowFaceEnroll(true)}
+                                className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-semibold rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors flex items-center gap-2 border border-purple-100 dark:border-purple-900/30"
+                            >
+                                <ScanFace size={18} />
+                                Biometría
+                            </button>
+                            <button
+                                onClick={() => setShowOffboardingWizard(true)}
                                 className="px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-semibold rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center gap-2 border border-rose-100 dark:border-rose-900/30"
                             >
                                 <Trash2 size={18} />
-                                Dar de Baja
+                                Tramitar Baja
                             </button>
                             <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">
                                 Editar Perfil
@@ -437,6 +440,41 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                         </AnimatePresence>
                     </div>
                 </div>
+                <FaceEnrollModal
+                    isOpen={showFaceEnroll}
+                    onClose={() => setShowFaceEnroll(false)}
+                    employeeId={id || ''}
+                    employeeName={`${employeeView.firstName} ${employeeView.lastName}`}
+                    onSuccess={() => toast.success('Biometría actualizada')}
+                />
+
+                {
+                    showOnboardingWizard && (
+                        <OnboardingWizard
+                            employeeId={id || ''}
+                            employeeName={`${employeeView.firstName} ${employeeView.lastName}`}
+                            onClose={() => setShowOnboardingWizard(false)}
+                            onSuccess={() => {
+                                setShowOnboardingWizard(false);
+                                setActiveTab('expediente');
+                            }}
+                        />
+                    )
+                }
+
+                {
+                    showOffboardingWizard && (
+                        <OffboardingWizard
+                            employeeId={id || ''}
+                            employeeName={`${employeeView.firstName} ${employeeView.lastName}`}
+                            onClose={() => setShowOffboardingWizard(false)}
+                            onSuccess={() => {
+                                setShowOffboardingWizard(false);
+                                navigate('/employees');
+                            }}
+                        />
+                    )
+                }
             </div >
         );
     }
