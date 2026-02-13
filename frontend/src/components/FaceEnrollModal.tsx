@@ -57,12 +57,17 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({ isOpen, onClos
                         if (ctx) {
                             ctx.clearRect(0, 0, canvas.width, canvas.height);
                             // Draw minimalist landmarks
+                            // Draw mirrored landmarks
+                            ctx.save();
+                            ctx.scale(-1, 1);
+                            ctx.translate(-canvas.width, 0);
                             ctx.fillStyle = '#3b82f6';
                             detection.landmarks.positions.forEach(p => {
                                 ctx.beginPath();
-                                ctx.arc(p.x * (canvas.width / video.videoWidth), p.y * (canvas.height / video.videoHeight), 1, 0, 2 * Math.PI);
+                                ctx.arc(p.x * (canvas.width / video.videoWidth), p.y * (canvas.height / video.videoHeight), 2, 0, 2 * Math.PI);
                                 ctx.fill();
                             });
+                            ctx.restore();
                         }
                     }
                 }
@@ -173,7 +178,8 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({ isOpen, onClos
                                     audio={false}
                                     screenshotFormat="image/jpeg"
                                     videoConstraints={{ facingMode: 'user' }}
-                                    className="w-full h-full object-cover grayscale opacity-60"
+                                    mirrored={true}
+                                    className="w-full h-full object-cover grayscale opacity-60 scale-x-[-1]"
                                 />
                                 <canvas
                                     ref={canvasRef}
@@ -183,7 +189,22 @@ export const FaceEnrollModal: React.FC<FaceEnrollModalProps> = ({ isOpen, onClos
                                 />
                                 {/* HUD */}
                                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                                    <div className="w-48 h-64 border-2 border-white/20 rounded-[4rem] border-dashed"></div>
+                                    <div className={`w-48 h-64 border-2 rounded-[4rem] border-dashed transition-all duration-300 ${currentStep === 'LEFT' ? 'border-l-4 border-l-blue-500 translate-x-10' :
+                                        currentStep === 'RIGHT' ? 'border-r-4 border-r-blue-500 -translate-x-10' :
+                                            'border-white/20'
+                                        }`}></div>
+
+                                    {/* Visual Arrow Indicators */}
+                                    {currentStep === 'LEFT' && (
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 animate-bounce">
+                                            <div className="w-0 h-0 border-t-[10px] border-t-transparent border-r-[15px] border-r-blue-500 border-b-[10px] border-b-transparent"></div>
+                                        </div>
+                                    )}
+                                    {currentStep === 'RIGHT' && (
+                                        <div className="absolute right-4 top-1/2 -translate-y-1/2 animate-bounce">
+                                            <div className="w-0 h-0 border-t-[10px] border-t-transparent border-l-[15px] border-l-blue-500 border-b-[10px] border-b-transparent"></div>
+                                        </div>
+                                    )}
                                 </div>
                             </>
                         ) : (

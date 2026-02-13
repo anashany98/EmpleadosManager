@@ -33,22 +33,36 @@ describe('AlertService', () => {
     });
 
     describe('generateStockAlerts', () => {
-        it('should generate alerts for low stock items', async () => {
-            // Mock low stock item
-            const mockItem = { id: 'item-1', name: 'Gloves', size: 'M', quantity: 2, minQuantity: 5 };
-            (prisma.inventoryItem.findMany as any).mockResolvedValue([mockItem]);
+        it('should generate alerts for low stock items correctly', async () => {
+            // Mock items: one low stock, one sufficient stock
+            const mockItems = [
+                { id: 'item-1', name: 'Gloves', size: 'M', quantity: 2, minQuantity: 5 }, // Low
+                { id: 'item-2', name: 'Masks', size: 'L', quantity: 10, minQuantity: 5 }  // OK
+            ];
+
+            // Mock findMany returning both
+            (prisma.inventoryItem.findMany as any).mockResolvedValue(mockItems);
 
             // Mock no existing alert
             (prisma.alert.findFirst as any).mockResolvedValue(null);
 
             await alertService.generateStockAlerts();
 
+            // Should create alert ONLY for Gloves
+            expect(prisma.alert.create).toHaveBeenCalledTimes(1);
             expect(prisma.alert.create).toHaveBeenCalledWith(expect.objectContaining({
                 data: expect.objectContaining({
                     type: 'LOW_STOCK',
                     severity: 'HIGH',
                     title: 'Stock Bajo',
                     message: expect.stringContaining('Gloves')
+                })
+            }));
+
+            // Should NOT create alert for Masks
+            expect(prisma.alert.create).not.toHaveBeenCalledWith(expect.objectContaining({
+                data: expect.objectContaining({
+                    message: expect.stringContaining('Masks')
                 })
             }));
         });

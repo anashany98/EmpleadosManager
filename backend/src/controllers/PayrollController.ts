@@ -10,6 +10,7 @@ import { EncryptionService } from '../services/EncryptionService';
 import { PayrollAutomationService } from '../services/PayrollAutomationService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
+import { AppError } from '../utils/AppError';
 
 const log = createLogger('PayrollController');
 
@@ -22,7 +23,8 @@ export const PayrollController = {
                 return ApiResponse.error(res, 'No se ha subido ningún archivo', 400);
             }
 
-            const userId = (req as AuthenticatedRequest).user?.id || 'system';
+            const { user } = req as AuthenticatedRequest;
+            const userId = user?.id || 'system';
 
             // Leemos buffer para sacar headers de forma asíncrona
             const buffer = req.file.buffer;
@@ -71,11 +73,23 @@ export const PayrollController = {
     applyMapping: async (req: Request, res: Response) => {
         const { id } = req.params; // Batch ID
         const { mappingRules, filename } = req.body; // Rules { "neto": "Importe Neto" } y el nombre físico temp
-        const userId = (req as AuthenticatedRequest).user?.id || 'system';
+        const { user } = req as AuthenticatedRequest;
+        const userId = user?.id || 'system';
 
         try {
-            const batch = await prisma.payrollImportBatch.findUnique({ where: { id } });
+            const batch = await prisma.payrollImportBatch.findUnique({
+                where: { id },
+                include: { createdBy: { include: { employee: true } } }
+            });
             if (!batch) return ApiResponse.error(res, 'Lote no encontrado', 404);
+
+            // Security Check
+            if (user.role !== 'admin') {
+                const batchCompanyId = batch.createdBy?.employee?.companyId;
+                if (!batchCompanyId || batchCompanyId !== user.companyId) {
+                    throw new AppError('No tienes permiso para procesar este lote', 403);
+                }
+            }
 
             let buffer: Buffer | null = null;
 
@@ -128,7 +142,21 @@ export const PayrollController = {
     getLatestBatches: async (req: Request, res: Response) => {
         try {
             const { limit = 5 } = req.query;
+            const { user } = req as AuthenticatedRequest;
+
+            const whereClause: any = {};
+            if (user.role !== 'admin') {
+                if (!user.companyId) throw new AppError('Usuario sin empresa', 403);
+                // Filter batches created by users of the same company
+                whereClause.createdBy = {
+                    employee: {
+                        companyId: user.companyId
+                    }
+                };
+            }
+
             const batches = await prisma.payrollImportBatch.findMany({
+                where: whereClause,
                 take: Number(limit),
                 orderBy: { createdAt: 'desc' },
                 include: {
@@ -163,8 +191,22 @@ export const PayrollController = {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
         const skip = (page - 1) * limit;
+        const { user } = req as AuthenticatedRequest;
 
         try {
+            // Security Check
+            if (user.role !== 'admin') {
+                const batch = await prisma.payrollImportBatch.findUnique({
+                    where: { id },
+                    select: { createdBy: { select: { employee: { select: { companyId: true } } } } }
+                });
+
+                const batchCompanyId = batch?.createdBy?.employee?.companyId;
+                if (!batch || batchCompanyId !== user.companyId) {
+                    return ApiResponse.error(res, 'Lote no encontrado o acceso denegado', 404);
+                }
+            }
+
             const [rows, total] = await prisma.$transaction([
                 prisma.payrollRow.findMany({
                     where: { batchId: id },
@@ -191,7 +233,20 @@ export const PayrollController = {
 
     getBreakdown: async (req: Request, res: Response) => {
         const { rowId } = req.params;
+        const { user } = req as AuthenticatedRequest;
         try {
+            // Check Access via Row -> Batch -> Creator -> Company
+            if (user.role !== 'admin') {
+                const row = await prisma.payrollRow.findUnique({
+                    where: { id: rowId },
+                    select: { batch: { select: { createdBy: { select: { employee: { select: { companyId: true } } } } } } }
+                });
+                const companyId = row?.batch?.createdBy?.employee?.companyId;
+                if (!companyId || companyId !== user.companyId) {
+                    return ApiResponse.error(res, 'Acceso denegado', 403);
+                }
+            }
+
             const items = await prisma.payrollItem.findMany({
                 where: { payrollRowId: rowId },
                 orderBy: { createdAt: 'asc' }
@@ -205,8 +260,21 @@ export const PayrollController = {
     saveBreakdown: async (req: Request, res: Response) => {
         const { rowId } = req.params;
         const { items } = req.body; // Expects [{ concept, amount, type }]
+        const { user } = req as AuthenticatedRequest;
 
         try {
+            // Security Check
+            if (user.role !== 'admin') {
+                const row = await prisma.payrollRow.findUnique({
+                    where: { id: rowId },
+                    select: { batch: { select: { createdBy: { select: { employee: { select: { companyId: true } } } } } } }
+                });
+                const companyId = row?.batch?.createdBy?.employee?.companyId;
+                if (!companyId || companyId !== user.companyId) {
+                    return ApiResponse.error(res, 'Acceso denegado', 403);
+                }
+            }
+
             await prisma.$transaction([
                 prisma.payrollItem.deleteMany({ where: { payrollRowId: rowId } }),
                 prisma.payrollItem.createMany({
@@ -228,7 +296,19 @@ export const PayrollController = {
 
     getEmployeePayrolls: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
+        const { user } = req as AuthenticatedRequest;
         try {
+            // Security Check
+            if (user.role !== 'admin') {
+                if (!user.companyId) throw new AppError('Usuario sin empresa', 403);
+                // 1. Can user see this employee?
+                const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
+                if (!employee || employee.companyId !== user.companyId) {
+                    // Exception: Self
+                    if (user.employeeId !== employeeId) throw new AppError('No autorizado', 403);
+                }
+            }
+
             const rows = await prisma.payrollRow.findMany({
                 where: { employeeId },
                 include: { batch: { select: { year: true, month: true } }, items: true },
@@ -242,21 +322,53 @@ export const PayrollController = {
 
     createManualPayroll: async (req: Request, res: Response) => {
         const { employeeId, year, month, bruto, neto } = req.body;
-        const userId = (req as AuthenticatedRequest).user?.id || 'system';
+        const { user } = req as AuthenticatedRequest;
+        const userId = user?.id || 'system';
+
+        if (!employeeId || !year || !month || bruto === undefined || neto === undefined) {
+            return ApiResponse.error(res, 'Faltan datos obligatorios (empleado, fecha, importes)', 400);
+        }
 
         try {
+            // Security Check
+            if (user.role !== 'admin') {
+                if (!user.companyId) throw new AppError('Usuario sin empresa', 403);
+                const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
+                if (!employee || employee.companyId !== user.companyId) {
+                    throw new AppError('No autorizado para crear nómina de este empleado', 403);
+                }
+            }
+
             // 1. Find or create batch for Manual Entries for this Month/Year
+            // Ensure we use a batch created by someone in the same company?
+            // Actually, for Manual Entry, we should perhaps create a specific manual batch OR find one.
+            // Problem: If I find one created by 'admin' (global), can I mix it? 
+            // Better to find one WHERE createdBy matches company scope OR create new.
+
+            // Simplified: Find batch created by ME (safe) or My Company. 
+            // We'll create a new one if not found for simplicity and safety.
+
             let batch = await prisma.payrollImportBatch.findFirst({
-                where: { year, month, sourceFilename: 'ENTRADA_MANUAL' }
+                where: {
+                    year: Number(year),
+                    month: Number(month),
+                    sourceFilename: 'ENTRADA_MANUAL',
+                    createdBy: { employee: { companyId: user.companyId } } // Scope to company
+                }
             });
+
+            // If batch exists, verify it is open
+            if (batch && (batch.status === 'VALID' || batch.status === 'PAID' || batch.status === 'CLOSED')) {
+                return ApiResponse.error(res, 'El lote de nóminas manuales para este mes ya está cerrado o validado.', 400);
+            }
 
             if (!batch) {
                 batch = await prisma.payrollImportBatch.create({
                     data: {
-                        year,
-                        month,
+                        year: Number(year),
+                        month: Number(month),
                         sourceFilename: 'ENTRADA_MANUAL',
-                        status: 'MAPPED',
+                        status: 'MAPPED', // Initial state for manual
                         createdById: userId
                     }
                 });
@@ -267,8 +379,8 @@ export const PayrollController = {
                 data: {
                     batchId: batch.id,
                     employeeId,
-                    bruto: parseFloat(bruto || 0),
-                    neto: parseFloat(neto || 0),
+                    bruto: parseFloat(bruto),
+                    neto: parseFloat(neto),
                     status: 'VALID',
                     rawEmployeeName: 'Manual Entry'
                 }
@@ -300,7 +412,16 @@ export const PayrollController = {
 
             // Security Check
             const { user } = req as AuthenticatedRequest;
-            if (user.role !== 'admin' && (!user.employeeId || user.employeeId !== payroll.employeeId)) {
+            // Admin: OK
+            // Self: OK (payroll.employeeId === user.employeeId)
+            // HR/Company: OK (payroll.employee.companyId === user.companyId)
+
+            let allowed = false;
+            if (user.role === 'admin') allowed = true;
+            else if (user.employeeId && user.employeeId === payroll.employeeId) allowed = true;
+            else if (user.companyId && payroll.employee.companyId === user.companyId) allowed = true;
+
+            if (!allowed) {
                 return ApiResponse.error(res, 'No tiene permiso para descargar esta nómina', 403);
             }
 
@@ -350,13 +471,19 @@ export const PayrollController = {
 
     generateFromKiosk: async (req: Request, res: Response) => {
         const { year, month, companyId } = req.body;
-        const userId = (req as AuthenticatedRequest).user?.id || 'system';
+        const { user } = req as AuthenticatedRequest;
+        const userId = user?.id || 'system';
 
         if (!year || !month || !companyId) {
             return ApiResponse.error(res, 'Año, mes y empresa son obligatorios', 400);
         }
 
         try {
+            // Security Check
+            if (user.role !== 'admin') {
+                if (companyId !== user.companyId) throw new AppError('No puedes generar nóminas para otra empresa', 403);
+            }
+
             const batch = await PayrollAutomationService.generateFromAttendance(
                 Number(year),
                 Number(month),

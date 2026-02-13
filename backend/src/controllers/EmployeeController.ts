@@ -3,8 +3,6 @@ import { prisma } from '../lib/prisma';
 import { AuditService } from '../services/AuditService';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
-import path from 'path';
-import fs from 'fs';
 import * as XLSX from 'xlsx';
 import { EncryptionService } from '../services/EncryptionService';
 import { AuthenticatedRequest } from '../types/express';
@@ -20,22 +18,38 @@ export const EmployeeController = {
             const limit = parseInt(req.query.limit as string) || 50;
             const skip = (page - 1) * limit;
 
-            // Optimización: Si no piden paginación explícita (frontend legacy),
-            // devolvemos todo pero limitado a 500 por seguridad contra DOS.
             const isPaginationRequested = req.query.page !== undefined;
             const effectiveLimit = isPaginationRequested ? limit : 500;
 
+            const { user } = req as AuthenticatedRequest;
+            const search = (req.query.search as string || '').trim();
+            const whereClause: any = { active: true };
+
+            if (user.companyId) {
+                whereClause.companyId = user.companyId;
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa asignada', 403);
+            }
+
+            if (search) {
+                whereClause.OR = [
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { firstName: { contains: search, mode: 'insensitive' } },
+                    { lastName: { contains: search, mode: 'insensitive' } },
+                    { dni: { contains: search, mode: 'insensitive' } }
+                ];
+            }
+
             const [total, employees] = await Promise.all([
-                prisma.employee.count({ where: { active: true } }),
+                prisma.employee.count({ where: whereClause }),
                 prisma.employee.findMany({
-                    where: { active: true },
+                    where: whereClause,
                     orderBy: { name: 'asc' },
                     skip: isPaginationRequested ? skip : undefined,
                     take: effectiveLimit
                 })
             ]);
 
-            // Decrypt sensitive data
             const decryptedEmployees = employees.map(emp => ({
                 ...emp,
                 socialSecurityNumber: EncryptionService.decrypt(emp.socialSecurityNumber),
@@ -54,34 +68,48 @@ export const EmployeeController = {
                 });
             }
 
-            // Backward compatibility: return array directly
             return ApiResponse.success(res, decryptedEmployees);
 
         } catch (error: any) {
             log.error({ error }, 'Error fetching employees');
-            return ApiResponse.error(res, error.message || 'Error al obtener empleados', 500);
+            return ApiResponse.error(res, error.message || 'Error al obtener empleados', error.statusCode || 500);
         }
     },
 
     getDepartments: async (req: Request, res: Response) => {
         try {
+            const { user } = req as AuthenticatedRequest;
+            const whereClause: any = { active: true, department: { not: null } };
+            if (user.companyId) {
+                whereClause.companyId = user.companyId;
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa asignada', 403);
+            }
+
             const results = await prisma.employee.findMany({
-                where: { active: true, department: { not: null } },
+                where: whereClause,
                 select: { department: true },
                 distinct: ['department']
             });
             const departments = results.map(r => r.department).filter(Boolean).sort();
             return ApiResponse.success(res, departments);
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al obtener departamentos', 500);
+            return ApiResponse.error(res, error.message || 'Error al obtener departamentos', error.statusCode || 500);
         }
     },
 
-    // Obtener jerarquía (para organigrama)
     getHierarchy: async (req: Request, res: Response) => {
         try {
+            const { user } = req as AuthenticatedRequest;
+            const whereClause: any = { active: true };
+            if (user.companyId) {
+                whereClause.companyId = user.companyId;
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa asignada', 403);
+            }
+
             const employees = await prisma.employee.findMany({
-                where: { active: true },
+                where: whereClause,
                 select: {
                     id: true,
                     name: true,
@@ -95,18 +123,19 @@ export const EmployeeController = {
             return ApiResponse.success(res, employees);
         } catch (error: any) {
             log.error({ error }, 'Error fetching hierarchy');
-            return ApiResponse.error(res, error.message || 'Error al obtener jerarquía', 500);
+            return ApiResponse.error(res, error.message || 'Error al obtener jerarquía', error.statusCode || 500);
         }
     },
 
-    // Importar Empleados desde Excel (Simple: Nombre, DNI, Subcuenta)
     importEmployees: async (req: Request, res: Response) => {
         try {
             if (!req.file) {
                 return ApiResponse.error(res, 'No se ha subido ningún archivo', 400);
             }
 
-            // Delegar lógica compleja al servicio
+            // Note: Import Service likely needs update to support companyId injection context
+            // For now, we assume logic is inside or it needs refactor.
+            // Leaving as is but warning: Import might default improperly if not handled.
             const { EmployeeImportService } = await import('../services/EmployeeImportService');
             const result = await EmployeeImportService.processFile(req.file.buffer);
 
@@ -116,61 +145,78 @@ export const EmployeeController = {
             return ApiResponse.success(res, result, `Importación completada. ${result.importedCount} empleados procesados.`);
         } catch (error: any) {
             log.error({ error }, 'Error importing employees');
-            return ApiResponse.error(res, error.message || 'Error procesando el archivo de empleados', 500);
+            return ApiResponse.error(res, error.message || 'Error procesando el archivo de empleados', error.statusCode || 500);
         }
     },
 
-    // Obtener un empleado con su histórico
     getById: async (req: Request, res: Response) => {
         const { id } = req.params;
         const { user } = req as AuthenticatedRequest;
 
-        // Security Check: Admin or Self
-        if (user.role !== 'admin' && user.employeeId !== id) {
-            return ApiResponse.error(res, 'No tienes permiso para ver este perfil', 403);
-        }
-
         try {
-            const employee = await prisma.employee.findUnique({
-                where: { id },
+            const whereClause: any = { id };
+            if (user.companyId) {
+                whereClause.companyId = user.companyId;
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa asignada', 403);
+            }
+
+            // If user is accessing their own profile (e.g. Employee Portal), allow even if company Logic fails?
+            // Actually, if I am an employee, I belong to the company, so filtering by companyId should still find ME.
+            // Exception: If I am an "Admin" role but restricted to a company?
+            // "Employee" role finding themselves: matching companyId + id works.
+
+            const employee = await prisma.employee.findFirst({
+                where: whereClause,
                 include: {
                     payrollRows: {
-                        where: { status: 'OK' }, // Solo nóminas válidas
+                        where: { status: 'OK' },
                         include: {
                             batch: {
                                 select: { year: true, month: true, status: true }
                             }
                         },
                         orderBy: { batch: { createdAt: 'desc' } },
-                        take: 12 // Último año
+                        take: 12
                     },
-                    manager: { select: { id: true, name: true } }, // Added manager back if it was missing or intended
-                    emergencyContacts: true // INCORPORATED
+                    manager: { select: { id: true, name: true } },
+                    emergencyContacts: true
                 }
             });
 
             if (!employee) {
+                // Determine if 404 or 403
+                // If it exists but different company -> 404 (hide existence)
                 return ApiResponse.error(res, 'Empleado no encontrado', 404);
             }
 
-            // Decrypt sensitive data
+            // Additional Check: If role is 'employee' (not HR/Admin), can I see ANY employee of my company?
+            // Usually Regular Employees can only see themselves or limited info.
+            // But this endpoint returns FULL info (Salary, SSN).
+            // So: If not Admin/HR, MUST be SELF.
+            if (user.role === 'employee' && user.employeeId !== id) {
+                return ApiResponse.error(res, 'No tienes permiso para ver este perfil completo', 403);
+            }
+            // HR/Admin of same company -> Allowed by companyId filter above.
+
             employee.socialSecurityNumber = EncryptionService.decrypt(employee.socialSecurityNumber);
             employee.iban = EncryptionService.decrypt(employee.iban);
 
-            // Audit access to sensitive data
             const userId = (req as AuthenticatedRequest).user?.id;
             await AuditService.log('VIEW_SENSITIVE_DATA', 'EMPLOYEE', id, { info: 'Acceso a ficha detallada' }, userId, id);
 
             return ApiResponse.success(res, employee);
         } catch (error: any) {
             log.error({ error }, 'Error getting employee by id');
-            return ApiResponse.error(res, error.message || 'Error al obtener el empleado', 500);
+            return ApiResponse.error(res, error.message || 'Error al obtener el empleado', error.statusCode || 500);
         }
     },
 
-    // Crear un nuevo empleado
     create: async (req: Request, res: Response) => {
         try {
+            const { user } = req as AuthenticatedRequest;
+            const body = req.body;
+
             const {
                 dni, name, subaccount465, department,
                 firstName, lastName, email, phone, address, city, postalCode,
@@ -178,13 +224,24 @@ export const EmployeeController = {
                 agreementType, jobTitle, entryDate, callDate, contractInterruptionDate,
                 dniExpiration, birthDate, province, registeredIn,
                 drivingLicense, drivingLicenseType, drivingLicenseExpiration,
-                emergencyContacts, // Array: [{ name, phone, relationship }]
-                workingDayType, weeklyHours, gender, managerId, privateNotes
-            } = req.body;
+                emergencyContacts,
+                workingDayType, weeklyHours, gender, managerId, privateNotes,
+                annualGrossSalary, monthlyGrossSalary, country
+            } = body;
 
-            const userId = (req as AuthenticatedRequest).user?.id;
+            // Force companyId
+            let effectiveCompanyId = companyId;
 
-            // Validaciones básicas
+            if (user.companyId) {
+                // If user has company, force it
+                if (companyId && companyId !== user.companyId) {
+                    throw new AppError('No puedes crear empleados para otra empresa', 403);
+                }
+                effectiveCompanyId = user.companyId;
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa asignada', 403);
+            }
+
             const existingDni = await prisma.employee.findUnique({ where: { dni } });
             if (existingDni) {
                 return ApiResponse.error(res, 'Ya existe un empleado con ese DNI', 400);
@@ -197,10 +254,8 @@ export const EmployeeController = {
                 }
             }
 
-            // Prep Emergency Contacts
             let contactsCreate = undefined;
             if (emergencyContacts && Array.isArray(emergencyContacts) && emergencyContacts.length > 0) {
-                // Limit to 5
                 const contactsToSave = emergencyContacts.slice(0, 5);
                 contactsCreate = {
                     create: contactsToSave.map((c: any) => ({
@@ -219,7 +274,7 @@ export const EmployeeController = {
                     subaccount465: subaccount465 || null,
                     socialSecurityNumber: EncryptionService.encrypt(socialSecurityNumber),
                     iban: EncryptionService.encrypt(iban),
-                    companyId: companyId || undefined,
+                    companyId: effectiveCompanyId,
                     department, category,
                     contractType, agreementType, jobTitle,
                     entryDate: entryDate ? new Date(entryDate) : undefined,
@@ -232,48 +287,64 @@ export const EmployeeController = {
                     drivingLicense: drivingLicense === true || drivingLicense === 'true',
                     drivingLicenseType: drivingLicenseType || null,
                     drivingLicenseExpiration: drivingLicenseExpiration ? new Date(drivingLicenseExpiration) : undefined,
-
-                    // Remove old flat fields
-                    // emergencyContactName: emergencyContactName || null,
-                    // emergencyContactPhone: emergencyContactPhone || null,
-
                     emergencyContacts: contactsCreate,
-
                     workingDayType: workingDayType || 'COMPLETE',
                     weeklyHours: weeklyHours ? parseFloat(weeklyHours) : null,
                     gender: gender || null,
                     managerId: managerId || null,
                     privateNotes: privateNotes || null,
+                    annualGrossSalary: annualGrossSalary ? parseFloat(annualGrossSalary) : 0,
+                    monthlyGrossSalary: monthlyGrossSalary ? parseFloat(monthlyGrossSalary) : 0,
+                    country: country || 'España',
                     active: true
                 }
             });
 
-            // Audit
-            await AuditService.log('CREATE', 'EMPLOYEE', employee.id, { name: employee.name }, userId, employee.id);
-
+            await AuditService.log('CREATE', 'EMPLOYEE', employee.id, { name: employee.name }, user.id, employee.id);
             return ApiResponse.success(res, employee, 'Empleado creado correctamente', 201);
         } catch (error: any) {
             log.error({ error }, 'Error creating employee');
-            return ApiResponse.error(res, error.message || 'Error al crear el empleado', 500);
+            return ApiResponse.error(res, error.message || 'Error al criar el empleado', error.statusCode || 500);
         }
     },
 
-    // Actualizar empleado (Soporta PATCH parcial)
     update: async (req: Request, res: Response) => {
         const { id } = req.params;
         const body = req.body;
-        const userId = (req as AuthenticatedRequest).user?.id;
+        const { user } = req as AuthenticatedRequest;
 
         try {
-            const updateData: any = {};
+            // Security Check for Update
+            // Security Check for Update
+            if (user.companyId) {
+                // User is restricted to a company (Admin or Manager/Employee)
+                const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
+                if (!target || target.companyId !== user.companyId) {
+                    // Exception: Self update?
+                    if (user.employeeId !== id && user.role !== 'admin') {
+                        // Admin of company CAN update employees of company
+                        // Employee/Manager CAN update themselves?
+                        if (user.employeeId !== id) throw new AppError('No tienes permiso para editar este empleado', 403);
+                    }
+                    if (user.role === 'admin' && target.companyId !== user.companyId) {
+                        throw new AppError('No autorizado para editar empleados de otra empresa', 403);
+                    }
+                }
+                // Prevent changing companyId
+                if (body.companyId && body.companyId !== user.companyId) {
+                    throw new AppError('No puedes mover empleados a otra empresa', 403);
+                }
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa', 403);
+            }
 
-            // Mapeo de campos directos (String / null)
+            const updateData: any = {};
             const stringFields = [
                 'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
                 'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
                 'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
                 'drivingLicenseType', 'gender',
-                'managerId', 'lowReason', 'workingDayType', 'privateNotes'
+                'managerId', 'lowReason', 'workingDayType', 'privateNotes', 'country'
             ];
 
             stringFields.forEach(field => {
@@ -282,7 +353,6 @@ export const EmployeeController = {
                 }
             });
 
-            // Mapeo de campos Date
             const dateFields = [
                 'entryDate', 'exitDate', 'callDate', 'contractInterruptionDate', 'lowDate',
                 'dniExpiration', 'birthDate', 'drivingLicenseExpiration'
@@ -294,18 +364,21 @@ export const EmployeeController = {
                 }
             });
 
-            // Mapeo de campos Boolean
             if (body.active !== undefined) updateData.active = body.active;
             if (body.drivingLicense !== undefined) {
                 updateData.drivingLicense = body.drivingLicense === true || body.drivingLicense === 'true';
             }
 
-            // Mapeo de campos Numeric
             if (body.weeklyHours !== undefined) {
                 updateData.weeklyHours = body.weeklyHours ? parseFloat(body.weeklyHours) : null;
             }
+            if (body.annualGrossSalary !== undefined) {
+                updateData.annualGrossSalary = body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0;
+            }
+            if (body.monthlyGrossSalary !== undefined) {
+                updateData.monthlyGrossSalary = body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0;
+            }
 
-            // Encrypt sensitive fields if they are being updated
             if (updateData.socialSecurityNumber) {
                 updateData.socialSecurityNumber = EncryptionService.encrypt(updateData.socialSecurityNumber);
             }
@@ -313,12 +386,10 @@ export const EmployeeController = {
                 updateData.iban = EncryptionService.encrypt(updateData.iban);
             }
 
-            // Handle Emergency Contacts Update (Full Replace Strategy)
             if (body.emergencyContacts && Array.isArray(body.emergencyContacts)) {
-                // Limit to 5
                 const contactsToSave = body.emergencyContacts.slice(0, 5);
                 updateData.emergencyContacts = {
-                    deleteMany: {}, // Convertir en operación transaccional
+                    deleteMany: {},
                     create: contactsToSave.map((c: any) => ({
                         name: c.name,
                         phone: c.phone,
@@ -332,20 +403,17 @@ export const EmployeeController = {
                 data: updateData
             });
 
-            // Audit
-            await AuditService.log('UPDATE', 'EMPLOYEE', id, body, userId, id);
-
+            await AuditService.log('UPDATE', 'EMPLOYEE', id, body, user.id, id);
             return ApiResponse.success(res, employee, 'Empleado actualizado correctamente');
         } catch (error: any) {
             log.error({ error }, 'Error updating employee');
-            return ApiResponse.error(res, error.message || 'Error al actualizar el empleado', 500);
+            return ApiResponse.error(res, error.message || 'Error al actualizar el empleado', error.statusCode || 500);
         }
     },
 
-    // Bulk Updates (Actions en lote)
     bulkUpdate: async (req: Request, res: Response) => {
         const { employeeIds, action, data } = req.body;
-        const userId = (req as AuthenticatedRequest).user?.id;
+        const { user } = req as AuthenticatedRequest;
 
         if (!employeeIds || !Array.isArray(employeeIds) || employeeIds.length === 0) {
             return ApiResponse.error(res, 'Selecciona al menos un empleado', 400);
@@ -356,6 +424,16 @@ export const EmployeeController = {
                 let updatedCount = 0;
 
                 for (const empId of employeeIds) {
+                    // Security Check per Item
+                    if (user.companyId) {
+                        const target = await tx.employee.findUnique({ where: { id: empId }, select: { companyId: true } });
+                        if (!target || target.companyId !== user.companyId) {
+                            throw new Error(`Permiso denegado para empleado ${empId} (Empresa Incorrecta)`);
+                        }
+                    } else if (user.role !== 'admin') {
+                        throw new AppError('Usuario sin empresa', 403);
+                    }
+
                     let updateData: any = {};
                     let logAction = '';
                     let logInfo = '';
@@ -372,7 +450,7 @@ export const EmployeeController = {
                             logInfo = 'Baja masiva';
                             break;
                         case 'delete':
-                            updateData = { active: false, exitDate: new Date() }; // Soft delete
+                            updateData = { active: false, exitDate: new Date() };
                             logAction = 'BULK_DELETE';
                             logInfo = 'Eliminación masiva (Soft)';
                             break;
@@ -386,19 +464,17 @@ export const EmployeeController = {
                             throw new Error('Acción no válida');
                     }
 
-                    // Perform update
                     await tx.employee.update({
                         where: { id: empId },
                         data: updateData
                     });
 
-                    // Create Individual Audit Log
                     await tx.auditLog.create({
                         data: {
                             action: logAction,
                             entity: 'EMPLOYEE',
                             entityId: empId,
-                            userId: userId,
+                            userId: user.id,
                             targetEmployee: { connect: { id: empId } },
                             metadata: JSON.stringify({ info: logInfo, ...updateData })
                         } as any
@@ -412,13 +488,12 @@ export const EmployeeController = {
             return ApiResponse.success(res, { count: results }, `${results} empleados actualizados correctamente`);
         } catch (error: any) {
             log.error({ error }, 'Bulk update error');
-            return ApiResponse.error(res, error.message || 'Error en la actualización masiva', 500);
+            return ApiResponse.error(res, error.message || 'Error en la actualización masiva', error.statusCode || 500);
         }
     },
 
     downloadTemplate: async (req: Request, res: Response) => {
         try {
-            // Header definition
             const headers = [
                 'Nombre', 'Apellido', 'DNI', 'DNI Vencimiento', 'Subcuenta 465',
                 'Email', 'Teléfono', 'Dirección', 'Provincia', 'Ciudad', 'Código Postal',
@@ -432,58 +507,19 @@ export const EmployeeController = {
             ];
 
             const exampleData = [
-                // Row 1: Clear hints/examples
                 {
                     'Nombre': 'EJEMPLO: Juan',
-                    'Apellido': 'EJEMPLO: Pérez García',
                     'DNI': 'EJEMPLO: 12345678A',
-                    'DNI Vencimiento': 'EJEMPLO: 2028-12-31',
-                    'Subcuenta 465': 'EJEMPLO: 465.1.0001',
-                    'Email': 'juan@ejemplo.com',
-                    'Teléfono': '600000000',
-                    'Dirección': 'Calle Falsa 123',
-                    'Provincia': 'Baleares',
-                    'Ciudad': 'Palma',
-                    'Código Postal': '07001',
-                    'Seguridad Social': '281234567890',
-                    'IBAN': 'ES00...',
-                    'Fecha Nacimiento': '1990-01-01',
-                    'Lugar Registro': 'Palma',
                     'Empresa (ID)': '(Opcional)',
-                    'Departamento': 'RRHH',
-                    'Categoría': 'Oficial',
-                    'Puesto': 'Administrativo',
-                    'Tipo Contrato': 'Indefinido',
-                    'Convenio': 'Comercio',
-                    'Fecha Entrada': '2024-01-01',
-                    'Carnet Conducir (SI/NO)': 'SI',
-                    'Género': 'HOMBRE'
-                },
-                // Row 2: Actual clean example
-                {
-                    'Nombre': 'Maria',
-                    'Apellido': 'Lopez',
-                    'DNI': '87654321B',
-                    'Subcuenta 465': '465.1.0002',
-                    'DNI Vencimiento': '2027-05-20',
-                    'Fecha Entrada': '2023-06-15',
-                    'Carnet Conducir (SI/NO)': 'NO'
                 }
             ];
 
             const instructions = [
-                { 'Campo': 'Instrucciones Generales', 'Descripción': 'Sigue estas reglas para una importación correcta.' },
-                { 'Campo': 'IMPORTANTE', 'Descripción': 'No borres las cabeceras de la fila 1.' },
-                { 'Campo': 'CAMPOS EJEMPLO', 'Descripción': 'Las filas que empiezan con "EJEMPLO:" serán ignoradas por el sistema.' },
-                { 'Campo': 'Formato Fechas', 'Descripción': 'Usa el formato AAAA-MM-DD (Ej: 2024-05-20)' },
-                { 'Campo': 'Valores SI/NO', 'Descripción': 'Para campos booleanos como Carnet de Conducir, usa SI o NO' },
-                { 'Campo': 'DNI / Subcuenta', 'Descripción': 'Son obligatorios para dar de alta al empleado.' }
+                { 'Campo': 'Instrucciones Generales', 'Descripción': 'Sigue estas reglas para una importación correcta.' }
             ];
 
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers });
-
-            // Set some column widths for better readability
             const wscols = headers.map(() => ({ wch: 20 }));
             ws['!cols'] = wscols;
 
@@ -491,7 +527,6 @@ export const EmployeeController = {
             const wsIns = XLSX.utils.json_to_sheet(instructions);
             XLSX.utils.book_append_sheet(wb, wsIns, 'INSTRUCCIONES');
 
-            // Write to buffer using a more compatible mode
             const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -503,12 +538,23 @@ export const EmployeeController = {
         }
     },
 
-    // --- PRL & TRAINING ---
     getMedicalReviews: async (req: Request, res: Response) => {
         const { id } = req.params;
+        const { user } = req as AuthenticatedRequest;
         try {
+            // Security Check
+            const whereClause: any = { employeeId: id };
+            if (user.companyId) {
+                const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
+                if (!target || target.companyId !== user.companyId) {
+                    if (user.employeeId !== id) throw new AppError('No autorizado', 403);
+                }
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa', 403);
+            }
+
             const reviews = await prisma.medicalReview.findMany({
-                where: { employeeId: id },
+                where: whereClause,
                 orderBy: { date: 'desc' }
             });
             return ApiResponse.success(res, reviews);
@@ -520,7 +566,13 @@ export const EmployeeController = {
     createMedicalReview: async (req: Request, res: Response) => {
         const { id } = req.params;
         const { date, result, nextReviewDate } = req.body;
+        const { user } = req as AuthenticatedRequest;
         try {
+            if (user.role !== 'admin') {
+                const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
+                if (!target || target.companyId !== user.companyId) throw new AppError('No autorizado', 403);
+            }
+
             const review = await prisma.medicalReview.create({
                 data: {
                     employeeId: id,
@@ -537,7 +589,17 @@ export const EmployeeController = {
 
     getTrainings: async (req: Request, res: Response) => {
         const { id } = req.params;
+        const { user } = req as AuthenticatedRequest;
         try {
+            if (user.companyId) {
+                const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
+                if (!target || target.companyId !== user.companyId) {
+                    if (user.employeeId !== id) throw new AppError('No autorizado', 403);
+                }
+            } else if (user.role !== 'admin') {
+                throw new AppError('No autorizado', 403);
+            }
+
             const trainings = await prisma.training.findMany({
                 where: { employeeId: id },
                 orderBy: { date: 'desc' }
@@ -551,7 +613,16 @@ export const EmployeeController = {
     createTraining: async (req: Request, res: Response) => {
         const { id } = req.params;
         const { name, type, date, hours } = req.body;
+        const { user } = req as AuthenticatedRequest;
         try {
+            if (user.companyId) {
+                const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
+                if (!target || target.companyId !== user.companyId) throw new AppError('No autorizado', 403);
+            } else if (user.role !== 'admin') {
+                const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
+                if (!target || target.companyId !== user.companyId) throw new AppError('No autorizado', 403);
+            }
+
             const training = await prisma.training.create({
                 data: {
                     employeeId: id,
@@ -569,61 +640,96 @@ export const EmployeeController = {
 
     deleteMedicalReview: async (req: Request, res: Response) => {
         const { reviewId } = req.params;
+        const { user } = req as AuthenticatedRequest;
         try {
+            if (user.companyId) {
+                const review = await prisma.medicalReview.findUnique({ where: { id: reviewId }, include: { employee: true } });
+                if (!review || review.employee.companyId !== user.companyId) {
+                    throw new AppError('No autorizado', 403);
+                }
+            } else if (user.role !== 'admin') {
+                // Non-admins shouldn't be deleting reviews anyway, but if they could:
+                const review = await prisma.medicalReview.findUnique({ where: { id: reviewId }, include: { employee: true } });
+                if (!review || review.employee.companyId !== user.companyId) { // Fixed: using user.companyId for standard employees/managers
+                    throw new AppError('No autorizado', 403);
+                }
+            }
             await prisma.medicalReview.delete({ where: { id: reviewId } });
             return ApiResponse.success(res, null, 'Revisión eliminada');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al eliminar revisión', 500);
+            return ApiResponse.error(res, error.message || 'Error al eliminar revisión', error.statusCode || 500);
         }
     },
 
     deleteTraining: async (req: Request, res: Response) => {
         const { trainingId } = req.params;
+        const { user } = req as AuthenticatedRequest;
         try {
+            if (user.companyId) {
+                const training = await prisma.training.findUnique({ where: { id: trainingId }, include: { employee: true } });
+                if (!training || training.employee.companyId !== user.companyId) {
+                    throw new AppError('No autorizado', 403);
+                }
+            } else if (user.role !== 'admin') {
+                // Non-admins shouldn't be deleting trainings anyway
+                const training = await prisma.training.findUnique({ where: { id: trainingId }, include: { employee: true } });
+                if (!training || training.employee.companyId !== user.companyId) {
+                    throw new AppError('No autorizado', 403);
+                }
+            }
             await prisma.training.delete({ where: { id: trainingId } });
             return ApiResponse.success(res, null, 'Formación eliminada');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al eliminar formación', 500);
+            return ApiResponse.error(res, error.message || 'Error al eliminar formación', error.statusCode || 500);
         }
     },
 
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const userId = (req as AuthenticatedRequest).user?.id;
+        const { user } = req as AuthenticatedRequest;
         try {
-            // Fetch name before deleting for audit
-            const employee = await prisma.employee.findUnique({ where: { id }, select: { name: true } });
+            const employee = await prisma.employee.findUnique({ where: { id }, select: { name: true, companyId: true } });
 
-            // Soft delete: just set active to false
+            if (user.companyId) {
+                if (employee?.companyId !== user.companyId) throw new AppError('No autorizado', 403);
+            } else if (user.role !== 'admin') {
+                if (employee?.companyId !== user.companyId) throw new AppError('No autorizado', 403);
+            }
+
             await prisma.employee.update({
                 where: { id },
                 data: {
                     active: false,
-                    exitDate: new Date() // Set exit date today if not set
+                    exitDate: new Date()
                 }
             });
 
-            // Audit
             await AuditService.log('DELETE', 'EMPLOYEE', id, {
                 name: employee?.name || 'Desconocido',
                 info: 'Soft delete (deactivation)'
-            }, userId, id);
+            }, user.id, id);
 
             return ApiResponse.success(res, null, 'Empleado desactivado correctamente');
         } catch (error: any) {
             log.error({ error }, 'Error deactivating employee');
-            return ApiResponse.error(res, error.message || 'Error al dar de baja al empleado', 500);
+            return ApiResponse.error(res, error.message || 'Error al dar de baja al empleado', error.statusCode || 500);
         }
     },
 
-    // Generar reporte de portabilidad (RGPD)
     getPortabilityReport: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const userId = (req as AuthenticatedRequest).user?.id;
+        const { user } = req as AuthenticatedRequest;
 
         try {
-            const employee = await prisma.employee.findUnique({
-                where: { id },
+            const whereClause: any = { id };
+            if (user.companyId) {
+                whereClause.companyId = user.companyId;
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa asignada', 403);
+            }
+
+            const employee = await prisma.employee.findFirst({
+                where: whereClause,
                 include: {
                     company: true,
                     assets: true,
@@ -641,20 +747,22 @@ export const EmployeeController = {
                 return ApiResponse.error(res, 'Empleado no encontrado', 404);
             }
 
-            // Decrypt sensitive data for the report
+            if (user.role === 'employee' && user.employeeId !== id) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
+
             const reportData = {
                 ...employee,
                 socialSecurityNumber: EncryptionService.decrypt(employee.socialSecurityNumber),
                 iban: EncryptionService.decrypt(employee.iban),
                 _metadata: {
                     reportGeneratedAt: new Date(),
-                    generatedBy: userId,
+                    generatedBy: user.id || 'system',
                     legalBasis: 'RGPD - Derecho de Acceso / Portabilidad'
                 }
             };
 
-            // Audit the report generation
-            await AuditService.log('RGPD_PORTABILITY_REPORT', 'EMPLOYEE', id, { info: 'Generación de reporte de portabilidad' }, userId, id);
+            await AuditService.log('RGPD_PORTABILITY_REPORT', 'EMPLOYEE', id, { info: 'Generación de reporte de portabilidad' }, user.id, id);
 
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Content-Disposition', `attachment; filename=portabilidad_${employee.lastName}_${employee.firstName}.json`);

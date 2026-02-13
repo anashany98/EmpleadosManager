@@ -108,6 +108,17 @@ export const ExpenseController = {
                 return res.status(400).json({ error: 'Importe inválido' });
             }
 
+            // Verify employee belongs to company
+            if (user.companyId && user.role === 'admin') {
+                const targetEmployee = await prisma.employee.findUnique({
+                    where: { id: employeeId },
+                    select: { companyId: true }
+                });
+                if (!targetEmployee || targetEmployee.companyId !== user.companyId) {
+                    return res.status(403).json({ error: 'No autorizado para añadir gastos a este empleado' });
+                }
+            }
+
             const expense = await prisma.expense.create({
                 data: {
                     employeeId,
@@ -161,7 +172,14 @@ export const ExpenseController = {
             const skip = (page - 1) * limit;
             const take = isPaginationRequested ? limit : 500;
 
+            const { user } = req as AuthenticatedRequest;
+            const where: any = {};
+            if (user.companyId) {
+                where.employee = { companyId: user.companyId };
+            }
+
             const expenses = await prisma.expense.findMany({
+                where,
                 include: {
                     employee: {
                         select: { name: true, firstName: true, lastName: true }

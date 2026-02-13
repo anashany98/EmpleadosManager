@@ -13,6 +13,25 @@ const getEncryptionKey = (): string => {
 
 export class EncryptionService {
     /**
+     * Validates that the encryption key is correctly configured.
+     * Should be called on application startup.
+     */
+    static validateKey() {
+        try {
+            getEncryptionKey();
+            // Test encryption/decryption to be sure
+            const test = 'test-string';
+            const encrypted = this.encrypt(test);
+            const decrypted = this.decrypt(encrypted);
+            if (decrypted !== test) {
+                throw new Error('Encryption/Decryption test failed');
+            }
+        } catch (error) {
+            console.error('Encryption Service Validation Failed:', error);
+            process.exit(1); // Fail fast
+        }
+    }
+    /**
      * Encrypts plain text using AES-256-CBC
      */
     static encrypt(text: string | null | undefined): string | null {

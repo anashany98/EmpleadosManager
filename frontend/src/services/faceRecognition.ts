@@ -63,6 +63,18 @@ export const FaceRecognitionService = {
         }
     },
 
+    async detectExpressions(imageElement: HTMLVideoElement | HTMLImageElement) {
+        if (!this.isLoaded) await this.loadModels();
+        try {
+            const detection = await faceapi
+                .detectSingleFace(imageElement, new faceapi.TinyFaceDetectorOptions())
+                .withFaceExpressions();
+            return detection?.expressions;
+        } catch (error) {
+            return undefined;
+        }
+    },
+
     detectBlink(landmarks: faceapi.FaceLandmarks68): boolean {
         const leftEye = landmarks.getLeftEye();
         const rightEye = landmarks.getRightEye();

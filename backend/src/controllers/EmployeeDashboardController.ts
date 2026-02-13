@@ -13,8 +13,13 @@ export class EmployeeDashboardController {
             const monthsToFetch = range === '1Y' ? 12 : 6;
 
             // Build where clause
+            // Build where clause
             const where: any = {};
-            if (companyId) {
+            const user = (req as any).user;
+
+            if (user.role !== 'admin' && user.companyId) {
+                where.companyId = user.companyId;
+            } else if (companyId) {
                 where.companyId = companyId as string;
             }
 

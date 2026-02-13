@@ -44,6 +44,32 @@ export class AlertController {
             res.status(500).json({ error: 'Failed to dismiss alert' });
         }
     }
+
+    // PUT /api/alerts/read-all
+    async markAllRead(req: Request, res: Response) {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const permissions = user?.role === 'admin' ? null : user?.permissions;
+            await alertService.markAllAsRead(permissions);
+            res.json({ success: true });
+        } catch (error) {
+            log.error({ error }, 'Error marking all as read');
+            res.status(500).json({ error: 'Failed to mark all as read' });
+        }
+    }
+
+    // PUT /api/alerts/dismiss-all
+    async dismissAll(req: Request, res: Response) {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const permissions = user?.role === 'admin' ? null : user?.permissions;
+            await alertService.dismissAll(permissions);
+            res.json({ success: true });
+        } catch (error) {
+            log.error({ error }, 'Error dismissing all');
+            res.status(500).json({ error: 'Failed to dismiss all' });
+        }
+    }
 }
 
 export const alertController = new AlertController();

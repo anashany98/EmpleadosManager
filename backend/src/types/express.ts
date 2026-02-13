@@ -7,8 +7,9 @@ export interface AuthUser {
     id: string;
     email: string;
     name?: string;
-    role: 'admin' | 'hr' | 'employee';
+    role: 'admin' | 'hr' | 'employee' | 'manager';
     employeeId?: string;
+    companyId?: string;
     permissions?: Record<string, 'none' | 'read' | 'write'>;
 }
 

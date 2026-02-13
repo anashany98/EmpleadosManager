@@ -20,7 +20,13 @@ export const VacationController = {
             if (!user || user.role !== 'admin') {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
+            const where: any = {};
+            if (user.companyId) {
+                where.employee = { companyId: user.companyId };
+            }
+
             const vacations = await prisma.vacation.findMany({
+                where,
                 include: { employee: true },
                 orderBy: { startDate: 'desc' }
             });
@@ -249,11 +255,16 @@ export const VacationController = {
             const { user } = req as AuthenticatedRequest;
             const vacationRecord = await prisma.vacation.findUnique({
                 where: { id },
-                select: { employeeId: true }
+                include: { employee: true }
             });
             if (!vacationRecord) throw new AppError('Solicitud no encontrada', 404);
 
             const isAdmin = user?.role === 'admin';
+
+            // Check Company Association
+            if (isAdmin && user.companyId && vacationRecord.employee.companyId !== user.companyId) {
+                throw new AppError('No autorizado para gestionar vacaciones de otra empresa', 403);
+            }
             let isManager = false;
             if (!isAdmin && user?.employeeId) {
                 const target = await prisma.employee.findUnique({
@@ -348,8 +359,13 @@ export const VacationController = {
         try {
             let whereClause: any = { status: 'PENDING' };
 
-            // Si no es admin, filtramos por subordinados
-            if (user.role !== 'admin') {
+            // Si es admin, filtramos por su compañia
+            if (user.role === 'admin') {
+                if (user.companyId) {
+                    whereClause.employee = { companyId: user.companyId };
+                }
+            } else {
+                // Si no es admin, filtramos por subordinados
                 const me = await prisma.employee.findFirst({ where: { email: user.email } });
 
                 if (!me) {

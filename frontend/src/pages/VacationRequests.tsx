@@ -5,7 +5,16 @@ import { useAuth } from '../contexts/AuthContext';
 import { Plane, Calendar as CalendarIcon, Check, X, Clock, FileText, Stethoscope, Baby, MoreHorizontal, Filter, Paperclip, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const ABSENCE_TYPES: any = {
+interface AbsenceTypeConfig {
+    label: string;
+    color: string;
+    text: string;
+    bgSoft: string;
+    border: string;
+    icon: any;
+}
+
+const ABSENCE_TYPES: Record<string, AbsenceTypeConfig> = {
     VACATION: { label: 'Vacaciones', color: 'bg-emerald-500', text: 'text-emerald-700', bgSoft: 'bg-emerald-50', border: 'border-emerald-200', icon: Plane },
     SICK: { label: 'Baja Médica', color: 'bg-rose-500', text: 'text-rose-700', bgSoft: 'bg-rose-50', border: 'border-rose-200', icon: Stethoscope },
     BIRTH: { label: 'Nacimiento', color: 'bg-blue-500', text: 'text-blue-700', bgSoft: 'bg-blue-50', border: 'border-blue-200', icon: Baby },
@@ -14,20 +23,35 @@ const ABSENCE_TYPES: any = {
     OTHER: { label: 'Otros', color: 'bg-slate-500', text: 'text-slate-700', bgSoft: 'bg-slate-50', border: 'border-slate-200', icon: MoreHorizontal },
 };
 
+interface VacationRequest {
+    id: string;
+    employeeId: string;
+    startDate: string;
+    endDate: string;
+    type: string;
+    reason?: string;
+    status: 'PENDING' | 'APPROVED' | 'REJECTED';
+    days: number;
+    fileUrl?: string;
+    employee?: {
+        name: string;
+        department?: string;
+    };
+}
+
 export default function VacationRequests() {
     const { user } = useAuth();
     // Admin defaults to CALENDAR, others to MY_REQUESTS
     const [activeTab, setActiveTab] = useState<'MY_REQUESTS' | 'MANAGE' | 'CALENDAR'>(user?.role === 'admin' ? 'CALENDAR' : 'MY_REQUESTS');
-    const [myRequests, setMyRequests] = useState<any[]>([]);
-    const [pendingRequests, setPendingRequests] = useState<any[]>([]);
-    const [calendarVacations, setCalendarVacations] = useState<any[]>([]); // For Calendar
+    const [myRequests, setMyRequests] = useState<VacationRequest[]>([]);
+    const [pendingRequests, setPendingRequests] = useState<VacationRequest[]>([]);
+    const [calendarVacations, setCalendarVacations] = useState<VacationRequest[]>([]); // For Calendar
     const [departments, setDepartments] = useState<string[]>([]);
     const [selectedDept, setSelectedDept] = useState('ALL');
-    // const [loading, setLoading] = useState(true);
 
     // Form / Modal State
     const [showModal, setShowModal] = useState(false);
-    const [selectedRequest, setSelectedRequest] = useState<any | null>(null); // For Calendar Details
+    const [selectedRequest, setSelectedRequest] = useState<VacationRequest | null>(null); // For Calendar Details
 
     // Create Form State
     const [startDate, setStartDate] = useState('');
@@ -41,7 +65,6 @@ export default function VacationRequests() {
     }, [activeTab]);
 
     const fetchData = async () => {
-        // setLoading(true);
         try {
             if (activeTab === 'MY_REQUESTS') {
                 const res = await api.get('/vacations/my-vacations');
@@ -57,9 +80,7 @@ export default function VacationRequests() {
             }
         } catch (error) {
             console.error(error);
-            // toast.error("Error al cargar solicitudes");
-        } finally {
-            // setLoading(false);
+            toast.error("Error al cargar solicitudes");
         }
     };
 
@@ -88,7 +109,7 @@ export default function VacationRequests() {
 
     const filteredCalendarVacations = selectedDept === 'ALL'
         ? calendarVacations
-        : calendarVacations.filter((v: any) => v.employee?.department === selectedDept);
+        : calendarVacations.filter((v) => v.employee?.department === selectedDept);
 
     const fetchEmployeeStats = async () => {
         try {
@@ -101,8 +122,8 @@ export default function VacationRequests() {
             const vacations = vacRes.data || vacRes;
 
             const total = emp.vacationDaysTotal || 30;
-            const used = vacations.filter((v: any) => v.status === 'APPROVED').reduce((sum: number, v: any) => sum + v.days, 0);
-            const pending = vacations.filter((v: any) => v.status === 'PENDING').reduce((sum: number, v: any) => sum + v.days, 0);
+            const used = vacations.filter((v: VacationRequest) => v.status === 'APPROVED').reduce((sum: number, v: VacationRequest) => sum + (v.days || 0), 0);
+            const pending = vacations.filter((v: VacationRequest) => v.status === 'PENDING').reduce((sum: number, v: VacationRequest) => sum + (v.days || 0), 0);
 
             setStats({
                 total,
@@ -296,7 +317,7 @@ export default function VacationRequests() {
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
                                     <div className="grid grid-cols-3 gap-2">
-                                        {Object.entries(ABSENCE_TYPES).map(([k, c]: any) => (
+                                        {Object.entries(ABSENCE_TYPES).map(([k, c]) => (
                                             <button type="button" key={k} onClick={() => setType(k)} className={`p-2 rounded-xl border text-xs font-bold transition-all ${type === k ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{c.label}</button>
                                         ))}
                                     </div>
@@ -368,8 +389,8 @@ function CalendarView({
     selectedDept,
     onDeptChange
 }: {
-    vacations: any[],
-    onSelectRequest: (r: any) => void,
+    vacations: VacationRequest[],
+    onSelectRequest: (r: VacationRequest) => void,
     isAdmin: boolean,
     departments: string[],
     selectedDept: string,

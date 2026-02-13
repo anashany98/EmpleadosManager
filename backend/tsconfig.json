@@ -19,6 +19,8 @@
         "node_modules",
         "database",
         "**/*.spec.ts",
+        "**/*.test.ts",
+        "src/tests",
         "dist"
     ]
 }

@@ -197,56 +197,64 @@ export class ReportService {
     }
 
     /**
-     * Gets total company cost (Salary + SS Empresa) from payroll data.
+     * Gets total company cost (Salary + SS Empresa) from payroll data, optimized with aggregation.
      */
     static async getCompanyCostData(year: number, month?: number, filters: any = {}) {
-        const where: any = {};
-        if (month) where.month = month;
-        where.year = year;
+        const whereBatch: any = { year };
+        if (month) whereBatch.month = month;
 
+        // 1. Get Batches IDs for the period
         const batches = await prisma.payrollImportBatch.findMany({
-            where,
-            include: {
-                rows: {
-                    include: {
-                        employee: true
-                    }
-                }
+            where: whereBatch,
+            select: { id: true }
+        });
+        const batchIds = batches.map(b => b.id);
+
+        if (batchIds.length === 0) return [];
+
+        // 2. Aggregate costs by Employee using Prisma groupBy
+        const aggregatedCosts = await prisma.payrollRow.groupBy({
+            by: ['employeeId'],
+            where: {
+                batchId: { in: batchIds }
+            },
+            _sum: {
+                bruto: true,
+                ssEmpresa: true,
+                ssTrabajador: true,
+                irpf: true,
+                neto: true
             }
         });
 
-        // Flatten and aggregate by employee
-        const costByEmployee: Record<string, any> = {};
-
-        batches.forEach(batch => {
-            batch.rows.forEach(row => {
-                const empName = row.rawEmployeeName || row.employee?.name || 'Desconocido';
-                const key = row.employeeId || empName;
-
-                if (!costByEmployee[key]) {
-                    costByEmployee[key] = {
-                        name: empName,
-                        dni: row.employee?.dni || '-',
-                        department: row.employee?.department || '-',
-                        bruto: 0,
-                        ssEmpresa: 0,
-                        ssTrabajador: 0,
-                        irpf: 0,
-                        neto: 0,
-                        totalCost: 0
-                    };
-                }
-
-                costByEmployee[key].bruto += Number(row.bruto);
-                costByEmployee[key].ssEmpresa += Number(row.ssEmpresa);
-                costByEmployee[key].ssTrabajador += Number(row.ssTrabajador);
-                costByEmployee[key].irpf += Number(row.irpf);
-                costByEmployee[key].neto += Number(row.neto);
-                costByEmployee[key].totalCost += Number(row.bruto) + Number(row.ssEmpresa);
-            });
+        // 3. Enrich with Employee details
+        // We need to fetch employee details manually since groupBy doesn't support 'include'
+        const employeeIds = aggregatedCosts.map(c => c.employeeId).filter(id => id !== null) as string[];
+        const employees = await prisma.employee.findMany({
+            where: { id: { in: employeeIds } },
+            select: { id: true, name: true, dni: true, department: true }
         });
 
-        return Object.values(costByEmployee);
+        const employeeMap = new Map(employees.map(e => [e.id, e]));
+
+        // 4. Format Result
+        return aggregatedCosts.map(cost => {
+            const emp = cost.employeeId ? employeeMap.get(cost.employeeId) : null;
+            const bruto = Number(cost._sum.bruto || 0);
+            const ssEmpresa = Number(cost._sum.ssEmpresa || 0);
+
+            return {
+                name: emp?.name || 'Desconocido',
+                dni: emp?.dni || '-',
+                department: emp?.department || '-',
+                bruto,
+                ssEmpresa,
+                ssTrabajador: Number(cost._sum.ssTrabajador || 0),
+                irpf: Number(cost._sum.irpf || 0),
+                neto: Number(cost._sum.neto || 0),
+                totalCost: bruto + ssEmpresa
+            };
+        });
     }
 
     /**
@@ -318,8 +326,8 @@ export class ReportService {
             }
         });
 
-        // Approximate working days in the month (e.g. 21)
-        const workingDaysInMonth = 21;
+        // Calculate real working days in the month
+        const workingDaysInMonth = this.getWorkingDays(startDate, endDate);
         const totalPotentialDays = totalEmployees * workingDaysInMonth;
         const totalAbsenceDays = absences.reduce((sum, a: any) => sum + (a.days || 0), 0);
         const absenteeismRate = totalPotentialDays > 0 ? (totalAbsenceDays / totalPotentialDays) * 100 : 0;
@@ -333,6 +341,22 @@ export class ReportService {
             absenteeismRate: Number(absenteeismRate.toFixed(2)),
             totalAbsenceDays
         };
+    }
+
+    /**
+     * Helper: Calculates working days (Mon-Fri) between two dates inclusive.
+     */
+    private static getWorkingDays(startDate: Date, endDate: Date): number {
+        let count = 0;
+        const curDate = new Date(startDate.getTime());
+        while (curDate <= endDate) {
+            const dayOfWeek = curDate.getDay();
+            if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0=Sun, 6=Sat
+                count++;
+            }
+            curDate.setDate(curDate.getDate() + 1);
+        }
+        return count;
     }
 
     /**
@@ -363,7 +387,7 @@ export class ReportService {
         });
 
         const deptStats: Record<string, any> = {};
-        const workingDays = 21;
+        const workingDays = this.getWorkingDays(startDate, endDate);
 
         employees.forEach(emp => {
             const dept = emp.department || 'Sin asignar';

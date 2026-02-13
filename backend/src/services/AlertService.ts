@@ -102,30 +102,123 @@ export class AlertService {
 
     // Check for low stock and generate alerts
     async generateStockAlerts() {
-        log.info('Generating stock alerts...');
-        const lowStockItems = await prisma.inventoryItem.findMany({
-            where: {
-                quantity: {
-                    lte: prisma.inventoryItem.fields.minQuantity
-                }
-            }
-        });
+        try {
+            log.info('Generating stock alerts...');
+            // Prisma doesn't support comparing two columns in 'where' clause directly.
+            // We must fetch items and filter in memory.
+            const allItems = await prisma.inventoryItem.findMany();
 
-        for (const item of lowStockItems) {
-            await this.createAlert({
-                employeeId: undefined, // System alert
-                type: 'LOW_STOCK',
-                severity: 'HIGH',
-                title: 'Stock Bajo',
-                message: `El ítem de inventario "${item.name}" (${item.size || 'N/A'}) tiene stock bajo (${item.quantity}).`,
-                actionUrl: `/inventory`
-            });
+            const lowStockItems = allItems.filter(item => item.quantity <= item.minQuantity);
+
+            for (const item of lowStockItems) {
+                await this.createAlert({
+                    employeeId: undefined, // System alert
+                    type: 'LOW_STOCK',
+                    severity: 'HIGH',
+                    title: 'Stock Bajo',
+                    message: `El ítem de inventario "${item.name}" (${item.size || 'N/A'}) tiene stock bajo (${item.quantity}).`,
+                    actionUrl: `/inventory`
+                });
+            }
+        } catch (error) {
+            log.error({ error }, 'Error generating stock alerts');
         }
     }
 
     async runAllChecks() {
         await this.generateContractAlerts();
         await this.generateStockAlerts();
+        await this.generateVehicleAlerts();
+    }
+
+    // Check for vehicle maintenance, ITV, and insurance
+    async generateVehicleAlerts() {
+        try {
+            log.info('Generating vehicle alerts...');
+            const now = new Date();
+            const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+            // 1. ITV Expiration & 2. Insurance Expiration
+            // Fetch relevant vehicles once if possible, or keep separate queries for clarity.
+            // Since criteria are different (dates vs mileage), we can keep date queries as is (they are valid).
+
+            // 1. ITV Expiration
+            const vehiclesWithExpiringITV = await prisma.vehicle.findMany({
+                where: {
+                    nextITVDate: {
+                        lte: thirtyDaysFromNow,
+                        gte: now
+                    },
+                    status: 'ACTIVE'
+                },
+                include: { employee: true }
+            });
+
+            for (const vehicle of vehiclesWithExpiringITV) {
+                await this.createAlert({
+                    employeeId: vehicle.employeeId || undefined,
+                    type: 'VEHICLE_ITV',
+                    severity: 'HIGH',
+                    title: 'ITV Próxima',
+                    message: `El vehículo ${vehicle.plate} (${vehicle.make} ${vehicle.model}) debe pasar la ITV antes del ${vehicle.nextITVDate?.toLocaleDateString()}.`,
+                    actionUrl: `/assets?tab=vehicles`
+                });
+            }
+
+            // 2. Insurance Expiration
+            const vehiclesWithExpiringInsurance = await prisma.vehicle.findMany({
+                where: {
+                    insuranceExpiry: {
+                        lte: thirtyDaysFromNow,
+                        gte: now
+                    },
+                    status: 'ACTIVE'
+                },
+                include: { employee: true }
+            });
+
+            for (const vehicle of vehiclesWithExpiringInsurance) {
+                await this.createAlert({
+                    employeeId: vehicle.employeeId || undefined,
+                    type: 'VEHICLE_INSURANCE',
+                    severity: 'HIGH',
+                    title: 'Seguro por vencer',
+                    message: `El seguro del vehículo ${vehicle.plate} vence el ${vehicle.insuranceExpiry?.toLocaleDateString()}.`,
+                    actionUrl: `/assets?tab=vehicles`
+                });
+            }
+
+            // 3. Maintenance Logic (Mileage based)
+            // Prisma cannot compare currentMileage >= nextMaintenanceKm directly.
+            const activeVehicles = await prisma.vehicle.findMany({
+                where: {
+                    status: 'ACTIVE',
+                    nextMaintenanceKm: {
+                        not: null
+                    }
+                },
+                include: { employee: true }
+            });
+
+            const vehiclesNeedingMaintenance = activeVehicles.filter(v =>
+                v.nextMaintenanceKm && v.currentMileage >= (v.nextMaintenanceKm - 1000)
+            );
+
+            for (const vehicle of vehiclesNeedingMaintenance) {
+                // Safe to assert non-null because of filter
+                const nextKm = vehicle.nextMaintenanceKm!;
+                await this.createAlert({
+                    employeeId: vehicle.employeeId || undefined,
+                    type: 'VEHICLE_MAINTENANCE',
+                    severity: 'MEDIUM',
+                    title: 'Mantenimiento Próximo',
+                    message: `El vehículo ${vehicle.plate} tiene ${vehicle.currentMileage}km. Mantenimiento programado a los ${nextKm}km.`,
+                    actionUrl: `/assets?tab=vehicles`
+                });
+            }
+        } catch (error) {
+            log.error({ error }, 'Error generating vehicle alerts');
+        }
     }
 
     async createAlert(data: {
@@ -198,6 +291,40 @@ export class AlertService {
     async dismissAlert(alertId: string) {
         return prisma.alert.update({
             where: { id: alertId },
+            data: { isDismissed: true }
+        });
+    }
+
+    async markAllAsRead(permissions?: any) {
+        // Same logic as getUnreadAlerts: filter by permission if needed
+        // But for bulk update, we might just update all unread alerts visible to user?
+        // Actually, we should only update alerts that the user *can see*.
+        // If permissions are restricted, we need to respect that.
+        // However, Prisma doesn't support complex filtering in updateMany easily with JSON fields permission check?
+        // Wait, getUnreadAlerts logic was:
+        // const canSeeEmployeeAlerts = !permissions || permissions.employees !== 'none';
+        // If they can't see employee alerts, they see nothing (currently).
+
+        const canSeeEmployeeAlerts = !permissions || permissions.employees !== 'none';
+        if (!canSeeEmployeeAlerts) return { count: 0 };
+
+        return prisma.alert.updateMany({
+            where: {
+                isRead: false,
+                isDismissed: false
+            },
+            data: { isRead: true }
+        });
+    }
+
+    async dismissAll(permissions?: any) {
+        const canSeeEmployeeAlerts = !permissions || permissions.employees !== 'none';
+        if (!canSeeEmployeeAlerts) return { count: 0 };
+
+        return prisma.alert.updateMany({
+            where: {
+                isDismissed: false
+            },
             data: { isDismissed: true }
         });
     }

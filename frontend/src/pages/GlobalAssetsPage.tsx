@@ -5,6 +5,15 @@ import { Package, Search, Filter, Clock, Tag, ChevronRight, Plus, AlertTriangle 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { VehicleManager } from '../components/assets/VehicleManager';
+import { CardManager } from '../components/assets/CardManager';
+
+interface Employee {
+    id: string;
+    firstName: string;
+    lastName: string;
+    department: string;
+}
 
 interface Asset {
     id: string;
@@ -13,12 +22,7 @@ interface Asset {
     serialNumber?: string;
     assignedDate: string;
     status: string;
-    employee: {
-        id: string;
-        firstName: string;
-        lastName: string;
-        department: string;
-    };
+    employee: Employee;
 }
 
 interface InventoryItem {
@@ -29,6 +33,14 @@ interface InventoryItem {
     minQuantity: number;
     description?: string;
     updatedAt: string;
+}
+
+interface Movement {
+    id: string;
+    type: 'ENTRY' | 'EXIT' | 'ASSIGN';
+    quantity: number;
+    createdAt: string;
+    notes?: string;
 }
 
 const CATEGORY_MAP: Record<string, string> = {
@@ -88,7 +100,7 @@ function EmptyState({ message }: { message: string }) {
 }
 
 export default function GlobalAssetsPage() {
-    const [activeTab, setActiveTab] = useState<'assigned' | 'stock'>('assigned');
+    const [activeTab, setActiveTab] = useState<'assigned' | 'stock' | 'vehicles' | 'cards'>('assigned');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCategory, setFilterCategory] = useState('ALL');
 
@@ -101,7 +113,7 @@ export default function GlobalAssetsPage() {
     const [assignData, setAssignData] = useState({ employeeId: '', quantity: 1, serialNumber: '', notes: '' });
 
     const [showMovementsModal, setShowMovementsModal] = useState(false);
-    const [movements, setMovements] = useState<any[]>([]);
+    const [movements, setMovements] = useState<Movement[]>([]);
     const [loadingMovements, setLoadingMovements] = useState(false);
 
     // Stock Refill Modal State
@@ -274,6 +286,18 @@ export default function GlobalAssetsPage() {
                     >
                         Stock Almacén
                     </button>
+                    <button
+                        onClick={() => setActiveTab('vehicles')}
+                        className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'vehicles' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                    >
+                        Vehículos
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('cards')}
+                        className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'cards' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                    >
+                        Tarjetas
+                    </button>
                 </div>
 
                 <div className="h-8 w-px bg-slate-200 dark:bg-slate-800 hidden md:block" />
@@ -321,7 +345,7 @@ export default function GlobalAssetsPage() {
                             ))
                         )}
                     </motion.div>
-                ) : (
+                ) : activeTab === 'stock' ? (
                     <motion.div
                         key="stock"
                         initial={{ opacity: 0, y: 10 }}
@@ -338,7 +362,6 @@ export default function GlobalAssetsPage() {
                                     item={item}
                                     index={idx}
                                     onAddStock={() => {
-                                        // This prop is now ignored as we open the modal internally or replace it
                                         setRefillItem(item);
                                         setRefillAmount(0);
                                         setShowRefillModal(true);
@@ -356,148 +379,160 @@ export default function GlobalAssetsPage() {
                             ))
                         )}
                     </motion.div>
+                ) : activeTab === 'vehicles' ? (
+                    <motion.div key="vehicles" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                        <VehicleManager />
+                    </motion.div>
+                ) : (
+                    <motion.div key="cards" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
+                        <CardManager />
+                    </motion.div>
                 )}
             </AnimatePresence>
 
             {/* Movements History Modal */}
-            {showMovementsModal && selectedItem && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl p-8 shadow-2xl space-y-6 max-h-[80vh] flex flex-col">
-                        <div className="flex justify-between items-center">
-                            <div>
-                                <h2 className="text-2xl font-black text-slate-900 dark:text-white">Historial de Stock</h2>
-                                <p className="text-sm text-slate-500 font-medium">{selectedItem.name}</p>
-                            </div>
-                            <button onClick={() => setShowMovementsModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
-                                <ChevronRight className="rotate-90 w-6 h-6" />
-                            </button>
-                        </div>
-
-                        <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
-                            {loadingMovements ? (
-                                <div className="flex flex-col gap-3">
-                                    {[1, 2, 3].map(i => (
-                                        <div key={i} className="h-20 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
-                                    ))}
+            {
+                showMovementsModal && selectedItem && (
+                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl p-8 shadow-2xl space-y-6 max-h-[80vh] flex flex-col">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">Historial de Stock</h2>
+                                    <p className="text-sm text-slate-500 font-medium">{selectedItem.name}</p>
                                 </div>
-                            ) : movements.length === 0 ? (
-                                <div className="text-center py-10 opacity-50">No hay movimientos registrados</div>
-                            ) : (
-                                movements.map((move: any) => (
-                                    <div key={move.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 flex justify-between items-center group hover:bg-white dark:hover:bg-slate-800 transition-all">
-                                        <div className="flex items-center gap-4">
-                                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${move.type === 'ENTRY' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
-                                                {move.type === 'ENTRY' ? '+' : '-'}
-                                                {move.quantity}
-                                            </div>
-                                            <div>
-                                                <p className="font-bold text-slate-900 dark:text-white">{move.type === 'ENTRY' ? 'Carga de Stock' : 'Asignación'}</p>
-                                                <p className="text-xs text-slate-500 font-medium">{new Date(move.createdAt).toLocaleString()}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{move.notes || 'Sin observaciones'}</p>
-                                        </div>
+                                <button onClick={() => setShowMovementsModal(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors">
+                                    <ChevronRight className="rotate-90 w-6 h-6" />
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                                {loadingMovements ? (
+                                    <div className="flex flex-col gap-3">
+                                        {[1, 2, 3].map(i => (
+                                            <div key={i} className="h-20 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-2xl" />
+                                        ))}
                                     </div>
-                                ))
-                            )}
+                                ) : movements.length === 0 ? (
+                                    <div className="text-center py-10 opacity-50">No hay movimientos registrados</div>
+                                ) : (
+                                    movements.map((move: Movement) => (
+                                        <div key={move.id} className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 flex justify-between items-center group hover:bg-white dark:hover:bg-slate-800 transition-all">
+                                            <div className="flex items-center gap-4">
+                                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold ${move.type === 'ENTRY' ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-orange-600'}`}>
+                                                    {move.type === 'ENTRY' ? '+' : '-'}
+                                                    {move.quantity}
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-slate-900 dark:text-white">{move.type === 'ENTRY' ? 'Carga de Stock' : 'Asignación'}</p>
+                                                    <p className="text-xs text-slate-500 font-medium">{new Date(move.createdAt).toLocaleString()}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{move.notes || 'Sin observaciones'}</p>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Assign Modal */}
-            {showAssignModal && selectedItem && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                    <motion.div
-                        initial={{ scale: 0.9, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-8 shadow-2xl space-y-6"
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                                <Package className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h2 className="text-2xl font-black text-slate-900 dark:text-white">Repartir Material</h2>
-                                <p className="text-sm text-slate-500 font-medium">{selectedItem.name} ({selectedItem.quantity} disp.)</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Empleado Destino</label>
-                                <select
-                                    value={assignData.employeeId}
-                                    onChange={(e) => setAssignData({ ...assignData, employeeId: e.target.value })}
-                                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                                >
-                                    <option value="">Seleccionar empleado...</option>
-                                    {employees.map((emp: any) => (
-                                        <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Cantidad</label>
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        max={selectedItem.quantity}
-                                        value={assignData.quantity}
-                                        onChange={(e) => setAssignData({ ...assignData, quantity: parseInt(e.target.value) })}
-                                        className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white font-mono"
-                                    />
+            {
+                showAssignModal && selectedItem && (
+                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-8 shadow-2xl space-y-6"
+                        >
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                                    <Package className="w-6 h-6" />
                                 </div>
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">Repartir Material</h2>
+                                    <p className="text-sm text-slate-500 font-medium">{selectedItem.name} ({selectedItem.quantity} disp.)</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Nº Serie / IMEI</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Opcional"
-                                        value={assignData.serialNumber}
-                                        onChange={(e) => setAssignData({ ...assignData, serialNumber: e.target.value })}
+                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Empleado Destino</label>
+                                    <select
+                                        value={assignData.employeeId}
+                                        onChange={(e) => setAssignData({ ...assignData, employeeId: e.target.value })}
                                         className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                    >
+                                        <option value="">Seleccionar empleado...</option>
+                                        {employees.map((emp: Employee) => (
+                                            <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Cantidad</label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            max={selectedItem.quantity}
+                                            value={assignData.quantity}
+                                            onChange={(e) => setAssignData({ ...assignData, quantity: parseInt(e.target.value) })}
+                                            className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white font-mono"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Nº Serie / IMEI</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Opcional"
+                                            value={assignData.serialNumber}
+                                            onChange={(e) => setAssignData({ ...assignData, serialNumber: e.target.value })}
+                                            className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Notas</label>
+                                    <textarea
+                                        placeholder="Motivo de la asignación..."
+                                        value={assignData.notes}
+                                        onChange={(e) => setAssignData({ ...assignData, notes: e.target.value })}
+                                        className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 dark:text-white h-24"
                                     />
                                 </div>
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Notas</label>
-                                <textarea
-                                    placeholder="Motivo de la asignación..."
-                                    value={assignData.notes}
-                                    onChange={(e) => setAssignData({ ...assignData, notes: e.target.value })}
-                                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-medium focus:ring-2 focus:ring-indigo-500 dark:text-white h-24"
-                                />
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    onClick={() => setShowAssignModal(false)}
+                                    className="flex-1 px-6 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-750 transition-all"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (!assignData.employeeId) return toast.error('Selecciona un empleado');
+                                        distributeMutation.mutate({
+                                            itemId: selectedItem.id,
+                                            ...assignData
+                                        });
+                                    }}
+                                    disabled={distributeMutation.isPending}
+                                    className="flex-[2] px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 active:scale-95 disabled:opacity-50"
+                                >
+                                    {distributeMutation.isPending ? 'Procesando...' : 'Completar Entrega'}
+                                </button>
                             </div>
-                        </div>
-
-                        <div className="flex gap-3 pt-4">
-                            <button
-                                onClick={() => setShowAssignModal(false)}
-                                className="flex-1 px-6 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-750 transition-all"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={() => {
-                                    if (!assignData.employeeId) return toast.error('Selecciona un empleado');
-                                    distributeMutation.mutate({
-                                        itemId: selectedItem.id,
-                                        ...assignData
-                                    });
-                                }}
-                                disabled={distributeMutation.isPending}
-                                className="flex-[2] px-6 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/20 active:scale-95 disabled:opacity-50"
-                            >
-                                {distributeMutation.isPending ? 'Procesando...' : 'Completar Entrega'}
-                            </button>
-                        </div>
-                    </motion.div>
-                </div>
-            )}
+                        </motion.div>
+                    </div>
+                )
+            }
 
             {/* Stock Refill Modal */}
             <AnimatePresence>
@@ -559,111 +594,113 @@ export default function GlobalAssetsPage() {
             </AnimatePresence>
 
             {/* Add Item Modal */}
-            {showAddModal && (
-                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                    <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-8 shadow-2xl space-y-6">
-                        <div className="flex items-center gap-4">
-                            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                                <Plus className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h2 className="text-2xl font-black text-slate-900 dark:text-white">Nuevo Producto</h2>
-                                <p className="text-sm text-slate-500 font-medium">Registrar nuevo material en almacén</p>
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Categoría</label>
-                                    <select
-                                        value={newItem.category}
-                                        onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-                                        className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                                    >
-                                        {categories.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>{CATEGORY_MAP[c] || c}</option>)}
-                                    </select>
+            {
+                showAddModal && (
+                    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                        <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-3xl p-8 shadow-2xl space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-500/10 rounded-2xl flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                                    <Plus className="w-6 h-6" />
                                 </div>
-                                {(newItem.category === 'TECH') && (
+                                <div>
+                                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">Nuevo Producto</h2>
+                                    <p className="text-sm text-slate-500 font-medium">Registrar nuevo material en almacén</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Tipo de Dispositivo</label>
+                                        <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Categoría</label>
+                                        <select
+                                            value={newItem.category}
+                                            onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
+                                            className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                        >
+                                            {categories.filter(c => c !== 'ALL').map(c => <option key={c} value={c}>{CATEGORY_MAP[c] || c}</option>)}
+                                        </select>
+                                    </div>
+                                    {(newItem.category === 'TECH') && (
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Tipo de Dispositivo</label>
+                                            <input
+                                                type="text"
+                                                placeholder="Ej: Portátil, Monitor, Móvil..."
+                                                value={newItem.description.split('\n')[0] || ''}
+                                                onChange={(e) => {
+                                                    const lines = newItem.description.split('\n');
+                                                    lines[0] = e.target.value;
+                                                    setNewItem({ ...newItem, description: lines.join('\n') });
+                                                }}
+                                                className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                                {(newItem.category === 'CLOTHING' || newItem.category === 'UNIFORM' || newItem.category === 'EPI' || newItem.category === 'UNIFORME') && (
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Talla (ropa)</label>
                                         <input
                                             type="text"
-                                            placeholder="Ej: Portátil, Monitor, Móvil..."
-                                            value={newItem.description.split('\n')[0] || ''}
-                                            onChange={(e) => {
-                                                const lines = newItem.description.split('\n');
-                                                lines[0] = e.target.value;
-                                                setNewItem({ ...newItem, description: lines.join('\n') });
-                                            }}
+                                            placeholder="Ej: M, 42..."
+                                            value={newItem.size}
+                                            onChange={(e) => setNewItem({ ...newItem, size: e.target.value })}
                                             className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
                                         />
                                     </div>
                                 )}
                             </div>
-                            {(newItem.category === 'CLOTHING' || newItem.category === 'UNIFORM' || newItem.category === 'EPI' || newItem.category === 'UNIFORME') && (
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Nombre del Producto</label>
+                                <input
+                                    type="text"
+                                    value={newItem.name}
+                                    onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Talla (ropa)</label>
+                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Stock Inicial</label>
                                     <input
-                                        type="text"
-                                        placeholder="Ej: M, 42..."
-                                        value={newItem.size}
-                                        onChange={(e) => setNewItem({ ...newItem, size: e.target.value })}
+                                        type="number"
+                                        value={newItem.quantity}
+                                        onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) })}
                                         className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
                                     />
                                 </div>
-                            )}
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Nombre del Producto</label>
-                            <input
-                                type="text"
-                                value={newItem.name}
-                                onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-                                className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Stock Inicial</label>
-                                <input
-                                    type="number"
-                                    value={newItem.quantity}
-                                    onChange={(e) => setNewItem({ ...newItem, quantity: parseInt(e.target.value) })}
-                                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Alerta Stock Bajo</label>
-                                <input
-                                    type="number"
-                                    value={newItem.minQuantity}
-                                    onChange={(e) => setNewItem({ ...newItem, minQuantity: parseInt(e.target.value) })}
-                                    className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
-                                />
+                                <div className="space-y-2">
+                                    <label className="text-sm font-bold text-slate-700 dark:text-slate-300">Alerta Stock Bajo</label>
+                                    <input
+                                        type="number"
+                                        value={newItem.minQuantity}
+                                        onChange={(e) => setNewItem({ ...newItem, minQuantity: parseInt(e.target.value) })}
+                                        className="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 border-none rounded-xl text-sm font-bold focus:ring-2 focus:ring-indigo-500 dark:text-white"
+                                    />
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div className="flex gap-3 pt-4">
-                        <button
-                            onClick={() => setShowAddModal(false)}
-                            className="flex-1 px-6 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-750 transition-all"
-                        >
-                            Cancelar
-                        </button>
-                        <button
-                            onClick={() => createItemMutation.mutate(newItem)}
-                            className="flex-1 px-6 py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-200 dark:shadow-none hover:bg-emerald-700 transition-all"
-                        >
-                            Guardar Producto
-                        </button>
+                        <div className="flex gap-3 pt-4">
+                            <button
+                                onClick={() => setShowAddModal(false)}
+                                className="flex-1 px-6 py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-750 transition-all"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={() => createItemMutation.mutate(newItem)}
+                                className="flex-1 px-6 py-4 bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-200 dark:shadow-none hover:bg-emerald-700 transition-all"
+                            >
+                                Guardar Producto
+                            </button>
+                        </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )
+            }
+        </div >
     );
 }
 

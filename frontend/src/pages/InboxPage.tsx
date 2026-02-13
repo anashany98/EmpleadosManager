@@ -11,6 +11,8 @@ interface InboxDocument {
     source: string;
     receivedAt: string;
     fileUrl: string;
+    ocrStatus?: string;
+    content?: string;
 }
 
 interface Employee {
@@ -193,11 +195,22 @@ export default function InboxPage() {
                                         <Calendar size={12} />
                                         {new Date(doc.receivedAt).toLocaleString()}
                                     </div>
+                                    {doc.ocrStatus && (
+                                        <div className="mt-1">
+                                            <span className={`text-[10px] px-1 py-0.5 rounded font-bold uppercase ${doc.ocrStatus === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                                doc.ocrStatus === 'FAILED' ? 'bg-red-100 text-red-700' :
+                                                    'bg-gray-100 text-gray-700'
+                                                }`}>
+                                                OCR: {doc.ocrStatus}
+                                            </span>
+                                        </div>
+                                    )}
                                 </button>
                             ))
                         )}
                     </div>
                 </div>
+
 
                 {/* Preview and Assignment Form */}
                 {selectedDoc ? (
@@ -222,6 +235,16 @@ export default function InboxPage() {
                                 />
                             </div>
                         </div>
+
+                        {/* Extracted Text Panel (Collapsible or Tab) */}
+                        {selectedDoc.content && (
+                            <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <h4 className="font-bold text-sm mb-2 text-slate-700 dark:text-slate-300">Texto Extraído (OCR)</h4>
+                                <div className="text-xs text-slate-600 dark:text-slate-400 max-h-40 overflow-y-auto whitespace-pre-wrap font-mono bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-800">
+                                    {selectedDoc.content}
+                                </div>
+                            </div>
+                        )}
 
                         {/* Assignment Panel */}
                         <div className="w-80 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 flex flex-col shrink-0 overflow-y-auto shadow-xl">

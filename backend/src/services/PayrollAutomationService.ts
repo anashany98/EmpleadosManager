@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { ReportService } from './ReportService';
 import { AuditService } from './AuditService';
 
@@ -48,31 +49,42 @@ export class PayrollAutomationService {
 
             // Proportional calculation
             const proportion = totalHoursWorked > 0 ? (totalHoursWorked / expectedHours) : 0;
-            const bruto = monthlySalary * (proportion > 1.1 ? 1.1 : proportion); // Cap at 110% to prevent extreme outliers
 
-            // Simple tax estimation (Spain standard approximate)
-            const ssTrabajador = bruto * 0.0635;
-            const irpf = bruto * 0.15;
-            const neto = bruto - ssTrabajador - irpf;
-            const ssEmpresa = bruto * 0.236;
+            // Cap at 110% to prevent extreme outliers, but allow some overtime impact
+            const salaryFactor = proportion > 1.1 ? 1.1 : proportion;
+            const bruto = new Prisma.Decimal(monthlySalary * salaryFactor);
+
+            // Simple tax estimation (Spain standard approximate constants)
+            // TODO: Move these to configuration or employee specific settings
+            const SS_WORKER_RATE = 0.0635;
+            const IRPF_RATE = 0.15; // Flat rate estimation
+            const SS_COMPANY_RATE = 0.236;
+
+            const ssTrabajador = bruto.mul(SS_WORKER_RATE);
+            const irpf = bruto.mul(IRPF_RATE);
+            const neto = bruto.sub(ssTrabajador).sub(irpf);
+            const ssEmpresa = bruto.mul(SS_COMPANY_RATE);
 
             payrollRows.push({
                 batchId: batch.id,
                 employeeId: employee.id,
                 rawEmployeeName: employee.name,
-                bruto: bruto,
-                neto: neto,
-                ssEmpresa: ssEmpresa,
-                ssTrabajador: ssTrabajador,
-                irpf: irpf,
-                status: proportion < 0.8 ? 'WARNING' : 'VALID' // Warn if worked less than 80%
+                bruto,
+                neto,
+                ssEmpresa,
+                ssTrabajador,
+                irpf,
+                status: proportion < 0.8 ? 'WARNING' : 'VALID', // Warn if worked less than 80%
+                validationNotes: proportion < 0.8 ? `Horas trabajadas (${totalHoursWorked.toFixed(1)}) inferiores a lo esperado (${expectedHours.toFixed(1)})` : null
             });
         }
 
         // 4. Save rows
-        await prisma.payrollRow.createMany({
-            data: payrollRows as any
-        });
+        if (payrollRows.length > 0) {
+            await prisma.payrollRow.createMany({
+                data: payrollRows
+            });
+        }
 
         // 5. Update batch status
         await prisma.payrollImportBatch.update({

@@ -38,6 +38,16 @@ export default function AlertCenter() {
         onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] })
     });
 
+    const markAllReadMutation = useMutation({
+        mutationFn: () => api.put('/alerts/read-all', {}),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] })
+    });
+
+    const dismissAllMutation = useMutation({
+        mutationFn: () => api.put('/alerts/dismiss-all', {}),
+        onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] })
+    });
+
     const unreadCount = alerts.filter((a: Alert) => !a.isRead).length;
 
     const handleAction = (alert: Alert) => {
@@ -93,8 +103,30 @@ export default function AlertCenter() {
                         >
                             <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                                 <h3 className="font-semibold text-slate-900 dark:text-white">Alertas del Sistema</h3>
-                                <div className="text-xs text-slate-500">
-                                    {unreadCount} nuevas
+                                <div className="flex items-center gap-3">
+                                    <div className="text-xs text-slate-500">
+                                        {unreadCount} nuevas
+                                    </div>
+                                    {alerts.length > 0 && (
+                                        <div className="flex items-center gap-2 border-l border-slate-100 dark:border-slate-800 pl-3">
+                                            {unreadCount > 0 && (
+                                                <button
+                                                    onClick={() => markAllReadMutation.mutate()}
+                                                    className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-tight"
+                                                    title="Marcar todas como leídas"
+                                                >
+                                                    Leer Todo
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => dismissAllMutation.mutate()}
+                                                className="text-[10px] font-bold text-rose-600 hover:text-rose-700 uppercase tracking-tight"
+                                                title="Descartar todas"
+                                            >
+                                                Borrar Todo
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

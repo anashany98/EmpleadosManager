@@ -11,6 +11,7 @@ import { validatePassword } from '../utils/passwordPolicy';
 import { AuthService } from '../services/AuthService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
+import { AuditService } from '../services/AuditService';
 
 const log = createLogger('AuthController');
 
@@ -108,104 +109,47 @@ export const AuthController = {
             const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
             if (!employee) throw new AppError('Empleado no encontrado', 404);
             if (!employee.dni) throw new AppError('El empleado no tiene DNI registrado', 400);
-            // if (!employee.email) throw new AppError('El empleado no tiene email personal para enviar las credenciales', 400);
 
+            // Generate Secure Token (Welcome Token)
+            const welcomeToken = jwt.sign({
+                sub: employee.id,
+                dni: employee.dni,
+                type: 'PASSWORD_RESET' // Reuse password reset flow
+            }, JWT_SECRET, { expiresIn: '7d' }); // 7 days validity for welcome link
 
-            // Generate Random Password
-            const tempPassword = generateTempPassword();
-            const hashedPassword = await bcrypt.hash(tempPassword, 10);
-
-            // Check if user exists linked to this employee or DNI
-            let user = await prisma.user.findFirst({
-                where: {
-                    OR: [
-                        { employeeId: employee.id },
-                        { dni: employee.dni }
-                    ]
-                }
-            });
-
-            if (user) {
-                // Update existing user
-                user = await prisma.user.update({
-                    where: { id: user.id },
-                    data: {
-                        password: hashedPassword,
-                        dni: employee.dni, // Ensure synced
-                        employeeId: employee.id
-                    }
-                });
-            } else {
-                // Create new user
-                const empEmail = employee.email || `${employee.dni}@system.local`;
-                // Check if email is taken by another user (shouldn't happen 1:1 usually but check safety)
-                const existingEmail = await prisma.user.findUnique({ where: { email: empEmail } });
-
-                if (existingEmail) {
-                    // Determine if we should link or fail. 
-                    // Failing is safer to avoid account hijacking or confusion.
-                    // But if the email matches, maybe it IS the user?
-                    if (existingEmail.dni && existingEmail.dni !== employee.dni) {
-                        throw new AppError('El email del empleado ya está asociado a otro usuario con diferente DNI', 400);
-                    }
-                    // If email exists but no DNI, maybe we upgrade it?
-                    // Let's UPDATE it to link it.
-                    user = await prisma.user.update({
-                        where: { id: existingEmail.id },
-                        data: {
-                            dni: employee.dni,
-                            employeeId: employee.id,
-                            password: hashedPassword
-                        }
-                    });
-                } else {
-                    user = await prisma.user.create({
-                        data: {
-                            email: empEmail,
-                            dni: employee.dni,
-                            password: hashedPassword,
-                            role: 'user', // Default role
-                            employeeId: employee.id,
-                            permissions: JSON.stringify({ dashboard: 'read', calendar: 'read' }) // Default permissions?
-                        }
-                    });
-                }
-            }
+            const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${welcomeToken}`;
 
             if (employee.email) {
-                const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
                 const html = `
                     <p>Hola ${employee.name},</p>
                     <p>Se ha habilitado tu acceso al portal del empleado.</p>
-                    <p><strong>Usuario (DNI):</strong> ${employee.dni}</p>
-                    <p><strong>Contraseña temporal:</strong> ${tempPassword}</p>
-                    <p>Accede aquí: <a href="${loginUrl}">${loginUrl}</a></p>
-                    <p>Por seguridad, cambia la contraseña tras iniciar sesión.</p>
+                    <p>Para activar tu cuenta y establecer tu contraseña, haz clic en el siguiente enlace:</p>
+                    <p><a href="${loginUrl}" style="padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Activar Cuenta</a></p>
+                    <p>O copia y pega esta dirección en tu navegador:</p>
+                    <p>${loginUrl}</p>
+                    <p>Este enlace es válido por 7 días.</p>
                 `;
 
                 await EmailService.sendMail(
                     employee.email,
-                    'Credenciales de Acceso - Portal del Empleado',
+                    'Bienvenido al Portal del Empleado - Activación de Cuenta',
                     html
                 );
 
-                return ApiResponse.success(res, { email: employee.email, hasEmail: true }, 'Acceso generado. Credenciales enviadas por correo.');
+                await AuditService.log('ACCESS_GENERATED', 'USER', employee.id, { method: 'EMAIL_LINK' }, requester.id);
+                return ApiResponse.success(res, { email: employee.email, hasEmail: true }, 'Invitación enviada por correo.');
             }
 
             if (process.env.NODE_ENV === 'production') {
                 throw new AppError('El empleado no tiene email. No se pueden entregar credenciales de forma segura.', 400);
             }
 
-            // Dev only: return password if no email
-            if (process.env.NODE_ENV === 'development') {
-                return ApiResponse.success(res, {
-                    hasEmail: false,
-                    password: tempPassword,
-                    username: employee.dni
-                }, 'Acceso generado. Copia la contraseña (SOLO DESARROLLO).');
-            }
-
-            return ApiResponse.success(res, { hasEmail: false }, 'Acceso generado. El empleado no tiene email, contacta al administrador.');
+            // Dev only: return link
+            const mockLink = `/reset-password?token=${welcomeToken}`;
+            return ApiResponse.success(res, {
+                hasEmail: false,
+                activationLink: mockLink
+            }, 'Acceso generado. Copia el enlace de activación (SOLO DESARROLLO).');
 
         } catch (error: any) {
             log.error({ error }, 'Error generating access');

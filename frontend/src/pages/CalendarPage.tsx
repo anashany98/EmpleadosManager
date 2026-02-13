@@ -35,6 +35,8 @@ export default function CalendarPage() {
     const [vacationType, setVacationType] = useState('VACATION');
     const [reason, setReason] = useState('');
     const [medicalHours, setMedicalHours] = useState('');
+    const [calendarLink, setCalendarLink] = useState('');
+    const [showLinkModal, setShowLinkModal] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -125,6 +127,16 @@ export default function CalendarPage() {
         } catch (e) { toast.error('Error al guardar'); }
     };
 
+    const fetchCalendarLink = async () => {
+        try {
+            const res = await api.get('/calendar/link');
+            if (res.data?.success) {
+                setCalendarLink(res.data.data.url);
+                setShowLinkModal(true);
+            }
+        } catch (e) { toast.error('Error al generar enlace'); }
+    }
+
     return (
         <div className="h-[calc(100vh-100px)] flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500 font-sans">
             {/* Main Calendar Area */}
@@ -141,6 +153,10 @@ export default function CalendarPage() {
                         </div>
                         <button onClick={() => setCurrentDate(new Date())} className="px-4 py-2 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 text-xs font-bold rounded-xl hover:bg-indigo-100 transition-colors">
                             Hoy
+                        </button>
+                        <button onClick={fetchCalendarLink} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm border border-slate-200 dark:border-slate-700 text-xs font-bold">
+                            <Clock size={16} className="text-indigo-500" />
+                            Sincronizar
                         </button>
                     </div>
 
@@ -349,6 +365,26 @@ export default function CalendarPage() {
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+
+            <AnimatePresence>
+                {showLinkModal && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden p-8 text-center space-y-6">
+                            <h3 className="text-xl font-black text-slate-900 dark:text-white">Sincroniza tu Calendario</h3>
+                            <p className="text-sm text-slate-500">Copia este enlace y añádelo como "Suscripción a URL" en Google Calendar, Outlook o Apple Calendar para ver tus vacaciones sincronizadas.</p>
+
+                            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
+                                <code className="flex-1 text-xs font-mono break-all text-left text-slate-600 dark:text-slate-400 select-all">{calendarLink}</code>
+                                <button onClick={() => { navigator.clipboard.writeText(calendarLink); toast.success('Enlace copiado'); }} className="p-2 bg-white dark:bg-slate-700 shadow-sm rounded-lg hover:text-indigo-600">
+                                    <FileText size={16} />
+                                </button>
+                            </div>
+
+                            <button onClick={() => setShowLinkModal(false)} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700">Cerrar</button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div >
     );
 }

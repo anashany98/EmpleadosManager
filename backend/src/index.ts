@@ -102,6 +102,9 @@ import onboardingRoutes from './routes/onboardingRoutes';
 import anomalyRoutes from './routes/anomalyRoutes';
 import kioskRoutes from './routes/kioskRoutes';
 import offboardingRoutes from './routes/offboardingRoutes';
+import vehicleRoutes from './routes/vehicleRoutes';
+import cardRoutes from './routes/cardRoutes';
+import calendarRoutes from './routes/calendarRoutes';
 
 app.use('/api/kiosk', kioskRoutes);
 app.use('/api/onboarding', protect, onboardingRoutes);
@@ -147,15 +150,24 @@ app.use('/api/employee-project-work', protect, checkPermission('projects', 'read
 app.use('/api/inventory', protect, checkPermission('assets', 'read'), inventoryRoutes);
 app.use('/api/onboarding', protect, onboardingRoutes);
 app.use('/api/offboarding', offboardingRoutes);
+app.use('/api/vehicles', vehicleRoutes);
+app.use('/api/cards', cardRoutes);
+app.use('/api/calendar', calendarRoutes);
 
 app.use(errorMiddleware);
 
 
 import { inboxService } from './services/InboxService';
 import { schedulerService } from './services/SchedulerService';
+import { queueService } from './services/QueueService';
+import { initWorkers } from './workers';
 import { loggers } from './services/LoggerService';
+import { EncryptionService } from './services/EncryptionService';
 
 const log = loggers.api;
+
+// Validate critical configuration
+EncryptionService.validateKey();
 
 // Database Connection Check
 async function startServer() {
@@ -170,6 +182,9 @@ async function startServer() {
         // Start Scheduler Service (Cron jobs)
         schedulerService.start();
 
+        // Initialize Workers
+        initWorkers();
+
         app.listen(Number(PORT), '0.0.0.0', () => {
             log.info({ port: PORT, host: '0.0.0.0' }, 'Backend running');
         });
@@ -178,5 +193,20 @@ async function startServer() {
         process.exit(1);
     }
 }
+
+const gracefulShutdown = () => {
+    log.info('Received kill signal, shutting down gracefully');
+    schedulerService.stop();
+    schedulerService.stop();
+    inboxService.stop();
+    queueService.close().then(() => log.info('QueueService closed'));
+    prisma.$disconnect().then(() => {
+        log.info('Database disconnected');
+        process.exit(0);
+    });
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 startServer();

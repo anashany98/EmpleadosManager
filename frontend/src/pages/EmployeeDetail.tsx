@@ -229,8 +229,10 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (e?: React.FormEvent) => {
+        if (e && e.preventDefault) {
+            e.preventDefault();
+        }
         setSaving(true);
         try {
             // Prepare payload
@@ -432,7 +434,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                     <RRHHNotesSection
                                         value={formData.privateNotes}
                                         onChange={(val) => setFormData(prev => ({ ...prev, privateNotes: val }))}
-                                        onSave={handleSubmit as any}
+                                        onSave={() => handleSubmit()}
                                         saving={saving}
                                     />
                                 )}

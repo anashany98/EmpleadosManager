@@ -25,7 +25,15 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 
         const user = await prisma.user.findUnique({
             where: { id: decoded.id },
-            select: { id: true, email: true, role: true, permissions: true, employeeId: true, dni: true } // Include employee links
+            select: {
+                id: true,
+                email: true,
+                role: true,
+                permissions: true,
+                employeeId: true,
+                dni: true,
+                employee: { select: { companyId: true } }
+            } // Include employee links
         });
 
         if (!user) {
@@ -42,7 +50,8 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 
         const userWithParsedPermissions = {
             ...user,
-            permissions: parsedPermissions
+            permissions: parsedPermissions,
+            companyId: user.employee?.companyId
         };
 
         (req as any).user = userWithParsedPermissions;

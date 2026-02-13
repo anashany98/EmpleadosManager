@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Settings, DollarSign, Upload, AlertCircle, Folder, Mail, Save, Send } from 'lucide-react';
 import ChecklistManager from '../components/onboarding/ChecklistManager';
 import BackupManager from '../components/BackupManager';
+import FileMappingManager from '../components/FileMappingManager';
 
 const CATEGORIAS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4', 'Grupo 5', 'Grupo 6', 'Grupo 7', 'Oficial de 1ª', 'Oficial de 2ª', 'Oficial de 3ª', 'Peón', 'Otros'];
 
@@ -520,6 +521,9 @@ export default function SettingsPage() {
                     </div>
                 </div>
             </div>
+
+            {/* File Mappings (QR) */}
+            <FileMappingManager />
 
             {/* Onboarding Templates */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-6">

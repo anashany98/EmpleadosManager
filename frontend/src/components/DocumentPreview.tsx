@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ExternalLink, Download, ShieldCheck, PenTool, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
+import { X, ExternalLink, Download, ShieldCheck, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { FaceVerificationModal } from './FaceVerificationModal';
@@ -24,9 +24,12 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
 
     const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/uploads/${fileUrl}`;
 
+    // Signature functions temporarily unused
+    /*
     const handleStartSigning = () => {
         setVerifying(true);
     };
+    */
 
     const handleVerificationSuccess = () => {
         setVerifying(false);
@@ -90,15 +93,17 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
                         </div>
 
                         <div className="flex items-center gap-3">
+                            {/* Signature feature temporarily disabled
                             {canSign && !isSigned && (
                                 <button
-                                    onClick={handleStartSigning}
+                                    onClick={() => setVerifying(true)}
                                     className="px-6 py-2.5 bg-blue-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-xl shadow-blue-500/20 hover:bg-blue-700 transition-all active:scale-95 flex items-center gap-2"
                                 >
                                     <PenTool size={16} />
                                     Firmar Ahora
                                 </button>
                             )}
+                            */}
                             <a
                                 href={fullUrl}
                                 target="_blank"

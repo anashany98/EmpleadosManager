@@ -170,10 +170,23 @@ export const TimeEntryController = {
     createManual: async (req: Request, res: Response) => {
         try {
             const { employeeId, type, timestamp, location, comment } = req.body;
-            const adminId = (req as AuthenticatedRequest).user?.id || 'system';
+            const currentUser = (req as AuthenticatedRequest).user;
+            const adminId = currentUser?.id || 'system';
 
             if (!employeeId || !type || !timestamp) {
                 return ApiResponse.error(res, 'Faltan campos obligatorios', 400);
+            }
+
+            // Security: Verify target employee belongs to admin's company
+            if (currentUser && currentUser.role === 'admin' && currentUser.companyId) {
+                const target = await prisma.employee.findUnique({
+                    where: { id: employeeId },
+                    select: { companyId: true }
+                });
+
+                if (!target || target.companyId !== currentUser.companyId) {
+                    return ApiResponse.error(res, 'No autorizado para gestionar empleados de otra empresa', 403);
+                }
             }
 
             const entry = await prisma.timeEntry.create({

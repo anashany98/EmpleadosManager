@@ -304,7 +304,8 @@ const KioskPage: React.FC = () => {
                     audio={false}
                     screenshotFormat="image/jpeg"
                     videoConstraints={{ facingMode: 'user' }}
-                    className="w-full h-full object-cover"
+                    mirrored={true}
+                    className="w-full h-full object-cover scale-x-[-1]"
                 />
 
                 {/* Overlay UI */}

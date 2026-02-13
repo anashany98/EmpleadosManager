@@ -28,7 +28,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
     // Dashboard State
     const [search, setSearch] = useState('');
     const [employees, setEmployees] = useState<Employee[]>([]);
-    const [filteredEmployees, setFilteredEmployees] = useState<Employee[]>([]);
+    // filteredEmployees is no longer needed since we fetch filtered data directly
     const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
     const [showEnrollModal, setShowEnrollModal] = useState(false);
 
@@ -51,31 +51,31 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
         }
     };
 
-    const fetchEmployees = async (authToken: string) => {
+    const fetchEmployees = async (authToken: string, searchTerm: string = '') => {
         try {
             // Manually passing token as we might be in Kiosk context without global auth context
+            const params = searchTerm ? { search: searchTerm } : {};
             const res = await api.get('/employees', {
-                headers: { Authorization: `Bearer ${authToken}` }
+                headers: { Authorization: `Bearer ${authToken}` },
+                params
             });
-            setEmployees(res.data);
-            setFilteredEmployees(res.data);
+            // If pagination is used, data might be in res.data.data
+            const data = Array.isArray(res.data) ? res.data : res.data.data || [];
+            setEmployees(data);
         } catch (error) {
             console.error(error);
             toast.error('Error cargando empleados');
         }
     };
 
+    // Debounce Search
     useEffect(() => {
-        if (!employees.length) return;
-        const lower = search.toLowerCase();
-        setFilteredEmployees(
-            employees.filter(e =>
-                e.firstName?.toLowerCase().includes(lower) ||
-                e.lastName?.toLowerCase().includes(lower) ||
-                e.dni?.toLowerCase().includes(lower)
-            )
-        );
-    }, [search, employees]);
+        if (!token) return;
+        const timer = setTimeout(() => {
+            fetchEmployees(token, search);
+        }, 500); // 500ms debounce
+        return () => clearTimeout(timer);
+    }, [search, token]);
 
     const handleEnrollClick = (employee: Employee) => {
         setSelectedEmployee(employee);
@@ -154,7 +154,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                 </div>
 
                 <div className="flex-1 overflow-y-auto space-y-3 pb-20">
-                    {filteredEmployees.map(emp => (
+                    {employees.map(emp => (
                         <div key={emp.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-between">
                             <div>
                                 <h3 className="font-bold text-lg dark:text-white">{emp.firstName} {emp.lastName}</h3>
@@ -167,8 +167,8 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                             <button
                                 onClick={() => handleEnrollClick(emp)}
                                 className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition ${emp.faceDescriptor
-                                        ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
-                                        : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
+                                    ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
                                     }`}
                             >
                                 {emp.faceDescriptor ? <UserCheck size={18} /> : <Camera size={18} />}
@@ -176,7 +176,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                             </button>
                         </div>
                     ))}
-                    {filteredEmployees.length === 0 && (
+                    {employees.length === 0 && (
                         <div className="text-center text-slate-500 mt-10">
                             No se encontraron empleados.
                         </div>

@@ -5,8 +5,15 @@ type Client = { res: Response };
 const clientsByUser = new Map<string, Set<Client>>();
 
 const writeEvent = (res: Response, event: string, data: any) => {
-    res.write(`event: ${event}\n`);
-    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    try {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (error) {
+        // Stream closed or error writing. We can't recover easily here without removing the client.
+        // The controller handles cleanup on 'close' event, but immediate error needs handling.
+        console.warn('Failed to write to stream, client might have disconnected.', error);
+        res.end(); // Try to close properly
+    }
 };
 
 export const NotificationStream = {

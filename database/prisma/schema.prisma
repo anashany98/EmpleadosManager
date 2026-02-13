@@ -28,6 +28,7 @@ model User {
   batches     PayrollImportBatch[]
   refreshTokens RefreshToken[]
   notifications Notification[]
+  employee    Employee?            @relation(fields: [employeeId], references: [id])
 }
 
 model RefreshToken {
@@ -62,6 +63,9 @@ model Company {
   updatedAt DateTime   @updatedAt
   employees Employee[]
   onboardingTemplates OnboardingTemplate[] // Optional: if we want company-specific templates later, but for now just global? The plan didn't specify company relation for templates yet. 
+  vehicles    Vehicle[]
+  cards       Card[]
+  fileMappings FileMapping[]
 }
 
 model PermissionProfile {
@@ -142,6 +146,9 @@ model Employee {
   anomalies                AnomalyEvent[]
   kioskPin                 String?              // Encrypted PIN for kiosk backup
   faceDescriptor           Json?                // Array of numbers for face recognition
+  vehicles                 Vehicle[]
+  cards                    Card[]
+  users                    User[]
 
   @@index([companyId])
 }
@@ -248,6 +255,7 @@ model Document {
   name       String
   category   String
   fileUrl    String
+  content    String?   @db.Text
   uploadDate DateTime  @default(now())
   expiryDate DateTime?
   createdAt  DateTime  @default(now())
@@ -506,6 +514,8 @@ model InboxDocument {
   source       String
   receivedAt   DateTime  @default(now())
   fileUrl      String
+  content      String?   @db.Text
+  ocrStatus    String    @default("PENDING") // PENDING, COMPLETED, FAILED
   processed    Boolean   @default(false)
   processedAt  DateTime?
 }
@@ -585,4 +595,87 @@ model AnomalyEvent {
   @@unique([entityType, entityId])
   @@index([status])
   @@index([employeeId])
+}
+
+model Vehicle {
+  id                  String    @id @default(uuid())
+  plate               String    @unique // Matrícula
+  make                String    // Marca
+  model               String    // Modelo
+  year                Int?
+  vin                 String?   // Bastidor
+  type                String    @default("CAR") // CAR, VAN, MOTORCYCLE, TRUCK
+  status              String    @default("ACTIVE") // ACTIVE, MAINTENANCE, INACTIVE
+  
+  // Dates
+  purchaseDate        DateTime?
+  nextITVDate         DateTime?
+  insuranceExpiry     DateTime?
+  lastMaintenanceDate DateTime?
+  nextMaintenanceKm   Int?
+
+  // Current State
+  currentMileage      Int       @default(0)
+  
+  // Assignment
+  employeeId          String?
+  employee            Employee? @relation(fields: [employeeId], references: [id])
+  
+  // Relation to Company (Ownership)
+  companyId           String?
+  company             Company?  @relation(fields: [companyId], references: [id])
+
+  // Images or Documents
+  image               String?
+  
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([employeeId])
+  @@index([companyId])
+}
+
+model Card {
+  id              String    @id @default(uuid())
+  alias           String?   // "Visa Repsol Juan"
+  panLast4        String    // Security: only store last 4
+  encryptedPan    String?   // Optional: if we need full pan (encrypted!)
+  provider        String    // VISA, MASTERCARD, AMEX, SOLRED, CEPSA
+  type            String    @default("CREDIT") // CREDIT, DEBIT, FUEL, TOLL
+  
+  // Limits
+  limit           Decimal?   @default(0)
+  currency        String    @default("EUR")
+  
+  // Dates
+  expiryDate      DateTime? // MM/YY usually, store as Date (end of month)
+  
+  // Assignment
+  employeeId      String?
+  employee        Employee? @relation(fields: [employeeId], references: [id])
+  
+  // Relation to Company (Ownership)
+  companyId       String?
+  company         Company?  @relation(fields: [companyId], references: [id])
+
+  status          String    @default("ACTIVE") // ACTIVE, BLOCKED, CANCELLED
+  pin             String?   // Encrypted PIN if needed (risky, avoid if possible)
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([employeeId])
+}
+
+model FileMapping {
+  id          String   @id @default(uuid())
+  qrType      String   @unique // e.g. VACATION, EPI
+  category    String   // e.g. "Justificante Ausencia"
+  namePattern String   // e.g. "Justificante Auto {date}"
+  companyId   String?  // Optional: Global vs Company specific overrides
+  company     Company? @relation(fields: [companyId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
 }

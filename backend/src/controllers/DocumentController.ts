@@ -10,8 +10,6 @@ import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('DocumentController');
 
-
-
 export const DocumentController = {
     // Procesar OCR para clasificar documentos
     processOCR: async (req: Request, res: Response) => {
@@ -67,9 +65,27 @@ export const DocumentController = {
 
         try {
             const { user } = req as AuthenticatedRequest;
-            if (user.role !== 'admin' && user.employeeId !== employeeId) {
-                throw new AppError('No autorizado', 403);
+
+            // Security Check
+            if (user.role !== 'admin') {
+                if (user.employeeId === employeeId) {
+                    // Self upload: OK (if allowed by policy, assuming yes)
+                } else {
+                    // Check if Manager/HR of same company
+                    const targetEmployee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
+                    if (!targetEmployee) throw new AppError('Empleado no encontrado', 404);
+
+                    if (user.role === 'hr' || user.role === 'manager') {
+                        if (targetEmployee.companyId !== user.companyId) {
+                            throw new AppError('No autorizado: Empleado de otra empresa', 403);
+                        }
+                    } else {
+                        // Regular employee uploading for someone else -> Deny
+                        throw new AppError('No autorizado', 403);
+                    }
+                }
             }
+
             const safeEmployeeId = employeeId.replace(/[^a-zA-Z0-9-]/g, '');
             if (safeEmployeeId !== employeeId) {
                 throw new AppError('employeeId inválido', 400);
@@ -94,6 +110,8 @@ export const DocumentController = {
             return ApiResponse.success(res, document, 'Documento subido correctamente', 201);
         } catch (error) {
             log.error({ error }, 'Error al subir documento');
+            // Re-throw AppError
+            if (error instanceof AppError) throw error;
             throw new AppError('Error al registrar el documento en la base de datos', 500);
         }
     },
@@ -102,8 +120,27 @@ export const DocumentController = {
         const { employeeId } = req.params;
         try {
             const { user } = req as AuthenticatedRequest;
-            if (user.role !== 'admin' && user.employeeId !== employeeId) {
-                throw new AppError('No autorizado para ver estos documentos', 403);
+
+            // Security Check
+            if (user.role !== 'admin') {
+                if (user.employeeId === employeeId) {
+                    // Allow Self
+                } else {
+                    const targetEmployee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
+                    // If target doesn't exist, we can return 404 or empty. 
+                    // Let's rely on query below to return empty, but we must check permission first.
+                    // If target doesn't exist, we can't check company.
+
+                    if (targetEmployee) {
+                        if (user.role === 'hr' || user.role === 'manager') {
+                            if (targetEmployee.companyId !== user.companyId) {
+                                throw new AppError('No autorizado', 403);
+                            }
+                        } else {
+                            throw new AppError('No autorizado', 403);
+                        }
+                    }
+                }
             }
 
             const page = parseInt(req.query.page as string) || 1;
@@ -136,6 +173,7 @@ export const DocumentController = {
 
             return ApiResponse.success(res, documents);
         } catch (error) {
+            if (error instanceof AppError) throw error;
             throw new AppError('Error al obtener documentos', 500);
         }
     },
@@ -144,10 +182,21 @@ export const DocumentController = {
         const { id } = req.params;
         try {
             const { user } = req as AuthenticatedRequest;
-            const document = await prisma.document.findUnique({ where: { id } });
+            const document = await prisma.document.findUnique({ where: { id }, include: { employee: true } });
             if (!document) throw new AppError('Documento no encontrado', 404);
-            if (user.role !== 'admin' && user.employeeId !== document.employeeId) {
-                throw new AppError('No autorizado', 403);
+
+            // Security Check
+            if (user.role !== 'admin') {
+                if (document.employeeId === user.employeeId) {
+                    // Allow Self Delete? Maybe.
+                } else {
+                    // Check Company
+                    if ((user.role === 'hr' || user.role === 'manager') && document.employee?.companyId === user.companyId) {
+                        // Allow HR
+                    } else {
+                        throw new AppError('No autorizado', 403);
+                    }
+                }
             }
 
             // Eliminar archivo físico / S3
@@ -176,9 +225,15 @@ export const DocumentController = {
 
             if (!document) throw new AppError('Documento no encontrado', 404);
 
-            // Security Check: Admin or Owner
-            if (user.role !== 'admin' && user.employeeId !== document.employeeId) {
-                throw new AppError('No tiene permisos para descargar este documento', 403);
+            // Security Check: Admin, Owner, or HR of same company
+            if (user.role !== 'admin') {
+                if (user.employeeId === document.employeeId) {
+                    // Allow
+                } else if ((user.role === 'hr' || user.role === 'manager') && document.employee?.companyId === user.companyId) {
+                    // Allow
+                } else {
+                    throw new AppError('No tiene permisos para descargar este documento', 403);
+                }
             }
 
             if (StorageService.provider === 'local') {
@@ -191,10 +246,7 @@ export const DocumentController = {
                 }
 
                 if (inline) {
-                    res.setHeader('Content-Type', 'application/pdf'); // Assumption: most are PDFs. 
-                    // Better validation: use mime-types or store mimetype in DB. 
-                    // For now, let express/sendfile handle it or default to PDF if we want to force preview.
-                    // Actually res.sendFile does a good job guessing mime type from extension.
+                    // Try to detect primitive types, else default.
                     return res.sendFile(filePath);
                 } else {
                     return res.download(filePath, document.name);
