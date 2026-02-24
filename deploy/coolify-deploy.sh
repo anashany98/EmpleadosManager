@@ -14,11 +14,6 @@ REQUIRED_VARS=(
   CORS_ORIGIN
   FRONTEND_URL
   VITE_API_URL
-  S3_ENDPOINT
-  S3_REGION
-  S3_BUCKET
-  S3_ACCESS_KEY_ID
-  S3_SECRET_ACCESS_KEY
 )
 
 MISSING=()
@@ -27,6 +22,22 @@ for VAR_NAME in "${REQUIRED_VARS[@]}"; do
     MISSING+=("$VAR_NAME")
   fi
 done
+
+STORAGE_PROVIDER="${STORAGE_PROVIDER:-local}"
+if [[ "$STORAGE_PROVIDER" == "s3" ]]; then
+  S3_REQUIRED_VARS=(
+    S3_ENDPOINT
+    S3_REGION
+    S3_BUCKET
+    S3_ACCESS_KEY_ID
+    S3_SECRET_ACCESS_KEY
+  )
+  for VAR_NAME in "${S3_REQUIRED_VARS[@]}"; do
+    if [[ -z "${!VAR_NAME:-}" ]]; then
+      MISSING+=("$VAR_NAME")
+    fi
+  done
+fi
 
 if [[ ${#MISSING[@]} -ne 0 ]]; then
   echo "Missing required environment variables: ${MISSING[*]}" >&2

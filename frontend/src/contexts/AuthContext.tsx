@@ -20,6 +20,8 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_SESSION_HINT_KEY = 'rrhh_auth_session_hint';
+const AUTH_PAGES = new Set(['/login', '/request-reset', '/reset-password']);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
@@ -30,15 +32,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isEmployee = !!user?.employeeId; // Has a linked employee record
 
     useEffect(() => {
-        checkAuth();
+        bootstrapAuth();
     }, []);
+
+    const hasSessionHint = () => {
+        try {
+            return window.localStorage.getItem(AUTH_SESSION_HINT_KEY) === '1';
+        } catch {
+            return false;
+        }
+    };
+
+    const setSessionHint = (value: boolean) => {
+        try {
+            if (value) {
+                window.localStorage.setItem(AUTH_SESSION_HINT_KEY, '1');
+            } else {
+                window.localStorage.removeItem(AUTH_SESSION_HINT_KEY);
+            }
+        } catch {
+            // Ignore storage errors
+        }
+    };
+
+    const bootstrapAuth = async () => {
+        const path = window.location.pathname;
+        const isAuthPage = AUTH_PAGES.has(path);
+        if (isAuthPage && !hasSessionHint()) {
+            setLoading(false);
+            return;
+        }
+        await checkAuth();
+    };
 
     const checkAuth = async () => {
         try {
             const response = await api.get('/auth/me');
             setUser(response.data);
+            setSessionHint(true);
         } catch (error) {
             setUser(null);
+            setSessionHint(false);
         } finally {
             setLoading(false);
         }
@@ -46,6 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const login = (token: string, refreshToken: string, userData: User) => {
         setUser(userData);
+        setSessionHint(true);
     };
 
     const logout = async () => {
@@ -55,6 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Logout error', error);
         }
         setUser(null);
+        setSessionHint(false);
         window.location.href = '/login';
     };
 

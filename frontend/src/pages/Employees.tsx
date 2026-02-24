@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import {
@@ -31,6 +31,7 @@ const fetchEmployees = async (): Promise<Employee[]> => {
 };
 
 export default function EmployeeList() {
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const confirmAction = useConfirm();
     const [searchTerm, setSearchTerm] = useState('');
@@ -333,10 +334,18 @@ export default function EmployeeList() {
                         </div>
                     ) : (
                         filteredEmployees.map((emp) => (
-                            <Link
+                            <article
                                 key={emp.id}
-                                to={`/employees/${emp.id}`}
-                                className="block bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm active:scale-95 transition-all"
+                                className="block bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm active:scale-95 transition-all cursor-pointer"
+                                role="link"
+                                tabIndex={0}
+                                onClick={() => navigate(`/employees/${emp.id}`)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        navigate(`/employees/${emp.id}`);
+                                    }
+                                }}
                             >
                                 <div className="flex items-center gap-4 mb-3">
                                     <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-lg shadow-inner shrink-0">
@@ -374,7 +383,7 @@ export default function EmployeeList() {
                                         {emp.subaccount465}
                                     </div>
                                 </div>
-                            </Link>
+                            </article>
                         ))
                     )}
                 </div>

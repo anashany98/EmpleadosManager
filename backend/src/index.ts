@@ -42,15 +42,38 @@ const allowedOrigins = (process.env.CORS_ORIGIN || '')
     .split(',')
     .map(o => o.trim())
     .filter(Boolean);
+const isProduction = process.env.NODE_ENV === 'production';
+const devAllowedOriginSuffixes = (process.env.CORS_DEV_ALLOWED_SUFFIXES || '.lhr.life,.loca.lt,.trycloudflare.com,.tunnelmole.net')
+    .split(',')
+    .map(s => s.trim().toLowerCase())
+    .filter(Boolean);
 
-if (process.env.NODE_ENV === 'production' && allowedOrigins.length === 0) {
+if (isProduction && allowedOrigins.length === 0) {
     throw new Error('FATAL: CORS_ORIGIN must be set in production.');
 }
+
+const isAllowedOrigin = (origin: string) => {
+    if (allowedOrigins.includes(origin)) return true;
+    if (isProduction) return false;
+
+    try {
+        const hostname = new URL(origin).hostname.toLowerCase();
+        return devAllowedOriginSuffixes.some((suffix) => {
+            const normalized = suffix.startsWith('.') ? suffix : `.${suffix}`;
+            return hostname.endsWith(normalized) || hostname === normalized.slice(1);
+        });
+    } catch {
+        return false;
+    }
+};
 
 app.use(cors({
     origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        if (!isProduction && allowedOrigins.length === 0) {
+            return callback(null, true);
+        }
+        if (isAllowedOrigin(origin)) {
             return callback(null, true);
         }
         return callback(new Error('Not allowed by CORS'));

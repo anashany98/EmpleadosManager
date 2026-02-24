@@ -111,15 +111,20 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
     const [allEmployees, setAllEmployees] = useState<any[]>([]);
 
     useEffect(() => {
-        fetchCompanies();
-        fetchAllEmployees();
+        if (isAdmin) {
+            fetchCompanies();
+            fetchAllEmployees();
+        }
         if (!isNew && id) {
             fetchEmployee();
-            fetchAuditLogs();
+            if (isAdmin) {
+                fetchAuditLogs();
+            }
         }
-    }, [id]);
+    }, [id, isAdmin, isNew]);
 
     const fetchAllEmployees = async () => {
+        if (!isAdmin) return;
         try {
             const res = await api.get('/employees');
             const data = res.data || res || [];
@@ -130,7 +135,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
     };
 
     const fetchAuditLogs = async () => {
-        if (isNew) return;
+        if (isNew || !isAdmin) return;
         try {
             await api.get(`/audit/EMPLOYEE/${id}`);
             // Logs are currently not displayed in UI, but endpoint is kept for reference
@@ -138,6 +143,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
     };
 
     const fetchCompanies = async () => {
+        if (!isAdmin) return;
         try {
             const res = await api.get('/companies');
             setCompanies(res.data || res || []);

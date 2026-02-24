@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { Search, Camera, X, UserCheck, LogOut, Loader2 } from 'lucide-react';
 import { FaceEnrollModal } from './FaceEnrollModal';
@@ -20,7 +20,7 @@ interface KioskAdminPanelProps {
 
 export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => {
     // Auth State
-    const [token, setToken] = useState<string | null>(null);
+    const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -36,14 +36,14 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
         e.preventDefault();
         setLoading(true);
         try {
-            const res = await api.post('/auth/login', { email, password });
+            const res = await api.post('/auth/login', { identifier: email, password });
             if (res.data.user.role !== 'admin' && res.data.user.role !== 'manager') {
                 toast.error('Acceso denegado. Solo administradores.');
                 return;
             }
-            setToken(res.data.token);
-            fetchEmployees(res.data.token);
-            toast.success('Sesión de administración iniciada');
+            setIsAuthenticated(true);
+            fetchEmployees('');
+            toast.success('SesiÃ³n de administraciÃ³n iniciada');
         } catch (error) {
             toast.error('Credenciales incorrectas');
         } finally {
@@ -51,14 +51,10 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
         }
     };
 
-    const fetchEmployees = async (authToken: string, searchTerm: string = '') => {
+    const fetchEmployees = async (searchTerm: string = '') => {
         try {
-            // Manually passing token as we might be in Kiosk context without global auth context
-            const params = searchTerm ? { search: searchTerm } : {};
-            const res = await api.get('/employees', {
-                headers: { Authorization: `Bearer ${authToken}` },
-                params
-            });
+            const query = searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : '';
+            const res = await api.get(`/employees${query}`);
             // If pagination is used, data might be in res.data.data
             const data = Array.isArray(res.data) ? res.data : res.data.data || [];
             setEmployees(data);
@@ -70,19 +66,19 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
 
     // Debounce Search
     useEffect(() => {
-        if (!token) return;
+        if (!isAuthenticated) return;
         const timer = setTimeout(() => {
-            fetchEmployees(token, search);
+            fetchEmployees(search);
         }, 500); // 500ms debounce
         return () => clearTimeout(timer);
-    }, [search, token]);
+    }, [search, isAuthenticated]);
 
     const handleEnrollClick = (employee: Employee) => {
         setSelectedEmployee(employee);
         setShowEnrollModal(true);
     };
 
-    if (!token) {
+    if (!isAuthenticated) {
         return (
             <div className="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center p-4 animate-in fade-in">
                 <div className="bg-white dark:bg-slate-800 w-full max-w-md p-8 rounded-2xl shadow-2xl">
@@ -106,7 +102,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium mb-1 dark:text-slate-300">Contraseña</label>
+                            <label className="block text-sm font-medium mb-1 dark:text-slate-300">ContraseÃ±a</label>
                             <input
                                 type="password"
                                 value={password}
@@ -131,7 +127,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
         <div className="fixed inset-0 z-50 bg-slate-100 dark:bg-slate-900 flex flex-col animate-in slide-in-from-bottom">
             {/* Header */}
             <div className="bg-white dark:bg-slate-800 p-4 shadow-md flex justify-between items-center z-10">
-                <h2 className="text-xl font-bold dark:text-white">Modo Gestión Kiosco</h2>
+                <h2 className="text-xl font-bold dark:text-white">Modo GestiÃ³n Kiosco</h2>
                 <button
                     onClick={onClose}
                     className="flex items-center gap-2 px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 transition dark:text-white"
@@ -195,11 +191,12 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                     employeeId={selectedEmployee.id}
                     employeeName={`${selectedEmployee.firstName} ${selectedEmployee.lastName}`}
                     onSuccess={() => {
-                        fetchEmployees(token); // Refresh list to show green state
-                        toast.success('Biometría guardada');
+                        fetchEmployees(search); // Refresh list to show green state
+                        toast.success('BiometrÃ­a guardada');
                     }}
                 />
             )}
         </div>
     );
 };
+

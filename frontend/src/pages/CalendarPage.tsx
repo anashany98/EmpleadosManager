@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, X, Clock, Baby, Plane, Stethoscope, FileText
 import { api } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
 
 const ABSENCE_TYPES = {
     VACATION: { label: 'Vacaciones', color: 'bg-emerald-500', text: 'text-emerald-700', bgSoft: 'bg-emerald-50', border: 'border-emerald-200', icon: Plane },
@@ -14,6 +15,9 @@ const ABSENCE_TYPES = {
 };
 
 export default function CalendarPage() {
+    const { user } = useAuth();
+    const canManageAllVacations = user?.role === 'admin' || user?.role === 'hr';
+
     // Core State
     const [currentDate, setCurrentDate] = useState(new Date());
     const [vacations, setVacations] = useState<any[]>([]);
@@ -40,19 +44,32 @@ export default function CalendarPage() {
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [canManageAllVacations]);
+
+    useEffect(() => {
+        if (!canManageAllVacations && user?.employeeId) {
+            setSelectedEmployee(user.employeeId);
+        }
+    }, [canManageAllVacations, user?.employeeId]);
 
     const fetchData = async () => {
         try {
-            const [vacRes, empRes] = await Promise.all([
-                api.get('/vacations'),
-                api.get('/employees')
-            ]);
-            setVacations(vacRes.data || []);
-            const emps = empRes.data || [];
-            setEmployees(emps);
-            const depts = new Set(emps.map((e: any) => e.department).filter(Boolean));
-            setDepartments(['ALL', ...Array.from(depts) as string[]]);
+            if (canManageAllVacations) {
+                const [vacRes, empRes] = await Promise.all([
+                    api.get('/vacations'),
+                    api.get('/employees')
+                ]);
+                setVacations(vacRes.data || []);
+                const emps = empRes.data || [];
+                setEmployees(emps);
+                const depts = new Set(emps.map((e: any) => e.department).filter(Boolean));
+                setDepartments(['ALL', ...Array.from(depts) as string[]]);
+            } else {
+                const vacRes = await api.get('/vacations/my-vacations');
+                setVacations(vacRes.data || []);
+                setEmployees([]);
+                setDepartments(['ALL']);
+            }
         } catch (e) {
             console.error(e);
             toast.error("Error al cargar datos");
@@ -111,8 +128,14 @@ export default function CalendarPage() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         try {
+            const targetEmployeeId = canManageAllVacations ? selectedEmployee : user?.employeeId;
+            if (!targetEmployeeId) {
+                toast.error('No se pudo identificar el empleado');
+                return;
+            }
+
             await api.post('/vacations', {
-                employeeId: selectedEmployee,
+                employeeId: targetEmployeeId,
                 startDate: selectionStart?.toISOString(),
                 endDate: selectionStart?.toISOString(), // Single day logic for now or expand later
                 type: vacationType,
@@ -122,7 +145,9 @@ export default function CalendarPage() {
             setShowModal(false);
             toast.success('Guardado');
             // Reset form
-            setSelectedEmployee('');
+            if (canManageAllVacations) {
+                setSelectedEmployee('');
+            }
             setReason('');
         } catch (e) { toast.error('Error al guardar'); }
     };
@@ -160,28 +185,30 @@ export default function CalendarPage() {
                         </button>
                     </div>
 
-                    <div className="flex items-center gap-3 w-full md:w-auto">
-                        <div className="relative group flex-1 md:flex-none">
-                            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                            <input
-                                type="text"
-                                placeholder="Buscar empleado..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full md:w-48 pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all border border-transparent focus:border-indigo-500/50"
-                            />
+                    {canManageAllVacations && (
+                        <div className="flex items-center gap-3 w-full md:w-auto">
+                            <div className="relative group flex-1 md:flex-none">
+                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar empleado..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full md:w-48 pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all border border-transparent focus:border-indigo-500/50"
+                                />
+                            </div>
+                            <div className="relative">
+                                <select
+                                    value={selectedDepartment}
+                                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                                    className="appearance-none pl-4 pr-10 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none cursor-pointer border border-transparent hover:border-slate-200 focus:border-indigo-500/50 transition-all"
+                                >
+                                    {departments.map(d => <option key={d} value={d}>{d === 'ALL' ? 'Todos los Departamentos' : d}</option>)}
+                                </select>
+                                <Filter size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            </div>
                         </div>
-                        <div className="relative">
-                            <select
-                                value={selectedDepartment}
-                                onChange={(e) => setSelectedDepartment(e.target.value)}
-                                className="appearance-none pl-4 pr-10 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none cursor-pointer border border-transparent hover:border-slate-200 focus:border-indigo-500/50 transition-all"
-                            >
-                                {departments.map(d => <option key={d} value={d}>{d === 'ALL' ? 'Todos los Departamentos' : d}</option>)}
-                            </select>
-                            <Filter size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                        </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* Grid */}
@@ -317,13 +344,22 @@ export default function CalendarPage() {
                                     </div>
                                 ) : (
                                     <form onSubmit={handleSubmit} className="space-y-4">
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Empleado</label>
-                                            <select required value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)} className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-medium transition-all">
-                                                <option value="">Seleccionar...</option>
-                                                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                            </select>
-                                        </div>
+                                        {canManageAllVacations ? (
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold text-slate-500 uppercase">Empleado</label>
+                                                <select required value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)} className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-medium transition-all">
+                                                    <option value="">Seleccionar...</option>
+                                                    {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+                                                </select>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-bold text-slate-500 uppercase">Empleado</label>
+                                                <div className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm font-medium text-slate-600 dark:text-slate-300">
+                                                    Tu solicitud se registrará en tu perfil.
+                                                </div>
+                                            </div>
+                                        )}
                                         <div className="space-y-1">
                                             <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
                                             <div className="grid grid-cols-3 gap-2">

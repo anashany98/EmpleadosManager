@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { Clock, LogIn, LogOut, Coffee, Calendar, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useConfirm } from '../context/ConfirmContext';
 
-interface TimeEntry {
+interface DailyTimeEntry {
     id: string;
     date: string;
     checkIn?: string;
@@ -12,36 +13,140 @@ interface TimeEntry {
     lunchEnd?: string;
     totalHours: number;
     lunchHours: number;
-    notes?: string;
+    sourceIds: string[];
+}
+
+interface RawTimeEntry {
+    id: string;
+    employeeId: string;
+    type: 'IN' | 'OUT' | 'BREAK_START' | 'BREAK_END' | 'LUNCH_START' | 'LUNCH_END';
+    timestamp: string;
 }
 
 interface TimesheetViewerProps {
     employeeId: string;
 }
 
-import { useConfirm } from '../context/ConfirmContext';
+interface TimesheetSummary {
+    totalHours: number;
+    totalLunchHours: number;
+    daysWorked: number;
+    daysIncomplete: number;
+}
+
+const emptySummary: TimesheetSummary = {
+    totalHours: 0,
+    totalLunchHours: 0,
+    daysWorked: 0,
+    daysIncomplete: 0
+};
+
+const toLocalDateString = (value: Date) => {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+};
+
+const toTimestamp = (date: string, time: string) => `${date}T${time}:00`;
+
+const normalizeEntries = (rows: RawTimeEntry[]): DailyTimeEntry[] => {
+    const grouped = new Map<string, DailyTimeEntry & { __in?: number; __out?: number; __lunchStart?: number; __lunchEnd?: number }>();
+
+    const ordered = [...rows].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    for (const row of ordered) {
+        const ts = new Date(row.timestamp);
+        if (Number.isNaN(ts.getTime())) continue;
+
+        const day = toLocalDateString(ts);
+        const key = `${row.employeeId}-${day}`;
+
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                id: key,
+                date: `${day}T00:00:00.000Z`,
+                checkIn: undefined,
+                checkOut: undefined,
+                lunchStart: undefined,
+                lunchEnd: undefined,
+                totalHours: 0,
+                lunchHours: 0,
+                sourceIds: []
+            });
+        }
+
+        const target = grouped.get(key)!;
+        target.sourceIds.push(row.id);
+
+        const ms = ts.getTime();
+        if (row.type === 'IN' && (!target.__in || ms < target.__in)) {
+            target.__in = ms;
+            target.checkIn = row.timestamp;
+        }
+        if (row.type === 'OUT' && (!target.__out || ms > target.__out)) {
+            target.__out = ms;
+            target.checkOut = row.timestamp;
+        }
+        if (row.type === 'LUNCH_START' && (!target.__lunchStart || ms < target.__lunchStart)) {
+            target.__lunchStart = ms;
+            target.lunchStart = row.timestamp;
+        }
+        if (row.type === 'LUNCH_END' && (!target.__lunchEnd || ms > target.__lunchEnd)) {
+            target.__lunchEnd = ms;
+            target.lunchEnd = row.timestamp;
+        }
+    }
+
+    return Array.from(grouped.values())
+        .map((entry) => {
+            const gross = entry.__in && entry.__out && entry.__out > entry.__in
+                ? (entry.__out - entry.__in) / 3600000
+                : 0;
+            const lunch = entry.__lunchStart && entry.__lunchEnd && entry.__lunchEnd > entry.__lunchStart
+                ? (entry.__lunchEnd - entry.__lunchStart) / 3600000
+                : 0;
+
+            return {
+                id: entry.id,
+                date: entry.date,
+                checkIn: entry.checkIn,
+                checkOut: entry.checkOut,
+                lunchStart: entry.lunchStart,
+                lunchEnd: entry.lunchEnd,
+                totalHours: Math.max(0, gross - lunch),
+                lunchHours: lunch,
+                sourceIds: entry.sourceIds
+            };
+        })
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+};
+
+const computeSummary = (entries: DailyTimeEntry[]): TimesheetSummary => {
+    return {
+        totalHours: entries.reduce((sum, entry) => sum + entry.totalHours, 0),
+        totalLunchHours: entries.reduce((sum, entry) => sum + entry.lunchHours, 0),
+        daysWorked: entries.filter((entry) => entry.checkIn && entry.checkOut).length,
+        daysIncomplete: entries.filter((entry) => (entry.checkIn && !entry.checkOut) || (!entry.checkIn && entry.checkOut)).length
+    };
+};
+
+const initialFormData = () => ({
+    date: toLocalDateString(new Date()),
+    checkIn: '',
+    checkOut: '',
+    lunchStart: '',
+    lunchEnd: '',
+    notes: ''
+});
 
 export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
     const confirmAction = useConfirm();
-    const [entries, setEntries] = useState<TimeEntry[]>([]);
+    const [entries, setEntries] = useState<DailyTimeEntry[]>([]);
     const [loading, setLoading] = useState(true);
     const [currentMonth, setCurrentMonth] = useState(new Date());
     const [showAddModal, setShowAddModal] = useState(false);
-    const [summary, setSummary] = useState({
-        totalHours: 0,
-        totalLunchHours: 0,
-        daysWorked: 0,
-        daysIncomplete: 0
-    });
-
-    const [formData, setFormData] = useState({
-        date: new Date().toISOString().split('T')[0],
-        checkIn: '',
-        checkOut: '',
-        lunchStart: '',
-        lunchEnd: '',
-        notes: ''
-    });
+    const [summary, setSummary] = useState<TimesheetSummary>(emptySummary);
+    const [formData, setFormData] = useState(initialFormData);
 
     useEffect(() => {
         fetchEntries();
@@ -51,61 +156,75 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
         setLoading(true);
         try {
             const year = currentMonth.getFullYear();
-            const month = currentMonth.getMonth() + 1;
-            const result = await api.get(`/time-entries/employee/${employeeId}/month/${year}/${month}`);
-            setEntries(result.entries || []);
-            setSummary(result.summary || { totalHours: 0, totalLunchHours: 0, daysWorked: 0, daysIncomplete: 0 });
+            const month = currentMonth.getMonth();
+            const from = toLocalDateString(new Date(year, month, 1));
+            const to = toLocalDateString(new Date(year, month + 1, 0));
+            const response = await api.get(`/time-entries/range?from=${from}&to=${to}&employeeId=${employeeId}`);
+            const rows = Array.isArray(response?.data) ? response.data : [];
+            const normalized = normalizeEntries(rows as RawTimeEntry[]);
+            setEntries(normalized);
+            setSummary(computeSummary(normalized));
         } catch (error) {
             console.error(error);
             toast.error('Error al cargar fichajes');
+            setEntries([]);
+            setSummary(emptySummary);
         } finally {
             setLoading(false);
         }
     };
 
     const handleSubmit = async () => {
-        try {
-            const payload = {
-                employeeId,
-                date: formData.date,
-                checkIn: formData.checkIn ? `${formData.date}T${formData.checkIn}:00` : null,
-                checkOut: formData.checkOut ? `${formData.date}T${formData.checkOut}:00` : null,
-                lunchStart: formData.lunchStart ? `${formData.date}T${formData.lunchStart}:00` : null,
-                lunchEnd: formData.lunchEnd ? `${formData.date}T${formData.lunchEnd}:00` : null,
-                notes: formData.notes || null
-            };
+        const actions: Array<{ type: RawTimeEntry['type']; time: string }> = [];
+        if (formData.checkIn) actions.push({ type: 'IN', time: formData.checkIn });
+        if (formData.checkOut) actions.push({ type: 'OUT', time: formData.checkOut });
+        if (formData.lunchStart) actions.push({ type: 'LUNCH_START', time: formData.lunchStart });
+        if (formData.lunchEnd) actions.push({ type: 'LUNCH_END', time: formData.lunchEnd });
 
-            await api.post('/time-entries', payload);
+        if (actions.length === 0) {
+            toast.error('Debes completar al menos una hora para guardar');
+            return;
+        }
+
+        try {
+            for (const action of actions) {
+                await api.post('/time-entries/manual', {
+                    employeeId,
+                    type: action.type,
+                    timestamp: toTimestamp(formData.date, action.time),
+                    location: 'Correccion manual',
+                    comment: formData.notes || null
+                });
+            }
+
             toast.success('Fichaje guardado correctamente');
             setShowAddModal(false);
-            setFormData({
-                date: new Date().toISOString().split('T')[0],
-                checkIn: '',
-                checkOut: '',
-                lunchStart: '',
-                lunchEnd: '',
-                notes: ''
-            });
-            fetchEntries();
+            setFormData(initialFormData());
+            await fetchEntries();
         } catch (error) {
+            console.error(error);
             toast.error('Error al guardar fichaje');
         }
     };
 
-    const handleDelete = async (id: string) => {
+    const handleDelete = async (entry: DailyTimeEntry) => {
         const ok = await confirmAction({
             title: 'Eliminar Fichaje',
-            message: '¿Estás seguro de eliminar este registro de fichaje?',
+            message: `Se eliminaran ${entry.sourceIds.length} registros del dia. ¿Continuar?`,
             confirmText: 'Eliminar',
             type: 'danger'
         });
 
         if (!ok) return;
+
         try {
-            await api.delete(`/time-entries/${id}`);
+            for (const sourceId of entry.sourceIds) {
+                await api.delete(`/time-entries/${sourceId}`);
+            }
             toast.success('Fichaje eliminado');
-            fetchEntries();
+            await fetchEntries();
         } catch (error) {
+            console.error(error);
             toast.error('Error al eliminar fichaje');
         }
     };
@@ -133,7 +252,6 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
 
     return (
         <div className="space-y-6">
-            {/* Header with Month Navigation */}
             <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <Clock className="text-blue-500" size={24} />
@@ -159,12 +277,11 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
                         className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                     >
                         <Plus size={18} />
-                        Añadir Fichaje
+                        Anadir Fichaje
                     </button>
                 </div>
             </div>
 
-            {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 rounded-xl">
                     <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-sm font-medium mb-1">
@@ -178,7 +295,7 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
                 <div className="p-4 bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 rounded-xl">
                     <div className="flex items-center gap-2 text-green-600 dark:text-green-400 text-sm font-medium mb-1">
                         <Calendar size={16} />
-                        Días Trabajados
+                        Dias Trabajados
                     </div>
                     <div className="text-2xl font-bold text-slate-900 dark:text-white">
                         {summary.daysWorked}
@@ -195,7 +312,7 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
                 </div>
                 <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/20 dark:to-slate-700/20 rounded-xl">
                     <div className="text-sm font-medium mb-1 text-slate-600 dark:text-slate-400">
-                        Promedio/Día
+                        Promedio/Dia
                     </div>
                     <div className="text-2xl font-bold text-slate-900 dark:text-white">
                         {summary.daysWorked > 0 ? (summary.totalHours / summary.daysWorked).toFixed(1) : '0'}h
@@ -203,7 +320,6 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
                 </div>
             </div>
 
-            {/* Entries List */}
             <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full">
@@ -261,8 +377,10 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
                                         </td>
                                         <td className="px-4 py-3 text-right">
                                             <button
-                                                onClick={() => handleDelete(entry.id)}
-                                                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                                onClick={() => handleDelete(entry)}
+                                                className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                                disabled={entry.sourceIds.length === 0}
+                                                title={entry.sourceIds.length > 1 ? `Eliminar ${entry.sourceIds.length} registros` : 'Eliminar registro'}
                                             >
                                                 <Trash2 size={16} />
                                             </button>
@@ -275,11 +393,10 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
                 </div>
             </div>
 
-            {/* Add Modal */}
             {showAddModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowAddModal(false)}>
                     <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-2xl w-full mx-4" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-xl font-bold mb-4 text-slate-900 dark:text-white">Añadir Fichaje</h3>
+                        <h3 className="text-xl font-bold mb-4 text-slate-900 dark:text-white">Anadir Fichaje</h3>
                         <div className="space-y-4">
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Fecha</label>
@@ -360,3 +477,4 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
         </div>
     );
 }
+

@@ -13,6 +13,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
         console.log('[Notification] Connecting to EventStream...');
         const eventSource = new EventSource(`${API_URL}/notifications/stream`, { withCredentials: true } as any);
+        let unmounting = false;
 
         eventSource.onopen = () => {
             console.log('[Notification] Connected.');
@@ -39,13 +40,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             }
         });
 
-        eventSource.onerror = (err) => {
-            console.error('[Notification] Stream Error', err);
-            eventSource.close();
-            // Auto reconnect logic is built-in to browser mostly, but if closed explicitly we might need to retry.
+        eventSource.onerror = () => {
+            // Let native EventSource handle reconnect attempts.
+            // Closing here prevents recovery after transient network/proxy issues.
+            if (unmounting) return;
+            if (eventSource.readyState === EventSource.CLOSED) return;
+            console.warn('[Notification] Stream disconnected, waiting for auto-reconnect');
         };
 
         return () => {
+            unmounting = true;
             console.log('[Notification] Closing...');
             eventSource.close();
         };

@@ -40,7 +40,8 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
         if (!documentId) return;
         setProcessing(true);
         try {
-            await api.post(`/documents/${documentId}/sign`, {
+            await api.post('/document-templates/sign', {
+                documentId,
                 signatureDataUrl: signatureBase64
             });
             toast.success('Documento firmado correctamente');

@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+﻿import React, { useRef, useState, useCallback, useEffect } from 'react';
 import Webcam from 'react-webcam';
 import { FaceRecognitionService } from '../services/faceRecognition';
 import { X, Loader2, Sparkles } from 'lucide-react';
@@ -67,16 +67,20 @@ export const FaceVerificationModal: React.FC<FaceVerificationModalProps> = ({ is
         setError(null);
 
         try {
-            // 1. Identity Match (Capture current frame)
+            // 1. Identity match against enrolled descriptors
             setStatus('Comprobando identidad...');
-            const screenshot = webcamRef.current.getScreenshot();
-            const match = await api.post('/kiosk/verify', {
-                employeeId,
-                image: screenshot
+            const descriptor = await FaceRecognitionService.getFaceDescriptor(webcamRef.current.video);
+            if (!descriptor) {
+                throw new Error('No se pudo detectar el rostro. Ajusta la camara e intentalo de nuevo.');
+            }
+
+            const match = await api.post('/kiosk/identify', {
+                descriptor: Array.from(descriptor)
             });
 
-            if (!match.data?.verified) {
-                throw new Error('Identidad no verificada. Asegúrate de estar bien iluminado.');
+            const identifiedEmployeeId = match?.data?.employee?.id;
+            if (!match.data?.identified || identifiedEmployeeId !== employeeId) {
+                throw new Error('Identidad no verificada. Asegurate de estar bien iluminado.');
             }
 
             // 2. Blink Detection Loop
@@ -95,7 +99,7 @@ export const FaceVerificationModal: React.FC<FaceVerificationModalProps> = ({ is
                 await new Promise(r => setTimeout(r, 100)); // Sample every 100ms
             }
 
-            if (!blinkDetected) throw new Error('No se detectó el parpadeo. Inténtalo de nuevo.');
+            if (!blinkDetected) throw new Error('No se detectÃ³ el parpadeo. IntÃ©ntalo de nuevo.');
 
             setLiveness('SUCCESS');
             setStatus('IDENTIDAD CONFIRMADA');
@@ -106,7 +110,7 @@ export const FaceVerificationModal: React.FC<FaceVerificationModalProps> = ({ is
             }, 800);
 
         } catch (err: any) {
-            setError(err.message || 'Fallo en la verificación');
+            setError(err.message || 'Fallo en la verificaciÃ³n');
             setLiveness('FAILED');
         } finally {
             setProcessing(false);
@@ -124,9 +128,9 @@ export const FaceVerificationModal: React.FC<FaceVerificationModalProps> = ({ is
                             <div className="p-2 bg-blue-500 rounded-xl text-white">
                                 <Sparkles size={20} />
                             </div>
-                            Verificación Facial
+                            VerificaciÃ³n Facial
                         </h3>
-                        <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-black">Seguridad Biométrica Activa</p>
+                        <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest font-black">Seguridad BiomÃ©trica Activa</p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors">
                         <X size={24} className="text-slate-400" />
@@ -168,7 +172,7 @@ export const FaceVerificationModal: React.FC<FaceVerificationModalProps> = ({ is
                         {liveness !== 'START' && liveness !== 'FAILED' && (
                             <div className={`absolute top-6 left-1/2 -translate-x-1/2 px-6 py-2 ${liveness === 'SUCCESS' ? 'bg-green-500' : 'bg-blue-600'} text-white text-[10px] font-black rounded-full shadow-2xl animate-bounce flex items-center gap-2`}>
                                 <div className="w-2 h-2 bg-white rounded-full animate-ping"></div>
-                                {liveness === 'BLINK' ? 'PARPADEA AHORA' : liveness === 'SMILE' ? 'SONRÍE' : 'VERIFICADO'}
+                                {liveness === 'BLINK' ? 'PARPADEA AHORA' : liveness === 'SMILE' ? 'SONRÃE' : 'VERIFICADO'}
                             </div>
                         )}
                     </div>
@@ -193,7 +197,7 @@ export const FaceVerificationModal: React.FC<FaceVerificationModalProps> = ({ is
                             disabled={!isModelsLoaded}
                             className="w-full py-5 bg-blue-600 text-white rounded-[2rem] font-black text-xs uppercase tracking-[0.2em] shadow-2xl shadow-blue-500/40 hover:bg-blue-700 transition-all active:scale-95 disabled:opacity-50"
                         >
-                            Comenzar Identificación
+                            Comenzar IdentificaciÃ³n
                         </button>
                     )}
 
@@ -211,3 +215,4 @@ export const FaceVerificationModal: React.FC<FaceVerificationModalProps> = ({ is
         </div>
     );
 };
+

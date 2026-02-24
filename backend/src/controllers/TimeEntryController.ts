@@ -137,25 +137,70 @@ export const TimeEntryController = {
     getHistory: async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthenticatedRequest;
-            if (!user.employeeId) return ApiResponse.error(res, 'No vinculado', 400);
+            const role = String(user?.role || '').toLowerCase();
+            const isPrivileged = role === 'admin' || role === 'hr';
+            const requestedEmployeeId = typeof req.query.employeeId === 'string'
+                ? req.query.employeeId
+                : undefined;
+
+            if (!isPrivileged && !user.employeeId) {
+                return ApiResponse.error(res, 'No vinculado', 400);
+            }
+
+            if (!isPrivileged && requestedEmployeeId && requestedEmployeeId !== user.employeeId) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
 
             const { start, end, from, to } = req.query;
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 50;
             const skip = (page - 1) * limit;
-            const startDate = start || from;
-            const endDate = end || to;
-            let query: any = { employeeId: user.employeeId };
+            const startDate = (start || from) as string | undefined;
+            const endDate = (end || to) as string | undefined;
 
-            if (start && end) {
-                query.timestamp = {
-                    gte: new Date(start as string),
-                    lte: new Date(end as string)
-                };
+            const query: any = {};
+
+            if (isPrivileged) {
+                if (requestedEmployeeId) {
+                    query.employeeId = requestedEmployeeId;
+                }
+                // Tenant isolation: scoped admins/HR only see their company.
+                if (user.companyId) {
+                    query.employee = { is: { companyId: user.companyId } };
+                }
+            } else {
+                query.employeeId = user.employeeId;
+            }
+
+            const timestampFilter: Record<string, Date> = {};
+            if (startDate) {
+                const parsedStart = new Date(startDate);
+                if (!Number.isNaN(parsedStart.getTime())) {
+                    timestampFilter.gte = parsedStart;
+                }
+            }
+            if (endDate) {
+                const parsedEnd = new Date(endDate);
+                if (!Number.isNaN(parsedEnd.getTime())) {
+                    parsedEnd.setHours(23, 59, 59, 999);
+                    timestampFilter.lte = parsedEnd;
+                }
+            }
+            if (Object.keys(timestampFilter).length > 0) {
+                query.timestamp = timestampFilter;
             }
 
             const history = await prisma.timeEntry.findMany({
                 where: query,
+                include: {
+                    employee: {
+                        select: {
+                            id: true,
+                            name: true,
+                            department: true
+                        }
+                    }
+                },
                 orderBy: { timestamp: 'desc' },
                 skip: req.query.page ? skip : undefined,
                 take: req.query.page ? limit : 500
@@ -210,6 +255,53 @@ export const TimeEntryController = {
         } catch (error: any) {
             log.error({ error }, 'Error in createManual');
             return ApiResponse.error(res, 'Error al crear fichaje manual', 500);
+        }
+    },
+
+    deleteEntry: async (req: Request, res: Response) => {
+        try {
+            const { id } = req.params;
+            const currentUser = (req as AuthenticatedRequest).user;
+            const actorId = currentUser?.id || 'system';
+
+            if (!id) {
+                return ApiResponse.error(res, 'ID de fichaje obligatorio', 400);
+            }
+
+            const entry = await prisma.timeEntry.findUnique({
+                where: { id },
+                include: {
+                    employee: {
+                        select: {
+                            companyId: true
+                        }
+                    }
+                }
+            });
+
+            if (!entry) {
+                return ApiResponse.error(res, 'Fichaje no encontrado', 404);
+            }
+
+            // Tenant isolation: scoped admins/HR can only delete entries from their company.
+            if (currentUser?.companyId && entry.employee?.companyId !== currentUser.companyId) {
+                return ApiResponse.error(res, 'No autorizado para eliminar fichajes de otra empresa', 403);
+            }
+
+            await prisma.timeEntry.delete({
+                where: { id }
+            });
+
+            await AuditService.log('DELETE_CLOCK', 'TIME_ENTRY', id, {
+                employeeId: entry.employeeId,
+                type: entry.type,
+                timestamp: entry.timestamp
+            }, actorId);
+
+            return ApiResponse.success(res, { id }, 'Fichaje eliminado correctamente');
+        } catch (error: any) {
+            log.error({ error }, 'Error deleting time entry');
+            return ApiResponse.error(res, 'Error al eliminar fichaje', 500);
         }
     }
 };

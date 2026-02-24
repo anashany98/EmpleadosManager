@@ -1,4 +1,4 @@
-
+﻿
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
@@ -20,6 +20,8 @@ interface TimeEntry {
     lunchEnd?: string;
     totalHours: number;
     lunchHours: number;
+    lat?: number;
+    lng?: number;
     employee: {
         id: string;
         name: string;
@@ -28,6 +30,106 @@ interface TimeEntry {
 }
 
 import { useAuth } from '../contexts/AuthContext';
+
+interface RawTimeEntry {
+    id: string;
+    employeeId: string;
+    type: 'IN' | 'OUT' | 'BREAK_START' | 'BREAK_END' | 'LUNCH_START' | 'LUNCH_END';
+    timestamp: string;
+    latitude?: number | null;
+    longitude?: number | null;
+    employee?: {
+        id?: string;
+        name?: string;
+        department?: string;
+    };
+}
+
+const toLocalDateString = (value: Date) => {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+};
+
+const normalizeTimeEntries = (payload: unknown): TimeEntry[] => {
+    if (!Array.isArray(payload) || payload.length === 0) return [];
+
+    const first = payload[0] as any;
+    const alreadyNormalized = typeof first?.date === 'string' && typeof first?.totalHours === 'number';
+    if (alreadyNormalized) return payload as TimeEntry[];
+
+    const rows = payload as RawTimeEntry[];
+    const grouped = new Map<string, TimeEntry & { __in?: number; __out?: number; __lunchStart?: number; __lunchEnd?: number }>();
+
+    const ordered = [...rows].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    for (const row of ordered) {
+        const ts = new Date(row.timestamp);
+        if (Number.isNaN(ts.getTime())) continue;
+
+        const day = toLocalDateString(ts);
+        const employeeId = row.employeeId || row.employee?.id || 'unknown';
+        const key = `${employeeId}-${day}`;
+
+        if (!grouped.has(key)) {
+            grouped.set(key, {
+                id: key,
+                date: `${day}T00:00:00.000Z`,
+                checkIn: undefined,
+                checkOut: undefined,
+                lunchStart: undefined,
+                lunchEnd: undefined,
+                totalHours: 0,
+                lunchHours: 0,
+                employee: {
+                    id: employeeId,
+                    name: row.employee?.name || 'Empleado',
+                    department: row.employee?.department || 'Sin departamento'
+                }
+            });
+        }
+
+        const target = grouped.get(key)!;
+        const ms = ts.getTime();
+
+        if ((row.type === 'IN' || row.type === 'OUT') && Number.isFinite(row.latitude) && Number.isFinite(row.longitude)) {
+            target.lat = Number(row.latitude);
+            target.lng = Number(row.longitude);
+        }
+
+        if (row.type === 'IN' && (!target.__in || ms < target.__in)) {
+            target.__in = ms;
+            target.checkIn = row.timestamp;
+        }
+        if (row.type === 'OUT' && (!target.__out || ms > target.__out)) {
+            target.__out = ms;
+            target.checkOut = row.timestamp;
+        }
+        if (row.type === 'LUNCH_START' && (!target.__lunchStart || ms < target.__lunchStart)) {
+            target.__lunchStart = ms;
+            target.lunchStart = row.timestamp;
+        }
+        if (row.type === 'LUNCH_END' && (!target.__lunchEnd || ms > target.__lunchEnd)) {
+            target.__lunchEnd = ms;
+            target.lunchEnd = row.timestamp;
+        }
+    }
+
+    return Array.from(grouped.values()).map((entry) => {
+        const gross = entry.__in && entry.__out && entry.__out > entry.__in
+            ? (entry.__out - entry.__in) / 3600000
+            : 0;
+        const lunch = entry.__lunchStart && entry.__lunchEnd && entry.__lunchEnd > entry.__lunchStart
+            ? (entry.__lunchEnd - entry.__lunchStart) / 3600000
+            : 0;
+
+        return {
+            ...entry,
+            lunchHours: lunch,
+            totalHours: Math.max(0, gross - lunch),
+        };
+    });
+};
 
 export default function TimesheetPage() {
     const { user } = useAuth();
@@ -46,11 +148,13 @@ export default function TimesheetPage() {
     const [isMapOpen, setIsMapOpen] = useState(false);
 
     const handleViewMap = (lat?: number, lng?: number) => {
-        if (lat && lng) {
-            setMapLocation({ lat, lng });
+        const hasCoords = typeof lat === 'number' && Number.isFinite(lat) &&
+            typeof lng === 'number' && Number.isFinite(lng);
+        if (hasCoords) {
+            setMapLocation({ lat: lat as number, lng: lng as number });
             setIsMapOpen(true);
         } else {
-            toast.error('No hay ubicación registrada para este fichaje');
+            toast.error('No hay ubicaciÃ³n registrada para este fichaje');
         }
     };
 
@@ -83,15 +187,15 @@ export default function TimesheetPage() {
         try {
             const year = currentMonth.getFullYear();
             const month = currentMonth.getMonth() + 1;
-            const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0];
-            const endDate = new Date(year, month, 0).toISOString().split('T')[0];
+            const startDate = toLocalDateString(new Date(year, month - 1, 1));
+            const endDate = toLocalDateString(new Date(year, month, 0));
 
             const url = selectedEmployee === 'all'
                 ? `/time-entries/range?from=${startDate}&to=${endDate}`
                 : `/time-entries/range?from=${startDate}&to=${endDate}&employeeId=${selectedEmployee}`;
 
             const res = await api.get(url);
-            setEntries(res.data || res || []);
+            setEntries(normalizeTimeEntries(res.data || res || []));
         } catch (error) {
             console.error(error);
             toast.error('Error al cargar fichajes');
@@ -127,7 +231,7 @@ export default function TimesheetPage() {
 
     // Filter actual time entries
     const displayedEntries = entries.filter(entry =>
-        selectedDepartment === 'all' || entry.employee.department === selectedDepartment
+        selectedDepartment === 'all' || entry.employee?.department === selectedDepartment
     );
 
     // Calcular resumen (using displayedEntries)
@@ -140,13 +244,14 @@ export default function TimesheetPage() {
 
     // Agrupar entradas por fecha para vista calendario
     const entriesByDate = displayedEntries.reduce((acc, entry) => {
+        if (!entry.date) return acc;
         const date = entry.date.split('T')[0];
         if (!acc[date]) acc[date] = [];
         acc[date].push(entry);
         return acc;
     }, {} as Record<string, TimeEntry[]>);
 
-    // Generar días del mes
+    // Generar dÃ­as del mes
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
     const firstDay = new Date(year, month, 1);
@@ -283,7 +388,7 @@ export default function TimesheetPage() {
                     <div className="text-3xl font-bold text-slate-900 dark:text-white">{summary.uniqueEmployees}</div>
                 </div>
                 <div className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-xl">
-                    <div className="text-purple-600 dark:text-purple-400 text-sm font-medium mb-1">Promedio/Día</div>
+                    <div className="text-purple-600 dark:text-purple-400 text-sm font-medium mb-1">Promedio/DÃ­a</div>
                     <div className="text-3xl font-bold text-slate-900 dark:text-white">
                         {summary.daysWorked > 0 ? (summary.totalHours / summary.daysWorked).toFixed(1) : '0'}h
                     </div>
@@ -375,11 +480,11 @@ export default function TimesheetPage() {
                                                     <span className="font-bold text-blue-600 dark:text-blue-400">
                                                         {entry.totalHours.toFixed(2)}h
                                                     </span>
-                                                    {(entry as any).lat && (entry as any).lng && (
+                                                    {Number.isFinite(entry.lat) && Number.isFinite(entry.lng) && (
                                                         <button
-                                                            onClick={() => handleViewMap((entry as any).lat, (entry as any).lng)}
+                                                            onClick={() => handleViewMap(entry.lat, entry.lng)}
                                                             className="p-1 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors"
-                                                            title="Ver ubicación"
+                                                            title="Ver ubicaciÃ³n"
                                                         >
                                                             <MapPin size={16} />
                                                         </button>
@@ -403,3 +508,5 @@ export default function TimesheetPage() {
         </div>
     );
 }
+
+

@@ -13,5 +13,6 @@ router.get('/range', TimeEntryController.getHistory);
 
 // Admin/HR only
 router.post('/manual', restrictTo('admin', 'hr'), TimeEntryController.createManual);
+router.delete('/:id', restrictTo('admin', 'hr'), TimeEntryController.deleteEntry);
 
 export default router;

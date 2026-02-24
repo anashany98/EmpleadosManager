@@ -7,10 +7,14 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
-    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+    "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "pw:install": "playwright install chromium",
+    "pw:smoke": "node scripts/playwright-smoke.mjs"
   },
   "devDependencies": {
+    "@playwright/mcp": "^0.0.68",
     "concurrently": "^8.2.2",
+    "playwright": "^1.59.0-alpha-1771104257000",
     "prisma": "^5.22.0"
   },
   "dependencies": {

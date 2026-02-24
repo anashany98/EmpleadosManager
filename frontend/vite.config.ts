@@ -6,19 +6,17 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: true,
+    allowedHosts: [
+      '.lhr.life',
+      '.loca.lt',
+      '.trycloudflare.com',
+      '.tunnelmole.net',
+    ],
     proxy: {
       '/api': {
         target: 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
-      },
-      '/inbox': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
-      },
-      '/assets': {
-        target: 'http://localhost:3000',
-        changeOrigin: true,
       }
     }
   },
