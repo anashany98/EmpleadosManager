@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { api } from '../api/client';
 
 interface User {
@@ -27,23 +27,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
 
-    const isAdmin = user?.role === 'admin';
-    const isManager = user?.role === 'manager' || user?.role === 'admin'; // Managers often subsumed by admin, or distinct. Let's say Manager is separate or inclusive.
-    const isEmployee = !!user?.employeeId; // Has a linked employee record
+    const isAdmin = useMemo(() => user?.role === 'admin', [user?.role]);
+    const isManager = useMemo(() => user?.role === 'manager' || user?.role === 'admin', [user?.role]);
+    const isEmployee = useMemo(() => !!user?.employeeId, [user?.employeeId]);
 
-    useEffect(() => {
-        bootstrapAuth();
-    }, []);
-
-    const hasSessionHint = () => {
+    const hasSessionHint = useCallback((): boolean => {
         try {
             return window.localStorage.getItem(AUTH_SESSION_HINT_KEY) === '1';
         } catch {
             return false;
         }
-    };
+    }, []);
 
-    const setSessionHint = (value: boolean) => {
+    const setSessionHint = useCallback((value: boolean): void => {
         try {
             if (value) {
                 window.localStorage.setItem(AUTH_SESSION_HINT_KEY, '1');
@@ -53,9 +49,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } catch {
             // Ignore storage errors
         }
-    };
+    }, []);
 
-    const bootstrapAuth = async () => {
+    const checkAuth = useCallback(async (): Promise<void> => {
+        try {
+            const response = await api.get<{ data: User }>('/auth/me');
+            setUser(response.data);
+            setSessionHint(true);
+        } catch {
+            setUser(null);
+            setSessionHint(false);
+        } finally {
+            setLoading(false);
+        }
+    }, [setSessionHint]);
+
+    const bootstrapAuth = useCallback(async (): Promise<void> => {
         const path = window.location.pathname;
         const isAuthPage = AUTH_PAGES.has(path);
         if (isAuthPage && !hasSessionHint()) {
@@ -63,27 +72,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return;
         }
         await checkAuth();
-    };
+    }, [hasSessionHint, checkAuth]);
 
-    const checkAuth = async () => {
-        try {
-            const response = await api.get('/auth/me');
-            setUser(response.data);
-            setSessionHint(true);
-        } catch (error) {
-            setUser(null);
-            setSessionHint(false);
-        } finally {
-            setLoading(false);
-        }
-    };
+    useEffect(() => {
+        bootstrapAuth();
+    }, [bootstrapAuth]);
 
-    const login = (token: string, refreshToken: string, userData: User) => {
+    const login = useCallback((_token: string, _refreshToken: string, userData: User): void => {
         setUser(userData);
         setSessionHint(true);
-    };
+    }, [setSessionHint]);
 
-    const logout = async () => {
+    const logout = useCallback(async (): Promise<void> => {
         try {
             await api.post('/auth/logout', {});
         } catch (error) {
@@ -92,16 +92,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setSessionHint(false);
         window.location.href = '/login';
-    };
+    }, [setSessionHint]);
+
+    const value = useMemo(() => ({
+        user,
+        loading,
+        login,
+        logout,
+        isAdmin,
+        isManager,
+        isEmployee
+    }), [user, loading, login, logout, isAdmin, isManager, isEmployee]);
 
     return (
-        <AuthContext.Provider value={{ user, loading, login, logout, isAdmin, isManager, isEmployee }}>
+        <AuthContext.Provider value={value}>
             {children}
         </AuthContext.Provider>
     );
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextType {
     const context = useContext(AuthContext);
     if (context === undefined) {
         throw new Error('useAuth must be used within an AuthProvider');

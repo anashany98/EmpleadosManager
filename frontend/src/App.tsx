@@ -25,6 +25,8 @@ import MyProfile from './pages/MyProfile';
 import ExpensesPage from './pages/ExpensesPage';
 import AnomaliesPage from './pages/Anomalies';
 import AttendanceReconciliation from './pages/AttendanceReconciliation';
+import AnalyticsDashboard from './pages/AnalyticsDashboard';
+import PerformancePage from './pages/PerformancePage';
 
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -161,6 +163,8 @@ function AppContent() {
                   <Route path="/profile" element={<ProtectedRoute><MyProfile /></ProtectedRoute>} />
                   <Route path="/users" element={<ProtectedRoute roles={['admin']}><UserManagement /></ProtectedRoute>} />
                   <Route path="/settings" element={<ProtectedRoute roles={['admin']}><SettingsPage /></ProtectedRoute>} />
+                  <Route path="/analytics" element={<ProtectedRoute roles={['admin', 'hr']}><AnalyticsDashboard /></ProtectedRoute>} />
+                  <Route path="/performance" element={<ProtectedRoute roles={['admin', 'hr']}><PerformancePage /></ProtectedRoute>} />
                   <Route path="/login" element={<Navigate to="/" replace />} />
                 </Routes>
               </motion.div>

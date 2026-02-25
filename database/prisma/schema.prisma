@@ -29,6 +29,7 @@ model User {
   refreshTokens RefreshToken[]
   notifications Notification[]
   employee    Employee?            @relation(fields: [employeeId], references: [id])
+  createdEvents CalendarEvent[]    @relation("EventCreator")
 }
 
 model RefreshToken {
@@ -66,6 +67,7 @@ model Company {
   vehicles    Vehicle[]
   cards       Card[]
   fileMappings FileMapping[]
+  calendarEvents CalendarEvent[]
 }
 
 model PermissionProfile {
@@ -149,6 +151,11 @@ model Employee {
   vehicles                 Vehicle[]
   cards                    Card[]
   users                    User[]
+  evaluations              Evaluation[]           @relation("EvaluationEmployee")
+  evaluationsAsEvaluator   Evaluation[]           @relation("EvaluationEvaluator")
+  peerReviews              PeerReview[]
+  objectives               Objective[]
+  pdis                     PDI[]
 
   @@index([companyId])
 }
@@ -678,4 +685,214 @@ model FileMapping {
   updatedAt   DateTime @updatedAt
 
   @@index([companyId])
+}
+
+// ============================================
+// PERFORMANCE EVALUATION MODELS
+// ============================================
+
+// Plantilla de evaluación (configurable por empresa)
+model EvaluationTemplate {
+  id              String              @id @default(uuid())
+  name            String
+  description     String?
+  type            String              // ANNUAL, PROBATION, PROJECT, CUSTOM
+  version         Int                 @default(1)
+  active          Boolean             @default(true)
+  
+  // Competencias y criterios (JSON)
+  competencies    Json                // Array de {name, description, weight, levels: [{score, description}]}
+  scaleConfig     Json                // {min: 1, max: 5, labels: {1: "Insuficiente", ...}}
+  
+  // Configuración
+  selfAssessment  Boolean             @default(true)
+  managerAssessment Boolean           @default(true)
+  peerAssessment  Boolean             @default(false)
+  peerCount       Int                 @default(0)
+  
+  // Fechas
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  evaluations     Evaluation[]
+  
+  @@index([type, active])
+}
+
+// Evaluación individual
+model Evaluation {
+  id                  String              @id @default(uuid())
+  templateId          String
+  template            EvaluationTemplate  @relation(fields: [templateId], references: [id])
+  
+  // Sujetos de la evaluación
+  employeeId          String
+  employee            Employee            @relation("EvaluationEmployee", fields: [employeeId], references: [id])
+  evaluatorId         String              // Manager o evaluador principal
+  evaluator           Employee            @relation("EvaluationEvaluator", fields: [evaluatorId], references: [id])
+  
+  // Período
+  periodStart         DateTime
+  periodEnd           DateTime
+  dueDate             DateTime
+  
+  // Estado
+  status              String              @default("DRAFT") // DRAFT, SELF_IN_PROGRESS, MANAGER_IN_PROGRESS, COMPLETED, ACKNOWLEDGED
+  selfSubmittedAt     DateTime?
+  managerSubmittedAt  DateTime?
+  acknowledgedAt      DateTime?
+  
+  // Resultados
+  selfScores          Json?               // {competencyId: score, ...}
+  managerScores       Json?               // {competencyId: score, ...}
+  peerScores          Json?               // {competencyId: {avgScore, count}, ...}
+  finalScore          Decimal?
+  strengths           String?             // Texto libre
+  improvements        String?             // Texto libre
+  managerComments     String?
+  
+  // Calibración (opcional)
+  calibratedScore     Decimal?
+  calibratedBy        String?
+  calibratedAt        DateTime?
+  
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  
+  peerReviews         PeerReview[]
+  objectives          Objective[]
+  pdis                PDI[]
+  
+  @@index([employeeId])
+  @@index([evaluatorId])
+  @@index([status, dueDate])
+}
+
+// Evaluación de pares (360°)
+model PeerReview {
+  id              String      @id @default(uuid())
+  evaluationId    String
+  evaluation      Evaluation  @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  
+  reviewerId      String
+  reviewer        Employee    @relation(fields: [reviewerId], references: [id])
+  
+  status          String      @default("PENDING") // PENDING, COMPLETED, DECLINED
+  scores          Json?       // {competencyId: score, ...}
+  comments        String?
+  
+  submittedAt     DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@unique([evaluationId, reviewerId])
+  @@index([reviewerId])
+}
+
+// Objetivos individuales
+model Objective {
+  id              String      @id @default(uuid())
+  evaluationId    String?
+  evaluation      Evaluation? @relation(fields: [evaluationId], references: [id])
+  
+  employeeId      String
+  employee        Employee    @relation(fields: [employeeId], references: [id])
+  
+  // Detalles del objetivo
+  title           String
+  description     String?
+  category        String?     // PERFORMANCE, DEVELOPMENT, PROJECT, BEHAVIORAL
+  
+  // Métricas
+  targetValue     Decimal?
+  actualValue     Decimal?
+  unit            String?     // %, €, unidades, etc.
+  weight          Decimal?    @default(1.0) // Peso en la evaluación final
+  
+  // Fechas
+  startDate       DateTime
+  dueDate         DateTime
+  completedAt     DateTime?
+  
+  // Estado y progreso
+  status          String      @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED, CANCELLED
+  progress        Int         @default(0) // 0-100
+  
+  // Evaluación del objetivo
+  achievementScore Decimal?   // 0-100 o según escala
+  managerComments String?
+  
+  // Cascada
+  parentObjectiveId String?
+  parentObjective  Objective? @relation("ObjectiveCascade", fields: [parentObjectiveId], references: [id])
+  childObjectives  Objective[] @relation("ObjectiveCascade")
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([employeeId, status])
+  @@index([dueDate])
+}
+
+// Plan de Desarrollo Individual
+model PDI {
+  id              String      @id @default(uuid())
+  evaluationId    String?
+  evaluation      Evaluation? @relation(fields: [evaluationId], references: [id])
+  
+  employeeId      String
+  employee        Employee    @relation(fields: [employeeId], references: [id])
+  
+  // Estado
+  status          String      @default("DRAFT") // DRAFT, ACTIVE, COMPLETED, CANCELLED
+  startDate       DateTime
+  endDate         DateTime?
+  
+  // Contenido
+  goals           Json?       // Array de {goal, actions, resources, targetDate, status}
+  skills          Json?       // Array de {skill, currentLevel, targetLevel, actions}
+  training        Json?       // Array de {course, provider, date, status, cost}
+  mentoring       Json?       // {mentorId, frequency, goals}
+  
+  // Seguimiento
+  progress        Int         @default(0)
+  managerComments String?
+  employeeComments String?
+  
+  // Aprobación
+  approvedBy      String?
+  approvedAt      DateTime?
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  
+  @@index([employeeId, status])
+}
+
+// ============================================
+// CALENDAR EVENT MODEL
+// ============================================
+
+model CalendarEvent {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  location    String?
+  startDate   DateTime
+  endDate     DateTime
+  allDay      Boolean  @default(true)
+  type        String   // EVENT, HOLIDAY, BIRTHDAY, CORPORATE
+  color       String?
+  companyId   String?
+  createdBy   String?
+  isPublic    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  company Company? @relation(fields: [companyId], references: [id])
+  creator User?    @relation("EventCreator", fields: [createdBy], references: [id])
+  
+  @@index([companyId, startDate])
+  @@index([type])
+  @@index([startDate, endDate])
 }

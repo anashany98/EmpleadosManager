@@ -128,6 +128,8 @@ import offboardingRoutes from './routes/offboardingRoutes';
 import vehicleRoutes from './routes/vehicleRoutes';
 import cardRoutes from './routes/cardRoutes';
 import calendarRoutes from './routes/calendarRoutes';
+import analyticsRoutes from './routes/analyticsRoutes';
+import performanceRoutes from './routes/performanceRoutes';
 
 app.use('/api/kiosk', kioskRoutes);
 app.use('/api/onboarding', protect, onboardingRoutes);
@@ -161,7 +163,7 @@ app.use('/api/vacations', protect, vacationRoutes);
 app.use('/api/companies', protect, checkPermission('companies', 'read'), companyRoutes);
 app.use('/api/audit', protect, restrictTo('admin'), auditRoutes);
 app.use('/api/overtime', protect, checkPermission('employees', 'read'), overtimeRoutes);
-app.use('/api/time-entries', timeEntryRoutes);
+app.use('/api/time-entries', protect, timeEntryRoutes);
 app.use('/api/alerts', protect, alertRoutes);
 app.use('/api/reports', protect, checkPermission('reports', 'read'), reportRoutes);
 app.use('/api/documents', protect, documentRoutes);
@@ -172,10 +174,12 @@ app.use('/api/projects', protect, checkPermission('projects', 'read'), projectRo
 app.use('/api/employee-project-work', protect, checkPermission('projects', 'read'), employeeProjectWorkRoutes);
 app.use('/api/inventory', protect, checkPermission('assets', 'read'), inventoryRoutes);
 app.use('/api/onboarding', protect, onboardingRoutes);
-app.use('/api/offboarding', offboardingRoutes);
-app.use('/api/vehicles', vehicleRoutes);
-app.use('/api/cards', cardRoutes);
-app.use('/api/calendar', calendarRoutes);
+app.use('/api/offboarding', protect, offboardingRoutes);
+app.use('/api/vehicles', protect, vehicleRoutes);
+app.use('/api/cards', protect, cardRoutes);
+app.use('/api/calendar', protect, calendarRoutes);
+app.use('/api/analytics', protect, analyticsRoutes);
+app.use('/api/performance', protect, performanceRoutes);
 
 app.use(errorMiddleware);
 
@@ -219,7 +223,6 @@ async function startServer() {
 
 const gracefulShutdown = () => {
     log.info('Received kill signal, shutting down gracefully');
-    schedulerService.stop();
     schedulerService.stop();
     inboxService.stop();
     queueService.close().then(() => log.info('QueueService closed'));

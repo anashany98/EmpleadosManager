@@ -1,5 +1,7 @@
 import * as crypto from 'crypto';
+import { createLogger } from './LoggerService';
 
+const log = createLogger('EncryptionService');
 const ALGORITHM = 'aes-256-cbc';
 const IV_LENGTH = 16; // For AES, this is always 16
 
@@ -26,8 +28,9 @@ export class EncryptionService {
             if (decrypted !== test) {
                 throw new Error('Encryption/Decryption test failed');
             }
+            log.info('Encryption service validated successfully');
         } catch (error) {
-            console.error('Encryption Service Validation Failed:', error);
+            log.fatal({ error }, 'Encryption Service Validation Failed');
             process.exit(1); // Fail fast
         }
     }
@@ -45,7 +48,7 @@ export class EncryptionService {
             encrypted = Buffer.concat([encrypted, cipher.final()]);
             return iv.toString('hex') + ':' + encrypted.toString('hex');
         } catch (error) {
-            console.error('Encryption failed:', error);
+            log.error({ error }, 'Encryption failed');
             throw new Error('Encryption failed');
         }
     }
@@ -67,7 +70,7 @@ export class EncryptionService {
             decrypted = Buffer.concat([decrypted, decipher.final()]);
             return decrypted.toString();
         } catch (error) {
-            console.error('Decryption failed:', error);
+            log.error({ error }, 'Decryption failed');
             return null; // Return null on failure, DO NOT return original text
         }
     }

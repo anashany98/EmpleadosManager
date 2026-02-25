@@ -2,19 +2,29 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
+import { AuthenticatedRequest, AuthUser } from '../types/express';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
     throw new Error('FATAL: JWT_SECRET is not defined in environment variables.');
 }
 
+// Interface for cookies
+interface Cookies {
+    access_token?: string;
+    refresh_token?: string;
+    csrf_token?: string;
+}
+
 export const protect = async (req: Request, res: Response, next: NextFunction) => {
     try {
-        let token;
+        let token: string | undefined;
+        const cookies = req.cookies as Cookies | undefined;
+        
         if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
-        } else if ((req as any).cookies?.access_token) {
-            token = (req as any).cookies.access_token as string;
+        } else if (cookies?.access_token) {
+            token = cookies.access_token;
         }
 
         if (!token) {
@@ -33,7 +43,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
                 employeeId: true,
                 dni: true,
                 employee: { select: { companyId: true } }
-            } // Include employee links
+            }
         });
 
         if (!user) {
@@ -41,20 +51,23 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         }
 
         // Parse permissions from string to object if they exist
-        let parsedPermissions: any = {};
+        let parsedPermissions: Record<string, 'none' | 'read' | 'write'> = {};
         try {
             parsedPermissions = user.permissions ? JSON.parse(user.permissions as string) : {};
         } catch {
             parsedPermissions = {};
         }
 
-        const userWithParsedPermissions = {
-            ...user,
+        const userWithParsedPermissions: AuthUser = {
+            id: user.id,
+            email: user.email,
+            role: user.role as AuthUser['role'],
+            employeeId: user.employeeId ?? undefined,
             permissions: parsedPermissions,
-            companyId: user.employee?.companyId
+            companyId: user.employee?.companyId ?? undefined
         };
 
-        (req as any).user = userWithParsedPermissions;
+        (req as AuthenticatedRequest).user = userWithParsedPermissions;
         next();
     } catch (error) {
         next(new AppError('Token inválido o expirado.', 401));
@@ -63,7 +76,13 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
 
 export const restrictTo = (...roles: string[]) => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const user = (req as any).user;
+        const authReq = req as AuthenticatedRequest;
+        const user = authReq.user;
+        
+        if (!user) {
+            return next(new AppError('No estás autenticado.', 401));
+        }
+        
         if (!roles.includes(user.role)) {
             return next(new AppError('No tienes permiso para realizar esta acción.', 403));
         }
@@ -73,7 +92,12 @@ export const restrictTo = (...roles: string[]) => {
 
 export const checkPermission = (module: string, level: 'read' | 'write') => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const user = (req as any).user;
+        const authReq = req as AuthenticatedRequest;
+        const user = authReq.user;
+
+        if (!user) {
+            return next(new AppError('No estás autenticado.', 401));
+        }
 
         // Admin has full access
         if (user.role === 'admin') return next();
@@ -82,15 +106,7 @@ export const checkPermission = (module: string, level: 'read' | 'write') => {
             return next(new AppError('No tienes permisos configurados.', 403));
         }
 
-        let permissions: any = {};
-        try {
-            permissions = typeof user.permissions === 'string'
-                ? JSON.parse(user.permissions)
-                : user.permissions;
-        } catch {
-            permissions = {};
-        }
-
+        const permissions: Record<string, 'none' | 'read' | 'write'> = user.permissions;
         const userLevel = permissions[module] || 'none';
 
         if (level === 'write' && userLevel !== 'write') {
@@ -107,8 +123,13 @@ export const checkPermission = (module: string, level: 'read' | 'write') => {
 
 export const allowSelfOrRole = (roles: string[] = ['admin'], paramName: string = 'id') => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const user = (req as any).user;
+        const authReq = req as AuthenticatedRequest;
+        const user = authReq.user;
         const resourceId = req.params[paramName];
+
+        if (!user) {
+            return next(new AppError('No estás autenticado.', 401));
+        }
 
         // 1. Check if user has allowed role
         if (roles.includes(user.role)) {

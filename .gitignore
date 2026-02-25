@@ -51,6 +51,9 @@ backups/
 backend/data/
 data/
 
+# Output files (logs, screenshots, reports)
+output/
+
 # OS
 Thumbs.db
 

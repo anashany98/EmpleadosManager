@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, X, Clock, Baby, Plane, Stethoscope, FileText, MoreHorizontal, Plus, Trash2, Calendar as CalendarIcon, Filter, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, Clock, Baby, Plane, Stethoscope, FileText, MoreHorizontal, Plus, Trash2, Calendar as CalendarIcon, Filter, Search, Gift } from 'lucide-react';
 import { api } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
+import { format, startOfMonth, endOfMonth } from 'date-fns';
 
+// Extended absence types including events and holidays
 const ABSENCE_TYPES = {
     VACATION: { label: 'Vacaciones', color: 'bg-emerald-500', text: 'text-emerald-700', bgSoft: 'bg-emerald-50', border: 'border-emerald-200', icon: Plane },
     SICK: { label: 'Baja Médica', color: 'bg-rose-500', text: 'text-rose-700', bgSoft: 'bg-rose-50', border: 'border-rose-200', icon: Stethoscope },
@@ -12,7 +14,21 @@ const ABSENCE_TYPES = {
     MEDICAL_HOURS: { label: 'Médico', color: 'bg-indigo-500', text: 'text-indigo-700', bgSoft: 'bg-indigo-50', border: 'border-indigo-200', icon: Clock },
     PERSONAL: { label: 'Personal', color: 'bg-amber-500', text: 'text-amber-700', bgSoft: 'bg-amber-50', border: 'border-amber-200', icon: FileText },
     OTHER: { label: 'Otros', color: 'bg-slate-500', text: 'text-slate-700', bgSoft: 'bg-slate-50', border: 'border-slate-200', icon: MoreHorizontal },
+    BIRTHDAY: { label: 'Cumpleaños', color: 'bg-pink-500', text: 'text-pink-700', bgSoft: 'bg-pink-50', border: 'border-pink-200', icon: Gift },
+    EVENT: { label: 'Evento', color: 'bg-blue-500', text: 'text-blue-700', bgSoft: 'bg-blue-50', border: 'border-blue-200', icon: CalendarIcon },
+    HOLIDAY: { label: 'Festivo', color: 'bg-slate-500', text: 'text-slate-700', bgSoft: 'bg-slate-50', border: 'border-slate-200', icon: CalendarIcon },
 };
+
+// Interface for unified calendar events
+interface UnifiedEvent {
+    id: string;
+    title: string;
+    start: string;
+    end: string;
+    type: string;
+    color: string;
+    description?: string;
+}
 
 export default function CalendarPage() {
     const { user } = useAuth();
@@ -23,6 +39,10 @@ export default function CalendarPage() {
     const [vacations, setVacations] = useState<any[]>([]);
     const [employees, setEmployees] = useState<any[]>([]);
     const [departments, setDepartments] = useState<string[]>([]);
+    
+    // Unified Calendar Events (birthdays, events, holidays)
+    const [unifiedEvents, setUnifiedEvents] = useState<UnifiedEvent[]>([]);
+    const [showUnifiedEvents, setShowUnifiedEvents] = useState(true);
 
     // UI State
     const [showModal, setShowModal] = useState(false);
@@ -44,7 +64,7 @@ export default function CalendarPage() {
 
     useEffect(() => {
         fetchData();
-    }, [canManageAllVacations]);
+    }, [canManageAllVacations, currentDate]);
 
     useEffect(() => {
         if (!canManageAllVacations && user?.employeeId) {
@@ -70,6 +90,17 @@ export default function CalendarPage() {
                 setEmployees([]);
                 setDepartments(['ALL']);
             }
+            
+            // Fetch unified calendar events (birthdays, events, holidays)
+            try {
+                const start = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+                const end = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+                const unifiedRes = await api.get(`/calendar/unified?start=${start}&end=${end}`);
+                setUnifiedEvents(unifiedRes.data?.data || []);
+            } catch (e) {
+                console.error('Error fetching unified events:', e);
+                setUnifiedEvents([]);
+            }
         } catch (e) {
             console.error(e);
             toast.error("Error al cargar datos");
@@ -87,15 +118,38 @@ export default function CalendarPage() {
         return true;
     });
 
+    // Get configuration for unified events
+    const getUnifiedEventConfig = (type: string) => {
+        switch (type) {
+            case 'birthday':
+                return ABSENCE_TYPES.BIRTHDAY;
+            case 'event':
+                return ABSENCE_TYPES.EVENT;
+            case 'holiday':
+                return ABSENCE_TYPES.HOLIDAY;
+            default:
+                return ABSENCE_TYPES.OTHER;
+        }
+    };
+
     const getDayEvents = (day: number) => {
         const target = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
         const targetTime = target.getTime();
 
-        return filteredVacations.filter(v => {
+        const vacationEvents = filteredVacations.filter(v => {
             const start = new Date(v.startDate).setHours(0, 0, 0, 0);
             const end = new Date(v.endDate).setHours(23, 59, 59, 999);
             return targetTime >= start && targetTime <= end;
         });
+        
+        // Include unified events (birthdays, events, holidays) based on toggle
+        const unifiedDayEvents = showUnifiedEvents ? unifiedEvents.filter(event => {
+            const start = new Date(event.start).setHours(0, 0, 0, 0);
+            const end = new Date(event.end).setHours(23, 59, 59, 999);
+            return targetTime >= start && targetTime <= end;
+        }) : [];
+        
+        return [...vacationEvents, ...unifiedDayEvents];
     };
 
     const upcomingEvents = filteredVacations
@@ -183,6 +237,13 @@ export default function CalendarPage() {
                             <Clock size={16} className="text-indigo-500" />
                             Sincronizar
                         </button>
+                        <button 
+                            onClick={() => setShowUnifiedEvents(!showUnifiedEvents)} 
+                            className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors shadow-sm border text-xs font-bold ${showUnifiedEvents ? 'bg-pink-50 border-pink-200 text-pink-600 dark:bg-pink-900/20 dark:border-pink-800 dark:text-pink-400' : 'bg-white border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'}`}
+                        >
+                            <Gift size={16} className={showUnifiedEvents ? 'text-pink-500' : ''} />
+                            Eventos
+                        </button>
                     </div>
 
                     {canManageAllVacations && (
@@ -239,9 +300,13 @@ export default function CalendarPage() {
                                     {/* Events Preview */}
                                     <div className="flex-1 flex flex-col gap-1 overflow-hidden">
                                         {events.slice(0, 3).map((ev, idx) => {
-                                            const conf = ABSENCE_TYPES[ev.type as keyof typeof ABSENCE_TYPES] || ABSENCE_TYPES.VACATION;
+                                            // Check if it's a unified event (has type like 'birthday', 'event', 'holiday')
+                                            const conf = (ev.type === 'birthday' || ev.type === 'event' || ev.type === 'holiday') 
+                                                ? getUnifiedEventConfig(ev.type) 
+                                                : ABSENCE_TYPES[ev.type as keyof typeof ABSENCE_TYPES] || ABSENCE_TYPES.VACATION;
+                                            const eventTitle = ev.employee?.name ? `${ev.employee.name} - ${conf.label}` : ev.title || conf.label;
                                             return (
-                                                <div key={idx} className={`h-1.5 rounded-full ${conf.color} w-full opacity-60 group-hover:opacity-100 transition-opacity`} title={`${ev.employee?.name} - ${conf.label}`} />
+                                                <div key={idx} className={`h-1.5 rounded-full ${conf.color} w-full opacity-60 group-hover:opacity-100 transition-opacity`} title={eventTitle} />
                                             );
                                         })}
                                         {events.length > 3 && (

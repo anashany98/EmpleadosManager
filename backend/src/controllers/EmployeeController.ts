@@ -326,7 +326,7 @@ export const EmployeeController = {
                         // Employee/Manager CAN update themselves?
                         if (user.employeeId !== id) throw new AppError('No tienes permiso para editar este empleado', 403);
                     }
-                    if (user.role === 'admin' && target.companyId !== user.companyId) {
+                    if (user.role === 'admin' && target?.companyId !== user.companyId) {
                         throw new AppError('No autorizado para editar empleados de otra empresa', 403);
                     }
                 }
