@@ -34,7 +34,7 @@ function buildRedisConfig(): string | RedisOptions {
 
 const redisConfig = buildRedisConfig();
 export const connection = typeof redisConfig === 'string'
-    ? new IORedis(redisConfig)
+    ? new IORedis(redisConfig, { maxRetriesPerRequest: null })
     : new IORedis(redisConfig);
 
 connection.on('connect', () => {
