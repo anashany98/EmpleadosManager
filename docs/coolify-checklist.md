@@ -65,13 +65,14 @@ PRISMA_CONNECT_TIMEOUT=10000
 |------|------|
 | Name | manager-frontend |
 | Build Pack | Dockerfile |
-| Dockerfile | frontend/Dockerfile |
+| Base Directory | /frontend |
+| Dockerfile | Dockerfile |
 | Port | 80 |
 | Domain | empleadosmanager.egeadev.cloud |
 
 ### Variables:
 ```
-VITE_API_URL=https://empleadosmanager.egeadev.cloud
+VITE_API_URL=https://api.empleadosmanager.egeadev.cloud
 ```
 
 ---

@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { API_URL } from '../api/client';
 
 export function useNetworkStatus() {
     const [isOnline, setIsOnline] = useState(() => navigator.onLine);
@@ -14,9 +15,7 @@ export function useNetworkStatus() {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-            // Use 'api/health' assuming it exists as seen in index.ts
-            // Using HEAD to minimize data transfer
-            const res = await fetch('/api/health', {
+            const res = await fetch(`${API_URL}/health`, {
                 method: 'HEAD',
                 cache: 'no-store',
                 signal: controller.signal

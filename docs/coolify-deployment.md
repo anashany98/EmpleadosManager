@@ -84,15 +84,16 @@ PRISMA_CONNECT_TIMEOUT=10000
 
 1. Ir a Coolify → New Resource → Application → Git Repository
 2. Configurar:
-   - Name: `manager-frontend`
-   - Git URL: [URL de tu repositorio]
-   - Branch: main
-   - Build Pack: Dockerfile
-   - Dockerfile Location: `frontend/Dockerfile`
+    - Name: `manager-frontend`
+    - Git URL: [URL de tu repositorio]
+    - Branch: main
+    - Build Pack: Dockerfile
+    - Base Directory: `/frontend`
+    - Dockerfile Location: `Dockerfile`
 
 3. Variables de Entorno:
 ```
-VITE_API_URL=https://empleadosmanager.egeadev.cloud
+VITE_API_URL=https://api.empleadosmanager.egeadev.cloud
 ```
 
 4. Puerto: 80
