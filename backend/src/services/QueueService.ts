@@ -1,10 +1,10 @@
 import { Queue, Worker, QueueEvents, Job } from 'bullmq';
-import IORedis from 'ioredis';
+import IORedis, { type RedisOptions } from 'ioredis';
 import { createLogger } from './LoggerService';
 
 const log = createLogger('QueueService');
 
-function buildRedisConfig() {
+function buildRedisConfig(): string | RedisOptions {
     const redisUrl = process.env.REDIS_URL;
     
     if (redisUrl) {
@@ -16,7 +16,7 @@ function buildRedisConfig() {
     const port = parseInt(process.env.REDIS_PORT || '6379');
     const password = process.env.REDIS_PASSWORD;
 
-    const config: IORedis.IOREDISOptions = {
+    const config: RedisOptions = {
         host,
         port,
         maxRetriesPerRequest: null,
@@ -33,7 +33,9 @@ function buildRedisConfig() {
 }
 
 const redisConfig = buildRedisConfig();
-export const connection = new IORedis(redisConfig);
+export const connection = typeof redisConfig === 'string'
+    ? new IORedis(redisConfig)
+    : new IORedis(redisConfig);
 
 connection.on('connect', () => {
     log.info('Redis connected successfully');
