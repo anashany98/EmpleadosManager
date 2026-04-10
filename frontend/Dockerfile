@@ -3,15 +3,17 @@ FROM node:22-bullseye AS builder
 
 WORKDIR /app
 
-# Copy package files
-# Copy package files
-COPY package.json package-lock.json ./
+# Copy frontend package files from monorepo root context
+COPY frontend/package.json frontend/package-lock.json ./
 
 # Install dependencies strictly from lockfile
 RUN npm ci
 
-# Copy source code
-COPY . .
+# Copy shared monorepo package for frontend aliases
+COPY shared /shared
+
+# Copy frontend source code from monorepo root context
+COPY frontend .
 
 # Build args for Vite
 ARG VITE_API_URL
@@ -27,7 +29,7 @@ RUN npm run build
 FROM nginx:alpine
 
 COPY --from=builder /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
