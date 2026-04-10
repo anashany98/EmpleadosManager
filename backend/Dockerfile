@@ -17,6 +17,9 @@ WORKDIR /app
 COPY package*.json ./
 COPY docker-compose.yml ./
 
+# Copy shared code (for authz module)
+COPY shared ./shared
+
 # Copy database schema
 COPY database ./database
 
