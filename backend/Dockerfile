@@ -30,6 +30,9 @@ RUN cd backend && npm install
 # Copy backend source
 COPY backend ./backend
 
+# Copy scripts for deployment
+COPY backend/src/scripts ./backend/src/scripts
+
 # Generate Prisma Client
 RUN cd backend && npx prisma generate --schema=../database/prisma/schema.prisma
 
