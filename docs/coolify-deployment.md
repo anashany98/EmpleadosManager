@@ -88,8 +88,8 @@ PRISMA_CONNECT_TIMEOUT=10000
     - Git URL: [URL de tu repositorio]
     - Branch: main
     - Build Pack: Dockerfile
-    - Base Directory: `/frontend`
-    - Dockerfile Location: `Dockerfile`
+    - Base Directory: `/`
+    - Dockerfile Location: `frontend/Dockerfile`
 
 3. Variables de Entorno:
 ```

@@ -65,8 +65,8 @@ PRISMA_CONNECT_TIMEOUT=10000
 |------|------|
 | Name | manager-frontend |
 | Build Pack | Dockerfile |
-| Base Directory | /frontend |
-| Dockerfile | Dockerfile |
+| Base Directory | / |
+| Dockerfile | frontend/Dockerfile |
 | Port | 80 |
 | Domain | empleadosmanager.egeadev.cloud |
 
