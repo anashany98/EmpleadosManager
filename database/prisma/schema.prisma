@@ -536,6 +536,7 @@ model Configuration {
 model TimeEntry {
   id         String   @id @default(uuid())
   employeeId String
+  clientRequestId String? @unique
   type       String   // IN, OUT, BREAK_START, BREAK_END, LUNCH_START, LUNCH_END
   timestamp  DateTime @default(now())
   latitude   Float?

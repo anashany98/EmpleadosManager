@@ -5,6 +5,7 @@ import { AnomalyService } from '../services/AnomalyService';
 import { AuditService } from '../services/AuditService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
+import { TimeEntryIdempotencyService } from '../services/TimeEntryIdempotencyService';
 
 const log = createLogger('TimeEntryController');
 
@@ -63,7 +64,7 @@ export const TimeEntryController = {
     clock: async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthenticatedRequest;
-            const { type, latitude, longitude, location, device, timestamp } = req.body;
+            const { type, latitude, longitude, location, device, timestamp, clientRequestId } = req.body;
 
             if (!user.employeeId) {
                 return ApiResponse.error(res, 'Usuario no vinculado a un empleado', 400);
@@ -113,21 +114,24 @@ export const TimeEntryController = {
                 }
             }
 
-            const entry = await prisma.timeEntry.create({
-                data: {
-                    employeeId: user.employeeId,
-                    type,
-                    latitude: hasCoords ? (lat as number) : null,
-                    longitude: hasCoords ? (lon as number) : null,
-                    location,
-                    device,
-                    ...(parsedTimestamp ? { timestamp: parsedTimestamp } : {})
-                }
+            const effectiveTimestamp = parsedTimestamp || new Date();
+
+            const result = await TimeEntryIdempotencyService.create({
+                employeeId: user.employeeId,
+                type,
+                timestamp: effectiveTimestamp,
+                latitude: hasCoords ? (lat as number) : null,
+                longitude: hasCoords ? (lon as number) : null,
+                location,
+                device,
+                clientRequestId
             });
 
-            AnomalyService.detectTimeEntry(entry).catch(err => log.error({ err }, 'Anomaly detection failed'));
+            if (!result.deduplicated) {
+                AnomalyService.detectTimeEntry(result.entry).catch(err => log.error({ err }, 'Anomaly detection failed'));
+            }
 
-            return ApiResponse.success(res, entry);
+            return ApiResponse.success(res, result, result.deduplicated ? 'Fichaje ya registrado' : 'Fichaje registrado correctamente');
         } catch (error: any) {
             log.error({ error }, 'Error clocking');
             return ApiResponse.error(res, 'Error al registrar fichaje', 500);

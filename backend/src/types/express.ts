@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import { PermissionMap, Role } from '../../../shared/authz';
 
 /**
  * User object attached to request after authentication
@@ -7,10 +8,10 @@ export interface AuthUser {
     id: string;
     email: string;
     name?: string;
-    role: 'admin' | 'hr' | 'employee' | 'manager';
+    role: Role;
     employeeId?: string;
     companyId?: string;
-    permissions?: Record<string, 'none' | 'read' | 'write'>;
+    permissions?: PermissionMap;
 }
 
 /**

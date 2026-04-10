@@ -1,42 +1,118 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { Play, Square, Coffee, Utensils, MapPin, Loader2, Clock } from 'lucide-react';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
-import { OfflineClockQueue } from '../utils/offlineClockQueue';
+import { createClientRequestId, OfflineClockQueue } from '../utils/offlineClockQueue';
+
+type TimeStatus = 'OFF' | 'WORKING' | 'BREAK' | 'LUNCH';
+type ClockType = 'IN' | 'OUT' | 'BREAK_START' | 'BREAK_END' | 'LUNCH_START' | 'LUNCH_END';
+
+interface LastEntry {
+    type: string;
+    timestamp: string;
+    location?: string | null;
+}
+
+interface ClockPayload {
+    type: ClockType;
+    latitude: number | null;
+    longitude: number | null;
+    device: string;
+    timestamp: string;
+    clientRequestId: string;
+}
+
+interface TimeStatusResponse {
+    success: boolean;
+    data: {
+        status: TimeStatus;
+        lastEntry: LastEntry | null;
+    };
+}
+
+interface ClockMutationResponse {
+    success: boolean;
+    data: {
+        entry: LastEntry;
+        deduplicated: boolean;
+        dedupedBy: 'clientRequestId' | 'timestamp' | null;
+    };
+}
+
+interface ApiErrorLike extends Error {
+    response?: {
+        data?: {
+            message?: string;
+        };
+    };
+}
+
+function getCurrentPosition(options: PositionOptions): Promise<GeolocationPosition> {
+    return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+}
+
+function getNextStatus(type: ClockType): TimeStatus {
+    switch (type) {
+        case 'IN':
+        case 'BREAK_END':
+        case 'LUNCH_END':
+            return 'WORKING';
+        case 'BREAK_START':
+            return 'BREAK';
+        case 'LUNCH_START':
+            return 'LUNCH';
+        case 'OUT':
+        default:
+            return 'OFF';
+    }
+}
+
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error && error.message) {
+        return error.message;
+    }
+
+    const apiError = error as ApiErrorLike | undefined;
+    return apiError?.response?.data?.message || 'Error al fichar';
+}
+
+function isNetworkError(error: unknown): boolean {
+    if (!navigator.onLine) {
+        return true;
+    }
+
+    if (!(error instanceof Error)) {
+        return false;
+    }
+
+    return error.message.includes('Failed to fetch') || error.message.includes('NetworkError');
+}
 
 export default function TimeTrackerWidget() {
-    const [status, setStatus] = useState<'OFF' | 'WORKING' | 'BREAK' | 'LUNCH'>('OFF');
-    const [lastEntry, setLastEntry] = useState<any>(null);
+    const [status, setStatus] = useState<TimeStatus>('OFF');
+    const [lastEntry, setLastEntry] = useState<LastEntry | null>(null);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [elapsed, setElapsed] = useState('00:00:00');
     const [pendingCount, setPendingCount] = useState(0);
     const isOnline = useNetworkStatus();
 
-    useEffect(() => {
-        const interval = setInterval(updateTimer, 1000);
-        return () => clearInterval(interval);
-    }, [lastEntry, status]);
-
-    useEffect(() => {
-        setPendingCount(OfflineClockQueue.count());
+    const applyLocalClock = useCallback((type: ClockType, timestamp?: string) => {
+        setStatus(getNextStatus(type));
+        setLastEntry({
+            type,
+            timestamp: timestamp || new Date().toISOString(),
+            location: 'Registrado sin conexion'
+        });
     }, []);
 
-    useEffect(() => {
-        if (isOnline) {
-            fetchStatus();
-            flushPending();
-        } else {
-            setLoading(false);
-            hydrateOfflineState();
-        }
-    }, [isOnline]);
-
-    const fetchStatus = async () => {
+    const fetchStatus = useCallback(async () => {
         setLoading(true);
         try {
-            const res = await api.get('/time-entries/status');
+            const res = await api.get<TimeStatusResponse>('/time-entries/status');
             if (res.success) {
                 setStatus(res.data.status);
                 setLastEntry(res.data.lastEntry);
@@ -46,203 +122,218 @@ export default function TimeTrackerWidget() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    const updateTimer = () => {
-        if (status === 'OFF' || !lastEntry) {
-            setElapsed('00:00:00');
+    const hydrateOfflineState = useCallback(() => {
+        const pending = OfflineClockQueue.getAll();
+        setPendingCount(pending.length);
+
+        if (pending.length === 0) {
             return;
         }
 
-        const start = new Date(lastEntry.timestamp).getTime();
-        const now = new Date().getTime();
-        const diff = Math.max(0, now - start);
+        const lastPending = pending[pending.length - 1];
+        applyLocalClock(lastPending.type as ClockType, lastPending.payload.timestamp);
+    }, [applyLocalClock]);
 
-        const h = Math.floor(diff / (1000 * 60 * 60));
-        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const s = Math.floor((diff % (1000 * 60)) / 1000);
-
-        setElapsed(
-            `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-        );
-    };
-
-    const getNextStatus = (type: string) => {
-        switch (type) {
-            case 'IN':
-            case 'BREAK_END':
-            case 'LUNCH_END':
-                return 'WORKING';
-            case 'BREAK_START':
-                return 'BREAK';
-            case 'LUNCH_START':
-                return 'LUNCH';
-            case 'OUT':
-            default:
-                return 'OFF';
+    const flushPending = useCallback(async () => {
+        if (!isOnline) {
+            return;
         }
-    };
 
-    const applyLocalClock = (type: string) => {
-        setStatus(getNextStatus(type));
-        setLastEntry({
-            type,
-            timestamp: new Date().toISOString(),
-            location: 'Registrado sin conexión'
-        });
-    };
-
-    const hydrateOfflineState = () => {
         const pending = OfflineClockQueue.getAll();
-        if (pending.length === 0) return;
-        const last = pending[pending.length - 1];
-        applyLocalClock(last.type);
-        setPendingCount(pending.length);
-    };
-
-    const flushPending = async () => {
-        if (!navigator.onLine) return;
-        const pending = OfflineClockQueue.getAll();
-        if (pending.length === 0) return;
+        if (pending.length === 0) {
+            setPendingCount(0);
+            return;
+        }
 
         for (const item of pending) {
             try {
-                await api.post('/time-entries/clock', item.payload);
+                await api.post<ClockMutationResponse>('/time-entries/clock', item.payload);
                 OfflineClockQueue.remove(item.id);
             } catch (error) {
+                console.warn('Pending clock sync failed', error);
                 break;
             }
         }
 
         const remaining = OfflineClockQueue.count();
         setPendingCount(remaining);
+
         if (remaining === 0) {
             toast.success('Fichajes pendientes sincronizados');
-            fetchStatus();
+            await fetchStatus();
+            return;
         }
-    };
 
-    const handleClock = async (type: string) => {
+        hydrateOfflineState();
+    }, [fetchStatus, hydrateOfflineState, isOnline]);
+
+    const updateTimer = useCallback(() => {
+        if (status === 'OFF' || !lastEntry) {
+            setElapsed('00:00:00');
+            return;
+        }
+
+        const start = new Date(lastEntry.timestamp).getTime();
+        const now = Date.now();
+        const diff = Math.max(0, now - start);
+
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+        setElapsed(
+            `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+        );
+    }, [lastEntry, status]);
+
+    useEffect(() => {
+        setPendingCount(OfflineClockQueue.count());
+    }, []);
+
+    useEffect(() => {
+        const interval = setInterval(updateTimer, 1000);
+        return () => clearInterval(interval);
+    }, [updateTimer]);
+
+    useEffect(() => {
+        if (isOnline) {
+            void fetchStatus();
+            void flushPending();
+            return;
+        }
+
+        setLoading(false);
+        hydrateOfflineState();
+    }, [fetchStatus, flushPending, hydrateOfflineState, isOnline]);
+
+    const handleClock = useCallback(async (type: ClockType) => {
         setActionLoading(true);
-        let payload: any = null;
+
+        const clientRequestId = createClientRequestId();
+        let payload: ClockPayload | null = null;
+
         try {
-            // STRICT GEOLOCATION ENFORCEMENT
             if (!navigator.geolocation) {
-                toast.error('Tu navegador no soporta geolocalización. Es obligatoria para fichar.');
-                setActionLoading(false);
+                toast.error('Tu navegador no soporta geolocalizacion. Es obligatoria para fichar.');
                 return;
             }
 
-            let locationData = { latitude: null, longitude: null };
+            let latitude: number | null = null;
+            let longitude: number | null = null;
 
             try {
-                const pos: any = await new Promise((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, {
-                        timeout: 10000,
-                        enableHighAccuracy: true
-                    });
+                const highAccuracyPosition = await getCurrentPosition({
+                    timeout: 10000,
+                    enableHighAccuracy: true
                 });
-                locationData = {
-                    latitude: pos.coords.latitude,
-                    longitude: pos.coords.longitude
-                };
-            } catch (e: any) {
-                console.warn('Geolocation error:', e);
-                let msg = 'No se pudo obtener la ubicación.';
-                if (e.code === 1) msg = 'Permiso de ubicación denegado. Es obligatorio para fichar.';
-                else if (e.code === 2) msg = 'Ubicación no disponible.';
-                else if (e.code === 3) msg = 'Tiempo de espera agotado al obtener ubicación.';
 
-                // FALLBACK: Try low accuracy if high accuracy fails
+                latitude = highAccuracyPosition.coords.latitude;
+                longitude = highAccuracyPosition.coords.longitude;
+            } catch (geoError) {
+                let message = 'No se pudo obtener la ubicacion.';
+
+                if (geoError instanceof GeolocationPositionError) {
+                    if (geoError.code === 1) {
+                        message = 'Permiso de ubicacion denegado. Es obligatorio para fichar.';
+                    } else if (geoError.code === 2) {
+                        message = 'Ubicacion no disponible.';
+                    } else if (geoError.code === 3) {
+                        message = 'Tiempo de espera agotado al obtener ubicacion.';
+                    }
+                }
+
                 try {
-                    console.log('Retrying with low accuracy...');
-                    const pos: any = await new Promise((resolve, reject) => {
-                        navigator.geolocation.getCurrentPosition(resolve, reject, {
-                            timeout: 10000,
-                            enableHighAccuracy: false
-                        });
+                    const fallbackPosition = await getCurrentPosition({
+                        timeout: 10000,
+                        enableHighAccuracy: false
                     });
-                    locationData = {
-                        latitude: pos.coords.latitude,
-                        longitude: pos.coords.longitude
-                    };
-                } catch (fallbackError) {
-                    toast.error(msg + ' Es OBLIGATORIO tener ubicación para fichar.');
-                    setActionLoading(false);
-                    return; // BLOCK ACTION STRICTLY
+
+                    latitude = fallbackPosition.coords.latitude;
+                    longitude = fallbackPosition.coords.longitude;
+                } catch {
+                    toast.error(`${message} Es obligatorio tener ubicacion para fichar.`);
+                    return;
                 }
             }
 
             payload = {
                 type,
-                ...locationData,
+                latitude,
+                longitude,
                 device: navigator.userAgent,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                clientRequestId
             };
 
             if (!isOnline) {
-                OfflineClockQueue.enqueue({
-                    type,
-                    payload
-                });
+                OfflineClockQueue.enqueue({ type, payload });
                 setPendingCount(OfflineClockQueue.count());
-                applyLocalClock(type);
-                toast.info('Sin conexión: fichaje guardado y se enviará al recuperar Internet.');
+                applyLocalClock(type, payload.timestamp);
+                toast.info('Sin conexion: fichaje guardado y pendiente de sincronizar.');
                 return;
             }
 
-            const res = await api.post('/time-entries/clock', payload);
-
-            if (res.success) {
-                toast.success('Fichaje registrado correctamente');
-                fetchStatus();
+            const response = await api.post<ClockMutationResponse>('/time-entries/clock', payload);
+            if (response.success) {
+                toast.success(response.data.deduplicated ? 'Fichaje ya registrado' : 'Fichaje registrado correctamente');
+                await fetchStatus();
             }
-        } catch (error: any) {
-            const isNetworkError =
-                !navigator.onLine ||
-                (typeof error?.message === 'string' &&
-                    (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')));
-
-            if (isNetworkError) {
-                const fallbackPayload = payload || {
+        } catch (error) {
+            if (isNetworkError(error)) {
+                const fallbackPayload: ClockPayload = payload || {
                     type,
                     latitude: null,
                     longitude: null,
                     device: navigator.userAgent,
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    clientRequestId
                 };
+
                 OfflineClockQueue.enqueue({
                     type,
                     payload: fallbackPayload
                 });
                 setPendingCount(OfflineClockQueue.count());
-                applyLocalClock(type);
-                toast.info('Sin conexión: fichaje guardado y se enviará al recuperar Internet.');
-            } else {
-                toast.error(error.response?.data?.message || 'Error al fichar');
+                applyLocalClock(type, fallbackPayload.timestamp);
+                toast.info('Sin conexion: fichaje guardado y pendiente de sincronizar.');
+                return;
             }
+
+            toast.error(getErrorMessage(error));
         } finally {
             setActionLoading(false);
         }
-    };
+    }, [applyLocalClock, fetchStatus, isOnline]);
 
-    if (loading) return <div className="animate-pulse h-32 bg-slate-100 rounded-xl"></div>;
+    if (loading) {
+        return <div className="animate-pulse h-32 bg-slate-100 rounded-xl"></div>;
+    }
 
     const getStatusColor = () => {
         switch (status) {
-            case 'WORKING': return 'text-green-500 bg-green-50 border-green-200';
-            case 'BREAK': return 'text-amber-500 bg-amber-50 border-amber-200';
-            case 'LUNCH': return 'text-orange-500 bg-orange-50 border-orange-200';
-            default: return 'text-slate-500 bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400';
+            case 'WORKING':
+                return 'text-green-500 bg-green-50 border-green-200';
+            case 'BREAK':
+                return 'text-amber-500 bg-amber-50 border-amber-200';
+            case 'LUNCH':
+                return 'text-orange-500 bg-orange-50 border-orange-200';
+            default:
+                return 'text-slate-500 bg-slate-50 border-slate-200 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400';
         }
     };
 
     const getStatusText = () => {
         switch (status) {
-            case 'WORKING': return 'TRABAJANDO';
-            case 'BREAK': return 'EN PAUSA';
-            case 'LUNCH': return 'COMIENDO';
-            default: return 'FUERA DE TURNO';
+            case 'WORKING':
+                return 'TRABAJANDO';
+            case 'BREAK':
+                return 'EN PAUSA';
+            case 'LUNCH':
+                return 'COMIENDO';
+            default:
+                return 'FUERA DE TURNO';
         }
     };
 
@@ -266,7 +357,7 @@ export default function TimeTrackerWidget() {
                     {lastEntry?.location && (
                         <div className="flex items-center justify-end gap-1 text-[10px] text-slate-400 mt-1">
                             <MapPin size={10} />
-                            <span className="truncate max-w-[150px]">{lastEntry.location || 'Ubicación registrada'}</span>
+                            <span className="truncate max-w-[150px]">{lastEntry.location || 'Ubicacion registrada'}</span>
                         </div>
                     )}
                 </div>
@@ -275,7 +366,7 @@ export default function TimeTrackerWidget() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                 {status === 'OFF' ? (
                     <button
-                        onClick={() => handleClock('IN')}
+                        onClick={() => void handleClock('IN')}
                         disabled={actionLoading}
                         className="col-span-4 py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-green-500/20 active:scale-95 disabled:opacity-50"
                     >
@@ -285,7 +376,7 @@ export default function TimeTrackerWidget() {
                 ) : (
                     <>
                         <button
-                            onClick={() => handleClock('OUT')}
+                            onClick={() => void handleClock('OUT')}
                             disabled={actionLoading}
                             className="col-span-1 md:col-span-1 py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all shadow-lg shadow-rose-500/20 active:scale-95 disabled:opacity-50 text-xs"
                         >
@@ -294,24 +385,24 @@ export default function TimeTrackerWidget() {
                         </button>
 
                         <button
-                            onClick={() => handleClock(status === 'BREAK' ? 'BREAK_END' : 'BREAK_START')}
+                            onClick={() => void handleClock(status === 'BREAK' ? 'BREAK_END' : 'BREAK_START')}
                             disabled={actionLoading || status === 'LUNCH'}
                             className={`col-span-1 md:col-span-1 py-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-50 text-xs border ${status === 'BREAK'
                                 ? 'bg-amber-100 text-amber-700 border-amber-200'
                                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                                }`}
+                            }`}
                         >
                             <Coffee size={20} />
-                            {status === 'BREAK' ? 'VOLVER' : 'PAUSA CAFÉ'}
+                            {status === 'BREAK' ? 'VOLVER' : 'PAUSA CAFE'}
                         </button>
 
                         <button
-                            onClick={() => handleClock(status === 'LUNCH' ? 'LUNCH_END' : 'LUNCH_START')}
+                            onClick={() => void handleClock(status === 'LUNCH' ? 'LUNCH_END' : 'LUNCH_START')}
                             disabled={actionLoading || status === 'BREAK'}
                             className={`col-span-2 md:col-span-2 py-4 rounded-xl font-bold flex flex-col items-center justify-center gap-1 transition-all active:scale-95 disabled:opacity-50 text-xs border ${status === 'LUNCH'
                                 ? 'bg-orange-100 text-orange-700 border-orange-200'
                                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                                }`}
+                            }`}
                         >
                             <Utensils size={20} />
                             {status === 'LUNCH' ? 'VOLVER DE COMER' : 'PAUSA COMIDA'}
@@ -322,7 +413,7 @@ export default function TimeTrackerWidget() {
 
             <div className="mt-4 flex items-center justify-between text-[11px] font-semibold">
                 <div className={`px-2 py-1 rounded-full border ${isOnline ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                    {isOnline ? 'En línea' : 'Sin conexión'}
+                    {isOnline ? 'En linea' : 'Sin conexion'}
                 </div>
                 {pendingCount > 0 && (
                     <div className="px-2 py-1 rounded-full border bg-slate-50 text-slate-600 border-slate-200">
@@ -331,7 +422,6 @@ export default function TimeTrackerWidget() {
                 )}
             </div>
 
-            {/* Geolocation visual feedback */}
             <div className="absolute bottom-2 right-2 flex items-center gap-1 text-[10px] text-slate-300 dark:text-slate-700 pointer-events-none">
                 <MapPin size={10} />
                 GPS requerido

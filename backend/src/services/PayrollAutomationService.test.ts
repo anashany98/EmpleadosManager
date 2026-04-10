@@ -74,14 +74,11 @@ describe('PayrollAutomationService', () => {
         // expectedHours = 40 * 4.33 = 173.2
         // proportion = 160 / 173.2 = 0.9237
         // bruto = 2000 * 0.9237 = 1847.4
-        expect(prisma.payrollRow.createMany).toHaveBeenCalledWith(expect.objectContaining({
-            data: expect.arrayContaining([
-                expect.objectContaining({
-                    employeeId: 'emp-1',
-                    bruto: expect.closeTo(1847.57, 1), // 2000 * (160 / (40 * 4.33))
-                })
-            ])
-        }));
+        const createManyInput = vi.mocked(prisma.payrollRow.createMany).mock.calls[0]?.[0];
+        const createdRow = createManyInput?.data?.[0];
+
+        expect(createdRow.employeeId).toBe('emp-1');
+        expect(Number(createdRow.bruto)).toBeCloseTo(1847.57, 1);
 
         // Verify status update
         expect(prisma.payrollImportBatch.update).toHaveBeenCalledWith(expect.objectContaining({

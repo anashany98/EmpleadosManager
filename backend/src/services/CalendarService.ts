@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { startOfMonth, endOfMonth, format, parseISO } from 'date-fns';
+import { normalizeRole } from '../../../shared/authz';
 
 export interface CalendarEventInput {
   title: string;
@@ -61,8 +62,8 @@ export const CalendarService = {
       include: { employee: true }
     });
 
-    const isAdmin = user?.role === 'admin';
-    const isHR = user?.role === 'hr' || user?.role === 'admin';
+    const normalizedRole = normalizeRole(user?.role);
+    const isCompanyStaff = normalizedRole === 'admin' || normalizedRole === 'hr' || normalizedRole === 'manager';
     const currentEmployeeId = user?.employeeId;
 
     // 1. Get approved vacations
@@ -96,7 +97,7 @@ export const CalendarService = {
     });
 
     // 2. Get birthdays (calculate based on birthDate)
-    if (isHR || isAdmin) {
+    if (isCompanyStaff) {
       const employees = await prisma.employee.findMany({
         where: {
           active: true,

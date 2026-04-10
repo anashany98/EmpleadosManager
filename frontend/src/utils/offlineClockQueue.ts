@@ -7,18 +7,37 @@ export type ClockQueueItem = {
         longitude: number | null;
         device: string;
         timestamp: string;
+        clientRequestId: string;
     };
     createdAt: string;
 };
 
 const STORAGE_KEY = 'offline_clock_queue_v1';
 
+export const createClientRequestId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        return crypto.randomUUID();
+    }
+
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+};
+
 const loadQueue = (): ClockQueueItem[] => {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return [];
         const parsed = JSON.parse(raw);
-        return Array.isArray(parsed) ? parsed : [];
+        if (!Array.isArray(parsed)) return [];
+
+        return parsed
+            .filter((item) => item && typeof item === 'object' && item.payload && typeof item.payload === 'object')
+            .map((item) => ({
+                ...item,
+                payload: {
+                    ...item.payload,
+                    clientRequestId: item.payload.clientRequestId || createClientRequestId()
+                }
+            }));
     } catch {
         return [];
     }
@@ -42,7 +61,11 @@ export const OfflineClockQueue = {
         const item: ClockQueueItem = {
             id: generateId(),
             createdAt: new Date().toISOString(),
-            ...input
+            ...input,
+            payload: {
+                ...input.payload,
+                clientRequestId: input.payload.clientRequestId || createClientRequestId()
+            }
         };
         items.push(item);
         saveQueue(items);

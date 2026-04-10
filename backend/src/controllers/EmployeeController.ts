@@ -4,9 +4,20 @@ import { AuditService } from '../services/AuditService';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import * as XLSX from 'xlsx';
-import { EncryptionService } from '../services/EncryptionService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
+import {
+    buildEmployeePortabilityReport,
+    buildSelfEmployeeUpdateData,
+    canManageEmployee,
+    canReadEmployeeDetail,
+    canReadEmployeeSensitiveData,
+    canSelfEditEmployee,
+    sanitizeEmployeeDetail,
+    sanitizeEmployeeListItem
+} from '../policies/employeeAccess';
+import { SELF_EDITABLE_EMPLOYEE_FIELDS } from '../../../shared/authz';
+import { buildCompanyEmployeeUpdateData, buildEmployeeCreateData } from '../services/EmployeeWriteService';
 
 const log = createLogger('EmployeeController');
 
@@ -50,15 +61,11 @@ export const EmployeeController = {
                 })
             ]);
 
-            const decryptedEmployees = employees.map(emp => ({
-                ...emp,
-                socialSecurityNumber: EncryptionService.decrypt(emp.socialSecurityNumber),
-                iban: EncryptionService.decrypt(emp.iban)
-            }));
+            const safeEmployees = employees.map((employee) => sanitizeEmployeeListItem(employee));
 
             if (isPaginationRequested) {
                 return ApiResponse.success(res, {
-                    data: decryptedEmployees,
+                    data: safeEmployees,
                     meta: {
                         total,
                         page,
@@ -68,7 +75,7 @@ export const EmployeeController = {
                 });
             }
 
-            return ApiResponse.success(res, decryptedEmployees);
+            return ApiResponse.success(res, safeEmployees);
 
         } catch (error: any) {
             log.error({ error }, 'Error fetching employees');
@@ -154,58 +161,55 @@ export const EmployeeController = {
         const { user } = req as AuthenticatedRequest;
 
         try {
-            const whereClause: any = { id };
-            if (user.companyId) {
-                whereClause.companyId = user.companyId;
-            } else if (user.role !== 'admin') {
-                throw new AppError('Usuario sin empresa asignada', 403);
-            }
-
-            // If user is accessing their own profile (e.g. Employee Portal), allow even if company Logic fails?
-            // Actually, if I am an employee, I belong to the company, so filtering by companyId should still find ME.
-            // Exception: If I am an "Admin" role but restricted to a company?
-            // "Employee" role finding themselves: matching companyId + id works.
-
-            const employee = await prisma.employee.findFirst({
-                where: whereClause,
+            const employee = await prisma.employee.findUnique({
+                where: { id },
                 include: {
-                    payrollRows: {
-                        where: { status: 'OK' },
-                        include: {
-                            batch: {
-                                select: { year: true, month: true, status: true }
-                            }
-                        },
-                        orderBy: { batch: { createdAt: 'desc' } },
-                        take: 12
-                    },
                     manager: { select: { id: true, name: true } },
                     emergencyContacts: true
                 }
             });
 
             if (!employee) {
-                // Determine if 404 or 403
-                // If it exists but different company -> 404 (hide existence)
                 return ApiResponse.error(res, 'Empleado no encontrado', 404);
             }
 
-            // Additional Check: If role is 'employee' (not HR/Admin), can I see ANY employee of my company?
-            // Usually Regular Employees can only see themselves or limited info.
-            // But this endpoint returns FULL info (Salary, SSN).
-            // So: If not Admin/HR, MUST be SELF.
-            if (user.role === 'employee' && user.employeeId !== id) {
-                return ApiResponse.error(res, 'No tienes permiso para ver este perfil completo', 403);
+            if (!canReadEmployeeDetail(user, employee)) {
+                return ApiResponse.error(res, 'No tienes permiso para ver este perfil', 403);
             }
-            // HR/Admin of same company -> Allowed by companyId filter above.
 
-            employee.socialSecurityNumber = EncryptionService.decrypt(employee.socialSecurityNumber);
-            employee.iban = EncryptionService.decrypt(employee.iban);
+            const includeSensitiveData = canReadEmployeeSensitiveData(user, employee);
+            const detailedEmployee = includeSensitiveData
+                ? await prisma.employee.findUnique({
+                    where: { id },
+                    include: {
+                        payrollRows: {
+                            where: { status: 'OK' },
+                            include: {
+                                batch: {
+                                    select: { year: true, month: true, status: true }
+                                }
+                            },
+                            orderBy: { batch: { createdAt: 'desc' } },
+                            take: 12
+                        },
+                        manager: { select: { id: true, name: true } },
+                        emergencyContacts: true
+                    }
+                })
+                : employee;
 
-            const userId = (req as AuthenticatedRequest).user?.id;
-            await AuditService.log('VIEW_SENSITIVE_DATA', 'EMPLOYEE', id, { info: 'Acceso a ficha detallada' }, userId, id);
+            if (!detailedEmployee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
 
-            return ApiResponse.success(res, employee);
+            const serializedEmployee = sanitizeEmployeeDetail(detailedEmployee, includeSensitiveData);
+
+            if (includeSensitiveData) {
+                const userId = (req as AuthenticatedRequest).user?.id;
+                await AuditService.log('VIEW_SENSITIVE_DATA', 'EMPLOYEE', id, { info: 'Acceso a ficha detallada' }, userId, id);
+            }
+
+            return ApiResponse.success(res, serializedEmployee);
         } catch (error: any) {
             log.error({ error }, 'Error getting employee by id');
             return ApiResponse.error(res, error.message || 'Error al obtener el empleado', error.statusCode || 500);
@@ -254,18 +258,11 @@ export const EmployeeController = {
                 }
             }
 
-            let contactsCreate = undefined;
-            if (emergencyContacts && Array.isArray(emergencyContacts) && emergencyContacts.length > 0) {
-                const contactsToSave = emergencyContacts.slice(0, 5);
-                contactsCreate = {
-                    create: contactsToSave.map((c: any) => ({
-                        name: c.name,
-                        phone: c.phone,
-                        relationship: c.relationship
-                    }))
-                };
-            }
+            const employee = await prisma.employee.create({
+                data: buildEmployeeCreateData(body, effectiveCompanyId)
+            });
 
+            /* Legacy create path replaced by EmployeeWriteService
             const employee = await prisma.employee.create({
                 data: {
                     dni,
@@ -300,6 +297,7 @@ export const EmployeeController = {
                 }
             });
 
+            */
             await AuditService.log('CREATE', 'EMPLOYEE', employee.id, { name: employee.name }, user.id, employee.id);
             return ApiResponse.success(res, employee, 'Empleado creado correctamente', 201);
         } catch (error: any) {
@@ -314,97 +312,125 @@ export const EmployeeController = {
         const { user } = req as AuthenticatedRequest;
 
         try {
-            // Security Check for Update
-            // Security Check for Update
-            if (user.companyId) {
-                // User is restricted to a company (Admin or Manager/Employee)
-                const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
-                if (!target || target.companyId !== user.companyId) {
-                    // Exception: Self update?
-                    if (user.employeeId !== id && user.role !== 'admin') {
-                        // Admin of company CAN update employees of company
-                        // Employee/Manager CAN update themselves?
-                        if (user.employeeId !== id) throw new AppError('No tienes permiso para editar este empleado', 403);
-                    }
-                    if (user.role === 'admin' && target?.companyId !== user.companyId) {
-                        throw new AppError('No autorizado para editar empleados de otra empresa', 403);
-                    }
-                }
-                // Prevent changing companyId
-                if (body.companyId && body.companyId !== user.companyId) {
-                    throw new AppError('No puedes mover empleados a otra empresa', 403);
-                }
-            } else if (user.role !== 'admin') {
-                throw new AppError('Usuario sin empresa', 403);
-            }
-
-            const updateData: any = {};
-            const stringFields = [
-                'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
-                'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
-                'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
-                'drivingLicenseType', 'gender',
-                'managerId', 'lowReason', 'workingDayType', 'privateNotes', 'country'
-            ];
-
-            stringFields.forEach(field => {
-                if (body[field] !== undefined) {
-                    updateData[field] = body[field];
-                }
+            const target = await prisma.employee.findUnique({
+                where: { id },
+                select: { id: true, companyId: true }
             });
 
-            const dateFields = [
-                'entryDate', 'exitDate', 'callDate', 'contractInterruptionDate', 'lowDate',
-                'dniExpiration', 'birthDate', 'drivingLicenseExpiration'
-            ];
+            if (!target) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
 
-            dateFields.forEach(field => {
-                if (body[field] !== undefined) {
-                    updateData[field] = body[field] ? new Date(body[field]) : null;
+            const canCompanyEdit = canManageEmployee(user, target);
+            const canSelfEdit = canSelfEditEmployee(user, target);
+
+            if (!canCompanyEdit && !canSelfEdit) {
+                throw new AppError('No tienes permiso para editar este empleado', 403);
+            }
+
+            if (user.companyId && body.companyId && body.companyId !== user.companyId) {
+                throw new AppError('No puedes mover empleados a otra empresa', 403);
+            }
+
+            let updateData: any = {};
+
+            if (canCompanyEdit) {
+                updateData = buildCompanyEmployeeUpdateData(body);
+                /* Legacy company update path replaced by EmployeeWriteService
+                const stringFields = [
+                    'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
+                    'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
+                    'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
+                    'drivingLicenseType', 'gender',
+                    'managerId', 'lowReason', 'workingDayType', 'privateNotes', 'country'
+                ];
+
+                stringFields.forEach(field => {
+                    if (body[field] !== undefined) {
+                        updateData[field] = body[field];
+                    }
+                });
+
+                const dateFields = [
+                    'entryDate', 'exitDate', 'callDate', 'contractInterruptionDate', 'lowDate',
+                    'dniExpiration', 'birthDate', 'drivingLicenseExpiration'
+                ];
+
+                dateFields.forEach(field => {
+                    if (body[field] !== undefined) {
+                        updateData[field] = body[field] ? new Date(body[field]) : null;
+                    }
+                });
+
+                if (body.active !== undefined) updateData.active = body.active;
+                if (body.drivingLicense !== undefined) {
+                    updateData.drivingLicense = body.drivingLicense === true || body.drivingLicense === 'true';
                 }
-            });
 
-            if (body.active !== undefined) updateData.active = body.active;
-            if (body.drivingLicense !== undefined) {
-                updateData.drivingLicense = body.drivingLicense === true || body.drivingLicense === 'true';
+                if (body.weeklyHours !== undefined) {
+                    updateData.weeklyHours = body.weeklyHours ? parseFloat(body.weeklyHours) : null;
+                }
+                if (body.annualGrossSalary !== undefined) {
+                    updateData.annualGrossSalary = body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0;
+                }
+                if (body.monthlyGrossSalary !== undefined) {
+                    updateData.monthlyGrossSalary = body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0;
+                }
+
+                if (updateData.socialSecurityNumber) {
+                    updateData.socialSecurityNumber = EncryptionService.encrypt(updateData.socialSecurityNumber);
+                }
+                if (updateData.iban) {
+                    updateData.iban = EncryptionService.encrypt(updateData.iban);
+                }
+
+                if (body.emergencyContacts && Array.isArray(body.emergencyContacts)) {
+                    const contactsToSave = body.emergencyContacts.slice(0, 5);
+                    updateData.emergencyContacts = {
+                        deleteMany: {},
+                        create: contactsToSave.map((c: any) => ({
+                            name: c.name,
+                            phone: c.phone,
+                            relationship: c.relationship
+                        }))
+                    };
+                }
+                */
+            } else {
+                const allowedSelfFields = new Set<string>(SELF_EDITABLE_EMPLOYEE_FIELDS);
+                const attemptedForbiddenFields = Object.keys(body).filter((field) => !allowedSelfFields.has(field));
+
+                if (attemptedForbiddenFields.length > 0) {
+                    throw new AppError('Solo puedes editar tus datos de contacto y emergencia', 403);
+                }
+
+                updateData = buildSelfEmployeeUpdateData(body);
             }
 
-            if (body.weeklyHours !== undefined) {
-                updateData.weeklyHours = body.weeklyHours ? parseFloat(body.weeklyHours) : null;
-            }
-            if (body.annualGrossSalary !== undefined) {
-                updateData.annualGrossSalary = body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0;
-            }
-            if (body.monthlyGrossSalary !== undefined) {
-                updateData.monthlyGrossSalary = body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0;
-            }
-
-            if (updateData.socialSecurityNumber) {
-                updateData.socialSecurityNumber = EncryptionService.encrypt(updateData.socialSecurityNumber);
-            }
-            if (updateData.iban) {
-                updateData.iban = EncryptionService.encrypt(updateData.iban);
-            }
-
-            if (body.emergencyContacts && Array.isArray(body.emergencyContacts)) {
-                const contactsToSave = body.emergencyContacts.slice(0, 5);
-                updateData.emergencyContacts = {
-                    deleteMany: {},
-                    create: contactsToSave.map((c: any) => ({
-                        name: c.name,
-                        phone: c.phone,
-                        relationship: c.relationship
-                    }))
-                };
+            if (Object.keys(updateData).length === 0) {
+                return ApiResponse.error(res, 'No hay cambios validos para aplicar', 400);
             }
 
             const employee = await prisma.employee.update({
                 where: { id },
-                data: updateData
+                data: updateData,
+                include: {
+                    manager: { select: { id: true, name: true } },
+                    emergencyContacts: true
+                }
             });
 
-            await AuditService.log('UPDATE', 'EMPLOYEE', id, body, user.id, id);
-            return ApiResponse.success(res, employee, 'Empleado actualizado correctamente');
+            const includeSensitiveData = canReadEmployeeSensitiveData(user, target);
+            await AuditService.log('UPDATE', 'EMPLOYEE', id, {
+                fields: Object.keys(updateData),
+                selfService: !canCompanyEdit
+            }, user.id, id);
+
+            return ApiResponse.success(
+                res,
+                sanitizeEmployeeDetail(employee, includeSensitiveData),
+                'Empleado actualizado correctamente'
+            );
         } catch (error: any) {
             log.error({ error }, 'Error updating employee');
             return ApiResponse.error(res, error.message || 'Error al actualizar el empleado', error.statusCode || 500);
@@ -751,16 +777,7 @@ export const EmployeeController = {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
 
-            const reportData = {
-                ...employee,
-                socialSecurityNumber: EncryptionService.decrypt(employee.socialSecurityNumber),
-                iban: EncryptionService.decrypt(employee.iban),
-                _metadata: {
-                    reportGeneratedAt: new Date(),
-                    generatedBy: user.id || 'system',
-                    legalBasis: 'RGPD - Derecho de Acceso / Portabilidad'
-                }
-            };
+            const reportData = buildEmployeePortabilityReport(employee, user.id || 'system');
 
             await AuditService.log('RGPD_PORTABILITY_REPORT', 'EMPLOYEE', id, { info: 'Generación de reporte de portabilidad' }, user.id, id);
 

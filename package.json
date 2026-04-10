@@ -8,6 +8,12 @@
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev",
     "install:all": "cd backend && npm install && cd ../frontend && npm install",
+    "infra:up": "docker compose up -d postgres redis",
+    "infra:down": "docker compose down",
+    "infra:status": "docker compose ps",
+    "db:generate": "node scripts/prisma-local.mjs generate",
+    "db:status": "node scripts/prisma-local.mjs migrate status",
+    "db:migrate": "node scripts/prisma-local.mjs migrate dev",
     "pw:install": "playwright install chromium",
     "pw:smoke": "node scripts/playwright-smoke.mjs"
   },

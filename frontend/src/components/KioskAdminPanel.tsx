@@ -9,7 +9,7 @@ interface Employee {
     firstName: string;
     lastName: string;
     dni: string;
-    faceDescriptor?: any;
+    faceDescriptor?: unknown;
     department?: string;
     jobTitle?: string;
 }
@@ -37,14 +37,14 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
         setLoading(true);
         try {
             const res = await api.post('/auth/login', { identifier: email, password });
-            if (res.data.user.role !== 'admin' && res.data.user.role !== 'manager') {
-                toast.error('Acceso denegado. Solo administradores.');
+            if (res.data.user.role !== 'admin' && res.data.user.role !== 'hr') {
+                toast.error('Acceso denegado. Solo RRHH y administracion.');
                 return;
             }
             setIsAuthenticated(true);
             fetchEmployees('');
             toast.success('SesiÃ³n de administraciÃ³n iniciada');
-        } catch (error) {
+        } catch {
             toast.error('Credenciales incorrectas');
         } finally {
             setLoading(false);

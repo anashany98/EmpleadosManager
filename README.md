@@ -94,11 +94,25 @@ cd ../database
 npm install
 ```
 
-3. **Configurar base de datos**
+3. **Levantar infraestructura local**
 
 ```bash
-cd database
-npx prisma db push
+npm run infra:up
+```
+
+Si `5432` o `6379` ya estÃ¡n ocupados por otro stack local, ajusta `.env` o `backend/.env`:
+
+```bash
+POSTGRES_PORT=55432
+REDIS_PORT=6381
+DATABASE_URL=postgresql://nominas:nominas_local_pw_2026@localhost:55432/nominas_db?schema=public
+```
+
+4. **Aplicar Prisma**
+
+```bash
+npm run db:generate
+npm run db:migrate
 ```
 
 4. **Iniciar la aplicación**

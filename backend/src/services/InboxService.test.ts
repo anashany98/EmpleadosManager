@@ -1,24 +1,25 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import path from 'path';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import * as chokidar from 'chokidar';
 import { InboxService } from './InboxService';
 import { prisma } from '../lib/prisma';
-import fs from 'fs';
-import path from 'path';
-import * as chokidar from 'chokidar';
+import { QUEUES, queueService } from './QueueService';
 
-// Mocks
 vi.mock('../lib/prisma', () => ({
     prisma: {
         inboxDocument: {
-            findFirst: vi.fn(),
-            create: vi.fn(),
             findUnique: vi.fn(),
-            update: vi.fn(),
+            update: vi.fn()
         },
         document: {
-            create: vi.fn(),
+            create: vi.fn()
         },
         configuration: {
-            findUnique: vi.fn(),
+            findUnique: vi.fn()
+        },
+        fileMapping: {
+            count: vi.fn(),
+            createMany: vi.fn()
         }
     }
 }));
@@ -29,43 +30,23 @@ vi.mock('fs', () => ({
         mkdirSync: vi.fn(),
         readdirSync: vi.fn().mockReturnValue([]),
         statSync: vi.fn().mockReturnValue({ isDirectory: () => false }),
-        readFileSync: vi.fn().mockReturnValue(Buffer.from('mock-content')),
-        writeFileSync: vi.fn(),
-        renameSync: vi.fn(),
-        unlinkSync: vi.fn(),
+        writeFileSync: vi.fn()
     }
 }));
 
 vi.mock('chokidar', () => ({
     watch: vi.fn().mockReturnValue({
         on: vi.fn().mockReturnThis(),
-        close: vi.fn(),
+        close: vi.fn()
     })
 }));
 
-vi.mock('./StorageService', () => ({
-    StorageService: {
-        saveBuffer: vi.fn().mockResolvedValue({ key: 'mock-s3-key' }),
-        provider: 'local'
-    }
-}));
-
-vi.mock('./NotificationService', () => ({
-    NotificationService: {
-        notifyAdmins: vi.fn(),
-    }
-}));
-
-// Mock pdf-lib to avoid complex parsing in unit test
-vi.mock('pdf-lib', () => ({
-    PDFDocument: {
-        load: vi.fn().mockResolvedValue({
-            getSubject: vi.fn().mockReturnValue(JSON.stringify({
-                t: 'VACATION',
-                eid: 'emp-123',
-                d: '2023-10-27T10:00:00.000Z'
-            }))
-        })
+vi.mock('./QueueService', () => ({
+    QUEUES: {
+        INGESTION: 'ingestion-queue'
+    },
+    queueService: {
+        addJob: vi.fn().mockResolvedValue(undefined)
     }
 }));
 
@@ -74,52 +55,56 @@ describe('InboxService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
-        // Reset singleton if possible or just new instance?
-        // Classes are exported, so new instance is fine.
+        vi.mocked(prisma.configuration.findUnique).mockResolvedValue(null as never);
+        vi.mocked(prisma.fileMapping.count).mockResolvedValue(1 as never);
         service = new InboxService();
     });
 
-    it('should start watcher on start()', () => {
+    it('starts the watcher on start()', () => {
         service.start();
         expect(chokidar.watch).toHaveBeenCalled();
     });
 
-    it('should process new file and detect QR/Metadata', async () => {
+    it('enqueues a new file for asynchronous ingestion', async () => {
         const filePath = path.join(process.cwd(), 'data/inbox/test.pdf');
-
-        // Mock DB: file not exists
-        (prisma.inboxDocument.findFirst as any).mockResolvedValue(null);
-        // Mock creation
-        (prisma.inboxDocument.create as any).mockResolvedValue({ id: 'inbox-1', originalName: 'test.pdf', fileUrl: 'mock-s3-key' });
-        // Mock findUnique for assignment
-        (prisma.inboxDocument.findUnique as any).mockResolvedValue({ id: 'inbox-1', fileUrl: 'mock-s3-key', processed: false });
 
         await service.processFile(filePath);
 
-        expect(prisma.inboxDocument.create).toHaveBeenCalledWith(expect.objectContaining({
-            data: expect.objectContaining({ filename: 'test.pdf', source: 'SCANNER' })
-        }));
+        expect(queueService.addJob).toHaveBeenCalledWith(
+            QUEUES.INGESTION,
+            'process-file',
+            { filePath },
+            expect.objectContaining({
+                removeOnComplete: true,
+                removeOnFail: 100
+            })
+        );
+    });
 
-        // Auto-assign should happen because we mocked PDF metadata
+    it('assigns a pending inbox document to the employee archive', async () => {
+        vi.mocked(prisma.inboxDocument.findUnique).mockResolvedValue({
+            id: 'inbox-1',
+            originalName: 'test.pdf',
+            fileUrl: 'mock-s3-key',
+            content: 'contenido OCR',
+            processed: false
+        } as never);
+        vi.mocked(prisma.document.create).mockResolvedValue({ id: 'doc-1' } as never);
+        vi.mocked(prisma.inboxDocument.update).mockResolvedValue({ id: 'inbox-1', processed: true } as never);
+
+        const result = await service.assignDocument('inbox-1', 'emp-123', 'Justificante Ausencia', 'Documento Auto 2026-03-13');
+
         expect(prisma.document.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({
                 employeeId: 'emp-123',
-                category: 'Justificante Ausencia'
+                category: 'Justificante Ausencia',
+                fileUrl: 'mock-s3-key'
             })
         }));
-
         expect(prisma.inboxDocument.update).toHaveBeenCalledWith(expect.objectContaining({
             where: { id: 'inbox-1' },
             data: expect.objectContaining({ processed: true })
         }));
-    });
-
-    it('should skip file if already in DB', async () => {
-        const filePath = path.join(process.cwd(), 'data/inbox/duplicate.pdf');
-        (prisma.inboxDocument.findFirst as any).mockResolvedValue({ id: 'existing' });
-
-        await service.processFile(filePath);
-
-        expect(prisma.inboxDocument.create).not.toHaveBeenCalled();
+        expect(result).toEqual({ id: 'doc-1' });
     });
 });

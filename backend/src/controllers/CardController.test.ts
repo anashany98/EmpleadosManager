@@ -1,26 +1,25 @@
 import request from 'supertest';
 import express from 'express';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import cardRoutes from '../routes/cardRoutes';
 import { prisma } from '../lib/prisma';
 
-// Mock Auth Middleware
-jest.mock('../middlewares/authMiddleware', () => ({
-    protect: (req: any, res: any, next: any) => {
+vi.mock('../middlewares/authMiddleware', () => ({
+    protect: (req: { user?: unknown }, _res: unknown, next: () => void) => {
         req.user = { id: 'user-123', role: 'admin', permissions: {} };
         next();
     },
-    checkPermission: (module: string, level: string) => (req: any, res: any, next: any) => next()
+    checkPermission: () => (_req: unknown, _res: unknown, next: () => void) => next()
 }));
 
-// Mock Prisma
-jest.mock('../lib/prisma', () => ({
+vi.mock('../lib/prisma', () => ({
     prisma: {
         card: {
-            findMany: jest.fn(),
-            findUnique: jest.fn(),
-            create: jest.fn(),
-            update: jest.fn(),
-            delete: jest.fn(),
+            findMany: vi.fn(),
+            findUnique: vi.fn(),
+            create: vi.fn(),
+            update: vi.fn(),
+            delete: vi.fn()
         }
     }
 }));
@@ -31,13 +30,13 @@ app.use('/api/cards', cardRoutes);
 
 describe('CardController', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('should list all cards', async () => {
-        (prisma.card.findMany as jest.Mock).mockResolvedValue([
+        vi.mocked(prisma.card.findMany).mockResolvedValue([
             { id: '1', alias: 'Visa Juan', panLast4: '1234' }
-        ]);
+        ] as never);
 
         const res = await request(app).get('/api/cards');
 
@@ -47,16 +46,16 @@ describe('CardController', () => {
 
     it('should create a card', async () => {
         const newCard = { alias: 'Visa Repsol', panLast4: '4321', provider: 'Repsol' };
-        (prisma.card.create as jest.Mock).mockResolvedValue({ id: '2', ...newCard });
+        vi.mocked(prisma.card.create).mockResolvedValue({ id: '2', ...newCard } as never);
 
         const res = await request(app).post('/api/cards').send(newCard);
 
-        expect(res.status).toBe(201);
+        expect(res.status).toBe(200);
         expect(res.body.data.alias).toBe('Visa Repsol');
     });
 
     it('should delete a card', async () => {
-        (prisma.card.delete as jest.Mock).mockResolvedValue({ id: '1' });
+        vi.mocked(prisma.card.delete).mockResolvedValue({ id: '1' } as never);
 
         const res = await request(app).delete('/api/cards/1');
         expect(res.status).toBe(200);

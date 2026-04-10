@@ -7,6 +7,7 @@ import { StorageService } from '../services/StorageService';
 import { AnomalyService } from '../services/AnomalyService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
+import { canAccessPolicy } from '../../../shared/authz';
 
 const log = createLogger('ExpenseController');
 
@@ -85,7 +86,14 @@ export const ExpenseController = {
 
         try {
             const { user } = req as AuthenticatedRequest;
-            if (user.role !== 'admin' && user.employeeId !== employeeId) {
+            const targetEmployee = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { id: true, companyId: true }
+            });
+            if (!targetEmployee) {
+                return res.status(404).json({ error: 'Empleado no encontrado' });
+            }
+            if (!canAccessPolicy('expense.write', user, { employeeId, companyId: targetEmployee.companyId })) {
                 return res.status(403).json({ error: 'No autorizado' });
             }
             const safeEmployeeId = String(employeeId).replace(/[^a-zA-Z0-9-]/g, '');
@@ -106,17 +114,6 @@ export const ExpenseController = {
             const parsedAmount = parseFloat(amount);
             if (Number.isNaN(parsedAmount)) {
                 return res.status(400).json({ error: 'Importe inválido' });
-            }
-
-            // Verify employee belongs to company
-            if (user.companyId && user.role === 'admin') {
-                const targetEmployee = await prisma.employee.findUnique({
-                    where: { id: employeeId },
-                    select: { companyId: true }
-                });
-                if (!targetEmployee || targetEmployee.companyId !== user.companyId) {
-                    return res.status(403).json({ error: 'No autorizado para añadir gastos a este empleado' });
-                }
             }
 
             const expense = await prisma.expense.create({
@@ -145,11 +142,25 @@ export const ExpenseController = {
     getByEmployee: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
         try {
+            const { user } = req as AuthenticatedRequest;
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 50;
             const isPaginationRequested = req.query.page !== undefined;
             const skip = (page - 1) * limit;
             const take = isPaginationRequested ? limit : 500;
+
+            const employee = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { id: true, companyId: true }
+            });
+
+            if (!employee) {
+                return res.status(404).json({ error: 'Empleado no encontrado' });
+            }
+
+            if (!canAccessPolicy('expense.read', user, { employeeId, companyId: employee.companyId })) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
 
             const expenses = await prisma.expense.findMany({
                 where: { employeeId },
@@ -173,6 +184,10 @@ export const ExpenseController = {
             const take = isPaginationRequested ? limit : 500;
 
             const { user } = req as AuthenticatedRequest;
+            if (!canAccessPolicy('expense.manage', user, { companyId: user.companyId })) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
+
             const where: any = {};
             if (user.companyId) {
                 where.employee = { companyId: user.companyId };
@@ -205,11 +220,25 @@ export const ExpenseController = {
         }
 
         try {
-            const expense = await prisma.expense.update({
+            const { user } = req as AuthenticatedRequest;
+            const expense = await prisma.expense.findUnique({
+                where: { id },
+                include: { employee: { select: { companyId: true } } }
+            });
+
+            if (!expense) {
+                return res.status(404).json({ error: 'Gasto no encontrado' });
+            }
+
+            if (!canAccessPolicy('expense.manage', user, { employeeId: expense.employeeId, companyId: expense.employee?.companyId })) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
+
+            const updatedExpense = await prisma.expense.update({
                 where: { id },
                 data: { status }
             });
-            res.json(expense);
+            res.json(updatedExpense);
         } catch (error) {
             res.status(500).json({ error: 'Error al actualizar el estado' });
         }
@@ -220,9 +249,12 @@ export const ExpenseController = {
         const { id } = req.params;
         try {
             const { user } = req as AuthenticatedRequest;
-            const expense = await prisma.expense.findUnique({ where: { id } });
+            const expense = await prisma.expense.findUnique({
+                where: { id },
+                include: { employee: { select: { companyId: true } } }
+            });
             if (!expense) return res.status(404).json({ error: 'Gasto no encontrado' });
-            if (user.role !== 'admin' && user.employeeId !== expense.employeeId) {
+            if (!canAccessPolicy('expense.write', user, { employeeId: expense.employeeId, companyId: expense.employee?.companyId })) {
                 return res.status(403).json({ error: 'No autorizado' });
             }
 
@@ -243,10 +275,13 @@ export const ExpenseController = {
         try {
             const { user } = req as AuthenticatedRequest;
             const { id } = req.params;
-            const expense = await prisma.expense.findUnique({ where: { id } });
+            const expense = await prisma.expense.findUnique({
+                where: { id },
+                include: { employee: { select: { companyId: true } } }
+            });
             if (!expense || !expense.receiptUrl) return res.status(404).json({ error: 'Recibo no encontrado' });
 
-            if (user.role !== 'admin' && user.employeeId !== expense.employeeId) {
+            if (!canAccessPolicy('expense.read', user, { employeeId: expense.employeeId, companyId: expense.employee?.companyId })) {
                 return res.status(403).json({ error: 'No autorizado' });
             }
 

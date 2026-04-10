@@ -130,6 +130,7 @@ describe('VacationController', () => {
             const mockVacations = [
                 { id: 'v1', employeeId: empId, startDate: new Date(), status: 'PENDING' }
             ];
+            (prisma.employee.findUnique as any).mockResolvedValue({ id: empId, companyId: 'company-1' });
             (prisma.vacation.findMany as any).mockResolvedValue(mockVacations);
 
             await VacationController.getByEmployee(req, res);
@@ -141,16 +142,15 @@ describe('VacationController', () => {
             expect(res.json).toHaveBeenCalledWith(mockVacations);
         });
 
-        it('should allow manager to see subordinate vacations', async () => {
-            const managerId = 'manager-1';
+        it('should allow manager to see company vacations within scope', async () => {
             const subordinateId = 'emp-123';
             const req = mockRequest({
-                user: { id: 'user-1', role: 'employee', employeeId: managerId },
+                user: { id: 'user-1', role: 'manager', employeeId: 'manager-1', companyId: 'company-1' },
                 params: { employeeId: subordinateId }
             });
             const res = mockResponse();
 
-            (prisma.employee.findUnique as any).mockResolvedValue({ managerId: managerId });
+            (prisma.employee.findUnique as any).mockResolvedValue({ id: subordinateId, companyId: 'company-1' });
             (prisma.vacation.findMany as any).mockResolvedValue([]);
 
             await VacationController.getByEmployee(req, res);
@@ -165,11 +165,34 @@ describe('VacationController', () => {
             });
             const res = mockResponse();
 
-            (prisma.employee.findUnique as any).mockResolvedValue({ managerId: 'someone-else' });
+            (prisma.employee.findUnique as any).mockResolvedValue({ id: 'emp-other', companyId: 'company-1' });
 
             await VacationController.getByEmployee(req, res);
 
             expect(res.status).toHaveBeenCalledWith(403);
+        });
+    });
+
+    describe('getManageableVacations', () => {
+        it('returns pending company-scoped vacations for managers within policy scope', async () => {
+            const req = mockRequest({
+                user: { id: 'user-1', role: 'manager', companyId: 'company-1', employeeId: 'manager-1' }
+            });
+            const res = mockResponse();
+
+            (prisma.vacation.findMany as any).mockResolvedValue([{ id: 'vacation-1', status: 'PENDING' }]);
+
+            await VacationController.getManageableVacations(req, res);
+
+            expect(prisma.vacation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: expect.objectContaining({
+                    status: 'PENDING',
+                    employee: { companyId: 'company-1' }
+                })
+            }));
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true
+            }));
         });
     });
 });

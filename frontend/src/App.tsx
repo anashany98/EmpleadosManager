@@ -138,33 +138,33 @@ function AppContent() {
                 transition={{ duration: 0.3 }}
               >
                 <Routes location={location} key={location.pathname}>
-                  <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-                  <Route path="/employees" element={<ProtectedRoute roles={['admin', 'hr']}><Employees /></ProtectedRoute>} />
-                  <Route path="/employees/:id" element={<ProtectedRoute><EmployeeDetail /></ProtectedRoute>} />
-                  <Route path="/employees/org-chart" element={<ProtectedRoute><OrgChart /></ProtectedRoute>} />
-                  <Route path="/companies" element={<ProtectedRoute roles={['admin', 'hr']}><Companies /></ProtectedRoute>} />
-                  <Route path="/calendar" element={<ProtectedRoute><CalendarPage /></ProtectedRoute>} />
-                  <Route path="/audit" element={<ProtectedRoute roles={['admin']}><AuditLogPage /></ProtectedRoute>} />
-                  <Route path="/assets" element={<ProtectedRoute roles={['admin', 'hr']}><GlobalAssetsPage /></ProtectedRoute>} />
-                  <Route path="/reports" element={<ProtectedRoute roles={['admin', 'hr']}><Reports /></ProtectedRoute>} />
-                  <Route path="/timesheet" element={<ProtectedRoute roles={['admin', 'hr']}><TimesheetPage /></ProtectedRoute>} />
-                  <Route path="/inbox" element={<ProtectedRoute roles={['admin']}><InboxPage /></ProtectedRoute>} />
-                  <Route path="/import" element={<ProtectedRoute roles={['admin', 'hr']}><PayrollImport /></ProtectedRoute>} />
-                  <Route path="/payroll/batch/:id" element={<ProtectedRoute roles={['admin', 'hr']}><PayrollBatchDetail /></ProtectedRoute>} />
+                  <Route path="/" element={<ProtectedRoute feature="dashboard"><Dashboard /></ProtectedRoute>} />
+                  <Route path="/employees" element={<ProtectedRoute feature="employees"><Employees /></ProtectedRoute>} />
+                  <Route path="/employees/:id" element={<ProtectedRoute feature="employeeDetail"><EmployeeDetail /></ProtectedRoute>} />
+                  <Route path="/employees/org-chart" element={<ProtectedRoute feature="orgChart"><OrgChart /></ProtectedRoute>} />
+                  <Route path="/companies" element={<ProtectedRoute feature="companies"><Companies /></ProtectedRoute>} />
+                  <Route path="/calendar" element={<ProtectedRoute feature="calendar"><CalendarPage /></ProtectedRoute>} />
+                  <Route path="/audit" element={<ProtectedRoute feature="audit"><AuditLogPage /></ProtectedRoute>} />
+                  <Route path="/assets" element={<ProtectedRoute feature="assets"><GlobalAssetsPage /></ProtectedRoute>} />
+                  <Route path="/reports" element={<ProtectedRoute feature="reports"><Reports /></ProtectedRoute>} />
+                  <Route path="/timesheet" element={<ProtectedRoute feature="timesheetManagement"><TimesheetPage /></ProtectedRoute>} />
+                  <Route path="/inbox" element={<ProtectedRoute feature="inbox"><InboxPage /></ProtectedRoute>} />
+                  <Route path="/import" element={<ProtectedRoute feature="payrollImport"><PayrollImport /></ProtectedRoute>} />
+                  <Route path="/payroll/batch/:id" element={<ProtectedRoute feature="payrollBatch"><PayrollBatchDetail /></ProtectedRoute>} />
                   <Route path="/my-documents" element={
-                    <ProtectedRoute>
+                    <ProtectedRoute feature="myDocuments">
                       <MyDocumentsPage />
                     </ProtectedRoute>
                   } />
-                  <Route path="/vacations" element={<ProtectedRoute><VacationRequests /></ProtectedRoute>} />
-                  <Route path="/expenses" element={<ProtectedRoute><ExpensesPage /></ProtectedRoute>} />
-                  <Route path="/anomalies" element={<ProtectedRoute roles={['admin']}><AnomaliesPage /></ProtectedRoute>} />
-                  <Route path="/reconciliation" element={<ProtectedRoute roles={['admin', 'hr']}><AttendanceReconciliation /></ProtectedRoute>} />
-                  <Route path="/profile" element={<ProtectedRoute><MyProfile /></ProtectedRoute>} />
-                  <Route path="/users" element={<ProtectedRoute roles={['admin']}><UserManagement /></ProtectedRoute>} />
-                  <Route path="/settings" element={<ProtectedRoute roles={['admin']}><SettingsPage /></ProtectedRoute>} />
-                  <Route path="/analytics" element={<ProtectedRoute roles={['admin', 'hr']}><AnalyticsDashboard /></ProtectedRoute>} />
-                  <Route path="/performance" element={<ProtectedRoute roles={['admin', 'hr']}><PerformancePage /></ProtectedRoute>} />
+                  <Route path="/vacations" element={<ProtectedRoute feature="vacationsPortal"><VacationRequests /></ProtectedRoute>} />
+                  <Route path="/expenses" element={<ProtectedRoute feature="expensesPortal"><ExpensesPage /></ProtectedRoute>} />
+                  <Route path="/anomalies" element={<ProtectedRoute feature="anomalies"><AnomaliesPage /></ProtectedRoute>} />
+                  <Route path="/reconciliation" element={<ProtectedRoute feature="reconciliation"><AttendanceReconciliation /></ProtectedRoute>} />
+                  <Route path="/profile" element={<ProtectedRoute feature="profileSelf"><MyProfile /></ProtectedRoute>} />
+                  <Route path="/users" element={<ProtectedRoute feature="users"><UserManagement /></ProtectedRoute>} />
+                  <Route path="/settings" element={<ProtectedRoute feature="settings"><SettingsPage /></ProtectedRoute>} />
+                  <Route path="/analytics" element={<ProtectedRoute feature="analytics"><AnalyticsDashboard /></ProtectedRoute>} />
+                  <Route path="/performance" element={<ProtectedRoute feature="performance"><PerformancePage /></ProtectedRoute>} />
                   <Route path="/login" element={<Navigate to="/" replace />} />
                 </Routes>
               </motion.div>

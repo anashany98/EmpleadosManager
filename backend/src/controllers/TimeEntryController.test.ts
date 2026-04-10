@@ -9,6 +9,7 @@ vi.mock('../lib/prisma', () => ({
         timeEntry: {
             findFirst: vi.fn(),
             findMany: vi.fn(),
+            findUnique: vi.fn(),
             create: vi.fn()
         },
         employee: {
@@ -136,6 +137,7 @@ describe('TimeEntryController', () => {
             const res = mockResponse();
 
             const createdEntry = { id: 'e1', type: 'IN', employeeId: 'emp-1' };
+            (prisma.timeEntry.findFirst as any).mockResolvedValue(null);
             (prisma.timeEntry.create as any).mockResolvedValue(createdEntry);
 
             await TimeEntryController.clock(req, res);
@@ -148,6 +150,34 @@ describe('TimeEntryController', () => {
             }));
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
                 success: true
+            }));
+        });
+
+        it('should replay an existing time entry when clientRequestId is reused', async () => {
+            const req = mockRequest({
+                user: { id: 'user-1', employeeId: 'emp-1', role: 'employee' },
+                body: { type: 'IN', location: 'Office', clientRequestId: 'req-12345678' }
+            });
+            const firstRes = mockResponse();
+            const secondRes = mockResponse();
+            const createdEntry = { id: 'e1', type: 'IN', employeeId: 'emp-1' };
+
+            (prisma.timeEntry.findUnique as any)
+                .mockResolvedValueOnce(null)
+                .mockResolvedValueOnce(createdEntry);
+            (prisma.timeEntry.create as any).mockResolvedValue(createdEntry);
+
+            await TimeEntryController.clock(req, firstRes);
+            await TimeEntryController.clock(req, secondRes);
+
+            expect(prisma.timeEntry.create).toHaveBeenCalledTimes(1);
+            expect(secondRes.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true,
+                data: expect.objectContaining({
+                    deduplicated: true,
+                    dedupedBy: 'clientRequestId',
+                    entry: createdEntry
+                })
             }));
         });
 

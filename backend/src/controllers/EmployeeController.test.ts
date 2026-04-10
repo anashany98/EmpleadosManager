@@ -84,9 +84,10 @@ describe('EmployeeController', () => {
             expect(prisma.employee.findMany).toHaveBeenCalledWith(expect.objectContaining({
                 where: { active: true }
             }));
-            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-                success: true
-            }));
+            const payload = (res.json as any).mock.calls[0][0];
+            expect(payload.success).toBe(true);
+            expect(payload.data[0]).not.toHaveProperty('socialSecurityNumber');
+            expect(payload.data[0]).not.toHaveProperty('iban');
         });
 
         it('should support pagination', async () => {
@@ -164,6 +165,12 @@ describe('EmployeeController', () => {
             });
             const res = mockResponse();
 
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-other',
+                companyId: 'company-1',
+                emergencyContacts: []
+            });
+
             await EmployeeController.getById(req, res);
 
             expect(res.status).toHaveBeenCalledWith(403);
@@ -202,6 +209,55 @@ describe('EmployeeController', () => {
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
                 success: true,
                 data: expect.arrayContaining(['Finance', 'IT', 'RRHH'])
+            }));
+        });
+    });
+
+    describe('update', () => {
+        it('rejects employee self-update outside contact/emergency scope', async () => {
+            const req = mockRequest({
+                user: { id: 'user-1', role: 'employee', employeeId: 'emp-1' },
+                params: { id: 'emp-1' },
+                body: { annualGrossSalary: 99999 }
+            });
+            const res = mockResponse();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({ id: 'emp-1', companyId: 'company-1' });
+
+            await EmployeeController.update(req, res);
+
+            expect(prisma.employee.update).not.toHaveBeenCalled();
+            expect(res.status).toHaveBeenCalledWith(403);
+        });
+
+        it('allows employee self-update for contact fields', async () => {
+            const req = mockRequest({
+                user: { id: 'user-1', role: 'employee', employeeId: 'emp-1' },
+                params: { id: 'emp-1' },
+                body: { phone: '600123123', city: 'Palma' }
+            });
+            const res = mockResponse();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({ id: 'emp-1', companyId: 'company-1' });
+            (prisma.employee.update as any).mockResolvedValue({
+                id: 'emp-1',
+                companyId: 'company-1',
+                phone: '600123123',
+                city: 'Palma',
+                emergencyContacts: []
+            });
+
+            await EmployeeController.update(req, res);
+
+            expect(prisma.employee.update).toHaveBeenCalledWith(expect.objectContaining({
+                where: { id: 'emp-1' },
+                data: expect.objectContaining({
+                    phone: '600123123',
+                    city: 'Palma'
+                })
+            }));
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true
             }));
         });
     });

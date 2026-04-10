@@ -21,15 +21,16 @@ import {
     Users as UsersIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { PERMISSION_MODULES, ROLE_LABELS } from '@shared/authz';
+import type { PermissionLevel, PermissionMap, PermissionModule, Role } from '@shared/authz';
+import { useConfirm } from '../context/ConfirmContext';
 
-interface PermissionMatrix {
-    [key: string]: 'none' | 'read' | 'write' | 'admin';
-}
+type PermissionMatrix = PermissionMap;
 
 interface User {
     id: string;
     email: string;
-    role: string;
+    role: Role;
     permissions: PermissionMatrix;
     createdAt: string;
 }
@@ -40,7 +41,7 @@ interface PermissionProfile {
     permissions: PermissionMatrix;
 }
 
-const MODULES = [
+const LEGACY_MODULES = [
     { id: 'dashboard', label: 'Dashboard General' },
     { id: 'employees', label: 'Gestión de Empleados' },
     { id: 'payroll', label: 'Nóminas e Importación' },
@@ -52,8 +53,53 @@ const MODULES = [
     { id: 'reports', label: 'Generación de Reportes' },
     { id: 'audit', label: 'Logs de Auditoría' },
 ];
+void LEGACY_MODULES;
 
-import { useConfirm } from '../context/ConfirmContext';
+const MODULE_LABELS: Record<PermissionModule, string> = {
+    dashboard: 'Dashboard',
+    employees: 'Empleados',
+    companies: 'Empresas',
+    calendar: 'Calendario',
+    vacations: 'Vacaciones',
+    timesheet: 'Fichaje',
+    expenses: 'Gastos',
+    documents: 'Documentos',
+    payroll: 'Nominas',
+    assets: 'Activos',
+    projects: 'Proyectos',
+    reports: 'Reportes',
+    analytics: 'Analytics',
+    performance: 'Rendimiento',
+    audit: 'Auditoria',
+    inbox: 'Inbox',
+    users: 'Usuarios',
+    settings: 'Configuracion',
+    kiosk: 'Kiosco',
+    cards: 'Tarjetas',
+    fleet: 'Flota',
+    notifications: 'Notificaciones',
+    onboarding: 'Onboarding',
+    offboarding: 'Offboarding'
+};
+
+const AUTH_MODULES: Array<{ id: PermissionModule; label: string }> = PERMISSION_MODULES.map((id) => ({
+    id,
+    label: MODULE_LABELS[id]
+}));
+
+const ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
+    { value: 'employee', label: 'Empleado' },
+    { value: 'manager', label: 'Manager' },
+    { value: 'hr', label: 'RRHH' },
+    { value: 'admin', label: 'Administrador' }
+];
+
+const ROLE_BADGE_STYLES: Record<Role, string> = {
+    admin: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+    hr: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    manager: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    employee: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
+};
 
 export default function UserManagement() {
     const confirmAction = useConfirm();
@@ -71,7 +117,7 @@ export default function UserManagement() {
     // User Form State
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [role, setRole] = useState('user');
+    const [role, setRole] = useState<Role>('employee');
     const [userPermissions, setUserPermissions] = useState<PermissionMatrix>({});
 
     // Profile Form State
@@ -128,7 +174,7 @@ export default function UserManagement() {
             setEditingUser(null);
             setEmail('');
             setPassword('');
-            setRole('user');
+            setRole('employee');
             setUserPermissions({});
         }
         setIsUserModalOpen(true);
@@ -234,14 +280,14 @@ export default function UserManagement() {
         }
     };
 
-    const toggleUserPermission = (moduleId: string, level: 'none' | 'read' | 'write') => {
+    const toggleUserPermission = (moduleId: PermissionModule, level: PermissionLevel) => {
         setUserPermissions(prev => ({
             ...prev,
             [moduleId]: level
         }));
     };
 
-    const toggleProfilePermission = (moduleId: string, level: 'none' | 'read' | 'write') => {
+    const toggleProfilePermission = (moduleId: PermissionModule, level: PermissionLevel) => {
         setProfilePermissions(prev => ({
             ...prev,
             [moduleId]: level
@@ -351,11 +397,8 @@ export default function UserManagement() {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${user.role === 'admin'
-                                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                                                : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400'
-                                                }`}>
-                                                {user.role}
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase ${ROLE_BADGE_STYLES[user.role]}`}>
+                                                {ROLE_LABELS[user.role]}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-slate-500 text-sm">
@@ -511,10 +554,13 @@ export default function UserManagement() {
                                                     <select
                                                         className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl py-2.5 px-4 text-slate-700 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                                                         value={role}
-                                                        onChange={(e) => setRole(e.target.value)}
+                                                        onChange={(e) => setRole(e.target.value as Role)}
                                                     >
-                                                        <option value="user">Usuario Estándar</option>
-                                                        <option value="admin">Administrador (Acceso Total)</option>
+                                                        {ROLE_OPTIONS.map((roleOption) => (
+                                                            <option key={roleOption.value} value={roleOption.value}>
+                                                                {roleOption.label}
+                                                            </option>
+                                                        ))}
                                                     </select>
                                                 </div>
                                             </div>
@@ -548,7 +594,7 @@ export default function UserManagement() {
                                                 </div>
                                             ) : (
                                                 <div className="space-y-2">
-                                                    {MODULES.map(module => (
+                                                    {AUTH_MODULES.map(module => (
                                                         <div key={module.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 hover:border-blue-200 dark:hover:border-blue-900/40 transition-all group">
                                                             <div className="flex flex-col">
                                                                 <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{module.label}</span>
@@ -666,7 +712,7 @@ export default function UserManagement() {
                                     <div className="space-y-4">
                                         <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest border-b border-slate-100 dark:border-slate-800 pb-2">Matriz de Permisos</h3>
                                         <div className="space-y-2">
-                                            {MODULES.map(module => (
+                                            {AUTH_MODULES.map(module => (
                                                 <div key={module.id} className="flex items-center justify-between p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
                                                     <span className="text-sm font-bold text-slate-700 dark:text-slate-200">{module.label}</span>
                                                     <div className="flex items-center gap-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-1 rounded-lg">

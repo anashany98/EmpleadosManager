@@ -1,33 +1,31 @@
 import request from 'supertest';
 import express from 'express';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import calendarRoutes from '../routes/calendarRoutes';
 import { prisma } from '../lib/prisma';
-import crypto from 'crypto';
 
-// Mock Auth Middleware
-jest.mock('../middlewares/authMiddleware', () => ({
-    protect: (req: any, res: any, next: any) => {
-        req.user = { id: 'user-123', email: 'test@example.com', role: 'user' };
+vi.mock('../middlewares/authMiddleware', () => ({
+    protect: (req: { user?: unknown }, _res: unknown, next: () => void) => {
+        req.user = { id: 'user-123', email: 'test@example.com', role: 'employee' };
         next();
     },
-    checkPermission: () => (req: any, res: any, next: any) => next()
+    checkPermission: () => (_req: unknown, _res: unknown, next: () => void) => next()
 }));
 
-// Mock Prisma
-jest.mock('../lib/prisma', () => ({
+vi.mock('../lib/prisma', () => ({
     prisma: {
         employee: {
-            findFirst: jest.fn(),
-            findUnique: jest.fn(),
+            findFirst: vi.fn(),
+            findUnique: vi.fn()
         },
         vacation: {
-            findMany: jest.fn(),
+            findMany: vi.fn()
         },
         vehicle: {
-            findMany: jest.fn(),
+            findMany: vi.fn()
         },
         user: {
-            findFirst: jest.fn(),
+            findFirst: vi.fn()
         }
     }
 }));
@@ -38,11 +36,11 @@ app.use('/api/calendar', calendarRoutes);
 
 describe('CalendarController', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
+        vi.clearAllMocks();
     });
 
     it('should return subscription link', async () => {
-        (prisma.employee.findFirst as jest.Mock).mockResolvedValue({ id: 'emp-123' });
+        vi.mocked(prisma.employee.findFirst).mockResolvedValue({ id: 'emp-123' } as never);
 
         const res = await request(app).get('/api/calendar/link');
 
@@ -55,7 +53,4 @@ describe('CalendarController', () => {
         const res = await request(app).get('/api/calendar/feed?u=emp-123&s=invalid_sig');
         expect(res.status).toBe(403);
     });
-
-    // We skip the valid signature test because we don't share the SECRET easily in tests without duplicating logic.
-    // Or we can mock crypto, but let's assume invalid signature protection is the key test here.
 });

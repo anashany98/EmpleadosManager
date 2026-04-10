@@ -1,12 +1,16 @@
+/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { api } from '../api/client';
+import { canAccessFeature as canSharedAccessFeature, normalizeActor } from '@shared/authz';
+import type { AppFeatureKey, PermissionMap, Role } from '@shared/authz';
 
 interface User {
     id: string;
     email: string;
-    role: string;
+    role: Role;
     employeeId?: string; // Linked employee ID
-    permissions?: Record<string, 'none' | 'read' | 'write' | 'admin'>;
+    companyId?: string;
+    permissions?: PermissionMap;
 }
 
 interface AuthContextType {
@@ -17,6 +21,7 @@ interface AuthContextType {
     isAdmin: boolean;
     isManager: boolean;
     isEmployee: boolean;
+    canAccessFeature: (feature: AppFeatureKey) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,8 +33,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const [loading, setLoading] = useState(true);
 
     const isAdmin = useMemo(() => user?.role === 'admin', [user?.role]);
-    const isManager = useMemo(() => user?.role === 'manager' || user?.role === 'admin', [user?.role]);
-    const isEmployee = useMemo(() => !!user?.employeeId, [user?.employeeId]);
+    const isManager = useMemo(() => user?.role === 'manager' || user?.role === 'hr' || user?.role === 'admin', [user?.role]);
+    const isEmployee = useMemo(() => user?.role === 'employee' && !!user?.employeeId, [user?.employeeId, user?.role]);
+
+    const normalizeUser = useCallback((userData: User | null): User | null => {
+        const normalized = normalizeActor(userData);
+        if (!normalized || !userData?.email) {
+            return null;
+        }
+
+        return {
+            id: normalized.id || userData.id,
+            email: userData.email,
+            role: normalized.role,
+            employeeId: normalized.employeeId,
+            companyId: normalized.companyId,
+            permissions: normalized.permissions
+        };
+    }, []);
 
     const hasSessionHint = useCallback((): boolean => {
         try {
@@ -54,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const checkAuth = useCallback(async (): Promise<void> => {
         try {
             const response = await api.get<{ data: User }>('/auth/me');
-            setUser(response.data);
+            setUser(normalizeUser(response.data));
             setSessionHint(true);
         } catch {
             setUser(null);
@@ -62,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } finally {
             setLoading(false);
         }
-    }, [setSessionHint]);
+    }, [normalizeUser, setSessionHint]);
 
     const bootstrapAuth = useCallback(async (): Promise<void> => {
         const path = window.location.pathname;
@@ -79,9 +100,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [bootstrapAuth]);
 
     const login = useCallback((_token: string, _refreshToken: string, userData: User): void => {
-        setUser(userData);
+        setUser(normalizeUser(userData));
         setSessionHint(true);
-    }, [setSessionHint]);
+    }, [normalizeUser, setSessionHint]);
 
     const logout = useCallback(async (): Promise<void> => {
         try {
@@ -94,6 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         window.location.href = '/login';
     }, [setSessionHint]);
 
+    const canAccessFeature = useCallback((feature: AppFeatureKey): boolean => {
+        return canSharedAccessFeature(feature, user);
+    }, [user]);
+
     const value = useMemo(() => ({
         user,
         loading,
@@ -101,8 +126,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         logout,
         isAdmin,
         isManager,
-        isEmployee
-    }), [user, loading, login, logout, isAdmin, isManager, isEmployee]);
+        isEmployee,
+        canAccessFeature
+    }), [user, loading, login, logout, isAdmin, isManager, isEmployee, canAccessFeature]);
 
     return (
         <AuthContext.Provider value={value}>

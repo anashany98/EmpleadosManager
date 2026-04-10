@@ -80,8 +80,8 @@ async function main() {
     const now = new Date();
     const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
 
-    // Create 67 Employees (Requested by user)
-    for (let i = 0; i < 67; i++) {
+    // Create 30 Employees
+    for (let i = 0; i < 30; i++) {
         let dni;
         do {
             dni = `${randomInt(10000000, 99999999)}${String.fromCharCode(65 + randomInt(0, 25))}`;

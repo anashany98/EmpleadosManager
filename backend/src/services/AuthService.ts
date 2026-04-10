@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { AppError } from '../utils/AppError';
+import { normalizeActor } from '../../../shared/authz';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'secret';
 const ACCESS_TOKEN_EXPIRES_IN = '15m';
@@ -45,9 +46,23 @@ export class AuthService {
 
         // Remove password from user object
         const { password: _, ...userWithoutPassword } = user;
+        const normalizedUser = normalizeActor({
+            id: userWithoutPassword.id,
+            email: userWithoutPassword.email,
+            role: userWithoutPassword.role,
+            permissions: userWithoutPassword.permissions
+                ? JSON.parse(userWithoutPassword.permissions as string)
+                : {},
+            employeeId: userWithoutPassword.employeeId,
+            companyId: null
+        });
 
         return {
-            user: userWithoutPassword,
+            user: {
+                ...userWithoutPassword,
+                role: normalizedUser?.role || 'employee',
+                permissions: normalizedUser?.permissions || {}
+            },
             accessToken,
             refreshToken,
             expiresAt

@@ -2,13 +2,18 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
-import { HolidayService } from '../services/HolidayService';
 import { NotificationService } from '../services/NotificationService';
 import { AnomalyService } from '../services/AnomalyService';
 import { StorageService } from '../services/StorageService';
 import { EmailService } from '../services/EmailService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
+import { canAccessPolicy } from '../../../shared/authz';
+import {
+    notifyVacationCreated,
+    saveVacationAttachment,
+    validateVacationRequest
+} from '../services/VacationRequestService';
 
 const log = createLogger('VacationController');
 
@@ -17,7 +22,7 @@ export const VacationController = {
     getAll: async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthenticatedRequest;
-            if (!user || user.role !== 'admin') {
+            if (!user || !canAccessPolicy('vacation.manage', user, { companyId: user.companyId })) {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
             const where: any = {};
@@ -43,18 +48,16 @@ export const VacationController = {
             const { user } = req as AuthenticatedRequest;
             if (!user) return ApiResponse.error(res, 'No autorizado', 403);
 
-            const isSelf = user.employeeId && user.employeeId === employeeId;
-            const isAdmin = user.role === 'admin';
-            let isManager = false;
-            if (!isAdmin && !isSelf && user.employeeId) {
-                const target = await prisma.employee.findUnique({
-                    where: { id: employeeId },
-                    select: { managerId: true }
-                });
-                isManager = !!target && target.managerId === user.employeeId;
+            const target = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { id: true, companyId: true }
+            });
+
+            if (!target) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
             }
 
-            if (!isAdmin && !isSelf && !isManager) {
+            if (!canAccessPolicy('vacation.read', user, { employeeId, companyId: target.companyId })) {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
 
@@ -74,38 +77,33 @@ export const VacationController = {
             let { employeeId, startDate, endDate, type, reason } = req.body;
             const { user } = req as AuthenticatedRequest;
 
-            // Si no viene employeeId, intentamos deducirlo del usuario logueado
-            if (!employeeId && user && user.email) {
-                const employee = await prisma.employee.findFirst({
-                    where: { email: user.email }
-                });
-                if (employee) {
-                    employeeId = employee.id;
-                }
+            if (!employeeId && user?.employeeId) {
+                employeeId = user.employeeId;
             }
 
             if (!employeeId || !startDate || !endDate) {
                 return res.status(400).json({ error: 'Faltan campos requeridos (employeeId, startDate, endDate)' });
             }
 
-            // Access control: admin, self, or manager of employee
-            const isSelf = user?.employeeId && user.employeeId === employeeId;
-            const isAdmin = user?.role === 'admin';
-            let isManager = false;
-            if (!isAdmin && !isSelf && user?.employeeId) {
-                const target = await prisma.employee.findUnique({
-                    where: { id: employeeId },
-                    select: { managerId: true }
-                });
-                isManager = !!target && target.managerId === user.employeeId;
+            const targetEmployee = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { id: true, companyId: true }
+            });
+
+            if (!targetEmployee) {
+                return res.status(404).json({ error: 'Empleado no encontrado' });
             }
-            if (!isAdmin && !isSelf && !isManager) {
+
+            if (!canAccessPolicy('vacation.write', user, { employeeId, companyId: targetEmployee.companyId })) {
                 return res.status(403).json({ error: 'No autorizado' });
             }
 
             const start = new Date(startDate);
             const end = new Date(endDate);
+            const { requestedDays } = await validateVacationRequest(employeeId, start, end, type);
+            const fileUrl = await saveVacationAttachment(employeeId, req.file);
 
+            /* Legacy validation and attachment handling replaced by VacationRequestService
             // 1. Control de Solapamientos
             const overlapping = await prisma.vacation.findFirst({
                 where: {
@@ -165,6 +163,7 @@ export const VacationController = {
                 });
                 fileUrl = key;
             }
+            */
 
             const vacation = await prisma.vacation.create({
                 data: {
@@ -172,7 +171,7 @@ export const VacationController = {
                     startDate: start,
                     endDate: end,
                     type: type || 'VACATION',
-                    days: diffDays,
+                    days: requestedDays,
                     reason: reason || null,
                     fileUrl,
                     status: 'PENDING'
@@ -181,7 +180,9 @@ export const VacationController = {
             });
 
             AnomalyService.detectVacation(vacation as any).catch(err => log.error({ err }, 'Anomaly detection failed'));
+            await notifyVacationCreated(vacation, process.env.FRONTEND_URL || 'http://localhost:5173');
 
+            /* Legacy notification flow replaced by VacationRequestService
             // NOTIFY ADMINS
             const empName = (vacation as any).employee?.name || 'Un empleado';
             await NotificationService.notifyAdmins(
@@ -215,9 +216,16 @@ export const VacationController = {
                     });
                 }
             }
+            */
 
             res.json(vacation);
         } catch (error) {
+            if (error instanceof AppError) {
+                return res.status(error.statusCode || 400).json({
+                    error: error.message,
+                    insufficientDays: error.message.includes('Excede cupo')
+                });
+            }
             log.error({ error }, 'Error creating vacation');
             res.status(500).json({ error: 'Internal server error' });
         }
@@ -228,11 +236,12 @@ export const VacationController = {
         const { id } = req.params;
         try {
             const { user } = req as AuthenticatedRequest;
-            const vacation = await prisma.vacation.findUnique({ where: { id } });
+            const vacation = await prisma.vacation.findUnique({
+                where: { id },
+                include: { employee: { select: { companyId: true } } }
+            });
             if (!vacation) return res.status(404).json({ error: 'No encontrado' });
-            const isAdmin = user?.role === 'admin';
-            const isOwner = user?.employeeId && user.employeeId === vacation.employeeId;
-            if (!isAdmin && !isOwner) {
+            if (!canAccessPolicy('vacation.write', user, { employeeId: vacation.employeeId, companyId: vacation.employee?.companyId })) {
                 return res.status(403).json({ error: 'No autorizado' });
             }
 
@@ -259,21 +268,7 @@ export const VacationController = {
             });
             if (!vacationRecord) throw new AppError('Solicitud no encontrada', 404);
 
-            const isAdmin = user?.role === 'admin';
-
-            // Check Company Association
-            if (isAdmin && user.companyId && vacationRecord.employee.companyId !== user.companyId) {
-                throw new AppError('No autorizado para gestionar vacaciones de otra empresa', 403);
-            }
-            let isManager = false;
-            if (!isAdmin && user?.employeeId) {
-                const target = await prisma.employee.findUnique({
-                    where: { id: vacationRecord.employeeId },
-                    select: { managerId: true }
-                });
-                isManager = !!target && target.managerId === user.employeeId;
-            }
-            if (!isAdmin && !isManager) {
+            if (!canAccessPolicy('vacation.manage', user, { employeeId: vacationRecord.employeeId, companyId: vacationRecord.employee.companyId })) {
                 throw new AppError('No autorizado', 403);
             }
 
@@ -326,20 +321,11 @@ export const VacationController = {
     // Obtener mis vacaciones (basado en el usuario logueado)
     getMyVacations: async (req: Request, res: Response) => {
         const { user } = req as AuthenticatedRequest;
-        if (!user || !user.email) return ApiResponse.error(res, "Usuario no identificado", 401);
+        if (!user || !user.employeeId) return ApiResponse.error(res, "Usuario no identificado", 401);
 
         try {
-            // Buscar empleado asociado al email del usuario
-            const employee = await prisma.employee.findFirst({
-                where: { email: user.email }
-            });
-
-            if (!employee) {
-                return ApiResponse.success(res, []); // No es empleado, no tiene vacaciones
-            }
-
             const vacations = await prisma.vacation.findMany({
-                where: { employeeId: employee.id },
+                where: { employeeId: user.employeeId },
                 orderBy: { startDate: 'desc' },
                 include: { employee: true }
             });
@@ -354,10 +340,25 @@ export const VacationController = {
     // Obtener vacaciones para aprobar (Jefes o Admins)
     getManageableVacations: async (req: Request, res: Response) => {
         const { user } = req as AuthenticatedRequest;
-        if (!user || !user.email) return ApiResponse.error(res, "Usuario no identificado", 401);
+        if (!user) return ApiResponse.error(res, "Usuario no identificado", 401);
 
         try {
-            let whereClause: any = { status: 'PENDING' };
+            if (!canAccessPolicy('vacation.manage', user, { companyId: user.companyId })) {
+                return ApiResponse.success(res, []);
+            }
+
+            const manageableVacations = await prisma.vacation.findMany({
+                where: {
+                    status: 'PENDING',
+                    ...(user.companyId ? { employee: { companyId: user.companyId } } : {})
+                },
+                include: { employee: true },
+                orderBy: { startDate: 'asc' }
+            });
+
+            return ApiResponse.success(res, manageableVacations);
+            /* Legacy subordinate-based flow intentionally removed after policy unification.
+            const whereClause: any = {};
 
             // Si es admin, filtramos por su compañia
             if (user.role === 'admin') {
@@ -393,6 +394,7 @@ export const VacationController = {
             });
 
             return ApiResponse.success(res, vacations);
+            */
         } catch (error) {
             log.error({ error }, 'Error getting pending vacations');
             return ApiResponse.error(res, 'Error al obtener solicitudes pendientes', 500);
@@ -411,21 +413,7 @@ export const VacationController = {
 
             if (!vacation || !vacation.fileUrl) throw new AppError('Adjunto no encontrado', 404);
 
-            // Security Check: Admin, Manager of the employee, or Owner
-            const isOwner = user.employeeId === vacation.employeeId;
-            const isAdmin = user.role === 'admin';
-            let isManager = false;
-
-            if (!isAdmin && !isOwner) {
-                // Fetch employee to check managerId if not admin/owner
-                const target = await prisma.employee.findUnique({
-                    where: { id: vacation.employeeId },
-                    select: { managerId: true }
-                });
-                isManager = !!target && !!user.employeeId && target.managerId === user.employeeId;
-            }
-
-            if (!isAdmin && !isOwner && !isManager) {
+            if (!canAccessPolicy('vacation.read', user, { employeeId: vacation.employeeId, companyId: vacation.employee?.companyId })) {
                 throw new AppError('No tiene permisos para descargar este archivo', 403);
             }
 

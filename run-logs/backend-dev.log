@@ -1,0 +1,38 @@
+
+> nominas-backend@1.0.0 dev
+> nodemon src/index.ts
+
+[33m[nodemon] 3.1.11[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): src\**\*[39m
+[33m[nodemon] watching extensions: ts,json[39m
+[32m[nodemon] starting `node --max-old-space-size=4096 -r ts-node/register src/index.ts src/index.ts`[39m
+[15:28:22] [32mINFO[39m: [36mQueue initialized: ingestion-queue[39m
+    [35mcontext[39m: "QueueService"
+[15:28:22] [32mINFO[39m: [36mQueue initialized: ocr-queue[39m
+    [35mcontext[39m: "QueueService"
+[15:28:23] [32mINFO[39m: [36mEncryption service validated successfully[39m
+    [35mcontext[39m: "EncryptionService"
+[15:28:23] [32mINFO[39m: [36mChecking database connection...[39m
+    [35mcontext[39m: "API"
+[15:28:23] [32mINFO[39m: [36mDatabase connected successfully[39m
+    [35mcontext[39m: "API"
+[15:28:23] [32mINFO[39m: [36mStarting...[39m
+    [35mcontext[39m: "InboxService"
+[15:28:23] [32mINFO[39m: [36mService started. Watching for files and emails.[39m
+    [35mcontext[39m: "InboxService"
+[15:28:23] [32mINFO[39m: [36mStarting...[39m
+    [35mcontext[39m: "SchedulerService"
+[15:28:23] [32mINFO[39m: [36mRunning scheduled alert checks...[39m
+    [35mcontext[39m: "SchedulerService"
+[15:28:23] [32mINFO[39m: [36mGenerating multi-category alerts (Document Semaphore)...[39m
+    [35mcontext[39m: "AlertService"
+[15:28:23] [32mINFO[39m: [36mTasks scheduled[39m
+    [35mcontext[39m: "SchedulerService"
+[15:28:23] [32mINFO[39m: [36mInitializing workers...[39m
+    [35mcontext[39m: "Workers"
+[15:28:23] [32mINFO[39m: [36mWorker registered for ingestion-queue with concurrency 5[39m
+    [35mcontext[39m: "QueueService"
+[15:28:23] [32mINFO[39m: [36mWorkers initialized[39m
+    [35mcontext[39m: "Workers"
+[31m[nodemon] app crashed - waiting for file changes before starting...[39m

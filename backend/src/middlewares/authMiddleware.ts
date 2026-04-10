@@ -1,15 +1,24 @@
-import { Request, Response, NextFunction } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
+import {
+    AccessTarget,
+    canAccessPolicy,
+    DomainPolicyKey,
+    hasModuleAccess,
+    normalizeActor,
+    normalizeRole,
+    PermissionLevel,
+    PermissionModule
+} from '../../../shared/authz';
 import { prisma } from '../lib/prisma';
-import { AppError } from '../utils/AppError';
 import { AuthenticatedRequest, AuthUser } from '../types/express';
+import { AppError } from '../utils/AppError';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
     throw new Error('FATAL: JWT_SECRET is not defined in environment variables.');
 }
 
-// Interface for cookies
 interface Cookies {
     access_token?: string;
     refresh_token?: string;
@@ -20,7 +29,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
     try {
         let token: string | undefined;
         const cookies = req.cookies as Cookies | undefined;
-        
+
         if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
             token = req.headers.authorization.split(' ')[1];
         } else if (cookies?.access_token) {
@@ -28,7 +37,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         }
 
         if (!token) {
-            return next(new AppError('No estás autenticado. Por favor inicia sesión.', 401));
+            return next(new AppError('No estÃ¡s autenticado. Por favor inicia sesiÃ³n.', 401));
         }
 
         const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
@@ -41,7 +50,6 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
                 role: true,
                 permissions: true,
                 employeeId: true,
-                dni: true,
                 employee: { select: { companyId: true } }
             }
         });
@@ -50,98 +58,116 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
             return next(new AppError('El usuario perteneciente a este token ya no existe.', 401));
         }
 
-        // Parse permissions from string to object if they exist
-        let parsedPermissions: Record<string, 'none' | 'read' | 'write'> = {};
+        let parsedPermissions: Record<string, PermissionLevel | 'admin'> = {};
         try {
             parsedPermissions = user.permissions ? JSON.parse(user.permissions as string) : {};
         } catch {
             parsedPermissions = {};
         }
 
-        const userWithParsedPermissions: AuthUser = {
+        const normalized = normalizeActor({
             id: user.id,
             email: user.email,
-            role: user.role as AuthUser['role'],
-            employeeId: user.employeeId ?? undefined,
+            role: user.role,
             permissions: parsedPermissions,
-            companyId: user.employee?.companyId ?? undefined
+            employeeId: user.employeeId,
+            companyId: user.employee?.companyId
+        });
+
+        if (!normalized) {
+            return next(new AppError('No se pudo normalizar el usuario autenticado.', 401));
+        }
+
+        const userWithParsedPermissions: AuthUser = {
+            id: normalized.id || user.id,
+            email: user.email,
+            role: normalized.role,
+            employeeId: normalized.employeeId,
+            permissions: normalized.permissions,
+            companyId: normalized.companyId
         };
 
         (req as AuthenticatedRequest).user = userWithParsedPermissions;
         next();
-    } catch (error) {
-        next(new AppError('Token inválido o expirado.', 401));
+    } catch {
+        next(new AppError('Token invÃ¡lido o expirado.', 401));
     }
 };
 
 export const restrictTo = (...roles: string[]) => {
-    return (req: Request, res: Response, next: NextFunction) => {
-        const authReq = req as AuthenticatedRequest;
-        const user = authReq.user;
-        
-        if (!user) {
-            return next(new AppError('No estás autenticado.', 401));
-        }
-        
-        if (!roles.includes(user.role)) {
-            return next(new AppError('No tienes permiso para realizar esta acción.', 403));
-        }
-        next();
-    };
-};
+    const normalizedRoles = roles.map((role) => normalizeRole(role));
 
-export const checkPermission = (module: string, level: 'read' | 'write') => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const authReq = req as AuthenticatedRequest;
-        const user = authReq.user;
+        const user = (req as AuthenticatedRequest).user;
 
         if (!user) {
-            return next(new AppError('No estás autenticado.', 401));
+            return next(new AppError('No estÃ¡s autenticado.', 401));
         }
 
-        // Admin has full access
-        if (user.role === 'admin') return next();
-
-        if (!user.permissions) {
-            return next(new AppError('No tienes permisos configurados.', 403));
-        }
-
-        const permissions: Record<string, 'none' | 'read' | 'write'> = user.permissions;
-        const userLevel = permissions[module] || 'none';
-
-        if (level === 'write' && userLevel !== 'write') {
-            return next(new AppError(`No tienes permiso de escritura en el módulo ${module}.`, 403));
-        }
-
-        if (level === 'read' && userLevel === 'none') {
-            return next(new AppError(`No tienes acceso al módulo ${module}.`, 403));
+        if (!normalizedRoles.includes(user.role)) {
+            return next(new AppError('No tienes permiso para realizar esta acciÃ³n.', 403));
         }
 
         next();
     };
 };
 
-export const allowSelfOrRole = (roles: string[] = ['admin'], paramName: string = 'id') => {
+export const checkPermission = (module: PermissionModule, level: PermissionLevel) => {
     return (req: Request, res: Response, next: NextFunction) => {
-        const authReq = req as AuthenticatedRequest;
-        const user = authReq.user;
+        const user = (req as AuthenticatedRequest).user;
+
+        if (!user) {
+            return next(new AppError('No estÃ¡s autenticado.', 401));
+        }
+
+        if (!hasModuleAccess(user, module, level)) {
+            return next(new AppError(`No tienes acceso al mÃ³dulo ${module}.`, 403));
+        }
+
+        next();
+    };
+};
+
+export const allowSelfOrRole = (roles: string[] = ['admin'], paramName = 'id') => {
+    const normalizedRoles = roles.map((role) => normalizeRole(role));
+
+    return (req: Request, res: Response, next: NextFunction) => {
+        const user = (req as AuthenticatedRequest).user;
         const resourceId = req.params[paramName];
 
         if (!user) {
-            return next(new AppError('No estás autenticado.', 401));
+            return next(new AppError('No estÃ¡s autenticado.', 401));
         }
 
-        // 1. Check if user has allowed role
-        if (roles.includes(user.role)) {
+        if (normalizedRoles.includes(user.role)) {
             return next();
         }
 
-        // 2. Check if user owns the resource (Self-Service)
-        // user.employeeId should match the requested ID
         if (user.employeeId && user.employeeId === resourceId) {
             return next();
         }
 
         return next(new AppError('No tienes permiso para acceder a este recurso.', 403));
+    };
+};
+
+type PolicyTargetResolver = (req: AuthenticatedRequest) => Promise<AccessTarget | null | undefined> | AccessTarget | null | undefined;
+
+export const authorize = (policyKey: DomainPolicyKey, resolveTarget?: PolicyTargetResolver) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        const authReq = req as AuthenticatedRequest;
+        const user = authReq.user;
+
+        if (!user) {
+            return next(new AppError('No estÃ¡s autenticado.', 401));
+        }
+
+        const target = resolveTarget ? await resolveTarget(authReq) : undefined;
+
+        if (!canAccessPolicy(policyKey, user, target)) {
+            return next(new AppError('No tienes permiso para realizar esta acciÃ³n.', 403));
+        }
+
+        next();
     };
 };

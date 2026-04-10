@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
 import AlertCenter from './AlertCenter';
 import NotificationBell from './NotificationBell';
-import { navItems } from './Sidebar';
+import { navItems } from './sidebarNavigation';
 import { useConfirm } from '../context/ConfirmContext';
 
 interface HeaderProps {
@@ -16,7 +16,7 @@ interface HeaderProps {
 
 export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: HeaderProps) {
     const location = useLocation();
-    const { user, logout } = useAuth();
+    const { user, logout, canAccessFeature } = useAuth();
     const confirmAction = useConfirm();
 
     const handleLogout = async () => {
@@ -88,7 +88,7 @@ export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: H
                 <NotificationBell />
 
                 {/* Alert Center - Admin only */}
-                {(user?.role === 'admin' || (user?.permissions && user.permissions.employees !== 'none')) && (
+                {canAccessFeature('employees') && (
                     <AlertCenter />
                 )}
 

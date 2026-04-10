@@ -11,6 +11,7 @@ import { PayrollAutomationService } from '../services/PayrollAutomationService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { AppError } from '../utils/AppError';
+import { canManagePayroll, canReadPayroll } from '../policies/payrollAccess';
 
 const log = createLogger('PayrollController');
 
@@ -298,15 +299,17 @@ export const PayrollController = {
         const { employeeId } = req.params;
         const { user } = req as AuthenticatedRequest;
         try {
-            // Security Check
-            if (user.role !== 'admin') {
-                if (!user.companyId) throw new AppError('Usuario sin empresa', 403);
-                // 1. Can user see this employee?
-                const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
-                if (!employee || employee.companyId !== user.companyId) {
-                    // Exception: Self
-                    if (user.employeeId !== employeeId) throw new AppError('No autorizado', 403);
-                }
+            const employee = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { id: true, companyId: true }
+            });
+
+            if (!employee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+
+            if (!canReadPayroll(user, { employeeId, companyId: employee.companyId })) {
+                throw new AppError('No autorizado', 403);
             }
 
             const rows = await prisma.payrollRow.findMany({
@@ -316,7 +319,7 @@ export const PayrollController = {
             });
             return ApiResponse.success(res, rows);
         } catch (error: any) {
-            return ApiResponse.error(res, 'Error al obtener nóminas del empleado', 500);
+            return ApiResponse.error(res, error.message || 'Error al obtener nóminas del empleado', error.statusCode || 500);
         }
     },
 
@@ -416,12 +419,8 @@ export const PayrollController = {
             // Self: OK (payroll.employeeId === user.employeeId)
             // HR/Company: OK (payroll.employee.companyId === user.companyId)
 
-            let allowed = false;
-            if (user.role === 'admin') allowed = true;
-            else if (user.employeeId && user.employeeId === payroll.employeeId) allowed = true;
-            else if (user.companyId && payroll.employee.companyId === user.companyId) allowed = true;
+            if (!canReadPayroll(user, { employeeId: payroll.employeeId, companyId: payroll.employee.companyId })) {
 
-            if (!allowed) {
                 return ApiResponse.error(res, 'No tiene permiso para descargar esta nómina', 403);
             }
 

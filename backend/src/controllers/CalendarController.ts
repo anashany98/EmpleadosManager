@@ -6,8 +6,13 @@ import { AuthenticatedRequest } from '../types/express';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { CalendarService } from '../services/CalendarService';
+import { hasModuleAccess } from '../../../shared/authz';
 
 const SECRET = process.env.JWT_SECRET || 'secret-calendar-key';
+
+function canManageCalendar(user: AuthenticatedRequest['user'] | undefined): boolean {
+    return Boolean(user && user.role !== 'employee' && hasModuleAccess(user, 'calendar', 'write'));
+}
 
 export const CalendarController = {
     getSubscriptionLink: async (req: Request, res: Response) => {
@@ -262,12 +267,7 @@ export const CalendarController = {
                 return ApiResponse.error(res, 'Usuario no identificado', 401);
             }
 
-            // Check permissions
-            const userData = await prisma.user.findUnique({
-                where: { id: user.id }
-            });
-
-            if (userData?.role !== 'admin' && userData?.role !== 'hr') {
+            if (!canManageCalendar(user)) {
                 return ApiResponse.error(res, 'No tienes permisos para crear eventos', 403);
             }
 
@@ -276,12 +276,6 @@ export const CalendarController = {
             if (!title || !startDate || !endDate || !type) {
                 return ApiResponse.error(res, 'Faltan campos requeridos', 400);
             }
-
-            // Get user's company
-            const userWithCompany = await prisma.user.findUnique({
-                where: { id: user.id },
-                include: { employee: { select: { companyId: true } } }
-            });
 
             const event = await CalendarService.createEvent(
                 {
@@ -293,7 +287,7 @@ export const CalendarController = {
                     allDay: allDay ?? true,
                     type,
                     color,
-                    companyId: userWithCompany?.employee?.companyId || undefined,
+                    companyId: user.companyId || undefined,
                     isPublic,
                 },
                 user.id
@@ -317,12 +311,7 @@ export const CalendarController = {
                 return ApiResponse.error(res, 'Usuario no identificado', 401);
             }
 
-            // Check permissions
-            const userData = await prisma.user.findUnique({
-                where: { id: user.id }
-            });
-
-            if (userData?.role !== 'admin' && userData?.role !== 'hr') {
+            if (!canManageCalendar(user)) {
                 return ApiResponse.error(res, 'No tienes permisos para editar eventos', 403);
             }
 
@@ -360,12 +349,7 @@ export const CalendarController = {
                 return ApiResponse.error(res, 'Usuario no identificado', 401);
             }
 
-            // Check permissions (only admin can delete)
-            const userData = await prisma.user.findUnique({
-                where: { id: user.id }
-            });
-
-            if (userData?.role !== 'admin') {
+            if (!canManageCalendar(user)) {
                 return ApiResponse.error(res, 'No tienes permisos para eliminar eventos', 403);
             }
 
@@ -391,22 +375,11 @@ export const CalendarController = {
                 return ApiResponse.error(res, 'Usuario no identificado', 401);
             }
 
-            // Check permissions
-            const userData = await prisma.user.findUnique({
-                where: { id: user.id }
-            });
-
-            if (userData?.role !== 'admin' && userData?.role !== 'hr') {
+            if (!canManageCalendar(user)) {
                 return ApiResponse.error(res, 'No tienes permisos para ver eventos', 403);
             }
 
-            // Get user's company
-            const userWithCompany = await prisma.user.findUnique({
-                where: { id: user.id },
-                include: { employee: { select: { companyId: true } } }
-            });
-
-            const events = await CalendarService.getAllEvents(userWithCompany?.employee?.companyId || null);
+            const events = await CalendarService.getAllEvents(user.companyId || null);
 
             return ApiResponse.success(res, events);
         } catch (error) {

@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { validatePassword } from '../utils/passwordPolicy';
+import { coercePermissionMap, normalizeRole } from '../../../shared/authz';
 
 export const UserController = {
     list: async (req: Request, res: Response) => {
@@ -19,14 +20,15 @@ export const UserController = {
         });
 
         const parsedUsers = users.map(user => {
-            let parsed: any = {};
+            let parsed = {};
             try {
-                parsed = user.permissions ? JSON.parse(user.permissions) : {};
+                parsed = coercePermissionMap(user.permissions ? JSON.parse(user.permissions) : {});
             } catch {
                 parsed = {};
             }
             return {
                 ...user,
+                role: normalizeRole(user.role),
                 permissions: parsed
             };
         });
@@ -53,12 +55,15 @@ export const UserController = {
 
         const hashedPassword = await bcrypt.hash(password, 10);
 
+        const normalizedRole = normalizeRole(role);
+        const normalizedPermissions = coercePermissionMap(permissions || {});
+
         const user = await prisma.user.create({
             data: {
                 email,
                 password: hashedPassword,
-                role: role || 'user',
-                permissions: permissions ? JSON.stringify(permissions) : null
+                role: normalizedRole,
+                permissions: JSON.stringify(normalizedPermissions)
             }
         });
 
@@ -72,8 +77,8 @@ export const UserController = {
 
         const data: any = {};
         if (email) data.email = email;
-        if (role) data.role = role;
-        if (permissions) data.permissions = JSON.stringify(permissions);
+        if (role) data.role = normalizeRole(role);
+        if (permissions) data.permissions = JSON.stringify(coercePermissionMap(permissions));
         if (password) {
             const policy = validatePassword(password);
             if (!policy.ok) {

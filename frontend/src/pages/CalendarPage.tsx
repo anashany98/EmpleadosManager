@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, X, Clock, Baby, Plane, Stethoscope, FileText, MoreHorizontal, Plus, Trash2, Calendar as CalendarIcon, Filter, Search, Gift } from 'lucide-react';
 import { api } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
+import { hasModuleAccess, normalizeActor } from '@shared/authz';
 
 // Extended absence types including events and holidays
 const ABSENCE_TYPES = {
@@ -30,14 +31,45 @@ interface UnifiedEvent {
     description?: string;
 }
 
+interface EmployeeSummary {
+    id: string;
+    name: string;
+    department?: string | null;
+}
+
+interface VacationEvent {
+    id: string;
+    employeeId: string;
+    startDate: string;
+    endDate: string;
+    type: string;
+    reason?: string | null;
+    employee?: EmployeeSummary | null;
+}
+
+type CalendarModalEvent = VacationEvent | UnifiedEvent;
+
+interface ApiEnvelope<T> {
+    data?: T;
+}
+
+function extractEnvelopeData<T>(response: T | ApiEnvelope<T> | undefined, fallback: T): T {
+    if (response && typeof response === 'object' && 'data' in response) {
+        return (response.data ?? fallback) as T;
+    }
+
+    return (response ?? fallback) as T;
+}
+
 export default function CalendarPage() {
     const { user } = useAuth();
-    const canManageAllVacations = user?.role === 'admin' || user?.role === 'hr';
+    const actor = normalizeActor(user);
+    const canManageAllVacations = Boolean(actor && actor.role !== 'employee' && hasModuleAccess(actor, 'vacations', 'write'));
 
     // Core State
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [vacations, setVacations] = useState<any[]>([]);
-    const [employees, setEmployees] = useState<any[]>([]);
+    const [vacations, setVacations] = useState<VacationEvent[]>([]);
+    const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
     const [departments, setDepartments] = useState<string[]>([]);
     
     // Unified Calendar Events (birthdays, events, holidays)
@@ -52,7 +84,7 @@ export default function CalendarPage() {
 
     // Selection State
     const [selectionStart, setSelectionStart] = useState<Date | null>(null);
-    const [selectedDateEvents, setSelectedDateEvents] = useState<any[]>([]);
+    const [selectedDateEvents, setSelectedDateEvents] = useState<CalendarModalEvent[]>([]);
 
     // Form State
     const [selectedEmployee, setSelectedEmployee] = useState('');
@@ -62,31 +94,21 @@ export default function CalendarPage() {
     const [calendarLink, setCalendarLink] = useState('');
     const [showLinkModal, setShowLinkModal] = useState(false);
 
-    useEffect(() => {
-        fetchData();
-    }, [canManageAllVacations, currentDate]);
-
-    useEffect(() => {
-        if (!canManageAllVacations && user?.employeeId) {
-            setSelectedEmployee(user.employeeId);
-        }
-    }, [canManageAllVacations, user?.employeeId]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         try {
             if (canManageAllVacations) {
                 const [vacRes, empRes] = await Promise.all([
-                    api.get('/vacations'),
-                    api.get('/employees')
+                    api.get<ApiEnvelope<VacationEvent[]>>('/vacations'),
+                    api.get<ApiEnvelope<EmployeeSummary[]>>('/employees')
                 ]);
-                setVacations(vacRes.data || []);
-                const emps = empRes.data || [];
+                setVacations(extractEnvelopeData(vacRes, []));
+                const emps = extractEnvelopeData(empRes, []);
                 setEmployees(emps);
-                const depts = new Set(emps.map((e: any) => e.department).filter(Boolean));
-                setDepartments(['ALL', ...Array.from(depts) as string[]]);
+                const depts = new Set(emps.map((employee) => employee.department).filter(Boolean) as string[]);
+                setDepartments(['ALL', ...Array.from(depts)]);
             } else {
-                const vacRes = await api.get('/vacations/my-vacations');
-                setVacations(vacRes.data || []);
+                const vacRes = await api.get<ApiEnvelope<VacationEvent[]>>('/vacations/my-vacations');
+                setVacations(extractEnvelopeData(vacRes, []));
                 setEmployees([]);
                 setDepartments(['ALL']);
             }
@@ -95,17 +117,25 @@ export default function CalendarPage() {
             try {
                 const start = format(startOfMonth(currentDate), 'yyyy-MM-dd');
                 const end = format(endOfMonth(currentDate), 'yyyy-MM-dd');
-                const unifiedRes = await api.get(`/calendar/unified?start=${start}&end=${end}`);
-                setUnifiedEvents(unifiedRes.data?.data || []);
-            } catch (e) {
-                console.error('Error fetching unified events:', e);
+                const unifiedRes = await api.get<ApiEnvelope<UnifiedEvent[]>>(`/calendar/unified?start=${start}&end=${end}`);
+                setUnifiedEvents(extractEnvelopeData(unifiedRes, []));
+            } catch (error) {
+                console.error('Error fetching unified events:', error);
                 setUnifiedEvents([]);
             }
-        } catch (e) {
-            console.error(e);
-            toast.error("Error al cargar datos");
+        } catch (error) {
+            console.error(error);
+            toast.error('Error al cargar datos');
         }
-    };
+    }, [canManageAllVacations, currentDate]);
+
+    useEffect(() => {
+        const run = async () => {
+            await fetchData();
+        };
+
+        void run();
+    }, [fetchData]);
 
     // Derived Data
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
@@ -174,7 +204,7 @@ export default function CalendarPage() {
     const handleDelete = async (id: string) => {
         if (await api.delete(`/vacations/${id}`)) {
             toast.success('Evento eliminado');
-            fetchData();
+            void fetchData();
             setShowModal(false);
         }
     };
@@ -195,7 +225,7 @@ export default function CalendarPage() {
                 type: vacationType,
                 reason
             });
-            fetchData();
+            void fetchData();
             setShowModal(false);
             toast.success('Guardado');
             // Reset form
@@ -203,18 +233,23 @@ export default function CalendarPage() {
                 setSelectedEmployee('');
             }
             setReason('');
-        } catch (e) { toast.error('Error al guardar'); }
+        } catch {
+            toast.error('Error al guardar');
+        }
     };
 
     const fetchCalendarLink = async () => {
         try {
-            const res = await api.get('/calendar/link');
-            if (res.data?.success) {
-                setCalendarLink(res.data.data.url);
+            const res = await api.get<ApiEnvelope<{ url: string }>>('/calendar/link');
+            const data = extractEnvelopeData(res, { url: '' });
+            if (data.url) {
+                setCalendarLink(data.url);
                 setShowLinkModal(true);
             }
-        } catch (e) { toast.error('Error al generar enlace'); }
-    }
+        } catch {
+            toast.error('Error al generar enlace');
+        }
+    };
 
     return (
         <div className="h-[calc(100vh-100px)] flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500 font-sans">

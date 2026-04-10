@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { coercePermissionMap } from '../../../shared/authz';
 
 export const PermissionProfileController = {
     list: async (req: Request, res: Response) => {
@@ -11,7 +12,7 @@ export const PermissionProfileController = {
 
         const parsedProfiles = profiles.map(profile => ({
             ...profile,
-            permissions: JSON.parse(profile.permissions)
+            permissions: coercePermissionMap(JSON.parse(profile.permissions))
         }));
 
         return ApiResponse.success(res, parsedProfiles);
@@ -32,13 +33,13 @@ export const PermissionProfileController = {
         const profile = await prisma.permissionProfile.create({
             data: {
                 name,
-                permissions: JSON.stringify(permissions)
+                permissions: JSON.stringify(coercePermissionMap(permissions))
             }
         });
 
         return ApiResponse.success(res, {
             ...profile,
-            permissions: JSON.parse(profile.permissions)
+            permissions: coercePermissionMap(JSON.parse(profile.permissions))
         }, 'Perfil creado correctamente', 201);
     },
 
@@ -48,7 +49,7 @@ export const PermissionProfileController = {
 
         const data: any = {};
         if (name) data.name = name;
-        if (permissions) data.permissions = JSON.stringify(permissions);
+        if (permissions) data.permissions = JSON.stringify(coercePermissionMap(permissions));
 
         const profile = await prisma.permissionProfile.update({
             where: { id },
@@ -57,7 +58,7 @@ export const PermissionProfileController = {
 
         return ApiResponse.success(res, {
             ...profile,
-            permissions: JSON.parse(profile.permissions)
+            permissions: coercePermissionMap(JSON.parse(profile.permissions))
         }, 'Perfil actualizado correctamente');
     },
 
