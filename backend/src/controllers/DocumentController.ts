@@ -5,10 +5,20 @@ import { ApiResponse } from '../utils/ApiResponse';
 
 import { createWorker } from 'tesseract.js';
 import { StorageService } from '../services/StorageService';
-import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('DocumentController');
+
+async function assertEmployeeExists(employeeId: string): Promise<void> {
+    const employee = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { id: true }
+    });
+
+    if (!employee) {
+        throw new AppError('Empleado no encontrado', 404);
+    }
+}
 
 export const DocumentController = {
     // Procesar OCR para clasificar documentos
@@ -63,28 +73,10 @@ export const DocumentController = {
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
         if (!employeeId) throw new AppError('employeeId requerido', 400);
 
+        let savedKey: string | null = null;
+
         try {
-            const { user } = req as AuthenticatedRequest;
-
-            // Security Check
-            if (user.role !== 'admin') {
-                if (user.employeeId === employeeId) {
-                    // Self upload: OK (if allowed by policy, assuming yes)
-                } else {
-                    // Check if Manager/HR of same company
-                    const targetEmployee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
-                    if (!targetEmployee) throw new AppError('Empleado no encontrado', 404);
-
-                    if (user.role === 'hr' || user.role === 'manager') {
-                        if (targetEmployee.companyId !== user.companyId) {
-                            throw new AppError('No autorizado: Empleado de otra empresa', 403);
-                        }
-                    } else {
-                        // Regular employee uploading for someone else -> Deny
-                        throw new AppError('No autorizado', 403);
-                    }
-                }
-            }
+            await assertEmployeeExists(employeeId);
 
             const safeEmployeeId = employeeId.replace(/[^a-zA-Z0-9-]/g, '');
             if (safeEmployeeId !== employeeId) {
@@ -97,20 +89,23 @@ export const DocumentController = {
                 buffer: file.buffer,
                 contentType: file.mimetype
             });
-            const document = await prisma.document.create({
-                data: {
-                    employeeId,
-                    name: name || file.originalname,
-                    category: category || 'OTHER',
-                    fileUrl: key,
-                    expiryDate: expiryDate ? new Date(expiryDate) : null
-                }
+            savedKey = key;
+
+            const document = await prisma.$transaction(async (tx) => {
+                return await tx.document.create({
+                    data: {
+                        employeeId,
+                        name: name || file.originalname,
+                        category: category || 'OTHER',
+                        fileUrl: key,
+                        expiryDate: expiryDate ? new Date(expiryDate) : null
+                    }
+                });
             });
 
             return ApiResponse.success(res, document, 'Documento subido correctamente', 201);
         } catch (error) {
-            log.error({ error }, 'Error al subir documento');
-            // Re-throw AppError
+            log.error({ error, savedKey }, 'Error al subir documento - archivo可能会保留');
             if (error instanceof AppError) throw error;
             throw new AppError('Error al registrar el documento en la base de datos', 500);
         }
@@ -119,30 +114,6 @@ export const DocumentController = {
     getByEmployee: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
         try {
-            const { user } = req as AuthenticatedRequest;
-
-            // Security Check
-            if (user.role !== 'admin') {
-                if (user.employeeId === employeeId) {
-                    // Allow Self
-                } else {
-                    const targetEmployee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
-                    // If target doesn't exist, we can return 404 or empty. 
-                    // Let's rely on query below to return empty, but we must check permission first.
-                    // If target doesn't exist, we can't check company.
-
-                    if (targetEmployee) {
-                        if (user.role === 'hr' || user.role === 'manager') {
-                            if (targetEmployee.companyId !== user.companyId) {
-                                throw new AppError('No autorizado', 403);
-                            }
-                        } else {
-                            throw new AppError('No autorizado', 403);
-                        }
-                    }
-                }
-            }
-
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 50;
             const isPaginationRequested = req.query.page !== undefined;
@@ -181,23 +152,8 @@ export const DocumentController = {
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         try {
-            const { user } = req as AuthenticatedRequest;
             const document = await prisma.document.findUnique({ where: { id }, include: { employee: true } });
             if (!document) throw new AppError('Documento no encontrado', 404);
-
-            // Security Check
-            if (user.role !== 'admin') {
-                if (document.employeeId === user.employeeId) {
-                    // Allow Self Delete? Maybe.
-                } else {
-                    // Check Company
-                    if ((user.role === 'hr' || user.role === 'manager') && document.employee?.companyId === user.companyId) {
-                        // Allow HR
-                    } else {
-                        throw new AppError('No autorizado', 403);
-                    }
-                }
-            }
 
             // Eliminar archivo físico / S3
             if (document.fileUrl) {
@@ -214,7 +170,6 @@ export const DocumentController = {
 
     download: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const { user } = req as AuthenticatedRequest;
         const inline = req.query.inline === 'true';
 
         try {
@@ -224,17 +179,6 @@ export const DocumentController = {
             });
 
             if (!document) throw new AppError('Documento no encontrado', 404);
-
-            // Security Check: Admin, Owner, or HR of same company
-            if (user.role !== 'admin') {
-                if (user.employeeId === document.employeeId) {
-                    // Allow
-                } else if ((user.role === 'hr' || user.role === 'manager') && document.employee?.companyId === user.companyId) {
-                    // Allow
-                } else {
-                    throw new AppError('No tiene permisos para descargar este documento', 403);
-                }
-            }
 
             if (StorageService.provider === 'local') {
                 const fs = require('fs');

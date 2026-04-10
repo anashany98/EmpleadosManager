@@ -2,35 +2,54 @@ services:
   # Base de Datos PostgreSQL
   postgres:
     image: postgres:15-alpine
-    container_name: nominas_db
+    container_name: manager_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_INITDB_ARGS: "--wal-segments=16"
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
-      - nominas_network
+      - manager_network
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    command: >
+      postgres
+      -cwal_level=replica
+      -carchive_mode=on
+      -carchive_command=/bin/true
+      -cmax_wal_senders=3
+      -cwal_keep_size=1GB
 
-  # Redis (Queue & Cache)
+  # Redis (Queue & Cache) con persistencia
   redis:
     image: redis:7-alpine
-    container_name: nominas_redis
+    container_name: manager_redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
-      - nominas_network
+      - manager_network
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    command: redis-server --appendonly yes --save 900 1 --save 300 10 --save 60 10000
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -42,12 +61,12 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: nominas_backend
+    container_name: manager_backend
     ports:
       - "16161:3000"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public&connection_timeout=10
       - PORT=3000
       - JWT_SECRET=${JWT_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
@@ -68,15 +87,24 @@ services:
       - BACKUP_UPLOAD=${BACKUP_UPLOAD}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - PRISMA_QUERY_TIMEOUT=10s
+      - PRISMA_CONNECT_TIMEOUT=10s
     volumes:
       - backend_uploads:/app/backend/uploads
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
-      - nominas_network
+      - manager_network
       - coolify
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health', r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 15s
@@ -90,17 +118,22 @@ services:
       dockerfile: Dockerfile
       args:
         - VITE_API_URL=${VITE_API_URL}
-    container_name: nominas_frontend
+    container_name: manager_frontend
     ports:
       - "17171:80"
     depends_on:
       - backend
     networks:
-      - nominas_network
+      - manager_network
     restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
 
 networks:
-  nominas_network:
+  manager_network:
     driver: bridge
   coolify:
     external: true

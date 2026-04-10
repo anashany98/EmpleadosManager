@@ -12,6 +12,7 @@ import { AuthService } from '../services/AuthService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { AuditService } from '../services/AuditService';
+import { coercePermissionMap, normalizeRole } from '../../../shared/authz';
 
 const log = createLogger('AuthController');
 
@@ -68,17 +69,20 @@ const ensureCsrfCookie = (req: Request, res: Response) => {
 
 export const AuthController = {
     login: async (req: Request, res: Response) => {
-        try {
-            const { email, dni, password, identifier } = req.body;
-            const loginId = identifier || email || dni;
+        const { email, dni, password, identifier } = req.body;
+        const loginId = identifier || email || dni;
 
+        try {
             if (!loginId || !password) {
                 throw new AppError('Por favor, proporciona identificador y contraseña', 400);
             }
 
             const result = await AuthService.login(loginId, password);
 
-            // Set HttpOnly cookies
+            const ipAddress = req.ip || req.socket.remoteAddress;
+            const userAgent = req.headers['user-agent'];
+            await AuditService.logLoginSuccess(result.user.id, ipAddress, userAgent);
+
             res.cookie('access_token', result.accessToken, buildCookieOptions(15 * 60 * 1000));
             res.cookie('refresh_token', result.refreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
             issueCsrfToken(res);
@@ -90,6 +94,9 @@ export const AuthController = {
             }
             return ApiResponse.success(res, payload, 'Sesión iniciada correctamente');
         } catch (error: any) {
+            const ipAddress = req.ip || req.socket.remoteAddress;
+            const userAgent = req.headers['user-agent'];
+            await AuditService.logLoginFailed(loginId || 'unknown', error.message || 'Login failed', ipAddress, userAgent);
             log.error({ error }, 'Login failed');
             return ApiResponse.error(res, error.message || 'Error al iniciar sesión', error.statusCode || 500);
         }
@@ -398,9 +405,9 @@ export const AuthController = {
                         email: employee.email || `${employee.dni}@system.local`, // Fallback
                         dni: employee.dni,
                         password: hashedPassword,
-                        role: 'employee', // Default role
+                        role: normalizeRole('employee'),
                         employeeId: employee.id,
-                        permissions: JSON.stringify({}) // Default empty permissions
+                        permissions: JSON.stringify(coercePermissionMap({}))
                     }
                 });
             }
