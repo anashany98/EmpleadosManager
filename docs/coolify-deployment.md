@@ -63,16 +63,18 @@ ENCRYPTION_KEY=[generar clave de 32 caracteres]
 CORS_ORIGIN=https://empleadosmanager.egeadev.cloud
 FRONTEND_URL=https://empleadosmanager.egeadev.cloud
 COOKIE_SECURE=true
+COOKIE_DOMAIN=.empleadosmanager.egeadev.cloud
 COOKIE_SAMESITE=strict
 CSRF_COOKIE_NAME=csrf_token
 CSRF_HEADER_NAME=x-csrf-token
 CSRF_MAX_AGE_MS=604800000
-REDIS_HOST=[IP de Redis]
-REDIS_PORT=6379
+REDIS_URL=[URL completa de Redis de Coolify - formato: redis://default:PASSWORD@HOST:6379/0]
 STORAGE_PROVIDER=local
 PRISMA_QUERY_TIMEOUT=10000
 PRISMA_CONNECT_TIMEOUT=10000
 ```
+
+**Nota:** Usar `REDIS_URL` en lugar de `REDIS_HOST` y `REDIS_PORT` para soportar Redis autenticado.
 
 4. Puerto: 3000
 

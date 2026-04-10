@@ -50,9 +50,9 @@ ENCRYPTION_KEY=[generar 32 chars exacta]
 CORS_ORIGIN=https://empleadosmanager.egeadev.cloud
 FRONTEND_URL=https://empleadosmanager.egeadev.cloud
 COOKIE_SECURE=true
+COOKIE_DOMAIN=.empleadosmanager.egeadev.cloud
 COOKIE_SAMESITE=strict
-REDIS_HOST=[IP_REDIS]
-REDIS_PORT=6379
+REDIS_URL=[redis://default:PASSWORD@HOST:6379/0 - obtener de Coolify]
 PRISMA_QUERY_TIMEOUT=10000
 PRISMA_CONNECT_TIMEOUT=10000
 ```

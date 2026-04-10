@@ -4,13 +4,48 @@ import { createLogger } from './LoggerService';
 
 const log = createLogger('QueueService');
 
-const redisConfig = {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT || '6379'),
-    maxRetriesPerRequest: null,
-};
+function buildRedisConfig() {
+    const redisUrl = process.env.REDIS_URL;
+    
+    if (redisUrl) {
+        log.info('Using REDIS_URL for connection');
+        return redisUrl;
+    }
 
+    const host = process.env.REDIS_HOST || 'localhost';
+    const port = parseInt(process.env.REDIS_PORT || '6379');
+    const password = process.env.REDIS_PASSWORD;
+
+    const config: IORedis.IOREDISOptions = {
+        host,
+        port,
+        maxRetriesPerRequest: null,
+    };
+
+    if (password) {
+        config.password = password;
+        log.info(`Connecting to Redis at ${host}:${port} with password`);
+    } else {
+        log.info(`Connecting to Redis at ${host}:${port} (no password)`);
+    }
+
+    return config;
+}
+
+const redisConfig = buildRedisConfig();
 export const connection = new IORedis(redisConfig);
+
+connection.on('connect', () => {
+    log.info('Redis connected successfully');
+});
+
+connection.on('error', (err) => {
+    log.error({ err }, 'Redis connection error');
+});
+
+connection.on('ready', () => {
+    log.info('Redis ready');
+});
 
 export const QUEUES = {
     INGESTION: 'ingestion-queue',
