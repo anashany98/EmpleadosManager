@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { validateUpload } from '../config/multer';
 
 import { createWorker } from 'tesseract.js';
 import { StorageService } from '../services/StorageService';
@@ -27,6 +28,7 @@ export const DocumentController = {
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
 
         try {
+            validateUpload(file);
             const worker = await createWorker('spa');
             const { data: { text } } = await worker.recognize(file.buffer);
             await worker.terminate();
@@ -72,6 +74,8 @@ export const DocumentController = {
 
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
         if (!employeeId) throw new AppError('employeeId requerido', 400);
+
+        validateUpload(file);
 
         let savedKey: string | null = null;
 
