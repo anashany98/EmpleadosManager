@@ -5,6 +5,7 @@ import archiver from 'archiver';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { StorageService } from './StorageService';
+import { encrypt, decrypt, isEncryptionEnabled, getEncryptionKey } from '../utils/encryption';
 
 const execFileAsync = promisify(execFile);
 
@@ -24,7 +25,32 @@ interface BackupResult {
     fileName: string;
     size: number;
     type: 'SNAPSHOT' | 'FULL';
+    encrypted: boolean;
     remoteKey?: string;
+}
+
+/**
+ * Encrypts a file in-place if encryption is enabled.
+ * Replaces the original file with its encrypted version and updates the filename.
+ */
+function encryptFileIfNeeded(filePath: string, fileName: string): { filePath: string; fileName: string; encrypted: boolean } {
+    if (!isEncryptionEnabled()) {
+        return { filePath, fileName, encrypted: false };
+    }
+
+    const key = getEncryptionKey();
+    const buffer = fs.readFileSync(filePath);
+    const encryptedBuffer = encrypt(buffer, key);
+
+    // Write encrypted data to a new file with .enc extension
+    const encFileName = `${fileName}.enc`;
+    const encFilePath = `${filePath}.enc`;
+    fs.writeFileSync(encFilePath, encryptedBuffer);
+
+    // Remove the unencrypted file
+    fs.unlinkSync(filePath);
+
+    return { filePath: encFilePath, fileName: encFileName, encrypted: true };
 }
 
 export const BackupService = {
@@ -56,15 +82,18 @@ export const BackupService = {
                 env: { ...process.env, PGPASSWORD: password }
             });
 
-            const stats = fs.statSync(destPath);
+            // Encrypt if enabled
+            const { filePath: finalPath, fileName: finalName, encrypted } = encryptFileIfNeeded(destPath, fileName);
+
+            const stats = fs.statSync(finalPath);
             BackupService.pruneBackups(SNAPSHOT_DIR, 24);
-            const result: BackupResult = { filePath: destPath, fileName, size: stats.size, type: 'SNAPSHOT' };
+            const result: BackupResult = { filePath: finalPath, fileName: finalName, size: stats.size, type: 'SNAPSHOT', encrypted };
 
             if (process.env.BACKUP_UPLOAD === 'true' && StorageService.provider === 's3') {
-                const buffer = fs.readFileSync(destPath);
+                const buffer = fs.readFileSync(finalPath);
                 const { key } = await StorageService.saveBuffer({
                     folder: 'backups/snapshots',
-                    originalName: fileName,
+                    originalName: finalName,
                     buffer,
                     contentType: 'application/octet-stream'
                 });
@@ -80,20 +109,25 @@ export const BackupService = {
         return new Promise((resolve, reject) => {
             fs.copyFile(sourceDb, destPath, (err) => {
                 if (err) return reject(err);
-                const stats = fs.statSync(destPath);
+
+                // Encrypt if enabled
+                const { filePath: finalPath, fileName: finalName, encrypted } = encryptFileIfNeeded(destPath, fileName);
+
+                const stats = fs.statSync(finalPath);
                 BackupService.pruneBackups(SNAPSHOT_DIR, 24);
                 const result: BackupResult = {
-                    filePath: destPath,
-                    fileName: fileName,
+                    filePath: finalPath,
+                    fileName: finalName,
                     size: stats.size,
-                    type: 'SNAPSHOT'
+                    type: 'SNAPSHOT',
+                    encrypted
                 };
 
                 if (process.env.BACKUP_UPLOAD === 'true' && StorageService.provider === 's3') {
-                    const buffer = fs.readFileSync(destPath);
+                    const buffer = fs.readFileSync(finalPath);
                     StorageService.saveBuffer({
                         folder: 'backups/snapshots',
-                        originalName: fileName,
+                        originalName: finalName,
                         buffer,
                         contentType: 'application/octet-stream'
                     }).then(({ key }) => {
@@ -122,25 +156,29 @@ export const BackupService = {
 
         return new Promise((resolve, reject) => {
             output.on('close', () => {
-                const stats = fs.statSync(destPath);
+                // Encrypt the zip if enabled
+                const { filePath: finalPath, fileName: finalName, encrypted } = encryptFileIfNeeded(destPath, fileName);
+
+                const stats = fs.statSync(finalPath);
 
                 // Prune old full backups (keep last 30)
                 BackupService.pruneBackups(FULL_BACKUP_DIR, 30);
 
                 const result: BackupResult = {
-                    filePath: destPath,
-                    fileName: fileName,
+                    filePath: finalPath,
+                    fileName: finalName,
                     size: stats.size,
-                    type: 'FULL'
+                    type: 'FULL',
+                    encrypted
                 };
 
                 if (process.env.BACKUP_UPLOAD === 'true' && StorageService.provider === 's3') {
-                    const buffer = fs.readFileSync(destPath);
+                    const buffer = fs.readFileSync(finalPath);
                     StorageService.saveBuffer({
                         folder: 'backups/full',
-                        originalName: fileName,
+                        originalName: finalName,
                         buffer,
-                        contentType: 'application/zip'
+                        contentType: 'application/octet-stream'
                     }).then(({ key }) => {
                         result.remoteKey = key;
                         resolve(result);
@@ -155,11 +193,26 @@ export const BackupService = {
 
             archive.pipe(output);
 
-            // Add Database dump
+            // Add Database dump (snapshot is already encrypted if enabled, store as-is)
             archive.file(snapshot.filePath, { name: snapshot.fileName });
 
             archive.finalize();
         });
+    },
+
+    /**
+     * Decrypts a backup file and returns the decrypted buffer.
+     * If the file is not encrypted, returns the raw file buffer.
+     */
+    decryptBackup: (filePath: string): Buffer => {
+        const buffer = fs.readFileSync(filePath);
+
+        if (filePath.endsWith('.enc')) {
+            const key = getEncryptionKey();
+            return decrypt(buffer, key);
+        }
+
+        return buffer;
     },
 
     /**
@@ -176,7 +229,8 @@ export const BackupService = {
                         path: path.join(dir, file),
                         size: stats.size,
                         createdAt: stats.birthtime,
-                        type
+                        type,
+                        encrypted: file.endsWith('.enc')
                     };
                 })
                 .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());

@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { AnalyticsController } from '../controllers/AnalyticsController';
-import { protect, restrictTo } from '../middlewares/authMiddleware';
+import { checkPermission, protect, restrictTo } from '../middlewares/authMiddleware';
 
 const router = Router();
 
 // All analytics routes require authentication and admin/hr/manager role
 router.use(protect);
 router.use(restrictTo('admin', 'hr', 'manager'));
+router.use(checkPermission('analytics', 'read'));
 
 // KPIs
 router.get('/kpis', AnalyticsController.getKPIs);

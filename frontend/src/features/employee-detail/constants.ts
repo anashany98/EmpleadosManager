@@ -24,11 +24,23 @@ export const CONVENIOS = ['Comercio', 'Textil', 'Madera', 'Hostelería', 'Metal'
 
 export const EDIT_TABS = ['personal', 'laboral', 'financiero', 'fechas', 'expediente', 'prl'];
 
-export const getViewTabs = (isAdmin: boolean) => ([
+export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
     'resumen',
     'nominas',
     'cronograma',
-    ...(isAdmin ? ['generar', 'expediente', 'prl', 'obras', 'activos', 'checklists', 'seguridad', 'privacidad', 'notas-rrhh'] : ['prl']),
+    ...(isAdmin
+        ? [
+            ...(isGlobalAdmin ? ['generar'] : []),
+            'expediente',
+            'prl',
+            ...(isGlobalAdmin ? ['obras'] : []),
+            'activos',
+            'checklists',
+            'seguridad',
+            ...(isGlobalAdmin ? ['privacidad'] : []),
+            'notas-rrhh'
+        ]
+        : ['prl']),
     'fichajes',
     'vacaciones'
 ]);
@@ -38,4 +50,3 @@ export const getEmployeeTabLabel = (tab: string) => {
     if (tab === 'prl') return 'PRL / Formación';
     return tab.charAt(0).toUpperCase() + tab.slice(1);
 };
-

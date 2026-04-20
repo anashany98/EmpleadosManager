@@ -8,6 +8,7 @@ import { AnomalyService } from '../services/AnomalyService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { canAccessPolicy } from '../../../shared/authz';
+import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
 
 const log = createLogger('ExpenseController');
 
@@ -143,11 +144,8 @@ export const ExpenseController = {
         const { employeeId } = req.params;
         try {
             const { user } = req as AuthenticatedRequest;
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 50;
-            const isPaginationRequested = req.query.page !== undefined;
-            const skip = (page - 1) * limit;
-            const take = isPaginationRequested ? limit : 500;
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
 
             const employee = await prisma.employee.findUnique({
                 where: { id: employeeId },
@@ -162,12 +160,20 @@ export const ExpenseController = {
                 return res.status(403).json({ error: 'No autorizado' });
             }
 
-            const expenses = await prisma.expense.findMany({
-                where: { employeeId },
-                orderBy: { date: 'desc' },
-                skip: isPaginationRequested ? skip : undefined,
-                take
-            });
+            const where = { employeeId };
+            const [total, expenses] = await Promise.all([
+                prisma.expense.count({ where }),
+                prisma.expense.findMany({
+                    where,
+                    orderBy: { date: 'desc' },
+                    ...prismaPagination
+                })
+            ]);
+
+            if (pagination.isPaginationRequested) {
+                const meta = buildPaginationMeta(total, pagination);
+                return res.json({ data: expenses, meta });
+            }
             res.json(expenses);
         } catch (error) {
             res.status(500).json({ error: 'Error al obtener gastos' });
@@ -177,11 +183,8 @@ export const ExpenseController = {
     // Obtener todos los gastos (Admin view)
     getAll: async (req: Request, res: Response) => {
         try {
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 50;
-            const isPaginationRequested = req.query.page !== undefined;
-            const skip = (page - 1) * limit;
-            const take = isPaginationRequested ? limit : 500;
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
 
             const { user } = req as AuthenticatedRequest;
             if (!canAccessPolicy('expense.manage', user, { companyId: user.companyId })) {
@@ -193,17 +196,24 @@ export const ExpenseController = {
                 where.employee = { companyId: user.companyId };
             }
 
-            const expenses = await prisma.expense.findMany({
-                where,
-                include: {
-                    employee: {
-                        select: { name: true, firstName: true, lastName: true }
-                    }
-                },
-                orderBy: { createdAt: 'desc' },
-                skip: isPaginationRequested ? skip : undefined,
-                take
-            });
+            const [total, expenses] = await Promise.all([
+                prisma.expense.count({ where }),
+                prisma.expense.findMany({
+                    where,
+                    include: {
+                        employee: {
+                            select: { name: true, firstName: true, lastName: true }
+                        }
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    ...prismaPagination
+                })
+            ]);
+
+            if (pagination.isPaginationRequested) {
+                const meta = buildPaginationMeta(total, pagination);
+                return res.json({ data: expenses, meta });
+            }
             res.json(expenses);
         } catch (error) {
             res.status(500).json({ error: 'Error al obtener todos los gastos' });

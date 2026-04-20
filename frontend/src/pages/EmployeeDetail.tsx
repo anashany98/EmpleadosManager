@@ -21,6 +21,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
     const employeeId = props.employeeId || paramId || '';
     const isNew = employeeId === 'new';
     const isAdmin = user?.role === 'admin';
+    const isGlobalAdmin = isAdmin && !user?.companyId;
     const canEdit = isAdmin;
 
     const detail = useEmployeeDetail({
@@ -44,6 +45,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                 <EmployeeDetailHeader
                     employee={detail.employeeView}
                     canEdit={canEdit}
+                    canManageLifecycle={isGlobalAdmin}
                     generatingAccess={detail.generatingAccess}
                     onGenerateAccess={detail.handleGenerateAccess}
                     onOpenFaceEnroll={() => detail.setShowFaceEnroll(true)}
@@ -54,7 +56,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
 
                 <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                     <EmployeeDetailTabs
-                        tabs={getViewTabs(isAdmin)}
+                        tabs={getViewTabs(isAdmin, isGlobalAdmin)}
                         activeTab={detail.activeTab}
                         onChange={detail.setActiveTab}
                     />

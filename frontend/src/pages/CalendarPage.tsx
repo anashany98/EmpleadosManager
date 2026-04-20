@@ -218,23 +218,25 @@ export default function CalendarPage() {
                 return;
             }
 
-            await api.post('/vacations', {
+            const payload = {
                 employeeId: targetEmployeeId,
                 startDate: selectionStart?.toISOString(),
-                endDate: selectionStart?.toISOString(), // Single day logic for now or expand later
+                endDate: selectionStart?.toISOString(),
                 type: vacationType,
                 reason
-            });
+            };
+            
+            const response = await api.post('/vacations', payload);
             void fetchData();
             setShowModal(false);
-            toast.success('Guardado');
-            // Reset form
+            toast.success(response.message || 'Guardado');
             if (canManageAllVacations) {
                 setSelectedEmployee('');
             }
             setReason('');
-        } catch {
-            toast.error('Error al guardar');
+        } catch (err: unknown) {
+            const error = err as { message?: string; response?: { data?: { message?: string } } };
+            toast.error(error.response?.data?.message || error.message || 'Error al guardar');
         }
     };
 

@@ -1,9 +1,39 @@
 import { prisma } from '../lib/prisma';
 import { loggers } from './LoggerService';
+import { AuthUser } from '../types/express';
+import { isGlobalAdmin } from '../utils/companyAccess';
 
 const log = loggers.alert;
 
 export class AlertService {
+    private buildVisibilityWhere(user?: AuthUser) {
+        if (!user) {
+            return {};
+        }
+
+        if (isGlobalAdmin(user)) {
+            return {};
+        }
+
+        if (user.role === 'employee' && user.employeeId) {
+            return { employeeId: user.employeeId };
+        }
+
+        if (user.companyId) {
+            return {
+                employee: {
+                    is: {
+                        companyId: user.companyId
+                    }
+                }
+            };
+        }
+
+        return {
+            employeeId: '__none__'
+        };
+    }
+
     // Check for expiring contracts and generate alerts
     async generateContractAlerts() {
         log.info('Generating multi-category alerts (Document Semaphore)...');
@@ -252,17 +282,10 @@ export class AlertService {
         }
     }
 
-    async getUnreadAlerts(permissions?: any) {
-        // If it's a regular user (not admin), filter alerts they have permission for
-        // (In this system, currently all alerts are for the "employees" module)
-        const canSeeEmployeeAlerts = !permissions || permissions.employees !== 'none';
-
-        if (!canSeeEmployeeAlerts) {
-            return [];
-        }
-
+    async getUnreadAlerts(user: AuthUser) {
         return prisma.alert.findMany({
             where: {
+                ...this.buildVisibilityWhere(user),
                 isRead: false,
                 isDismissed: false
             },
@@ -281,35 +304,30 @@ export class AlertService {
         });
     }
 
-    async markAsRead(alertId: string) {
-        return prisma.alert.update({
-            where: { id: alertId },
+    async markAsRead(alertId: string, user?: AuthUser) {
+        return prisma.alert.updateMany({
+            where: {
+                id: alertId,
+                ...this.buildVisibilityWhere(user)
+            },
             data: { isRead: true }
         });
     }
 
-    async dismissAlert(alertId: string) {
-        return prisma.alert.update({
-            where: { id: alertId },
+    async dismissAlert(alertId: string, user?: AuthUser) {
+        return prisma.alert.updateMany({
+            where: {
+                id: alertId,
+                ...this.buildVisibilityWhere(user)
+            },
             data: { isDismissed: true }
         });
     }
 
-    async markAllAsRead(permissions?: any) {
-        // Same logic as getUnreadAlerts: filter by permission if needed
-        // But for bulk update, we might just update all unread alerts visible to user?
-        // Actually, we should only update alerts that the user *can see*.
-        // If permissions are restricted, we need to respect that.
-        // However, Prisma doesn't support complex filtering in updateMany easily with JSON fields permission check?
-        // Wait, getUnreadAlerts logic was:
-        // const canSeeEmployeeAlerts = !permissions || permissions.employees !== 'none';
-        // If they can't see employee alerts, they see nothing (currently).
-
-        const canSeeEmployeeAlerts = !permissions || permissions.employees !== 'none';
-        if (!canSeeEmployeeAlerts) return { count: 0 };
-
+    async markAllAsRead(user?: AuthUser) {
         return prisma.alert.updateMany({
             where: {
+                ...this.buildVisibilityWhere(user),
                 isRead: false,
                 isDismissed: false
             },
@@ -317,12 +335,10 @@ export class AlertService {
         });
     }
 
-    async dismissAll(permissions?: any) {
-        const canSeeEmployeeAlerts = !permissions || permissions.employees !== 'none';
-        if (!canSeeEmployeeAlerts) return { count: 0 };
-
+    async dismissAll(user?: AuthUser) {
         return prisma.alert.updateMany({
             where: {
+                ...this.buildVisibilityWhere(user),
                 isDismissed: false
             },
             data: { isDismissed: true }

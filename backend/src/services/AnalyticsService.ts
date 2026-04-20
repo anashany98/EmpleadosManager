@@ -42,7 +42,9 @@ export class AnalyticsService {
         const companyFilter = companyId ? { companyId } : {};
 
         // Total employees (all time)
-        const totalEmployees = await prisma.employee.count();
+        const totalEmployees = await prisma.employee.count({
+            where: companyFilter
+        });
         
         // Active employees
         const activeEmployees = await prisma.employee.count({
@@ -55,6 +57,7 @@ export class AnalyticsService {
         // New hires in last 30 days
         const newHires = await prisma.employee.count({
             where: {
+                ...companyFilter,
                 createdAt: { gte: thirtyDaysAgo }
             }
         });
@@ -77,7 +80,7 @@ export class AnalyticsService {
 
         // Avg tenure (in years)
         const employees = await prisma.employee.findMany({
-            where: { active: true },
+            where: { active: true, ...companyFilter },
             select: { entryDate: true }
         });
         
@@ -98,7 +101,8 @@ export class AnalyticsService {
         // Pending requests (vacation requests pending)
         const pendingRequests = await prisma.vacation.count({
             where: {
-                status: 'PENDING'
+                status: 'PENDING',
+                ...(companyId ? { employee: { companyId } } : {})
             }
         });
 

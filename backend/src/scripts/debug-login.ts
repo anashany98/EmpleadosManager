@@ -1,10 +1,14 @@
-
+﻿
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret-key-123';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error('ERROR: JWT_SECRET is required. Set it in .env or environment variables.');
+    process.exit(1);
+}
 
 async function main() {
     console.log('--- START DEBUG LOGIN ---');
@@ -44,7 +48,7 @@ async function main() {
         }
 
         console.log('Generating tokens...');
-        const accessToken = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '15m' });
+        const accessToken = jwt.sign({ id: user.id }, JWT_SECRET || 'test-secret', { expiresIn: '15m' });
         const refreshToken = crypto.randomBytes(40).toString('hex');
 
         console.log('Creating refresh token in DB...');
@@ -67,3 +71,4 @@ async function main() {
 }
 
 main().finally(() => prisma.$disconnect());
+

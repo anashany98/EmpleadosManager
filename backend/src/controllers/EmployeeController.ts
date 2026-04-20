@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma';
 import { AuditService } from '../services/AuditService';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
-import * as XLSX from 'xlsx';
+import * as ExcelJS from 'exceljs';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import {
@@ -18,6 +18,7 @@ import {
 } from '../policies/employeeAccess';
 import { SELF_EDITABLE_EMPLOYEE_FIELDS } from '../../../shared/authz';
 import { buildCompanyEmployeeUpdateData, buildEmployeeCreateData } from '../services/EmployeeWriteService';
+import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
 
 const log = createLogger('EmployeeController');
 
@@ -25,12 +26,8 @@ export const EmployeeController = {
     // Obtener todos los empleados
     getAll: async (req: Request, res: Response) => {
         try {
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 50;
-            const skip = (page - 1) * limit;
-
-            const isPaginationRequested = req.query.page !== undefined;
-            const effectiveLimit = isPaginationRequested ? limit : 500;
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
 
             const { user } = req as AuthenticatedRequest;
             const search = (req.query.search as string || '').trim();
@@ -56,22 +53,16 @@ export const EmployeeController = {
                 prisma.employee.findMany({
                     where: whereClause,
                     orderBy: { name: 'asc' },
-                    skip: isPaginationRequested ? skip : undefined,
-                    take: effectiveLimit
+                    ...prismaPagination
                 })
             ]);
 
             const safeEmployees = employees.map((employee) => sanitizeEmployeeListItem(employee));
 
-            if (isPaginationRequested) {
+            if (pagination.isPaginationRequested) {
                 return ApiResponse.success(res, {
                     data: safeEmployees,
-                    meta: {
-                        total,
-                        page,
-                        limit: effectiveLimit,
-                        totalPages: Math.ceil(total / effectiveLimit)
-                    }
+                    meta: buildPaginationMeta(total, pagination)
                 });
             }
 
@@ -262,42 +253,6 @@ export const EmployeeController = {
                 data: buildEmployeeCreateData(body, effectiveCompanyId)
             });
 
-            /* Legacy create path replaced by EmployeeWriteService
-            const employee = await prisma.employee.create({
-                data: {
-                    dni,
-                    name: name || `${firstName} ${lastName}`,
-                    firstName, lastName, email, phone, address, city, postalCode,
-                    subaccount465: subaccount465 || null,
-                    socialSecurityNumber: EncryptionService.encrypt(socialSecurityNumber),
-                    iban: EncryptionService.encrypt(iban),
-                    companyId: effectiveCompanyId,
-                    department, category,
-                    contractType, agreementType, jobTitle,
-                    entryDate: entryDate ? new Date(entryDate) : undefined,
-                    callDate: callDate ? new Date(callDate) : undefined,
-                    contractInterruptionDate: contractInterruptionDate ? new Date(contractInterruptionDate) : undefined,
-                    dniExpiration: dniExpiration ? new Date(dniExpiration) : undefined,
-                    birthDate: birthDate ? new Date(birthDate) : undefined,
-                    province: province || null,
-                    registeredIn: registeredIn || null,
-                    drivingLicense: drivingLicense === true || drivingLicense === 'true',
-                    drivingLicenseType: drivingLicenseType || null,
-                    drivingLicenseExpiration: drivingLicenseExpiration ? new Date(drivingLicenseExpiration) : undefined,
-                    emergencyContacts: contactsCreate,
-                    workingDayType: workingDayType || 'COMPLETE',
-                    weeklyHours: weeklyHours ? parseFloat(weeklyHours) : null,
-                    gender: gender || null,
-                    managerId: managerId || null,
-                    privateNotes: privateNotes || null,
-                    annualGrossSalary: annualGrossSalary ? parseFloat(annualGrossSalary) : 0,
-                    monthlyGrossSalary: monthlyGrossSalary ? parseFloat(monthlyGrossSalary) : 0,
-                    country: country || 'España',
-                    active: true
-                }
-            });
-
-            */
             await AuditService.log('CREATE', 'EMPLOYEE', employee.id, { name: employee.name }, user.id, employee.id);
             return ApiResponse.success(res, employee, 'Empleado creado correctamente', 201);
         } catch (error: any) {
@@ -336,66 +291,6 @@ export const EmployeeController = {
 
             if (canCompanyEdit) {
                 updateData = buildCompanyEmployeeUpdateData(body);
-                /* Legacy company update path replaced by EmployeeWriteService
-                const stringFields = [
-                    'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
-                    'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
-                    'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
-                    'drivingLicenseType', 'gender',
-                    'managerId', 'lowReason', 'workingDayType', 'privateNotes', 'country'
-                ];
-
-                stringFields.forEach(field => {
-                    if (body[field] !== undefined) {
-                        updateData[field] = body[field];
-                    }
-                });
-
-                const dateFields = [
-                    'entryDate', 'exitDate', 'callDate', 'contractInterruptionDate', 'lowDate',
-                    'dniExpiration', 'birthDate', 'drivingLicenseExpiration'
-                ];
-
-                dateFields.forEach(field => {
-                    if (body[field] !== undefined) {
-                        updateData[field] = body[field] ? new Date(body[field]) : null;
-                    }
-                });
-
-                if (body.active !== undefined) updateData.active = body.active;
-                if (body.drivingLicense !== undefined) {
-                    updateData.drivingLicense = body.drivingLicense === true || body.drivingLicense === 'true';
-                }
-
-                if (body.weeklyHours !== undefined) {
-                    updateData.weeklyHours = body.weeklyHours ? parseFloat(body.weeklyHours) : null;
-                }
-                if (body.annualGrossSalary !== undefined) {
-                    updateData.annualGrossSalary = body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0;
-                }
-                if (body.monthlyGrossSalary !== undefined) {
-                    updateData.monthlyGrossSalary = body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0;
-                }
-
-                if (updateData.socialSecurityNumber) {
-                    updateData.socialSecurityNumber = EncryptionService.encrypt(updateData.socialSecurityNumber);
-                }
-                if (updateData.iban) {
-                    updateData.iban = EncryptionService.encrypt(updateData.iban);
-                }
-
-                if (body.emergencyContacts && Array.isArray(body.emergencyContacts)) {
-                    const contactsToSave = body.emergencyContacts.slice(0, 5);
-                    updateData.emergencyContacts = {
-                        deleteMany: {},
-                        create: contactsToSave.map((c: any) => ({
-                            name: c.name,
-                            phone: c.phone,
-                            relationship: c.relationship
-                        }))
-                    };
-                }
-                */
             } else {
                 const allowedSelfFields = new Set<string>(SELF_EDITABLE_EMPLOYEE_FIELDS);
                 const attemptedForbiddenFields = Object.keys(body).filter((field) => !allowedSelfFields.has(field));
@@ -544,16 +439,28 @@ export const EmployeeController = {
                 { 'Campo': 'Instrucciones Generales', 'Descripción': 'Sigue estas reglas para una importación correcta.' }
             ];
 
-            const wb = XLSX.utils.book_new();
-            const ws = XLSX.utils.json_to_sheet(exampleData, { header: headers });
-            const wscols = headers.map(() => ({ wch: 20 }));
-            ws['!cols'] = wscols;
+            const workbook = new ExcelJS.Workbook();
 
-            XLSX.utils.book_append_sheet(wb, ws, 'Plantilla Importación');
-            const wsIns = XLSX.utils.json_to_sheet(instructions);
-            XLSX.utils.book_append_sheet(wb, wsIns, 'INSTRUCCIONES');
+            // Sheet 1: Plantilla Importación
+            const sheet = workbook.addWorksheet('Plantilla Importación');
+            sheet.columns = headers.map(h => ({ header: h, key: h, width: 20 }));
 
-            const excelBuffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+            // Style header row
+            sheet.getRow(1).font = { bold: true };
+
+            // Add example data row
+            sheet.addRow(exampleData[0]);
+
+            // Sheet 2: INSTRUCCIONES
+            const wsIns = workbook.addWorksheet('INSTRUCCIONES');
+            wsIns.columns = [
+                { header: 'Campo', key: 'Campo', width: 30 },
+                { header: 'Descripción', key: 'Descripción', width: 50 }
+            ];
+            wsIns.getRow(1).font = { bold: true };
+            wsIns.addRow(instructions[0]);
+
+            const excelBuffer = await workbook.xlsx.writeBuffer();
 
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', 'attachment; filename=plantilla_empleados.xlsx');
@@ -645,8 +552,7 @@ export const EmployeeController = {
                 const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
                 if (!target || target.companyId !== user.companyId) throw new AppError('No autorizado', 403);
             } else if (user.role !== 'admin') {
-                const target = await prisma.employee.findUnique({ where: { id }, select: { companyId: true } });
-                if (!target || target.companyId !== user.companyId) throw new AppError('No autorizado', 403);
+                throw new AppError('No autorizado', 403);
             }
 
             const training = await prisma.training.create({
@@ -674,11 +580,7 @@ export const EmployeeController = {
                     throw new AppError('No autorizado', 403);
                 }
             } else if (user.role !== 'admin') {
-                // Non-admins shouldn't be deleting reviews anyway, but if they could:
-                const review = await prisma.medicalReview.findUnique({ where: { id: reviewId }, include: { employee: true } });
-                if (!review || review.employee.companyId !== user.companyId) { // Fixed: using user.companyId for standard employees/managers
-                    throw new AppError('No autorizado', 403);
-                }
+                throw new AppError('No autorizado', 403);
             }
             await prisma.medicalReview.delete({ where: { id: reviewId } });
             return ApiResponse.success(res, null, 'Revisión eliminada');
@@ -697,11 +599,7 @@ export const EmployeeController = {
                     throw new AppError('No autorizado', 403);
                 }
             } else if (user.role !== 'admin') {
-                // Non-admins shouldn't be deleting trainings anyway
-                const training = await prisma.training.findUnique({ where: { id: trainingId }, include: { employee: true } });
-                if (!training || training.employee.companyId !== user.companyId) {
-                    throw new AppError('No autorizado', 403);
-                }
+                throw new AppError('No autorizado', 403);
             }
             await prisma.training.delete({ where: { id: trainingId } });
             return ApiResponse.success(res, null, 'Formación eliminada');
@@ -719,7 +617,7 @@ export const EmployeeController = {
             if (user.companyId) {
                 if (employee?.companyId !== user.companyId) throw new AppError('No autorizado', 403);
             } else if (user.role !== 'admin') {
-                if (employee?.companyId !== user.companyId) throw new AppError('No autorizado', 403);
+                throw new AppError('No autorizado', 403);
             }
 
             await prisma.employee.update({

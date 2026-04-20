@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { InboxController } from '../controllers/InboxController';
-import { protect, checkPermission } from '../middlewares/authMiddleware';
+import { authorize, checkPermission } from '../middlewares/authMiddleware';
+import { prisma } from '../lib/prisma';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
@@ -23,12 +24,23 @@ const upload = multer({
             cb(new Error(`Tipo de archivo no permitido. Permitidos: ${allowedExtensions.join(', ')}`));
         }
     }
-}); // Temp storage, controller will move it
+});
 
-router.post('/upload', protect, checkPermission('employees', 'write'), upload.single('file'), InboxController.upload);
-router.get('/pending', protect, checkPermission('employees', 'read'), InboxController.getAllPending);
-router.get('/:id/download', protect, checkPermission('employees', 'read'), InboxController.download);
-router.post('/:id/assign', protect, checkPermission('employees', 'write'), InboxController.assign);
-router.delete('/:id', protect, checkPermission('employees', 'write'), InboxController.delete);
+const resolveAssignTarget = async (req: any) => {
+    const { employeeId } = req.body;
+    if (!employeeId) return null;
+    const employee = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { id: true, companyId: true }
+    });
+    return employee ? { employeeId: employee.id, companyId: employee.companyId } : null;
+};
+
+router.post('/upload', checkPermission('employees', 'write'), upload.single('file'), InboxController.upload);
+router.get('/pending', checkPermission('employees', 'read'), InboxController.getAllPending);
+router.post('/sync', checkPermission('employees', 'read'), InboxController.triggerSync);
+router.get('/:id/download', checkPermission('employees', 'read'), InboxController.download);
+router.post('/:id/assign', authorize('document.write', resolveAssignTarget), InboxController.assign);
+router.delete('/:id', checkPermission('employees', 'write'), InboxController.delete);
 
 export default router;

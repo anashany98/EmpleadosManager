@@ -1,12 +1,9 @@
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { AppError } from '../utils/AppError';
 import { normalizeActor } from '../../../shared/authz';
-
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
-const ACCESS_TOKEN_EXPIRES_IN = '15m';
+import { signAccessToken } from '../utils/accessTokens';
 const REFRESH_TOKEN_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 export class AuthService {
@@ -21,6 +18,13 @@ export class AuthService {
                     { dni: trimmedId.toLowerCase() },
                     { dni: trimmedId.toUpperCase() }
                 ]
+            },
+            include: {
+                employee: {
+                    select: {
+                        companyId: true
+                    }
+                }
             }
         });
 
@@ -28,8 +32,13 @@ export class AuthService {
             throw new AppError('Credenciales incorrectas', 401);
         }
 
-        const accessToken = jwt.sign({ id: user.id }, JWT_SECRET, {
-            expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+        if (!user.isActive) {
+            throw new AppError('Usuario deshabilitado. Contacte al administrador.', 403);
+        }
+
+        const accessToken = signAccessToken({
+            id: user.id,
+            sessionVersion: user.sessionVersion
         });
 
         const refreshToken = crypto.randomBytes(40).toString('hex');
@@ -45,7 +54,7 @@ export class AuthService {
         });
 
         // Remove password from user object
-        const { password: _, ...userWithoutPassword } = user;
+        const { password: _, employee, ...userWithoutPassword } = user;
         const normalizedUser = normalizeActor({
             id: userWithoutPassword.id,
             email: userWithoutPassword.email,
@@ -54,14 +63,15 @@ export class AuthService {
                 ? JSON.parse(userWithoutPassword.permissions as string)
                 : {},
             employeeId: userWithoutPassword.employeeId,
-            companyId: null
+            companyId: employee?.companyId
         });
 
         return {
             user: {
                 ...userWithoutPassword,
                 role: normalizedUser?.role || 'employee',
-                permissions: normalizedUser?.permissions || {}
+                permissions: normalizedUser?.permissions || {},
+                companyId: normalizedUser?.companyId
             },
             accessToken,
             refreshToken,

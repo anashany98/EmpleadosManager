@@ -1,5 +1,5 @@
 import type { Express } from 'express';
-import { protect, restrictTo, checkPermission } from '../middlewares/authMiddleware';
+import { protect, checkPermission, requireGlobalAdmin } from '../middlewares/authMiddleware';
 import employeeRoutes from '../routes/employeeRoutes';
 import payrollRoutes from '../routes/payrollRoutes';
 import mappingProfileRoutes from '../routes/mappingProfileRoutes';
@@ -63,7 +63,7 @@ export function registerRoutes(app: Express): void {
     app.use('/api/dashboard', protect, dashboardRoutes);
     app.use('/api/vacations', protect, vacationRoutes);
     app.use('/api/companies', protect, checkPermission('companies', 'read'), companyRoutes);
-    app.use('/api/audit', protect, restrictTo('admin'), auditRoutes);
+    app.use('/api/audit', protect, requireGlobalAdmin, auditRoutes);
     app.use('/api/overtime', protect, checkPermission('employees', 'read'), overtimeRoutes);
     app.use('/api/alerts', protect, alertRoutes);
     app.use('/api/reports', protect, checkPermission('reports', 'read'), reportRoutes);

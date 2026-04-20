@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { AssetController } from '../controllers/AssetController';
+import { checkPermission } from '../middlewares/authMiddleware';
 
 const router = Router();
 
-router.get('/', AssetController.getAll);
-router.post('/', AssetController.create);
-router.put('/:id', AssetController.update);
-router.delete('/:id', AssetController.delete);
+router.get('/', checkPermission('assets', 'read'), AssetController.getAll);
+router.post('/', checkPermission('assets', 'write'), AssetController.create);
+router.put('/:id', checkPermission('assets', 'write'), AssetController.update);
+router.delete('/:id', checkPermission('assets', 'write'), AssetController.delete);
 
 export default router;

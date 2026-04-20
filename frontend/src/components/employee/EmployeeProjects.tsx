@@ -56,8 +56,8 @@ export default function EmployeeProjects({ employeeId }: { employeeId: string })
                 api.get('/projects'),
                 api.get(`/employee-project-work/employee/${employeeId}`)
             ]);
-            setProjects(projRes);
-            setWorkEntries(workRes);
+            setProjects(projRes.data || projRes);
+            setWorkEntries(workRes.data || workRes);
         } catch (error) {
             toast.error('Error al cargar datos de obras');
         } finally {

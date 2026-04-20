@@ -3,6 +3,9 @@ import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { createLogger } from '../services/LoggerService';
+import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
+import { withRetry } from '../utils/dbRetry';
+import { ExcelParser } from '../services/ExcelParser';
 
 const log = createLogger('OvertimeController');
 
@@ -65,10 +68,23 @@ export const OvertimeController = {
     getByEmployee: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
         try {
-            const entries = await prisma.overtimeEntry.findMany({
-                where: { employeeId },
-                orderBy: { date: 'desc' }
-            });
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
+            const where = { employeeId };
+
+            const [total, entries] = await Promise.all([
+                prisma.overtimeEntry.count({ where }),
+                prisma.overtimeEntry.findMany({
+                    where,
+                    orderBy: { date: 'desc' },
+                    ...prismaPagination
+                })
+            ]);
+
+            if (pagination.isPaginationRequested) {
+                const meta = buildPaginationMeta(total, pagination);
+                return res.json({ data: entries, meta });
+            }
             res.json(entries);
         } catch (error) {
             res.status(500).json({ error: 'Error al obtener horas extras' });
@@ -128,10 +144,7 @@ export const OvertimeController = {
         }
 
         try {
-            const XLSX = require('xlsx');
-            const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const data = XLSX.utils.sheet_to_json(sheet);
+            const data = await ExcelParser.readSheetAsJson(req.file.buffer);
 
             let importedCount = 0;
             const errors: string[] = [];
@@ -290,7 +303,7 @@ export const OvertimeController = {
                         const endOfDay = new Date(date);
                         endOfDay.setHours(23, 59, 59, 999);
 
-                        await prisma.timeEntry.deleteMany({
+                        await withRetry(() => prisma.timeEntry.deleteMany({
                             where: {
                                 employeeId: employee.id,
                                 timestamp: {
@@ -298,10 +311,10 @@ export const OvertimeController = {
                                     lte: endOfDay
                                 }
                             }
-                        });
+                        }), { operationName: 'deleteTimeEntries' });
 
                         // Crear registros de fichaje basados en las horas importadas
-                        const entriesToCreate = [];
+                        const entriesToCreate: any[] = [];
 
                         if (checkIn) {
                             entriesToCreate.push({
@@ -342,9 +355,9 @@ export const OvertimeController = {
                         }
 
                         if (entriesToCreate.length > 0) {
-                            await prisma.timeEntry.createMany({
+                            await withRetry(() => prisma.timeEntry.createMany({
                                 data: entriesToCreate
-                            });
+                            }), { operationName: 'createTimeEntries' });
                         }
                     }
 
@@ -355,7 +368,7 @@ export const OvertimeController = {
                             const isHolidayDay = isHoliday(date);
                             const appliedRate = isHolidayDay ? rateHoliday : rateNormal;
 
-                            await prisma.overtimeEntry.create({
+                            await withRetry(() => prisma.overtimeEntry.create({
                                 data: {
                                     employeeId: employee.id,
                                     hours,
@@ -363,7 +376,7 @@ export const OvertimeController = {
                                     total: Number((hours * appliedRate).toFixed(2)),
                                     date
                                 }
-                            });
+                            }), { operationName: 'createOvertimeEntry' });
                         }
                     }
 

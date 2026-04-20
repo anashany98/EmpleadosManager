@@ -8,9 +8,23 @@ export const API_URL = BASE_URL.endsWith('/api') || BASE_URL.endsWith('/api/')
 
 // Request options type
 interface RequestOptions {
-    params?: Record<string, string | number | boolean>;
+    params?: Record<string, string | number | boolean | undefined | null>;
     responseType?: 'blob' | 'json';
 }
+
+const buildUrlWithParams = (url: string, params?: Record<string, string | number | boolean | undefined | null>): string => {
+    if (!params) return url;
+    
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+            searchParams.append(key, String(value));
+        }
+    });
+    
+    const queryString = searchParams.toString();
+    return queryString ? `${url}?${queryString}` : url;
+};
 
 const getCookie = (name: string): string => {
     const value = `; ${document.cookie}`;
@@ -52,7 +66,7 @@ const processQueue = (error: Error | null, token: string | null = null): void =>
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const customFetch = async <T = any>(endpoint: string, options: RequestOptions & { method?: string; body?: unknown } = {}): Promise<T> => {
-    const url = `${API_URL}${endpoint}`;
+    const url = buildUrlWithParams(`${API_URL}${endpoint}`, options.params);
 
     // Config fetch
     const method = options.method || 'GET';
@@ -67,7 +81,7 @@ const customFetch = async <T = any>(endpoint: string, options: RequestOptions & 
         const res = await fetch(url, config);
 
         // Handle 401 (Unauthorized) - Only if not logging in or refreshing
-        if (res.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/me')) {
+        if (res.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
             if (isRefreshing) {
                 // If already refreshing, queue this request
                 return new Promise((resolve, reject) => {

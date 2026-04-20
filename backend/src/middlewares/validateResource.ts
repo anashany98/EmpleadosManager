@@ -9,9 +9,9 @@ export const validateResource = (schema: AnyZodObject) => async (req: Request, r
             params: req.params,
         });
 
-        req.body = result.body;
-        req.query = result.query;
-        req.params = result.params;
+        if ('body' in result) req.body = result.body;
+        if ('query' in result) req.query = result.query;
+        if ('params' in result) req.params = result.params;
 
         next();
     } catch (e: any) {

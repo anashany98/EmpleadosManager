@@ -57,6 +57,13 @@ output/
 # OS
 Thumbs.db
 
+# SSL certificates - NEVER commit private keys
+nginx/ssl/*.pem
+nginx/ssl/letsencrypt/
+!nginx/ssl/letsencrypt/.gitkeep
+nginx/certbot-webroot/
+!nginx/certbot-webroot/.gitkeep
+
 # Gemini artifacts (no subir al repo)
 .gemini/
 

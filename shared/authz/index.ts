@@ -1,4 +1,4 @@
-export const ROLE_VALUES = ['admin', 'hr', 'manager', 'employee'] as const;
+﻿export const ROLE_VALUES = ['admin', 'hr', 'manager', 'employee'] as const;
 export type Role = (typeof ROLE_VALUES)[number];
 
 export const PERMISSION_LEVELS = ['none', 'read', 'write'] as const;
@@ -428,7 +428,7 @@ export function canAccessPolicy(
             return false;
         }
 
-        if (grant.requireEmployee && !normalized.employeeId) {
+        if ((grant as AccessGrant).requireEmployee && !normalized.employeeId) {
             return false;
         }
 
@@ -436,10 +436,11 @@ export function canAccessPolicy(
             return false;
         }
 
-        if (normalized.role === 'admin') {
+        if (normalized.role === 'admin' && !normalized.companyId) {
             return true;
         }
 
         return matchesScope(grant.scope, normalized, target);
     });
 }
+

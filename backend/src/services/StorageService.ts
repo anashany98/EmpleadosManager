@@ -46,8 +46,22 @@ export const StorageService = {
         if (STORAGE_PROVIDER === 'local') {
             const filePath = path.join(LOCAL_UPLOAD_DIR, key);
             const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(filePath, params.buffer);
+            // Use fs.promises.mkdir for better async handling and ensure recursive creation
+            try {
+                await fs.promises.mkdir(dir, { recursive: true });
+            } catch (mkdirErr: any) {
+                // EEXIST is fine, rethrow other errors
+                if (mkdirErr.code !== 'EEXIST') {
+                    // Try with explicit mode as fallback
+                    try {
+                        await fs.promises.mkdir(dir, { recursive: true, mode: 0o777 });
+                    } catch (fallbackErr) {
+                        console.error(`Failed to create directory ${dir}:`, fallbackErr);
+                        throw new Error(`No se pudo crear el directorio de almacenamiento: ${dir}`);
+                    }
+                }
+            }
+            await fs.promises.writeFile(filePath, params.buffer);
             return { key };
         }
 

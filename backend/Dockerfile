@@ -1,48 +1,116 @@
-FROM node:22-bullseye
+﻿# Multi-stage production Dockerfile for EmpleadosManager Backend
+# Optimized for security, size, and performance
 
-# Install system dependencies for canvas
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
+#########################
+# Stage 1: Dependencies (dev + prod for building)
+#########################
+FROM node:22-bullseye AS deps
+
+WORKDIR /app/backend
+
+# Copy package files
+COPY backend/package.json ./package.json
+COPY backend/package-lock.json ./package-lock.json
+
+# Install ALL dependencies (needed for building)
+RUN npm install && npm cache clean --force
+
+#########################
+# Stage 2: Builder
+#########################
+FROM node:22-bullseye AS builder
 
 WORKDIR /app
 
-# Copy root config files
-COPY package*.json ./
-COPY docker-compose.yml ./
+# Prisma infers /app as the project root for the shared schema.
+COPY package.json ./package.json
+COPY package-lock.json ./package-lock.json
 
-# Copy shared code (for authz module)
+# Copy dependencies from deps stage
+COPY --from=deps /app/backend/node_modules ./backend/node_modules
+COPY --from=deps /app/backend/package.json ./backend/package.json
+
+# Copy shared modules and database schema
 COPY shared ./shared
-
-# Copy database schema
 COPY database ./database
 
-# Copy backend package.json and install
-COPY backend/package.json ./backend/
-RUN cd backend && npm install
+# Copy application source code
+COPY backend/tsconfig.json ./backend/tsconfig.json
+COPY backend/src ./backend/src
+COPY backend/instrument.js ./backend/instrument.js
 
-# Copy backend source
-COPY backend ./backend
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser && \
+    chown -R appuser:appuser /app
 
-# Copy scripts for deployment
-COPY backend/src/scripts ./backend/src/scripts
+USER appuser
 
 # Generate Prisma Client
 RUN cd backend && npx prisma generate --schema=../database/prisma/schema.prisma
 
-# Increase memory and build
+# Build TypeScript
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN cd backend && npm run build
+
+#########################
+# Stage 3: Runner (production only)
+#########################
+FROM node:22-bullseye AS runner
+
+# Match the runtime OS with the Prisma client generated in the build stage.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg62-turbo-dev \
+    libgif-dev \
+    postgresql-client \
+    curl \
+ && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd --system --gid 1001 appgroup && \
+    useradd --system --uid 1001 --gid appgroup --create-home appuser
+
+WORKDIR /app
+
+# Copy production files from builder
+COPY --from=builder --chown=appuser:appgroup /app/backend/node_modules ./backend/node_modules
+COPY --from=builder --chown=appuser:appgroup /app/backend/package.json ./backend/package.json
+COPY --from=builder --chown=appuser:appgroup /app/backend/dist ./backend/dist
+COPY --from=builder --chown=appuser:appgroup /app/backend/src/templates ./backend/src/templates
+# Only copy production scripts (seed scripts), NOT debug/test scripts
+COPY --from=builder --chown=appuser:appgroup /app/backend/src/scripts/seed-admin.ts ./backend/src/scripts/seed-admin.ts
+COPY --from=builder --chown=appuser:appgroup /app/backend/src/scripts/seed-profiles.ts ./backend/src/scripts/seed-profiles.ts
+COPY --from=builder --chown=appuser:appgroup /app/backend/src/scripts/populate_data.ts ./backend/src/scripts/populate_data.ts
+COPY --from=builder --chown=appuser:appgroup /app/backend/instrument.js ./backend/instrument.js
+COPY --from=builder --chown=appuser:appgroup /app/shared ./shared
+COPY --from=builder --chown=appuser:appgroup /app/database ./database
+
+# Create directories with proper permissions
+# Ensure uploads/documents exists and is writable by appuser
+RUN mkdir -p ./backend/uploads/documents ./backend/data && \
+    chown -R appuser:appgroup /app/backend && \
+    chmod -R 775 /app/backend/uploads
+
+# Copy entrypoint script (runs as root to fix volume permissions)
+COPY backend/entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
 WORKDIR /app/backend
 
 EXPOSE 3000
 ENV NODE_ENV=production
+ENV PORT=3000
+ENV RETURN_TOKENS=false
 
-CMD ["npm", "start"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD node -e "require('http').get('http://localhost:3000/api/health', r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
+
+LABEL org.opencontainers.image.title="EmpleadosManager Backend" \
+      org.opencontainers.image.description="Payroll & HR Management API" \
+      org.opencontainers.image.vendor="Your Company"
+
+# Use entrypoint to fix permissions at runtime (runs as root), then switches to appuser
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["node", "--require", "./instrument.js", "dist/backend/src/index.js"]

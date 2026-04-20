@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { AuditService } from '../services/AuditService';
+import { AuthenticatedRequest } from '../types/express';
+import { AppError } from '../utils/AppError';
+import { resolveAuthorizedCompanyId } from '../utils/companyAccess';
 
 export const AuditController = {
     getLogs: async (req: Request, res: Response) => {
@@ -16,18 +18,33 @@ export const AuditController = {
             });
             res.json(logs);
         } catch (error) {
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ error: error.message });
+            }
+
             res.status(500).json({ error: 'Error al obtener registros de auditoría' });
         }
     },
 
     getRecentActivity: async (req: Request, res: Response) => {
         try {
+            const user = (req as AuthenticatedRequest).user;
+            const companyId = resolveAuthorizedCompanyId(user, req.query.companyId as string | undefined);
+            const where: any = {
+                action: {
+                    notIn: ['VIEW', 'ACCESS', 'READ', 'LOGIN_ATTEMPT', 'LOGIN_SUCCESS']
+                }
+            };
+
+            if (companyId) {
+                where.OR = [
+                    { targetEmployee: { companyId } },
+                    { user: { employee: { companyId } } }
+                ];
+            }
+
             const logs = await prisma.auditLog.findMany({
-                where: {
-                    action: {
-                        notIn: ['VIEW', 'ACCESS', 'READ', 'LOGIN_ATTEMPT', 'LOGIN_SUCCESS']
-                    }
-                },
+                where,
                 orderBy: { createdAt: 'desc' },
                 take: 10,
                 include: { user: true, targetEmployee: true }
@@ -38,6 +55,10 @@ export const AuditController = {
             }));
             res.json(mapped);
         } catch (error) {
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ error: error.message });
+            }
+
             res.status(500).json({ error: 'Error fetching recent activity' });
         }
     },
@@ -104,4 +125,3 @@ export const AuditController = {
         }
     }
 };
-

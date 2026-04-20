@@ -3,7 +3,7 @@ import type { CalendarEvent, CalendarFilters } from '../types/calendar';
 import { DEFAULT_CALENDAR_FILTERS } from '../types/calendar';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 export function useCalendarEvents(initialDate?: Date) {
   const [currentDate, setCurrentDate] = useState(initialDate || new Date());

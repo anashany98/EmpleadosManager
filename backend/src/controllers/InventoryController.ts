@@ -3,19 +3,36 @@ import { prisma } from '../lib/prisma';
 import fs from 'fs';
 import path from 'path';
 import { ApiResponse } from '../utils/ApiResponse';
+import { AppError } from '../utils/AppError';
 import { InventoryService } from '../services/InventoryService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { DocumentTemplateService } from '../services/DocumentTemplateService';
+import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
 
 const log = createLogger('InventoryController');
 
 export const InventoryController = {
     getAll: async (req: Request, res: Response) => {
         try {
-            const items = await prisma.inventoryItem.findMany({
-                orderBy: { name: 'asc' }
-            });
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
+
+            const [total, items] = await Promise.all([
+                prisma.inventoryItem.count(),
+                prisma.inventoryItem.findMany({
+                    orderBy: { name: 'asc' },
+                    ...prismaPagination
+                })
+            ]);
+
+            if (pagination.isPaginationRequested) {
+                return ApiResponse.success(res, {
+                    data: items,
+                    meta: buildPaginationMeta(total, pagination)
+                });
+            }
+
             return ApiResponse.success(res, items);
         } catch (error: any) {
             log.error({ error }, 'Error fetching inventory');
@@ -42,7 +59,7 @@ export const InventoryController = {
                 data: {
                     category,
                     name,
-                    quantity: Number(quantity),
+                    quantity: Number(quantity) || 0,
                     minQuantity: Number(minQuantity),
                     description,
                     size
@@ -50,12 +67,14 @@ export const InventoryController = {
             });
 
             if (Number(quantity) > 0) {
-                await InventoryService.recordMovement({
-                    itemId: item.id,
-                    type: 'ENTRY',
-                    quantity: Number(quantity),
-                    userId: (req as AuthenticatedRequest).user?.id,
-                    notes: 'Stock inicial'
+                await prisma.inventoryMovement.create({
+                    data: {
+                        inventoryItemId: item.id,
+                        type: 'ENTRY',
+                        quantity: Number(quantity),
+                        userId: (req as AuthenticatedRequest).user?.id,
+                        notes: 'Stock inicial'
+                    }
                 });
             }
 
@@ -112,25 +131,33 @@ export const InventoryController = {
                 return ApiResponse.error(res, 'Cantidad inválida', 400);
             }
 
-            const item = await prisma.inventoryItem.update({
-                where: { id },
-                data: {
-                    quantity: { increment: Number(amount) }
+            const item = await prisma.$transaction(async (tx) => {
+                const current = await tx.inventoryItem.findUnique({ where: { id } });
+                if (!current) {
+                    throw new AppError('Producto no encontrado', 404);
                 }
-            });
 
-            await prisma.inventoryMovement.create({
-                data: {
-                    inventoryItemId: id,
-                    type: 'ENTRY',
-                    quantity: Number(amount),
-                    userId: (req as AuthenticatedRequest).user?.id,
-                    notes: notes || 'Actualización de stock'
-                }
+                await tx.inventoryMovement.create({
+                    data: {
+                        inventoryItemId: id,
+                        type: 'ENTRY',
+                        quantity: Number(amount),
+                        userId: (req as AuthenticatedRequest).user?.id,
+                        notes: notes || 'Actualización de stock'
+                    }
+                });
+
+                return tx.inventoryItem.update({
+                    where: { id },
+                    data: { quantity: { increment: Number(amount) } }
+                });
             });
 
             return ApiResponse.success(res, item, 'Stock actualizado');
         } catch (error: any) {
+            if (error.statusCode === 404) {
+                return ApiResponse.error(res, error.message, 404);
+            }
             log.error({ error }, 'Error adding stock');
             return ApiResponse.error(res, error.message || 'Error al reponer stock', 500);
         }
@@ -146,35 +173,47 @@ export const InventoryController = {
                 return ApiResponse.error(res, 'Faltan parámetros de distribución', 400);
             }
 
-            const item = await prisma.inventoryItem.findUnique({ where: { id } });
-            if (!item || item.quantity < Number(quantity)) {
-                return ApiResponse.error(res, 'Stock insuficiente', 400);
-            }
-
-            const asset = await prisma.asset.create({
-                data: {
-                    employeeId,
-                    name: item.name,
-                    category: item.category,
-                    serialNumber: serialNumber || undefined,
-                    status: 'ASSIGNED',
-                    inventoryItemId: id
+            await prisma.$transaction(async (tx) => {
+                const item = await tx.inventoryItem.findUnique({ where: { id } });
+                if (!item || item.quantity < Number(quantity)) {
+                    throw new AppError('Stock insuficiente', 400);
                 }
-            });
 
-            await InventoryService.recordMovement({
-                itemId: id,
-                employeeId,
-                type: 'ASSIGNMENT',
-                quantity: Number(quantity),
-                userId,
-                notes
+                await tx.asset.create({
+                    data: {
+                        employeeId,
+                        name: item.name,
+                        category: item.category,
+                        serialNumber: serialNumber || undefined,
+                        status: 'ASSIGNED',
+                        inventoryItemId: id
+                    }
+                });
+
+                await tx.inventoryMovement.create({
+                    data: {
+                        inventoryItemId: id,
+                        type: 'ASSIGNMENT',
+                        quantity: Number(quantity),
+                        userId,
+                        employeeId,
+                        notes
+                    }
+                });
+
+                await tx.inventoryItem.update({
+                    where: { id },
+                    data: { quantity: { decrement: Number(quantity) } }
+                });
             });
 
             const updatedItem = await prisma.inventoryItem.findUnique({ where: { id } });
 
-            return ApiResponse.success(res, { updatedItem, asset }, 'Artículo distribuido correctamente');
+            return ApiResponse.success(res, { updatedItem }, 'Artículo distribuido correctamente');
         } catch (error: any) {
+            if (error.message === 'Stock insuficiente') {
+                return ApiResponse.error(res, error.message, 400);
+            }
             log.error({ error }, 'Error distributing item');
             return ApiResponse.error(res, error.message || 'Error al distribuir artículo', 500);
         }
@@ -231,9 +270,6 @@ export const InventoryController = {
                     [{ name: deviceName || item.name, size: item.size || undefined }]
                 );
             } else {
-                // Fallback or generic assignment? For now, render as EPI/Generic or error?
-                // Let's treat others as EPI generic for safety, or just Generic Assignment if we had one.
-                // Re-using EPI for now as it's the safest generic "I received this"
                 docRecord = await DocumentTemplateService.generateEPIInternal(
                     employeeId,
                     [{ name: deviceName || item.name, size: item.size || undefined }]
@@ -244,7 +280,6 @@ export const InventoryController = {
                 throw new Error('Error al generar el registro del documento');
             }
 
-            // Resolve file path (Assuming local storage for now based on DocumentTemplateService)
             const filePath = path.join(process.cwd(), 'uploads', docRecord.fileUrl);
 
             if (fs.existsSync(filePath)) {

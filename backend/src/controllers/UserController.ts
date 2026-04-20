@@ -73,7 +73,7 @@ export const UserController = {
 
     update: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const { email, password, role, permissions } = req.body;
+        const { email, password, role, permissions, isActive } = req.body;
 
         const data: any = {};
         if (email) data.email = email;
@@ -85,6 +85,10 @@ export const UserController = {
                 throw new AppError(policy.message || 'Contraseña no válida', 400);
             }
             data.password = await bcrypt.hash(password, 10);
+        }
+        if (typeof isActive === 'boolean') {
+            data.isActive = isActive;
+            data.sessionVersion = { increment: 1 };
         }
 
         const user = await prisma.user.update({
@@ -116,5 +120,30 @@ export const UserController = {
         await prisma.user.delete({ where: { id } });
 
         return ApiResponse.success(res, null, 'Usuario eliminado correctamente');
+    },
+
+    toggleActive: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        const { isActive } = req.body;
+
+        if (typeof isActive !== 'boolean') {
+            throw new AppError('El campo isActive es requerido y debe ser booleano', 400);
+        }
+
+        const userToUpdate = await prisma.user.findUnique({ where: { id } });
+        if (!userToUpdate) {
+            throw new AppError('Usuario no encontrado', 404);
+        }
+
+        const user = await prisma.user.update({
+            where: { id },
+            data: {
+                isActive,
+                sessionVersion: { increment: 1 }
+            }
+        });
+
+        const { password: _, ...userWithoutPassword } = user;
+        return ApiResponse.success(res, userWithoutPassword, isActive ? 'Usuario habilitado' : 'Usuario deshabilitado');
     }
 };

@@ -4,6 +4,7 @@ import type { EmployeeViewRecord } from '../types';
 interface EmployeeDetailHeaderProps {
     employee: EmployeeViewRecord;
     canEdit: boolean;
+    canManageLifecycle: boolean;
     generatingAccess: boolean;
     onGenerateAccess: () => void;
     onOpenFaceEnroll: () => void;
@@ -15,6 +16,7 @@ interface EmployeeDetailHeaderProps {
 export function EmployeeDetailHeader({
     employee,
     canEdit,
+    canManageLifecycle,
     generatingAccess,
     onGenerateAccess,
     onOpenFaceEnroll,
@@ -68,13 +70,6 @@ export function EmployeeDetailHeader({
             {canEdit && (
                 <div className="flex gap-3 flex-wrap">
                     <button
-                        onClick={onOpenOnboarding}
-                        className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 font-semibold rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex items-center gap-2 border border-emerald-100 dark:border-emerald-900/30"
-                    >
-                        <Sparkles size={18} />
-                        Onboarding
-                    </button>
-                    <button
                         onClick={onGenerateAccess}
                         disabled={generatingAccess}
                         className="px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 font-semibold rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors flex items-center gap-2 border border-indigo-100 dark:border-indigo-900/30"
@@ -82,6 +77,15 @@ export function EmployeeDetailHeader({
                         {generatingAccess ? <Loader2 size={18} className="animate-spin" /> : <Key size={18} />}
                         Generar Clave
                     </button>
+                    {canManageLifecycle && (
+                        <button
+                            onClick={onOpenOnboarding}
+                            className="px-4 py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 font-semibold rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex items-center gap-2 border border-emerald-100 dark:border-emerald-900/30"
+                        >
+                            <Sparkles size={18} />
+                            Onboarding
+                        </button>
+                    )}
                     <button
                         onClick={onOpenFaceEnroll}
                         className="px-4 py-2 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 font-semibold rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors flex items-center gap-2 border border-purple-100 dark:border-purple-900/30"
@@ -89,13 +93,15 @@ export function EmployeeDetailHeader({
                         <ScanFace size={18} />
                         Biometría
                     </button>
-                    <button
-                        onClick={onOpenOffboarding}
-                        className="px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-semibold rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center gap-2 border border-rose-100 dark:border-rose-900/30"
-                    >
-                        <Trash2 size={18} />
-                        Tramitar Baja
-                    </button>
+                    {canManageLifecycle && (
+                        <button
+                            onClick={onOpenOffboarding}
+                            className="px-4 py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-semibold rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center gap-2 border border-rose-100 dark:border-rose-900/30"
+                        >
+                            <Trash2 size={18} />
+                            Tramitar Baja
+                        </button>
+                    )}
                     <button onClick={onEdit} className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30">
                         Editar Perfil
                     </button>

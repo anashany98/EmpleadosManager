@@ -1,12 +1,15 @@
 import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { AppError } from '../utils/AppError';
 import { HolidayService } from './HolidayService';
 import { StorageService } from './StorageService';
 import { NotificationService } from './NotificationService';
 import { EmailService } from './EmailService';
 
-export async function validateVacationRequest(employeeId: string, start: Date, end: Date, type?: string) {
-    const overlapping = await prisma.vacation.findFirst({
+export async function validateVacationRequest(employeeId: string, start: Date, end: Date, type?: string, tx?: Prisma.TransactionClient) {
+    const db = tx || prisma;
+
+    const overlapping = await db.vacation.findFirst({
         where: {
             employeeId,
             OR: [{ startDate: { lte: end }, endDate: { gte: start } }]
@@ -23,7 +26,7 @@ export async function validateVacationRequest(employeeId: string, start: Date, e
         return { requestedDays };
     }
 
-    const employee = await prisma.employee.findUnique({
+    const employee = await db.employee.findUnique({
         where: { id: employeeId },
         include: { vacations: true }
     });

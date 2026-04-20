@@ -37,7 +37,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         }
 
         if (!token) {
-            return next(new AppError('No estÃ¡s autenticado. Por favor inicia sesiÃ³n.', 401));
+            return next(new AppError('No estás autenticado. Por favor inicia sesión.', 401));
         }
 
         const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
@@ -90,7 +90,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         (req as AuthenticatedRequest).user = userWithParsedPermissions;
         next();
     } catch {
-        next(new AppError('Token invÃ¡lido o expirado.', 401));
+        next(new AppError('Token inválido o expirado.', 401));
     }
 };
 
@@ -101,15 +101,29 @@ export const restrictTo = (...roles: string[]) => {
         const user = (req as AuthenticatedRequest).user;
 
         if (!user) {
-            return next(new AppError('No estÃ¡s autenticado.', 401));
+            return next(new AppError('No estás autenticado.', 401));
         }
 
         if (!normalizedRoles.includes(user.role)) {
-            return next(new AppError('No tienes permiso para realizar esta acciÃ³n.', 403));
+            return next(new AppError('No tienes permiso para realizar esta acción.', 403));
         }
 
         next();
     };
+};
+
+export const requireGlobalAdmin = (req: Request, res: Response, next: NextFunction) => {
+    const user = (req as AuthenticatedRequest).user;
+
+    if (!user) {
+        return next(new AppError('No estás autenticado.', 401));
+    }
+
+    if (user.role !== 'admin' || user.companyId) {
+        return next(new AppError('Esta acción requiere un administrador global.', 403));
+    }
+
+    next();
 };
 
 export const checkPermission = (module: PermissionModule, level: PermissionLevel) => {
@@ -117,11 +131,11 @@ export const checkPermission = (module: PermissionModule, level: PermissionLevel
         const user = (req as AuthenticatedRequest).user;
 
         if (!user) {
-            return next(new AppError('No estÃ¡s autenticado.', 401));
+            return next(new AppError('No estás autenticado.', 401));
         }
 
         if (!hasModuleAccess(user, module, level)) {
-            return next(new AppError(`No tienes acceso al mÃ³dulo ${module}.`, 403));
+            return next(new AppError(`No tienes acceso al módulo ${module}.`, 403));
         }
 
         next();
@@ -136,7 +150,7 @@ export const allowSelfOrRole = (roles: string[] = ['admin'], paramName = 'id') =
         const resourceId = req.params[paramName];
 
         if (!user) {
-            return next(new AppError('No estÃ¡s autenticado.', 401));
+            return next(new AppError('No estás autenticado.', 401));
         }
 
         if (normalizedRoles.includes(user.role)) {
@@ -159,13 +173,13 @@ export const authorize = (policyKey: DomainPolicyKey, resolveTarget?: PolicyTarg
         const user = authReq.user;
 
         if (!user) {
-            return next(new AppError('No estÃ¡s autenticado.', 401));
+            return next(new AppError('No estás autenticado.', 401));
         }
 
         const target = resolveTarget ? await resolveTarget(authReq) : undefined;
 
         if (!canAccessPolicy(policyKey, user, target)) {
-            return next(new AppError('No tienes permiso para realizar esta acciÃ³n.', 403));
+            return next(new AppError('No tienes permiso para realizar esta acción.', 403));
         }
 
         next();

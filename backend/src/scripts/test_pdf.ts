@@ -1,11 +1,15 @@
-
+﻿
 // import axios from 'axios';
 import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-change-me';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error('ERROR: JWT_SECRET is required. Set it in .env or environment variables.');
+    process.exit(1);
+}
 
 async function main() {
     // 1. Get Token
@@ -14,7 +18,7 @@ async function main() {
         console.log('No admin found');
         return;
     }
-    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '1h' });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET || 'test-secret', { expiresIn: '1h' });
     console.log('Got token');
 
     // 2. Get Payroll ID
@@ -58,3 +62,4 @@ async function main() {
 main()
     .catch((e) => console.error(e))
     .finally(async () => await prisma.$disconnect());
+

@@ -212,25 +212,27 @@ export class InboxService {
         const fileKey = inboxDoc.fileUrl;
         if (!fileKey) throw new Error('Documento sin archivo asociado');
 
-        // Create permanent Document entry
-        const document = await prisma.document.create({
-            data: {
-                employeeId,
-                name: name || inboxDoc.originalName,
-                category,
-                fileUrl: fileKey,
-                content: inboxDoc.content, // Transfer captured text
-                expiryDate: expiryDate ? new Date(expiryDate) : null
-            }
-        });
+        const document = await prisma.$transaction(async (tx) => {
+            const doc = await tx.document.create({
+                data: {
+                    employeeId,
+                    name: name || inboxDoc.originalName,
+                    category,
+                    fileUrl: fileKey,
+                    content: inboxDoc.content,
+                    expiryDate: expiryDate ? new Date(expiryDate) : null
+                }
+            });
 
-        // Mark as processed
-        await (prisma as any).inboxDocument.update({
-            where: { id: inboxId },
-            data: {
-                processed: true,
-                processedAt: new Date()
-            }
+            await tx.inboxDocument.update({
+                where: { id: inboxId },
+                data: {
+                    processed: true,
+                    processedAt: new Date()
+                }
+            });
+
+            return doc;
         });
 
         return document;

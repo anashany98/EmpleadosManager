@@ -8,7 +8,10 @@ import { ApiResponse } from '../utils/ApiResponse';
 import { CalendarService } from '../services/CalendarService';
 import { hasModuleAccess } from '../../../shared/authz';
 
-const SECRET = process.env.JWT_SECRET || 'secret-calendar-key';
+const SECRET = process.env.JWT_SECRET;
+if (!SECRET) {
+    throw new Error('FATAL: JWT_SECRET must be defined.');
+}
 
 function canManageCalendar(user: AuthenticatedRequest['user'] | undefined): boolean {
     return Boolean(user && user.role !== 'employee' && hasModuleAccess(user, 'calendar', 'write'));
@@ -32,8 +35,7 @@ export const CalendarController = {
             .update(employee.id)
             .digest('hex');
 
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-        const backendUrl = process.env.VITE_API_URL || 'http://localhost:3000'; // Or construct from req
+        const backendUrl = process.env.PUBLIC_API_URL || process.env.VITE_API_URL;
 
         // We return the full feed URL
         // If frontend talks to backend via /api, the feed is at /api/calendar/feed

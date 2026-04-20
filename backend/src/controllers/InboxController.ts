@@ -10,10 +10,6 @@ const log = createLogger('InboxController');
 export const InboxController = {
     getAllPending: async (req: Request, res: Response) => {
         try {
-            // First sync with folder and poll emails
-            inboxService.syncFolder().catch(err => log.error({ err }, 'Sync error'));
-            inboxService.pollEmails().catch(err => log.error({ err }, 'Email poll error'));
-
             const pending = await prisma.inboxDocument.findMany({
                 where: { processed: false },
                 orderBy: { receivedAt: 'desc' }
@@ -22,6 +18,17 @@ export const InboxController = {
         } catch (error) {
             log.error({ error }, 'Error getting pending documents');
             return ApiResponse.error(res, 'Error al obtener documentos pendientes');
+        }
+    },
+
+    triggerSync: async (_req: Request, res: Response) => {
+        try {
+            inboxService.syncFolder().catch(err => log.error({ err }, 'Sync error'));
+            inboxService.pollEmails().catch(err => log.error({ err }, 'Email poll error'));
+            return ApiResponse.success(res, null, 'Sincronización iniciada');
+        } catch (error) {
+            log.error({ error }, 'Error triggering sync');
+            return ApiResponse.error(res, 'Error al iniciar sincronización');
         }
     },
 

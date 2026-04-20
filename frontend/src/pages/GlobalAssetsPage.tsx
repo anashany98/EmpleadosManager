@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { VehicleManager } from '../components/assets/VehicleManager';
 import { CardManager } from '../components/assets/CardManager';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Employee {
     id: string;
@@ -100,6 +101,8 @@ function EmptyState({ message }: { message: string }) {
 }
 
 export default function GlobalAssetsPage() {
+    const { user } = useAuth();
+    const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
     const [activeTab, setActiveTab] = useState<'assigned' | 'stock' | 'vehicles' | 'cards'>('assigned');
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCategory, setFilterCategory] = useState('ALL');
@@ -132,6 +135,7 @@ export default function GlobalAssetsPage() {
     const { data: inventory = [], isLoading: loadingInventory } = useQuery({
         queryKey: ['inventory'],
         queryFn: fetchInventory,
+        enabled: isGlobalAdmin,
     });
 
     // Mutations
@@ -206,7 +210,8 @@ export default function GlobalAssetsPage() {
         queryFn: async () => {
             const res = await api.get('/employees');
             return res.data?.data || res.data || [];
-        }
+        },
+        enabled: isGlobalAdmin,
     });
 
     const fetchMovements = async (itemId: string) => {
@@ -245,7 +250,7 @@ export default function GlobalAssetsPage() {
 
     const categories = ['ALL', 'EPI', 'TECH', 'TOOLS', 'CLOTHING', 'OTHER'];
 
-    if (loadingAssets || loadingInventory) return <LoadingView />;
+    if (loadingAssets || (isGlobalAdmin && loadingInventory)) return <LoadingView />;
 
     return (
         <div className="space-y-8 p-6 lg:p-10 max-w-7xl mx-auto">
@@ -261,13 +266,15 @@ export default function GlobalAssetsPage() {
                 </div>
 
                 <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setShowAddModal(true)}
-                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all active:scale-95"
-                    >
-                        <Plus className="w-5 h-5" />
-                        Añadir Producto
-                    </button>
+                    {isGlobalAdmin && (
+                        <button
+                            onClick={() => setShowAddModal(true)}
+                            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-indigo-200 dark:shadow-none transition-all active:scale-95"
+                        >
+                            <Plus className="w-5 h-5" />
+                            Añadir Producto
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -280,12 +287,14 @@ export default function GlobalAssetsPage() {
                     >
                         Material Entregado
                     </button>
-                    <button
-                        onClick={() => setActiveTab('stock')}
-                        className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'stock' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
-                    >
-                        Stock Almacén
-                    </button>
+                    {isGlobalAdmin && (
+                        <button
+                            onClick={() => setActiveTab('stock')}
+                            className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'stock' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                        >
+                            Stock Almacén
+                        </button>
+                    )}
                     <button
                         onClick={() => setActiveTab('vehicles')}
                         className={`flex-1 md:flex-none px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'vehicles' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
@@ -345,7 +354,7 @@ export default function GlobalAssetsPage() {
                             ))
                         )}
                     </motion.div>
-                ) : activeTab === 'stock' ? (
+                ) : activeTab === 'stock' && isGlobalAdmin ? (
                     <motion.div
                         key="stock"
                         initial={{ opacity: 0, y: 10 }}

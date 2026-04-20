@@ -1,11 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../../backend/node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../../backend/node_modules/.prisma/client"
 }
 
 generator client_root {
-  provider = "prisma-client-js"
-  output   = "../../node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -14,22 +14,26 @@ datasource db {
 }
 
 model User {
-  id          String               @id @default(uuid())
-  email       String               @unique
-  dni         String?              @unique // Login alternative
-  employeeId  String?              // Link to specific employee record
-  password    String
-  role        String               @default("user")
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  permissions String?
-  auditLogs   AuditLog[]
-  exports     Export[]
-  batches     PayrollImportBatch[]
-  refreshTokens RefreshToken[]
-  notifications Notification[]
-  employee    Employee?            @relation(fields: [employeeId], references: [id])
-  createdEvents CalendarEvent[]    @relation("EventCreator")
+  id                    String               @id @default(uuid())
+  email                 String               @unique
+  dni                   String?              @unique // Login alternative
+  employeeId            String?              // Link to specific employee record
+  password              String
+  role                  String               @default("user")
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  permissions           String?
+  isActive              Boolean              @default(true)
+  sessionVersion        Int                  @default(0)
+  failedLoginAttempts   Int                  @default(0)
+  lockedUntil           DateTime?
+  auditLogs             AuditLog[]
+  exports               Export[]
+  batches               PayrollImportBatch[]
+  refreshTokens         RefreshToken[]
+  notifications         Notification[]
+  employee              Employee?            @relation(fields: [employeeId], references: [id])
+  createdEvents         CalendarEvent[]      @relation("EventCreator")
 }
 
 model RefreshToken {
@@ -474,6 +478,7 @@ model Alert {
   title       String
   message     String
   actionUrl   String?
+  metadata    Json?
   isRead      Boolean   @default(false)
   isDismissed Boolean   @default(false)
   createdAt   DateTime  @default(now())

@@ -15,11 +15,14 @@
     "db:status": "node scripts/prisma-local.mjs migrate status",
     "db:migrate": "node scripts/prisma-local.mjs migrate dev",
     "pw:install": "playwright install chromium",
-    "pw:smoke": "node scripts/playwright-smoke.mjs"
+    "pw:smoke": "node scripts/playwright-smoke.mjs",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@playwright/mcp": "^0.0.68",
     "concurrently": "^8.2.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
     "playwright": "^1.59.0-alpha-1771104257000",
     "prisma": "^5.22.0"
   },
@@ -28,5 +31,17 @@
   },
   "prisma": {
     "seed": "npx ts-node database/prisma/seed.ts"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "tsc --noEmit --skipLibCheck"
+    ],
+    "*.{css,scss}": [
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
   }
 }

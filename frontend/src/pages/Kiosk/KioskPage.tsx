@@ -28,6 +28,15 @@ const postKiosk = async (path: string, body: unknown) => {
     return response.json();
 };
 
+const logoutSession = async () => {
+    await fetch(`${API_URL}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({})
+    }).catch(() => undefined);
+};
+
 type OfflineQueueItem = {
     payload: {
         employeeId: string;
@@ -185,6 +194,11 @@ const KioskPage: React.FC = () => {
         lastActivity.current = Date.now();
     };
 
+    const closeAdminPanel = useCallback(async () => {
+        await logoutSession();
+        setShowAdmin(false);
+    }, []);
+
     const handleClockIn = useCallback(async (employee: IdentifiedEmployee, descriptor?: number[]) => {
         setIsScanning(false);
         setSubStatus('Fichando...');
@@ -301,7 +315,7 @@ const KioskPage: React.FC = () => {
     }, [captureAndCheck, showAdmin]);
 
     if (showAdmin) {
-        return <div className="min-h-screen bg-slate-900"><KioskAdminPanel onClose={() => setShowAdmin(false)} /></div>;
+        return <div className="min-h-screen bg-slate-900"><KioskAdminPanel onClose={() => void closeAdminPanel()} /></div>;
     }
 
     if (isIdle) {

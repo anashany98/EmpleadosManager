@@ -54,4 +54,27 @@ describe('EncryptionService', () => {
         const result = EncryptionService.decrypt(tampered);
         expect(result).toBeNull();
     });
+
+    it('should handle Spanish characters correctly', () => {
+        const original = 'Español ñoño áéíóú';
+        const encrypted = EncryptionService.encrypt(original);
+        const decrypted = EncryptionService.decrypt(encrypted);
+        expect(decrypted).toBe(original);
+    });
+
+    it('should handle long strings', () => {
+        const original = 'A'.repeat(10000);
+        const encrypted = EncryptionService.encrypt(original);
+        const decrypted = EncryptionService.decrypt(encrypted);
+        expect(decrypted).toBe(original);
+    });
+
+    it('should produce different ciphertext for same plaintext', () => {
+        const original = 'test';
+        const encrypted1 = EncryptionService.encrypt(original);
+        const encrypted2 = EncryptionService.encrypt(original);
+        expect(encrypted1).not.toBe(encrypted2);
+        expect(EncryptionService.decrypt(encrypted1)).toBe(original);
+        expect(EncryptionService.decrypt(encrypted2)).toBe(original);
+    });
 });

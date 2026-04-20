@@ -13,6 +13,8 @@ import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { AuditService } from '../services/AuditService';
 import { coercePermissionMap, normalizeRole } from '../../../shared/authz';
+import { signAccessToken } from '../utils/accessTokens';
+import { recordFailedLogin, resetFailedLogin } from '../middlewares/accountLockout';
 
 const log = createLogger('AuthController');
 
@@ -20,7 +22,6 @@ const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
     throw new Error('FATAL: JWT_SECRET must be defined.');
 }
-const ACCESS_TOKEN_EXPIRES_IN = '15m'; // Short lived
 const REFRESH_TOKEN_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
 
 const generateRefreshToken = () => {
@@ -62,6 +63,11 @@ const clearCookieOptions = {
 };
 
 const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME || 'csrf_token';
+
+const FRONTEND_URL = process.env.FRONTEND_URL;
+if (!FRONTEND_URL && process.env.NODE_ENV === 'production') {
+    throw new Error('FATAL: FRONTEND_URL must be defined in production.');
+}
 const ensureCsrfCookie = (req: Request, res: Response) => {
     const existing = (req as any).cookies?.[CSRF_COOKIE_NAME];
     if (!existing) issueCsrfToken(res);
@@ -79,6 +85,9 @@ export const AuthController = {
 
             const result = await AuthService.login(loginId, password);
 
+            // Reset failed login counter on success
+            await resetFailedLogin(loginId);
+
             const ipAddress = req.ip || req.socket.remoteAddress;
             const userAgent = req.headers['user-agent'];
             await AuditService.logLoginSuccess(result.user.id, ipAddress, userAgent);
@@ -88,7 +97,9 @@ export const AuthController = {
             issueCsrfToken(res);
 
             const payload: any = { user: result.user };
-            if (process.env.RETURN_TOKENS === 'true') {
+            // In production, NEVER return tokens in response body (only via HttpOnly cookies)
+            // RETURN_TOKENS flag is ignored in production for security
+            if (process.env.NODE_ENV !== 'production' && process.env.RETURN_TOKENS === 'true') {
                 payload.token = result.accessToken;
                 payload.refreshToken = result.refreshToken;
             }
@@ -97,6 +108,10 @@ export const AuthController = {
             const ipAddress = req.ip || req.socket.remoteAddress;
             const userAgent = req.headers['user-agent'];
             await AuditService.logLoginFailed(loginId || 'unknown', error.message || 'Login failed', ipAddress, userAgent);
+            // Record failed login attempt for account lockout
+            if (loginId && error.statusCode === 401) {
+                await recordFailedLogin(loginId);
+            }
             log.error({ error }, 'Login failed');
             return ApiResponse.error(res, error.message || 'Error al iniciar sesión', error.statusCode || 500);
         }
@@ -124,7 +139,11 @@ export const AuthController = {
                 type: 'PASSWORD_RESET' // Reuse password reset flow
             }, JWT_SECRET, { expiresIn: '7d' }); // 7 days validity for welcome link
 
-            const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${welcomeToken}`;
+            const FRONTEND_URL = process.env.FRONTEND_URL;
+            if (!FRONTEND_URL) {
+                throw new AppError('FRONTEND_URL no configurado', 500);
+            }
+            const loginUrl = `${FRONTEND_URL}/reset-password?token=${welcomeToken}`;
 
             if (employee.email) {
                 const html = `
@@ -201,9 +220,14 @@ export const AuthController = {
 
             const user = storedToken.user;
 
+            if (!user.isActive) {
+                throw new AppError('Usuario deshabilitado. Contacte al administrador.', 403);
+            }
+
             // Generate new Access Token
-            const newAccessToken = jwt.sign({ id: user.id }, JWT_SECRET, {
-                expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+            const newAccessToken = signAccessToken({
+                id: user.id,
+                sessionVersion: user.sessionVersion || 0
             });
 
             // Rotate Refresh Token (Optional security best practice: create new RT, revoke old one)
@@ -232,11 +256,12 @@ export const AuthController = {
             res.cookie('refresh_token', newRefreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
             issueCsrfToken(res);
 
-            const payload: any = { token: newAccessToken, refreshToken: newRefreshToken };
-            if (process.env.RETURN_TOKENS !== 'true') {
-                delete payload.token;
-                delete payload.refreshToken;
-            }
+            // By default, include tokens in response for client-side handling
+            // In production, RETURN_TOKENS is forced to false, only cookies are used
+            const includeTokens = process.env.NODE_ENV !== 'production' && process.env.RETURN_TOKENS === 'true';
+            const payload: any = includeTokens
+                ? { token: newAccessToken, refreshToken: newRefreshToken }
+                : { message: 'Token renovado correctamente' };
             return ApiResponse.success(res, payload, 'Token renovado correctamente');
 
         } catch (error: any) {
@@ -312,7 +337,9 @@ export const AuthController = {
             }
 
             if (!employee.email) {
-                throw new AppError('El empleado no tiene un correo electrónico registrado. Contacta con RRHH.', 400);
+                // Security: Don't reveal that the user exists — return the same generic message
+                log.debug({ identifier: trimmedId }, 'Password reset: employee has no email');
+                return ApiResponse.success(res, null, 'Si los datos coinciden, recibirás un correo con las instrucciones.');
             }
 
             // 2. Generate Reset Token (Short lived JWT)
@@ -324,7 +351,7 @@ export const AuthController = {
             }, JWT_SECRET, { expiresIn: '15m' });
 
             // 3. "Send" Email
-            const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password?token=${resetToken}`;
+            const resetLink = `${FRONTEND_URL}/reset-password?token=${resetToken}`;
 
             const html = `
                 <p>Hola ${employee.name},</p>

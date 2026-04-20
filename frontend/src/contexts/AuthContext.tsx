@@ -116,7 +116,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [setSessionHint]);
 
     const canAccessFeature = useCallback((feature: AppFeatureKey): boolean => {
-        return canSharedAccessFeature(feature, user);
+        const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
+
+        if ((feature === 'users' || feature === 'settings' || feature === 'audit') && !isGlobalAdmin) {
+            return false;
+        }
+
+        const result = canSharedAccessFeature(feature, user);
+
+        // Debug logging for inbox feature
+        if (feature === 'inbox') {
+            console.log('[Auth] canAccessFeature inbox:', {
+                role: user?.role,
+                companyId: user?.companyId,
+                employeeId: user?.employeeId,
+                permissions: user?.permissions,
+                isGlobalAdmin,
+                result
+            });
+        }
+
+        return result;
     }, [user]);
 
     const value = useMemo(() => ({

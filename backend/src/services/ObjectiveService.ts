@@ -1,4 +1,4 @@
-import { prisma } from '../lib/prisma';
+﻿import { prisma } from '../lib/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
 
 interface CreateObjectiveData {
@@ -218,7 +218,7 @@ export class ObjectiveService {
         return mainObjective;
     }
 
-    // Obtener estadísticas de objetivos
+    // Obtener estadÃ­sticas de objetivos
     static async getObjectiveStats(employeeId?: string) {
         const where: any = {};
         if (employeeId) where.employeeId = employeeId;
@@ -253,7 +253,7 @@ export class ObjectiveService {
                 return acc;
             }, {} as Record<string, number>),
             byCategory: byCategory.reduce((acc, item) => {
-                acc[item.category] = {
+                acc[item.category || 'uncategorized'] = {
                     count: item._count,
                     avgProgress: item._avg.progress || 0
                 };

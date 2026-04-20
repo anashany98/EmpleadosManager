@@ -25,9 +25,9 @@ export const InventoryService = {
                     severity,
                     title: 'Alerta de Inventario',
                     message,
-                    actionUrl: `/inventory`, // Link to inventory management
-                    metadata: JSON.stringify({ itemId, currentStock: item.quantity, minStock: item.minQuantity })
-                } as any
+                    actionUrl: `/inventory`,
+                    metadata: { itemId, currentStock: item.quantity, minStock: item.minQuantity }
+                }
             });
 
             // Notify Admins via UI/Push

@@ -1,4 +1,4 @@
-{
+﻿{
     "watch": [
         "src"
     ],
@@ -8,5 +8,5 @@
         "node_modules",
         "uploads"
     ],
-    "exec": "node --max-old-space-size=4096 -r ts-node/register src/index.ts"
+    "exec": "node --max-old-space-size=4096 -r ./instrument.js -r ts-node/register src/index.ts"
 }

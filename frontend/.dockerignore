@@ -1,0 +1,58 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-debug.log*
+yarn-error.log*
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Tests & coverage
+coverage
+.nyc_output
+*.test.tsx
+*.test.ts
+*.spec.tsx
+*.spec.ts
+__tests__
+__mocks__
+tests
+test
+
+# Development & IDE
+.vscode
+.idea
+*.swp
+*.swo
+.DS_Store
+.env.local
+.env.*.local
+*.log
+
+# Documentation extra
+*.md
+!README.md
+docs
+CHANGELOG.md
+
+# CI/CD
+.github
+.gitlab-ci.yml
+.travis.yml
+.circleci
+
+# Build artifacts
+dist
+build
+*.tsbuildinfo
+
+# Cache
+.cache
+.npm
+
+# Temporary files
+temp
+tmp
+*.tmp

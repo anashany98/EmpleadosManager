@@ -1,14 +1,12 @@
 import { prisma } from '../lib/prisma';
 import { AuditService } from './AuditService';
 import { EncryptionService } from './EncryptionService';
-import XLSX from 'xlsx';
+import { withRetry } from '../utils/dbRetry';
+import { ExcelParser } from './ExcelParser';
 
 export const EmployeeImportService = {
     processFile: async (buffer: Buffer) => {
-        const workbook = XLSX.read(buffer, { type: 'buffer' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const data = XLSX.utils.sheet_to_json(sheet);
+        const data = await ExcelParser.readSheetAsJson(buffer);
 
         let importedCount = 0;
         let errors: string[] = [];
@@ -117,15 +115,15 @@ export const EmployeeImportService = {
                     }
 
                     if (existing) {
-                        await prisma.employee.update({
+                        await withRetry(() => prisma.employee.update({
                             where: { id: existing.id },
                             data: employeeData
-                        });
+                        }), { operationName: 'importUpdateEmployee' });
                         await AuditService.log('UPDATE', 'EMPLOYEE', existing.id, { info: 'Import Bulk Update', name });
                     } else {
-                        const created = await prisma.employee.create({
+                        const created = await withRetry(() => prisma.employee.create({
                             data: employeeData
-                        });
+                        }), { operationName: 'importCreateEmployee' });
                         await AuditService.log('CREATE', 'EMPLOYEE', created.id, { info: 'Import Bulk Create', name });
                     }
                     importedCount++;

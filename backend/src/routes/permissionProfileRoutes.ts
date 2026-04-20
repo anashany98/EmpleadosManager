@@ -1,12 +1,12 @@
 import { Router } from 'express';
 import { PermissionProfileController } from '../controllers/PermissionProfileController';
-import { protect, restrictTo } from '../middlewares/authMiddleware';
+import { protect, requireGlobalAdmin } from '../middlewares/authMiddleware';
 
 const router = Router();
 
 // Only admins can manage permission profiles
 router.use(protect);
-router.use(restrictTo('admin'));
+router.use(requireGlobalAdmin);
 
 router.get('/', PermissionProfileController.list);
 router.post('/', PermissionProfileController.create);

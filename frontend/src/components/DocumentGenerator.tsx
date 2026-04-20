@@ -178,10 +178,45 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto p-1 accent-blue-600">
-                                {inventoryItems
-                                    .filter(i => (docType === 'UNIFORM' ? i.category === 'UNIFORM' : i.category === 'EPI'))
-                                    .filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase()))
-                                    .map(item => (
+                                {(() => {
+                                    const filteredItems = inventoryItems
+                                        .filter(i => {
+                                            const cat = (i.category || '').toUpperCase();
+                                            if (docType === 'UNIFORM') {
+                                                return cat === 'UNIFORM' || cat === 'UNIFORME' || cat === 'ROPA' || cat === 'CLOTHING';
+                                            } else {
+                                                return cat === 'EPI' || cat === 'EPIS' || cat === 'PRL' || cat === 'PROTECCION' || cat === 'SAFETY';
+                                            }
+                                        })
+                                        .filter(i => i.name.toLowerCase().includes(itemSearch.toLowerCase()));
+
+                                    if (filteredItems.length === 0 && inventoryItems.length === 0) {
+                                        return (
+                                            <div className="col-span-full py-8 text-center text-slate-400 text-sm">
+                                                <p>No hay artículos en el inventario</p>
+                                                <p className="text-xs mt-1">Agrega artículos desde la sección de Inventario</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    if (filteredItems.length === 0 && itemSearch) {
+                                        return (
+                                            <div className="col-span-full py-8 text-center text-slate-400 text-sm">
+                                                <p>No se encontraron resultados para "{itemSearch}"</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    if (filteredItems.length === 0) {
+                                        return (
+                                            <div className="col-span-full py-8 text-center text-slate-400 text-sm">
+                                                <p>No hay artículos de {docType === 'UNIFORM' ? 'uniforme' : 'EPI'} en el inventario</p>
+                                                <p className="text-xs mt-1">Agrega artículos con la categoría correspondiente</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    return filteredItems.map(item => (
                                         <button
                                             key={item.id}
                                             onClick={() => toggleItem(item)}
@@ -196,7 +231,8 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                             </div>
                                             {selectedItems.find(si => si.id === item.id) && <Check size={16} className="text-blue-500" />}
                                         </button>
-                                    ))}
+                                    ));
+                                })()}
                             </div>
 
                             {selectedItems.length > 0 && (
@@ -237,7 +273,10 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                 >
                                     <option value="">-- Seleccionar del stock --</option>
                                     {inventoryItems
-                                        .filter(i => i.category === 'TECH' || i.category === 'OTHER')
+                                        .filter(i => {
+                                            const cat = (i.category || '').toUpperCase();
+                                            return cat === 'TECH' || cat === 'TECHNOLOGY' || cat === 'TECNOLOGIA' || cat === 'TECH_DEVICE' || cat === 'ELECTRONICA' || cat === 'OTHER' || cat === 'OTROS';
+                                        })
                                         .map(i => (
                                             <option key={i.id} value={i.id}>{i.name} (Stock: {i.quantity})</option>
                                         ))
