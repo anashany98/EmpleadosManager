@@ -420,11 +420,20 @@ export const AuthController = {
             const hashedPassword = await bcrypt.hash(newPassword, 10);
 
             if (user) {
-                // Update existing user
-                await prisma.user.update({
-                    where: { id: user.id },
-                    data: { password: hashedPassword }
-                });
+                // Update existing user: invalidate sessions, increment sessionVersion
+                await prisma.$transaction([
+                    prisma.user.update({
+                        where: { id: user.id },
+                        data: {
+                            password: hashedPassword,
+                            sessionVersion: { increment: 1 }
+                        }
+                    }),
+                    prisma.refreshToken.updateMany({
+                        where: { userId: user.id, revoked: false },
+                        data: { revoked: true }
+                    })
+                ]);
             } else {
                 // Create new user (Activation flow)
                 await prisma.user.create({

@@ -131,11 +131,21 @@ export const EmployeeController = {
                 return ApiResponse.error(res, 'No se ha subido ningún archivo', 400);
             }
 
-            // Note: Import Service likely needs update to support companyId injection context
-            // For now, we assume logic is inside or it needs refactor.
-            // Leaving as is but warning: Import might default improperly if not handled.
+            const { user } = req as AuthenticatedRequest;
+
+            const isGlobalAdmin = !user.companyId && user.role === 'admin';
+
+            if (!isGlobalAdmin && !user.companyId) {
+                return ApiResponse.error(res, 'No tienes una empresa asignada para importar empleados', 400);
+            }
+
+            const importOptions = {
+                forceCompanyId: user.companyId || undefined,
+                skipCompanyValidation: isGlobalAdmin
+            };
+
             const { EmployeeImportService } = await import('../services/EmployeeImportService');
-            const result = await EmployeeImportService.processFile(req.file.buffer);
+            const result = await EmployeeImportService.processFile(req.file.buffer, importOptions);
 
             const userId = (req as AuthenticatedRequest).user?.id;
             await AuditService.log('IMPORT', 'EMPLOYEE', 'MULTIPLE', { count: result.importedCount }, userId);

@@ -40,7 +40,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
             return next(new AppError('No estás autenticado. Por favor inicia sesión.', 401));
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET) as { id: string };
+        const decoded = jwt.verify(token, JWT_SECRET) as { id: string; sessionVersion?: number };
 
         const user = await prisma.user.findUnique({
             where: { id: decoded.id },
@@ -50,12 +50,22 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
                 role: true,
                 permissions: true,
                 employeeId: true,
+                isActive: true,
+                sessionVersion: true,
                 employee: { select: { companyId: true } }
             }
         });
 
         if (!user) {
             return next(new AppError('El usuario perteneciente a este token ya no existe.', 401));
+        }
+
+        if (!user.isActive) {
+            return next(new AppError('Tu cuenta ha sido desactivada. Contacta al administrador.', 401));
+        }
+
+        if (typeof decoded.sessionVersion === 'number' && user.sessionVersion !== decoded.sessionVersion) {
+            return next(new AppError('Tu sesión ha sido invalidada. Por favor, inicia sesión de nuevo.', 401));
         }
 
         let parsedPermissions: Record<string, PermissionLevel | 'admin'> = {};

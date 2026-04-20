@@ -4,8 +4,15 @@ import { EncryptionService } from './EncryptionService';
 import { withRetry } from '../utils/dbRetry';
 import { ExcelParser } from './ExcelParser';
 
+export interface ImportOptions {
+    /** Force a specific companyId - requires admin global privileges to be checked by caller */
+    forceCompanyId?: string;
+    /** If true and forceCompanyId is provided, skips any validation. Used for global admin import. */
+    skipCompanyValidation?: boolean;
+}
+
 export const EmployeeImportService = {
-    processFile: async (buffer: Buffer) => {
+    processFile: async (buffer: Buffer, options: ImportOptions = {}) => {
         const data = await ExcelParser.readSheetAsJson(buffer);
 
         let importedCount = 0;
@@ -90,8 +97,10 @@ export const EmployeeImportService = {
                         drivingLicenseExpiration: parseDate(row['Vencimiento Carnet']),
 
                         // Emergency contacts handled below (relation)
-                        // Relations
-                        companyId: row['Empresa (ID)'] ? String(row['Empresa (ID)']) : undefined,
+                        // Relations - enforce companyId based on import options
+                        companyId: options.skipCompanyValidation && options.forceCompanyId
+                            ? options.forceCompanyId
+                            : (options.forceCompanyId || undefined),
                         managerId: row['ID Responsable'] ? String(row['ID Responsable']) : null,
 
                         active: true
