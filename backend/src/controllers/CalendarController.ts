@@ -7,6 +7,9 @@ import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { CalendarService } from '../services/CalendarService';
 import { hasModuleAccess } from '../../../shared/authz';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('CalendarController');
 
 const SECRET = process.env.JWT_SECRET;
 if (!SECRET) {
@@ -176,7 +179,7 @@ export const CalendarController = {
             res.send(ics.join('\r\n'));
 
         } catch (error) {
-            console.error('Error generating ICS', error);
+            log.error({ error }, 'Error generating ICS');
             res.status(500).send('Internal Server Error');
         }
     },
@@ -222,7 +225,7 @@ export const CalendarController = {
 
             return ApiResponse.success(res, events);
         } catch (error) {
-            console.error('Error getting unified calendar events:', error);
+            log.error('Error getting unified calendar events:', error);
             return ApiResponse.error(res, 'Error al obtener eventos del calendario', 500);
         }
     },
@@ -253,7 +256,7 @@ export const CalendarController = {
 
             return ApiResponse.success(res, birthdays);
         } catch (error) {
-            console.error('Error getting birthdays:', error);
+            log.error('Error getting birthdays:', error);
             return ApiResponse.error(res, 'Error al obtener cumpleaños', 500);
         }
     },
@@ -297,7 +300,7 @@ export const CalendarController = {
 
             return ApiResponse.success(res, event);
         } catch (error) {
-            console.error('Error creating calendar event:', error);
+            log.error('Error creating calendar event:', error);
             return ApiResponse.error(res, 'Error al crear evento', 500);
         }
     },
@@ -335,7 +338,7 @@ export const CalendarController = {
 
             return ApiResponse.success(res, event);
         } catch (error) {
-            console.error('Error updating calendar event:', error);
+            log.error('Error updating calendar event:', error);
             return ApiResponse.error(res, 'Error al actualizar evento', 500);
         }
     },
@@ -361,7 +364,7 @@ export const CalendarController = {
 
             return ApiResponse.success(res, { message: 'Evento eliminado correctamente' });
         } catch (error) {
-            console.error('Error deleting calendar event:', error);
+            log.error('Error deleting calendar event:', error);
             return ApiResponse.error(res, 'Error al eliminar evento', 500);
         }
     },
@@ -385,7 +388,7 @@ export const CalendarController = {
 
             return ApiResponse.success(res, events);
         } catch (error) {
-            console.error('Error getting calendar events:', error);
+            log.error('Error getting calendar events:', error);
             return ApiResponse.error(res, 'Error al obtener eventos', 500);
         }
     },
