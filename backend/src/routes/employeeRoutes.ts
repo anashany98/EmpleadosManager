@@ -1,6 +1,9 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { EmployeeController } from '../controllers/EmployeeController';
+import { EmployeeMedicalController } from '../controllers/EmployeeMedicalController';
+import { EmployeeTrainingController } from '../controllers/EmployeeTrainingController';
+import { EmployeeImportController } from '../controllers/EmployeeImportController';
 import { ContractController } from '../controllers/ContractController';
 import { TimelineController } from '../controllers/TimelineController';
 import { prisma } from '../lib/prisma';
@@ -33,8 +36,8 @@ const resolveEmployeeTarget = async (req: any) => {
 router.get('/', authorize('employee.read.list'), EmployeeController.getAll);
 router.get('/departments', authorize('employee.read.list'), EmployeeController.getDepartments);
 router.get('/hierarchy', authorize('employee.read.list'), EmployeeController.getHierarchy);
-router.post('/import', checkPermission('employees', 'write'), upload.single('file'), EmployeeController.importEmployees);
-router.get('/template', authorize('employee.read.list'), EmployeeController.downloadTemplate);
+router.post('/import', checkPermission('employees', 'write'), upload.single('file'), EmployeeImportController.importEmployees);
+router.get('/template', authorize('employee.read.list'), EmployeeImportController.downloadTemplate);
 
 // Self-Service Capable Routes
 router.get('/:id', validateResource(idParamSchema), authorize('employee.read.detail', resolveEmployeeTarget), EmployeeController.getById);
@@ -52,13 +55,13 @@ router.post('/:id/contract/extend', checkPermission('employees', 'write'), Contr
 router.get('/:id/contract/history', authorize('employee.read.detail', resolveEmployeeTarget), ContractController.getHistory);
 router.get('/:id/timeline', authorize('employee.read.detail', resolveEmployeeTarget), TimelineController.getEmployeeTimeline);
 
-// PRL & Training Features
-router.get('/:id/medical-reviews', authorize('employee.read.detail', resolveEmployeeTarget), EmployeeController.getMedicalReviews);
-router.post('/:id/medical-reviews', checkPermission('employees', 'write'), EmployeeController.createMedicalReview);
-router.delete('/:id/medical-reviews/:reviewId', checkPermission('employees', 'write'), EmployeeController.deleteMedicalReview);
+// PRL & Training Features (split into separate controllers)
+router.get('/:employeeId/medical-reviews', authorize('employee.read.detail', resolveEmployeeTarget), EmployeeMedicalController.getByEmployee);
+router.post('/:employeeId/medical-reviews', checkPermission('employees', 'write'), EmployeeMedicalController.create);
+router.delete('/:employeeId/medical-reviews/:id', checkPermission('employees', 'write'), EmployeeMedicalController.delete);
 
-router.get('/:id/trainings', authorize('employee.read.detail', resolveEmployeeTarget), EmployeeController.getTrainings);
-router.post('/:id/trainings', checkPermission('employees', 'write'), EmployeeController.createTraining);
-router.delete('/:id/trainings/:trainingId', checkPermission('employees', 'write'), EmployeeController.deleteTraining);
+router.get('/:employeeId/trainings', authorize('employee.read.detail', resolveEmployeeTarget), EmployeeTrainingController.getByEmployee);
+router.post('/:employeeId/trainings', checkPermission('employees', 'write'), EmployeeTrainingController.create);
+router.delete('/:employeeId/trainings/:id', checkPermission('employees', 'write'), EmployeeTrainingController.delete);
 
 export default router;

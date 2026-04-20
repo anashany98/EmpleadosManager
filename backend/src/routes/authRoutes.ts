@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { AuthController } from '../controllers/AuthController';
+import { PasswordController } from '../controllers/PasswordController';
+import { SessionController } from '../controllers/SessionController';
 import { protect, restrictTo } from '../middlewares/authMiddleware';
 import rateLimit from 'express-rate-limit';
 import { validateResource } from '../middlewares/validateResource';
@@ -60,9 +62,9 @@ const passwordLimiter = rateLimit({
 router.post('/login', loginGlobalLimiter, loginLimiter, checkAccountLockout, validateResource(loginSchema), AuthController.login);
 router.post('/refresh', refreshLimiter, AuthController.refresh);
 router.post('/logout', AuthController.logout);
-router.post('/request-password-reset', passwordLimiter, validateResource(passwordResetRequestSchema), AuthController.requestPasswordReset);
-router.post('/reset-password', passwordLimiter, validateResource(passwordResetSchema), AuthController.resetPassword);
-router.post('/generate-access', protect, restrictTo('admin'), validateResource(generateAccessSchema), AuthController.generateAccess);
-router.get('/me', protect, AuthController.getMe);
+router.post('/request-password-reset', passwordLimiter, validateResource(passwordResetRequestSchema), PasswordController.requestReset);
+router.post('/reset-password', passwordLimiter, validateResource(passwordResetSchema), PasswordController.reset);
+router.post('/generate-access', protect, restrictTo('admin'), validateResource(generateAccessSchema), PasswordController.generateAccess);
+router.get('/me', protect, SessionController.getMe);
 
 export default router;
