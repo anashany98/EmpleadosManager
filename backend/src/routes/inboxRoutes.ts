@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { InboxController } from '../controllers/InboxController';
-import { authorize, checkPermission } from '../middlewares/authMiddleware';
+import { authorize, checkPermission, protect } from '../middlewares/authMiddleware';
 import { prisma } from '../lib/prisma';
 import multer from 'multer';
 import fs from 'fs';
@@ -36,11 +36,11 @@ const resolveAssignTarget = async (req: any) => {
     return employee ? { employeeId: employee.id, companyId: employee.companyId } : null;
 };
 
-router.post('/upload', checkPermission('employees', 'write'), upload.single('file'), InboxController.upload);
-router.get('/pending', checkPermission('employees', 'read'), InboxController.getAllPending);
-router.post('/sync', checkPermission('employees', 'read'), InboxController.triggerSync);
-router.get('/:id/download', checkPermission('employees', 'read'), InboxController.download);
-router.post('/:id/assign', authorize('document.write', resolveAssignTarget), InboxController.assign);
-router.delete('/:id', checkPermission('employees', 'write'), InboxController.delete);
+router.post('/upload', protect, checkPermission('employees', 'write'), upload.single('file'), InboxController.upload);
+router.get('/pending', protect, checkPermission('employees', 'read'), InboxController.getAllPending);
+router.post('/sync', protect, checkPermission('employees', 'read'), InboxController.triggerSync);
+router.get('/:id/download', protect, checkPermission('employees', 'read'), InboxController.download);
+router.post('/:id/assign', protect, authorize('document.write', resolveAssignTarget), InboxController.assign);
+router.delete('/:id', protect, checkPermission('employees', 'write'), InboxController.delete);
 
 export default router;
