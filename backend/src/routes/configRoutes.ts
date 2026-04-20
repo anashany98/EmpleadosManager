@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ConfigController } from '../controllers/ConfigController';
+import { SmtpController } from '../controllers/SmtpController';
 import { protect, requireGlobalAdmin } from '../middlewares/authMiddleware';
 
 const router = Router();
@@ -8,6 +9,11 @@ const router = Router();
 router.post('/backup', protect, requireGlobalAdmin, ConfigController.createBackup);
 router.get('/backups', protect, requireGlobalAdmin, ConfigController.getBackups);
 router.get('/backup/download', protect, requireGlobalAdmin, ConfigController.downloadBackup);
+
+// SMTP explicit routes (typed)
+router.get('/smtp', protect, requireGlobalAdmin, SmtpController.getSmtpConfig);
+router.post('/smtp', protect, requireGlobalAdmin, SmtpController.saveSmtpConfig);
+router.post('/smtp/test', protect, requireGlobalAdmin, SmtpController.testSmtpConfig);
 
 // Generic config routes
 router.get('/:key', protect, requireGlobalAdmin, ConfigController.getConfig);
