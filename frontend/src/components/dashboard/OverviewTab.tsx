@@ -7,6 +7,8 @@ import { WhosOutWidget } from './WhosOutWidget';
 import TimeTrackerWidget from '../TimeTrackerWidget';
 import OnboardingWidget from '../dashboard/OnboardingWidget';
 import MyPayslipsWidget from './MyPayslipsWidget';
+import { AlertsWidget } from './AlertsWidget';
+import { PendingRequestsWidget } from './PendingRequestsWidget';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface OverviewTabProps {
@@ -335,6 +337,20 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                     <div className="shrink-0 space-y-4">
                         <TimeTrackerWidget />
                         {user?.employeeId && <OnboardingWidget employeeId={user.employeeId} />}
+                    </div>
+                )}
+
+                {/* Alerts Widget */}
+                {!isEmployee && (
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-1 shadow-sm overflow-hidden flex flex-col flex-1 min-h-[120px]">
+                        <AlertsWidget metrics={metrics} />
+                    </div>
+                )}
+
+                {/* Pending Requests Widget */}
+                {!isEmployee && (
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-1 shadow-sm overflow-hidden flex flex-col flex-1 min-h-[120px]">
+                        <PendingRequestsWidget metrics={metrics} />
                     </div>
                 )}
 
