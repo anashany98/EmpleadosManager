@@ -162,6 +162,17 @@ model Employee {
   pdis                     PDI[]
 
   @@index([companyId])
+  @@index([active])
+  @@index([department])
+  @@index([contractType])
+  @@index([contractEndDate])
+  @@index([entryDate])
+  @@index([dniExpiration])
+  @@index([managerId])
+  @@index([email])
+  @@index([companyId, active])
+  @@index([companyId, department])
+  @@index([active, contractEndDate])
 }
 
 model EmergencyContact {
@@ -258,6 +269,9 @@ model Expense {
 
   @@index([employeeId])
   @@index([status])
+  @@index([date])
+  @@index([category])
+  @@index([employeeId, status])
 }
 
 model Document {
@@ -275,6 +289,9 @@ model Document {
 
   @@index([employeeId])
   @@index([category])
+  @@index([expiryDate])
+  @@index([uploadDate])
+  @@index([employeeId, category])
 }
 
 model MedicalReview {
@@ -315,6 +332,10 @@ model Vacation {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @default(now()) @updatedAt
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, status])
+  @@index([startDate, endDate])
+  @@index([status])
 }
 
 model MappingProfile {
@@ -530,6 +551,11 @@ model InboxDocument {
   ocrStatus    String    @default("PENDING") // PENDING, COMPLETED, FAILED
   processed    Boolean   @default(false)
   processedAt  DateTime?
+
+  @@index([processed])
+  @@index([source])
+  @@index([receivedAt])
+  @@index([ocrStatus])
 }
 
 model Configuration {
@@ -552,6 +578,9 @@ model TimeEntry {
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, timestamp])
+  @@index([timestamp])
+  @@index([employeeId, type])
+  @@index([timestamp, employeeId])
 }
 
 model Notification {
