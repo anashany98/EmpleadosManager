@@ -58,7 +58,9 @@ export class VacationReportService {
         ]);
 
         const data = employees.map(emp => {
-            const usedDays = (emp.vacations as any[]).reduce((sum, v) => sum + (v.days || 0), 0);
+            const usedDays = (emp.vacations as any[])
+                .filter((v: any) => v.status !== 'REJECTED')
+                .reduce((sum, v) => sum + (v.days || 0), 0);
             return {
                 id: emp.id,
                 name: emp.name,

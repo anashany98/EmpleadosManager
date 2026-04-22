@@ -109,6 +109,8 @@ export const VacationController = {
             let { employeeId, startDate, endDate, type, reason } = req.body;
             const { user } = req as AuthenticatedRequest;
 
+            log.info({ body: req.body, employeeId, startDate, endDate, type, userId: user?.id }, 'VacationController.create called');
+
             if (!employeeId && user?.employeeId) {
                 employeeId = user.employeeId;
             }

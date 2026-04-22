@@ -328,13 +328,16 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
             if (ok) {
                 const toastId = toast.loading('Registrando...');
                 try {
-                    await api.post('/vacations', {
+                    const payload = {
                         employeeId,
                         startDate: selection.start.toISOString(),
                         endDate: end.toISOString(),
                         type: selectedType,
                         reason: selectedType === 'MEDICAL_HOURS' ? medicalHours : (selectedType === 'OTHER' ? reason : null)
-                    });
+                    };
+                    console.log('[VacationCalendar] POST /vacations', payload);
+                    const result = await api.post('/vacations', payload);
+                    console.log('[VacationCalendar] Response:', result);
                     toast.success(`${typeLabel} registrado con éxito`, { id: toastId });
                     setSelection({ start: null, end: null });
                     setReason('');
@@ -342,6 +345,7 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
                     fetchVacations();
                     fetchEmployee();
                 } catch (err: any) {
+                    console.error('[VacationCalendar] Error:', err);
                     const message = err.message || 'Error al registrar';
                     toast.error(message, { id: toastId });
                     setSelection({ start: null, end: null });
@@ -377,10 +381,13 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
     };
 
     const getAbsenceLabel = (type: string) => ABSENCE_TYPES.find(t => t.id === type)?.label || type;
-    const getAbsenceColor = (type: string) => ABSENCE_TYPES.find(t => t.id === type)?.bg || 'bg-slate-500';
+    const getAbsenceColor = (type: string, status?: string) => {
+        if (status === 'REJECTED') return 'bg-slate-300 dark:bg-slate-700 text-slate-400 dark:text-slate-500';
+        return ABSENCE_TYPES.find(t => t.id === type)?.bg || 'bg-slate-500';
+    };
 
     const usedDays = vacations.reduce((acc, v) => {
-        if (v.type !== 'VACATION') return acc;
+        if (v.type !== 'VACATION' || v.status === 'REJECTED') return acc;
 
         const start = new Date(v.startDate);
         const end = new Date(v.endDate);
@@ -542,7 +549,7 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
                             className={`
                                 min-h-[100px] md:min-h-[140px] rounded-2xl flex flex-col items-center justify-center text-sm font-bold transition-all relative overflow-hidden group
                                 ${existing
-                                    ? `${getAbsenceColor(existing.type)} text-white shadow-lg shadow-${getAbsenceColor(existing.type).split('-')[1]}-500/20`
+                                    ? `${getAbsenceColor(existing.type, existing.status)} text-white dark:text-white shadow-lg ${existing.status === 'REJECTED' ? 'opacity-60 line-through' : ''}`
                                     : selected
                                         ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20 scale-105 z-10'
                                         : holiday
@@ -557,8 +564,13 @@ export default function VacationCalendar({ employeeId }: { employeeId: string })
                             {holiday && <Gift size={12} className="absolute top-2 left-2 opacity-70" />}
                             {existing && (
                                 <div className="absolute inset-0 flex flex-col items-center justify-end pb-2">
+                                    {existing.status && (
+                                        <div className={`text-[9px] font-black px-1 py-0.5 rounded backdrop-blur-sm mb-0.5 ${existing.status === 'APPROVED' ? 'bg-green-500/30 text-green-100' : existing.status === 'REJECTED' ? 'bg-slate-600/30 text-slate-200' : 'bg-yellow-500/30 text-yellow-100'}`}>
+                                            {existing.status === 'APPROVED' ? 'OK' : existing.status === 'REJECTED' ? 'X' : '??'}
+                                        </div>
+                                    )}
                                     {existing.type === 'MEDICAL_HOURS' && existing.reason && (
-                                        <div className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] font-black backdrop-blur-sm mb-1">
+                                        <div className="bg-white/20 px-1.5 py-0.5 rounded text-[10px] font-black backdrop-blur-sm">
                                             {existing.reason}h
                                         </div>
                                     )}
