@@ -3,7 +3,7 @@ import { VacationController } from '../controllers/VacationController';
 import { authorize, protect } from '../middlewares/authMiddleware';
 import { prisma } from '../lib/prisma';
 import { validateResource } from '../middlewares/validateResource';
-import { vacationCreateSchema, vacationStatusUpdateSchema, vacationIdParamSchema } from '../schemas/vacationSchemas';
+import { vacationCreateSchema, vacationStatusUpdateSchema, vacationIdParamSchema, vacationEmployeeParamSchema } from '../schemas/vacationSchemas';
 
 import multer from 'multer';
 
@@ -51,7 +51,7 @@ const resolveVacationTarget = async (req: any) => {
 router.get('/', authorize('vacation.manage', (req: any) => ({ companyId: req.user?.companyId })), VacationController.getAll);
 router.get('/my-vacations', VacationController.getMyVacations);
 router.get('/manage', authorize('vacation.manage', (req: any) => ({ companyId: req.user?.companyId })), VacationController.getManageableVacations);
-router.get('/employee/:employeeId', validateResource(vacationIdParamSchema), authorize('vacation.read', resolveVacationEmployeeTarget), VacationController.getByEmployee);
+router.get('/employee/:employeeId', validateResource(vacationEmployeeParamSchema), authorize('vacation.read', resolveVacationEmployeeTarget), VacationController.getByEmployee);
 router.post('/', validateResource(vacationCreateSchema), upload.single('attachment'), authorize('vacation.write', resolveVacationEmployeeTarget), VacationController.create);
 router.delete('/:id', validateResource(vacationIdParamSchema), authorize('vacation.write', resolveVacationTarget), VacationController.delete);
 router.put('/:id/status', validateResource(vacationIdParamSchema), validateResource(vacationStatusUpdateSchema), authorize('vacation.manage', resolveVacationTarget), VacationController.updateStatus);

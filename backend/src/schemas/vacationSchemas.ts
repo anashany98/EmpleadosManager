@@ -9,8 +9,9 @@ export const vacationCreateSchema = z.object({
         endDate: z.string().refine(val => !isNaN(Date.parse(val)), {
             message: 'Fecha de fin inválida'
         }),
-        type: z.enum(['VACATION', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID']).optional(),
+        type: z.enum(['VACATION', 'SICK', 'BIRTH', 'MEDICAL_HOURS', 'PERSONAL', 'OTHER', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID']).optional(),
         notes: z.string().max(1000).optional(),
+        reason: z.string().max(1000).optional(),
     }).refine(data => new Date(data.startDate) <= new Date(data.endDate), {
         message: 'La fecha de inicio debe ser anterior a la fecha de fin',
         path: ['endDate']
@@ -25,8 +26,9 @@ export const vacationUpdateSchema = z.object({
         endDate: z.string().refine(val => !isNaN(Date.parse(val)), {
             message: 'Fecha de fin inválida'
         }).optional(),
-        type: z.enum(['VACATION', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID']).optional(),
+        type: z.enum(['VACATION', 'SICK', 'BIRTH', 'MEDICAL_HOURS', 'PERSONAL', 'OTHER', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID']).optional(),
         notes: z.string().max(1000).optional(),
+        reason: z.string().max(1000).optional(),
     }).refine(data => {
         if (data.startDate && data.endDate) {
             return new Date(data.startDate) <= new Date(data.endDate);
@@ -48,6 +50,11 @@ export const vacationStatusUpdateSchema = z.object({
 export const vacationIdParamSchema = z.object({
     params: z.object({
         id: z.string().min(1, 'ID de vacaciones requerido'),
-        employeeId: z.string().min(1, 'ID de empleado requerido').optional(),
+    }),
+});
+
+export const vacationEmployeeParamSchema = z.object({
+    params: z.object({
+        employeeId: z.string().min(1, 'ID de empleado requerido'),
     }),
 });
