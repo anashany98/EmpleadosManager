@@ -1,87 +1,97 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-    ChevronDown,
-    ChevronRight,
-    LogOut,
+  ChevronDown,
+  ChevronRight,
+  LogOut,
+  X,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { navCategories, type NavCategory, type NavItem } from './sidebarNavigation';
 
 interface SidebarProps {
-    sidebarOpen: boolean;
-    setSidebarOpen: (open: boolean) => void;
-    darkMode: boolean;
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+  darkMode: boolean;
 }
 
 export function Sidebar({ sidebarOpen, setSidebarOpen, darkMode }: SidebarProps) {
-    const location = useLocation();
-    const { user, logout, canAccessFeature } = useAuth();
-    const [expandedCategories, setExpandedCategories] = useState<string[]>(['personal', 'management', 'time', 'operations', 'admin']);
+  const location = useLocation();
+  const { user, logout, canAccessFeature } = useAuth();
+  const [expandedCategories, setExpandedCategories] = useState<string[]>(['personal', 'management', 'time', 'operations', 'admin']);
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
-    const toggleCategory = (categoryId: string) => {
-        setExpandedCategories((prev) =>
-            prev.includes(categoryId)
-                ? prev.filter((id) => id !== categoryId)
-                : [...prev, categoryId]
-        );
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => {
+      window.removeEventListener('resize', handleResize);
     };
+  }, []);
 
-    const hasPermission = (item: NavItem): boolean => {
-        if (!user) return false;
-        return canAccessFeature(item.feature);
-    };
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories((prev) =>
+      prev.includes(categoryId)
+        ? prev.filter((id) => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
 
-    const hasVisibleItems = (category: NavCategory): boolean => category.items.some((item) => hasPermission(item));
+  const hasPermission = (item: NavItem): boolean => {
+    if (!user) return false;
+    return canAccessFeature(item.feature);
+  };
 
-    return (
-        <>
-            <AnimatePresence>
-                {sidebarOpen && window.innerWidth <= 768 && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setSidebarOpen(false)}
-                        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden"
-                        aria-hidden="true"
-                    />
-                )}
-            </AnimatePresence>
+  const hasVisibleItems = (category: NavCategory): boolean => category.items.some((item) => hasPermission(item));
 
-            <aside
-                id="sidebar"
-                className={`
-                    fixed md:relative z-50 h-full transition-all duration-300 border-r
-                    ${sidebarOpen ? 'w-64 translate-x-0' : 'w-0 -translate-x-full md:w-20 md:translate-x-0'}
-                    ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}
-                `}
-                role="navigation"
-                aria-label="Navegacion principal"
-            >
-                <div className={`p-4 md:p-6 border-b flex items-center justify-between ${darkMode ? 'border-slate-800' : 'border-slate-100'}`}>
-                    <div className={`font-bold flex items-center gap-2 overflow-hidden ${!sidebarOpen && 'md:hidden'}`}>
-                        <div className="w-8 h-8 shrink-0 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
-                            E
-                        </div>
-                        <span className={`text-base leading-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
-                            Empleados Manager
-                        </span>
-                    </div>
-                    <button
-                        onClick={() => setSidebarOpen(false)}
-                        className="md:hidden p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg"
-                        aria-label="Cerrar menu de navegacion"
-                    >
-                        <LogOut size={20} className="rotate-180" />
-                    </button>
-                </div>
+  return (
+    <>
+      <AnimatePresence>
+        {sidebarOpen && isMobile && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden"
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
 
-                <nav
-                    className="p-2 md:p-4 space-y-1 h-[calc(100vh-160px)] overflow-y-auto custom-scrollbar"
-                    aria-label="Menu principal"
-                >
+      <aside
+        id="sidebar"
+        className={`
+          fixed md:relative z-50 h-full transition-all duration-300 border-r
+          ${sidebarOpen ? 'w-64 translate-x-0' : 'w-0 -translate-x-full md:w-20 md:translate-x-0'}
+          ${darkMode ? 'bg-dark-card border-dark-border' : 'bg-white border-slate-200'}
+        `}
+        role="navigation"
+        aria-label="Navegacion principal"
+      >
+        <div className={`p-4 md:p-6 border-b flex items-center justify-between ${darkMode ? 'border-dark-border' : 'border-slate-100'}`}>
+          <div className={`font-bold flex items-center gap-2 overflow-hidden ${!sidebarOpen && 'md:hidden'}`}>
+            <div className="w-8 h-8 shrink-0 rounded-lg bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white shadow-lg shadow-brand-500/30">
+              E
+            </div>
+            <span className={`text-base leading-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>
+              Empleados Manager
+            </span>
+          </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="md:hidden p-2.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:text-slate-200 dark:hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 touch-active"
+            aria-label="Cerrar menu de navegacion"
+          >
+            <X size={22} />
+          </button>
+        </div>
+
+<nav
+          className="p-2 md:p-4 space-y-1 h-[calc(100vh-160px)] overflow-y-auto custom-scrollbar safe-bottom"
+          aria-label="Menu principal"
+        >
                     {navCategories.map((category) => {
                         if (!hasVisibleItems(category)) return null;
 
@@ -128,7 +138,7 @@ export function Sidebar({ sidebarOpen, setSidebarOpen, darkMode }: SidebarProps)
                                                             <Link
                                                                 to={item.path}
                                                                 className={`
-                                                                    flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group relative overflow-hidden
+                                                                    flex items-center gap-3 px-3 py-3 sm:py-2.5 rounded-xl transition-all duration-200 group relative overflow-hidden touch-active
                                                                     ${isActive
                                                                         ? (darkMode ? 'bg-blue-600/10 text-blue-400' : 'bg-blue-50 text-blue-700')
                                                                         : (darkMode ? 'text-slate-400 hover:bg-slate-800 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900')}
@@ -162,30 +172,30 @@ export function Sidebar({ sidebarOpen, setSidebarOpen, darkMode }: SidebarProps)
                     })}
                 </nav>
 
-                <div className={`absolute bottom-0 w-full p-4 border-t ${darkMode ? 'border-slate-800' : 'border-slate-100'} ${!sidebarOpen && 'hidden'}`}>
-                    <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
-                        <div
-                            className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 ring-2 ring-white/20 flex items-center justify-center text-[10px] text-white font-bold"
-                            aria-hidden="true"
-                        >
-                            {user?.email?.substring(0, 2).toUpperCase()}
-                        </div>
-                        <div className="flex-1 overflow-hidden">
-                            <p className={`text-sm font-semibold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>
-                                {user?.email.split('@')[0]}
-                            </p>
-                            <p className="text-xs text-slate-500 capitalize">{user?.role}</p>
-                        </div>
-                        <button
-                            onClick={logout}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-                            aria-label="Cerrar sesion"
-                            title="Cerrar sesion"
-                        >
-                            <LogOut size={16} />
-                        </button>
-                    </div>
-                </div>
+<div className={`absolute bottom-0 w-full p-3 md:p-4 border-t safe-bottom ${darkMode ? 'border-slate-800' : 'border-slate-100'} ${!sidebarOpen && 'hidden'}`}>
+        <div className={`flex items-center gap-3 px-3 py-2.5 rounded-xl ${darkMode ? 'bg-slate-800/50' : 'bg-slate-50'}`}>
+          <div
+            className="w-8 h-8 shrink-0 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-500 ring-2 ring-white/20 flex items-center justify-center text-[10px] text-white font-bold"
+            aria-hidden="true"
+          >
+            {user?.email?.substring(0, 2).toUpperCase()}
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <p className={`text-sm font-semibold truncate ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>
+              {user?.email.split('@')[0]}
+            </p>
+            <p className="text-xs text-slate-500 capitalize">{user?.role}</p>
+          </div>
+          <button
+            onClick={logout}
+            className="p-2 sm:p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 touch-active"
+            aria-label="Cerrar sesion"
+            title="Cerrar sesion"
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
+      </div>
             </aside>
         </>
     );

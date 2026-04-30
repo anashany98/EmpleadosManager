@@ -4,92 +4,144 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300;
+    @apply bg-slate-50 text-slate-900 dark:bg-dark-bg dark:text-slate-100 transition-colors duration-300;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
   }
 
-  /* Force consistent form element styling to prevent visibility issues */
+  /* Force consistent form element styling */
   input,
   select,
   textarea {
-    @apply text-slate-900 dark:text-white bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700;
+    @apply text-slate-900 dark:text-white bg-white dark:bg-dark-card border-slate-200 dark:border-dark-border;
+    font-size: 16px;
   }
 
-  /* Specifically fix option text visibility in Windows/Chrome dark mode */
   select option {
-    @apply bg-white text-slate-900 dark:bg-slate-800 dark:text-white;
+    @apply bg-white text-slate-900 dark:bg-dark-card dark:text-white;
   }
 
-  /* Better focus styles for accessibility */
   *:focus {
     @apply outline-none;
   }
 
   *:focus-visible {
-    @apply ring-2 ring-blue-500 ring-offset-2 dark:ring-offset-slate-900;
+    @apply ring-2 ring-brand-500 ring-offset-2 dark:ring-offset-dark-bg;
   }
 
-  /* Remove default focus ring for mouse users */
   *:focus:not(:focus-visible) {
     @apply outline-none ring-0 ring-offset-0;
   }
 
-  /* Smooth transitions for interactive elements */
   a, button, input, select, textarea {
-    @apply transition-colors duration-150;
+    @apply transition-all duration-200;
+  }
+
+  @media (pointer: coarse) {
+    button, a, [role="button"], input, select {
+      min-height: 44px;
+      min-width: 44px;
+    }
+  }
+
+  html, body {
+    overflow-x: hidden;
+    width: 100%;
   }
 }
 
 @layer components {
-  /* Card component base styles */
+  /* ============== SaaS Premium Card ============== */
   .card {
-    @apply bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm;
+    @apply bg-light-card dark:bg-dark-card rounded-xl border border-light-border dark:border-dark-border shadow-card transition-all duration-200;
+  }
+  
+  .card-hover {
+    @apply card hover:shadow-elevated hover:border-brand-300 dark:hover:border-brand-700 cursor-pointer;
   }
 
-  /* Button base styles */
+  /* ============== Buttons ============== */
   .btn {
-    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900;
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2;
   }
 
   .btn-primary {
-    @apply btn bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20;
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 shadow-lg shadow-brand-500/25;
   }
 
   .btn-secondary {
-    @apply btn border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800;
+    @apply btn border border-light-border dark:border-dark-border text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-dark-hover;
   }
 
   .btn-ghost {
-    @apply btn text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800;
+    @apply btn text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-dark-hover;
   }
 
   .btn-danger {
-    @apply btn bg-rose-50 dark:bg-rose-900/20 text-rose-600 hover:bg-rose-100 dark:hover:bg-rose-900/40;
+    @apply btn bg-rose-500 text-white hover:bg-rose-600 active:bg-rose-700;
   }
 
-  /* Input base styles */
+  .btn-sm {
+    @apply px-3 py-1.5 text-sm;
+  }
+
+  .btn-lg {
+    @apply px-6 py-3 text-lg;
+  }
+
+  /* ============== Inputs ============== */
   .input {
-    @apply w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-shadow;
+    @apply w-full px-4 py-2.5 rounded-lg border border-light-border dark:border-dark-border bg-light-card dark:bg-dark-card text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-2 focus:ring-brand-500 focus:border-brand-500 outline-none transition-all;
   }
 
-  /* Badge styles */
+  .input-error {
+    @apply input border-rose-500 focus:ring-rose-500;
+  }
+
+  /* ============== Badges ============== */
   .badge {
-    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border;
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold;
   }
 
   .badge-success {
-    @apply badge bg-emerald-50 border-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:border-emerald-900/30 dark:text-emerald-400;
+    @apply badge bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400;
   }
 
   .badge-warning {
-    @apply badge bg-amber-50 border-amber-100 text-amber-700 dark:bg-amber-900/20 dark:border-amber-900/30 dark:text-amber-400;
+    @apply badge bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400;
   }
 
   .badge-error {
-    @apply badge bg-rose-50 border-rose-100 text-rose-700 dark:bg-rose-900/20 dark:border-rose-900/30 dark:text-rose-400;
+    @apply badge bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-400;
   }
 
-  .badge-neutral {
-    @apply badge bg-slate-100 border-slate-200 text-slate-600 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400;
+  .badge-info {
+    @apply badge bg-brand-100 dark:bg-brand-900/30 text-brand-700 dark:text-brand-400;
+  }
+
+  /* ============== KPI Card ============== */
+  .kpi-card {
+    @apply card p-6 flex flex-col gap-2;
+  }
+
+  .kpi-value {
+    @apply text-3xl font-bold text-slate-900 dark:text-white tracking-tight;
+  }
+
+  .kpi-label {
+    @apply text-sm font-medium text-slate-500 dark:text-slate-400;
+  }
+
+  .kpi-change {
+    @apply text-sm font-medium flex items-center gap-1;
+  }
+
+  .kpi-change-positive {
+    @apply kpi-change text-emerald-600 dark:text-emerald-400;
+  }
+
+  .kpi-change-negative {
+    @apply kpi-change text-rose-600 dark:text-rose-400;
   }
 }
 
@@ -163,6 +215,53 @@
   /* Focus ring utility */
   .focus-ring {
     @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900;
+  }
+
+  /* Responsive table wrapper */
+  .table-responsive {
+    @apply overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-responsive table {
+    @apply min-w-[600px] md:min-w-0;
+  }
+
+  /* Mobile card list (alternative to tables) */
+  .mobile-card-list {
+    @apply block md:hidden space-y-3;
+  }
+
+  .mobile-card-list > * {
+    @apply bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 p-4;
+  }
+
+  /* Hide on mobile, show on desktop */
+  .hide-mobile {
+    @apply hidden md:block;
+  }
+
+  /* Hide on desktop, show on mobile */
+  .show-mobile {
+    @apply block md:hidden;
+  }
+
+  /* Mobile modal - full screen on small devices */
+  .modal-mobile-full {
+    @apply fixed inset-0 md:inset-auto md:relative md:max-w-md;
+  }
+
+  /* Bottom safe area for notched phones */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  /* Touch-friendly active state */
+  @media (pointer: coarse) {
+    .touch-active:active {
+      @apply scale-95 opacity-80;
+      transition: transform 0.1s ease, opacity 0.1s ease;
+    }
   }
 }
 
