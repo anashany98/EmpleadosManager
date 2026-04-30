@@ -207,26 +207,39 @@ function RRHHNotesSection({ employeeId, value, onChange, onSave, saving }: { emp
 
     return (
         <div className="space-y-6">
-            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 p-6 rounded-2xl">
-                <h3 className="text-lg font-bold text-amber-900 dark:text-amber-400 flex items-center gap-2 mb-4">
-                    <Save size={20} className="text-amber-600" /> Notas Administrativas Privadas
-                </h3>
-                <p className="text-sm text-amber-700 dark:text-amber-500 mb-4 italic">
-                    * Estas notas son estrictamente confidenciales y solo visibles por RRHH / Administración.
+            {/* Sticky Note Style - Windows Notes */}
+            <div className="sticky-note">
+                <div className="sticky-note-header">
+                    <Save size={18} className="text-amber-700 dark:text-amber-300" />
+                    <span className="sticky-note-title">Notas Privadas RRHH</span>
+                </div>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mb-3 italic">
+                    * Confidencial - Solo visible por RRHH
                 </p>
-                <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder="Escribe aquí notas sobre el empleado" className="w-full h-64 p-4 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-white dark:bg-slate-950 focus:ring-2 focus:ring-amber-500 outline-none text-slate-700 dark:text-slate-200" />
-                <div className="flex justify-end mt-4">
-                    <button onClick={handleSave} disabled={saving} className="px-6 py-2 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition-all flex items-center gap-2 disabled:opacity-50">
-                        {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
-                        Guardar Nota
+                <textarea 
+                    value={value} 
+                    onChange={(event) => onChange(event.target.value)} 
+                    placeholder="Escribe aquí tus notas..." 
+                    className="sticky-note-textarea" 
+                />
+                <div className="sticky-note-footer">
+                    <span>Última edición: {new Date().toLocaleDateString('es-ES')}</span>
+                    <button 
+                        onClick={handleSave} 
+                        disabled={saving} 
+                        className="px-3 py-1 bg-amber-600 text-white text-xs font-bold rounded hover:bg-amber-700 transition-all flex items-center gap-1 disabled:opacity-50"
+                    >
+                        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                        Guardar
                     </button>
                 </div>
             </div>
 
+            {/* Historial */}
             <div className="bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-2xl p-6">
                 <div className="flex items-center gap-2 mb-4">
                     <Clock size={18} className="text-slate-400" />
-                    <h4 className="text-base font-bold text-slate-900 dark:text-white">Historial de notas</h4>
+                    <h4 className="text-base font-bold text-slate-900 dark:text-white">Historial</h4>
                 </div>
 
                 {loadingHistory ? (
