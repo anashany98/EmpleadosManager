@@ -143,6 +143,39 @@
   .kpi-change-negative {
     @apply kpi-change text-rose-600 dark:text-rose-400;
   }
+
+  /* ============== Sticky Note (Windows Notes Style) ============== */
+  .sticky-note {
+    @apply relative p-4 rounded-lg shadow-lg transition-all duration-200;
+    background: linear-gradient(135deg, #fef9c3 0%, #fef08a 100%);
+  }
+
+  .dark .sticky-note {
+    background: linear-gradient(135deg, #422006 0%, #713f12 100%);
+  }
+
+  .sticky-note::before {
+    content: '📌';
+    @apply absolute -top-2 -left-2 text-xl leading-none;
+  }
+
+  .sticky-note-header {
+    @apply flex items-center gap-2 mb-3 pb-2 border-b border-amber-300 dark:border-amber-700;
+  }
+
+  .sticky-note-title {
+    @apply text-sm font-bold text-amber-900 dark:text-amber-100 uppercase tracking-wide;
+  }
+
+  .sticky-note-textarea {
+    @apply w-full h-40 p-3 rounded-md border-0 text-amber-950 dark:text-amber-50 placeholder:text-amber-600 dark:placeholder:text-amber-400 resize-none;
+    @apply bg-transparent focus:ring-2 focus:ring-amber-400 focus:outline-none font-handwriting;
+    background: transparent;
+  }
+
+  .sticky-note-footer {
+    @apply flex items-center justify-between mt-3 pt-2 border-t border-amber-300 dark:border-amber-700 text-xs text-amber-700 dark:text-amber-400;
+  }
 }
 
 @layer utilities {

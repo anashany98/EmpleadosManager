@@ -30,6 +30,9 @@ COPY package-lock.json ./package-lock.json
 COPY --from=deps /app/backend/node_modules ./backend/node_modules
 COPY --from=deps /app/backend/package.json ./backend/package.json
 
+# Expose backend dependencies at repo root for Prisma's secondary client generator
+RUN ln -s /app/backend/node_modules /app/node_modules
+
 # Copy shared modules and database schema
 COPY shared ./shared
 COPY database ./database
@@ -46,6 +49,7 @@ RUN useradd --create-home --shell /bin/bash appuser && \
 USER appuser
 
 # Generate Prisma Client
+ENV PRISMA_GENERATE_SKIP_AUTOINSTALL=1
 RUN cd backend && npx prisma generate --schema=../database/prisma/schema.prisma
 
 # Build TypeScript
@@ -93,7 +97,7 @@ RUN mkdir -p ./backend/uploads/documents ./backend/data && \
     chown -R appuser:appgroup /app/backend && \
     chmod -R 775 /app/backend/uploads
 
-# Copy entrypoint script (runs as root to fix volume permissions)
+# Use wrapper script to fix permissions at runtime
 COPY backend/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
@@ -111,6 +115,5 @@ LABEL org.opencontainers.image.title="EmpleadosManager Backend" \
       org.opencontainers.image.description="Payroll & HR Management API" \
       org.opencontainers.image.vendor="Your Company"
 
-# Use entrypoint to fix permissions at runtime (runs as root), then switches to appuser
-ENTRYPOINT ["/app/entrypoint.sh"]
+# Run directly without entrypoint wrapper (permissions fixed by COPY --chown)
 CMD ["node", "--require", "./instrument.js", "dist/backend/src/index.js"]
