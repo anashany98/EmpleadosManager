@@ -12,6 +12,7 @@ import { EmployeeDetailTabs } from '../features/employee-detail/components/Emplo
 import { EmployeeEditTabContent } from '../features/employee-detail/components/EmployeeEditTabContent';
 import { EmployeeViewTabContent } from '../features/employee-detail/components/EmployeeViewTabContent';
 import { useEmployeeDetail } from '../features/employee-detail/hooks/useEmployeeDetail';
+import { getEmployeeDisplayName } from '../utils/employeeDisplay';
 
 export default function EmployeeDetail(props: { employeeId?: string }) {
     const { id: paramId } = useParams<{ id: string }>();
@@ -35,12 +36,12 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
         return <div className="p-10 text-center animate-pulse text-slate-500">Cargando perfil...</div>;
     }
 
-    if (!detail.isEditing && detail.employeeView) {
-        return (
-            <div className="space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
-                <Link to="/employees" className="inline-flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-colors">
-                    <ArrowLeft size={16} /> Volver a Empleados
-                </Link>
+  if (!detail.isEditing && detail.employeeView) {
+    return (
+      <div className="space-y-4 sm:space-y-8 animate-in fade-in slide-in-from-right-4 duration-500">
+        <Link to="/employees" className="inline-flex items-center gap-2 text-slate-500 hover:text-blue-500 transition-colors touch-active">
+          <ArrowLeft size={16} /> <span className="text-sm">Volver a Empleados</span>
+        </Link>
 
                 <EmployeeDetailHeader
                     employee={detail.employeeView}
@@ -54,30 +55,35 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                     onEdit={detail.enterEditMode}
                 />
 
-                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800">
                     <EmployeeDetailTabs
                         tabs={getViewTabs(isAdmin, isGlobalAdmin)}
                         activeTab={detail.activeTab}
                         onChange={detail.setActiveTab}
                     />
 
-                    <div className="p-8">
-                        <AnimatePresence mode="wait">
-                            <motion.div
-                                key={detail.activeTab}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                                transition={{ duration: 0.2 }}
-                            >
-                                <EmployeeViewTabContent
+        <div className="p-4 sm:p-6 md:p-8">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={detail.activeTab}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+                <EmployeeViewTabContent
                                     activeTab={detail.activeTab}
                                     employeeId={employeeId}
                                     employeeView={detail.employeeView}
+                                    onVacationBalanceChange={(vacationBalance) => detail.setEmployeeView((current) => current ? {
+                                        ...current,
+                                        vacationDaysTotal: vacationBalance.totalEntitledDays,
+                                        vacationBalance
+                                    } : current)}
                                     privateNotes={detail.formData.privateNotes}
                                     saving={detail.saving}
                                     onPrivateNotesChange={(value) => detail.setFormData((current) => ({ ...current, privateNotes: value }))}
-                                    onPrivateNotesSave={() => detail.handleSubmit()}
+                                    onPrivateNotesSave={detail.handlePrivateNotesSave}
                                     onDocumentGenerated={() => detail.setActiveTab('expediente')}
                                 />
                             </motion.div>
@@ -89,14 +95,14 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                     isOpen={detail.showFaceEnroll}
                     onClose={() => detail.setShowFaceEnroll(false)}
                     employeeId={employeeId}
-                    employeeName={`${detail.employeeView.firstName} ${detail.employeeView.lastName}`}
+                    employeeName={getEmployeeDisplayName(detail.employeeView)}
                     onSuccess={() => toast.success('Biometría actualizada')}
                 />
 
                 {detail.showOnboardingWizard && (
                     <OnboardingWizard
                         employeeId={employeeId}
-                        employeeName={`${detail.employeeView.firstName} ${detail.employeeView.lastName}`}
+                        employeeName={getEmployeeDisplayName(detail.employeeView)}
                         onClose={() => detail.setShowOnboardingWizard(false)}
                         onSuccess={() => {
                             detail.setShowOnboardingWizard(false);
@@ -108,7 +114,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                 {detail.showOffboardingWizard && (
                     <OffboardingWizard
                         employeeId={employeeId}
-                        employeeName={`${detail.employeeView.firstName} ${detail.employeeView.lastName}`}
+                        employeeName={getEmployeeDisplayName(detail.employeeView)}
                         onClose={() => detail.setShowOffboardingWizard(false)}
                         onSuccess={() => {
                             detail.setShowOffboardingWizard(false);
@@ -140,16 +146,16 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
                 <EmployeeDetailTabs tabs={EDIT_TABS} activeTab={detail.activeTab} onChange={detail.setActiveTab} />
 
-                <div className="p-8 min-h-[400px]">
-                    <AnimatePresence mode="wait">
-                        <motion.div
-                            key={detail.activeTab}
-                            initial={{ opacity: 0, x: 10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -10 }}
-                            transition={{ duration: 0.2 }}
-                        >
-                            <form className="max-w-4xl mx-auto space-y-8">
+    <div className="p-4 sm:p-6 md:p-8 min-h-[400px]">
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={detail.activeTab}
+          initial={{ opacity: 0, x: 10 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -10 }}
+          transition={{ duration: 0.2 }}
+        >
+          <form className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
                                 <EmployeeEditTabContent
                                     activeTab={detail.activeTab}
                                     isNew={isNew}
@@ -157,6 +163,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                     formData={detail.formData}
                                     companies={detail.companies}
                                     allEmployees={detail.allEmployees}
+                                    fieldOptions={detail.fieldOptions}
                                     newContact={detail.newContact}
                                     onChange={detail.handleChange}
                                     setFormData={detail.setFormData}
