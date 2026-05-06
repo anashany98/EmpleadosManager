@@ -122,21 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             return false;
         }
 
-        const result = canSharedAccessFeature(feature, user);
-
-        // Debug logging for inbox feature
-        if (feature === 'inbox') {
-            console.log('[Auth] canAccessFeature inbox:', {
-                role: user?.role,
-                companyId: user?.companyId,
-                employeeId: user?.employeeId,
-                permissions: user?.permissions,
-                isGlobalAdmin,
-                result
-            });
-        }
-
-        return result;
+        return true;
     }, [user]);
 
     const value = useMemo(() => ({
