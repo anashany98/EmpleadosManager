@@ -10,6 +10,13 @@ function getConfiguredKioskSecret(): string | null {
 export function requireKioskSecretIfConfigured(req: Request, res: Response, next: NextFunction) {
     const configuredSecret = getConfiguredKioskSecret();
     if (!configuredSecret) {
+        if (process.env.NODE_ENV === 'production') {
+            return res.status(503).json({
+                status: 'error',
+                message: 'Kiosk secret is required in production'
+            });
+        }
+
         return next();
     }
 

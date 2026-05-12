@@ -1,120 +1,85 @@
-# Deployment Checklist - Coolify
+# Coolify Production Checklist
 
-## ✅ Pre-Deploy
+Use this checklist before every production deployment. All secret values must be configured in Coolify, not committed to Git.
 
-- [ ] Repositorio subito a Git (GitHub/GitLab)
-- [ ] Branch configurada en Coolify
-- [ ] Dominio SSL configurado
+## Required Environment Variables
 
----
+### Backend
 
-## 🔧 Coolify: PostgreSQL
-
-| Campo | Valor |
-|------|------|
-| Name | manager-db |
-| Version | 15-alpine |
-| Database | manager_db |
-| User | manager |
-| Password | [generar] |
-
----
-
-## 🔧 Coolify: Redis
-
-| Campo | Valor |
-|------|------|
-| Name | manager-redis |
-| Version | 7-alpine |
-
----
-
-## 🔧 Coolify: Backend
-
-| Campo | Valor |
-|------|------|
-| Name | manager-backend |
-| Build Pack | Dockerfile |
-| Dockerfile | backend/Dockerfile |
-| Port | 3000 |
-| Git | [tu repo] |
-| Branch | main |
-
-### Variables:
-```
+```env
 NODE_ENV=production
 PORT=3000
-DATABASE_URL=postgresql://manager:[PASS]@[HOST]:5432/manager_db
-JWT_SECRET=[generar 32+ chars]
-ENCRYPTION_KEY=[generar 32 chars exacta]
-CORS_ORIGIN=https://empleadosmanager.egeadev.cloud
-FRONTEND_URL=https://empleadosmanager.egeadev.cloud
+DATABASE_URL=postgresql://<user>:<password>@<postgres-host>:5432/<database>?schema=public
+POSTGRES_PASSWORD=<postgres-password>
+JWT_SECRET=<64-plus-character-random-secret>
+ENCRYPTION_KEY=<32-byte-random-key>
+KIOSK_DEVICE_SECRET=<64-plus-character-random-secret>
+RETURN_TOKENS=false
+CORS_ORIGIN=https://<production-domain>
+FRONTEND_URL=https://<production-domain>
 COOKIE_SECURE=true
-COOKIE_DOMAIN=.empleadosmanager.egeadev.cloud
+COOKIE_DOMAIN=<optional-cookie-domain>
 COOKIE_SAMESITE=strict
-REDIS_URL=[redis://default:PASSWORD@HOST:6379/0 - obtener de Coolify]
-PRISMA_QUERY_TIMEOUT=10000
-PRISMA_CONNECT_TIMEOUT=10000
+REDIS_URL=redis://default:<redis-password>@<redis-host>:6379/0
+REDIS_PASSWORD=<redis-password>
+STORAGE_PROVIDER=s3
+S3_ENDPOINT=<s3-endpoint>
+S3_REGION=<s3-region>
+S3_BUCKET=<s3-bucket>
+S3_ACCESS_KEY_ID=<s3-access-key-id>
+S3_SECRET_ACCESS_KEY=<s3-secret-access-key>
+BACKUP_UPLOAD=true
+BACKUP_ENCRYPTION_KEY=<32-byte-random-key>
 ```
 
----
+### Frontend
 
-## 🔧 Coolify: Frontend
+For same-origin deployment behind Nginx, keep `VITE_API_URL` empty. For split frontend/API domains, set it explicitly.
 
-| Campo | Valor |
-|------|------|
-| Name | manager-frontend |
-| Build Pack | Dockerfile |
-| Base Directory | / |
-| Dockerfile | frontend/Dockerfile |
-| Port | 80 |
-| Domain | empleadosmanager.egeadev.cloud |
-
-### Variables:
-```
-VITE_API_URL=https://api.empleadosmanager.egeadev.cloud
+```env
+VITE_API_URL=
+PUBLIC_API_URL=https://<production-domain>
 ```
 
----
+## Pre-Deploy
 
-## ⚠️ Notas Importantes
+- [ ] All secrets rotated after sanitizing repository documents.
+- [ ] `NODE_ENV=production`.
+- [ ] `COOKIE_SECURE=true`.
+- [ ] `RETURN_TOKENS=false`.
+- [ ] `BACKUP_ENCRYPTION_KEY` is non-empty.
+- [ ] `docker compose config` renders required variables and fails if any critical secret is missing.
+- [ ] `npm run db:status` is clean in staging.
+- [ ] Backend build, lint, tests, and high audit pass.
+- [ ] Frontend typecheck, build, lint, and tests pass.
+- [ ] Production database backup exists before running migrations.
 
-1. **Orden de creación:**
-   - 1. PostgreSQL
-   - 2. Redis  
-   - 3. Backend
-   - 4. Frontend
+## Deploy Order
 
-2. **Dependencias en Coolify:**
-   - Backend depends_on: PostgreSQL, Redis
-   - Frontend depends_on: Backend
+1. PostgreSQL.
+2. Redis.
+3. Backend.
+4. Frontend/Nginx.
+5. Backup worker or scheduled backup service.
 
-3. **Primera vez:**
-   - Backend necesita `npx prisma db push` o migrations
-   - Crear usuario admin inicial
+## Smoke Tests
 
----
+- [ ] `GET /` returns the frontend.
+- [ ] `GET /api/health` returns OK.
+- [ ] `GET /api/health/liveness` returns OK without DB/Redis dependency failures.
+- [ ] `GET /api/health/readiness` validates DB, Redis, and queues.
+- [ ] Admin login succeeds over HTTPS.
+- [ ] Employee list loads.
+- [ ] Employee create/edit flow works.
+- [ ] Documents upload/download works.
+- [ ] Vacation request flow works.
+- [ ] Reports page loads.
 
-## ✅ Post-Deploy
+## Do Not Deploy If
 
-- [ ] Health check: `/api/health`
-- [ ] SSL activo
-- [ ] Login funciona
-- [ ] Empleados cargan
-- [ ] Documentos subiendo
-- [ ] Backups configurados
-
----
-
-## 📞 Debug
-
-```bash
-# Ver logs
-coolify logs manager-backend
-
-# Reiniciar
-coolify restart manager-backend
-
-# Exec en container
-coolify exec manager-backend -- sh
-```
+- [ ] Any backend or frontend test is failing.
+- [ ] `prisma migrate status` is not clean in staging.
+- [ ] `NODE_ENV` renders as `development`.
+- [ ] `COOKIE_SECURE` renders as `false`.
+- [ ] Backend `npm audit --omit=dev --audit-level=high` reports HIGH or CRITICAL issues.
+- [ ] Any real secret, cookie, login response, or TLS private key is tracked by Git.

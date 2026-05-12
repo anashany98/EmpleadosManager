@@ -1,6 +1,18 @@
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 
+const EMPLOYEE_TIMELINE_AUDIT_ACTIONS = new Set([
+    'CREATE',
+    'UPDATE',
+    'DELETE',
+    'IMPORT',
+    'PRIVATE_NOTE_UPDATE',
+    'VACATION_BALANCE_UPDATE',
+    'DATA_CREATE',
+    'DATA_UPDATE',
+    'DATA_DELETE'
+]);
+
 export interface TimelineEvent {
     id: string;
     date: Date;
@@ -37,9 +49,6 @@ export const TimelineService = {
             throw new AppError('Empleado no encontrado', 404);
         }
 
-        // Restore type safety by asserting the result if needed or just handle the property access carefully
-        const employeeWithLogs = employee as any;
-
         const directLogs = await prisma.auditLog.findMany({
             where: { entity: 'EMPLOYEE', entityId: employeeId },
             include: { user: true }
@@ -59,35 +68,39 @@ export const TimelineService = {
         // Remove duplicates if any (though usually disjoint sets unless self-referencing)
         const uniqueLogs = Array.from(new Map(allLogs.map(item => [item.id, item])).values());
 
-        uniqueLogs.forEach(log => {
-            let title = log.action;
-            let description = '';
+        uniqueLogs
+            .filter(log => EMPLOYEE_TIMELINE_AUDIT_ACTIONS.has(log.action))
+            .forEach(log => {
+                let title = log.action;
+                let description: string;
 
-            try {
-                const meta = log.metadata ? JSON.parse(log.metadata) : {};
-                description = meta.info || meta.message || JSON.stringify(meta);
+                try {
+                    const meta = log.metadata ? JSON.parse(log.metadata) : {};
+                    description = meta.info || meta.message || JSON.stringify(meta);
 
-                // Humanize titles
-                if (log.action === 'UPDATE') title = 'Actualización de Perfil';
-                if (log.action === 'CREATE') title = 'Creación';
-                if (log.action === 'DELETE') title = 'Eliminación';
-                if (log.action.startsWith('BULK')) title = 'Acción Masiva: ' + log.action.replace('BULK_', '');
-                if (log.action === 'GENERATE_DOCUMENT') title = 'Documento Generado';
-                if (log.action === 'VIEW_SENSITIVE_DATA') title = 'Acceso a Datos Sensibles';
+                    // Humanize titles
+                    if (log.action === 'UPDATE' || log.action === 'DATA_UPDATE') title = 'Modificación de ficha';
+                    if (log.action === 'CREATE' || log.action === 'DATA_CREATE') title = 'Alta de ficha';
+                    if (log.action === 'DELETE' || log.action === 'DATA_DELETE') title = 'Eliminación de ficha';
+                    if (log.action === 'IMPORT') title = 'Importación de ficha';
+                    if (log.action === 'PRIVATE_NOTE_UPDATE') title = 'Actualización de nota RRHH';
+                    if (log.action === 'VACATION_BALANCE_UPDATE') title = 'Ajuste de vacaciones';
+                    if (log.action.startsWith('BULK')) title = 'Acción Masiva: ' + log.action.replace('BULK_', '');
+                    if (log.action === 'GENERATE_DOCUMENT') title = 'Documento Generado';
 
-            } catch (e) {
-                description = 'Sin detalles';
-            }
+                } catch {
+                    description = 'Sin detalles';
+                }
 
-            events.push({
-                id: log.id,
-                date: log.createdAt,
-                type: 'INCIDENT', // Use INCIDENT generic type or map specifically
-                title: title,
-                description: `${description} (Por: ${(log as any).user?.email || 'Sistema'})`,
-                category: 'AUDIT'
+                events.push({
+                    id: log.id,
+                    date: log.createdAt,
+                    type: 'INCIDENT',
+                    title,
+                    description: `${description} (Por: ${(log as any).user?.email || 'Sistema'})`,
+                    category: 'AUDIT'
+                });
             });
-        });
 
         // 1. Alta (Entry Date)
         if (employee.entryDate) {
@@ -125,12 +138,36 @@ export const TimelineService = {
 
         // 4. Vacaciones y Ausencias (como periodos)
         employee.vacations.forEach(vac => {
+            // Map vacation types to readable titles
+            const typeTitles: Record<string, string> = {
+                'VACATION': 'Vacaciones',
+                'SICK': 'Baja Médica',
+                'SICK_LEAVE': 'Baja Médica',
+                'BAJA_MEDICA': 'Baja Médica',
+                'MATERNITY': 'Maternidad',
+                'MATERNIDAD': 'Maternidad',
+                'PATERNITY': 'Paternidad',
+                'PATERNIDAD': 'Paternidad',
+                'BIRTH': 'Nacimiento',
+                'MEDICAL_HOURS': 'Horas Médicas',
+                'LACTANCIA': 'Lactancia',
+                'PERSONAL': 'Personal',
+                'PERSONAL_DAY': 'Día Personal',
+                'OTHER': 'Otro',
+                'OTROS': 'Otro',
+                'UNPAID': 'Sin Goce',
+                'TELETRABAJO': 'Teletrabajo',
+                'PERMISO_SINDICAL': 'Permiso Sindical'
+            };
+            
+            const title = typeTitles[vac.type || 'VACATION'] || 'Ausencia';
+            
             events.push({
                 id: vac.id,
                 date: vac.startDate,
                 endDate: vac.endDate,
                 type: 'VACATION',
-                title: vac.type === 'VACATION' ? 'Vacaciones' : 'Ausencia / Baja Médica',
+                title,
                 description: `${vac.days} días. ${vac.reason || ''}`,
                 status: vac.status,
                 category: vac.type

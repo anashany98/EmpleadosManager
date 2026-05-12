@@ -92,7 +92,7 @@ export default function OnboardingWizard({ employeeId, employeeName, onClose, on
                             <Sparkles className="text-blue-500" />
                             Onboarding Automático
                         </h2>
-                        <p className="text-sm text-slate-500">Configura el pack de bienvenida para <span className="font-bold text-slate-800 dark:text-slate-200">{employeeName}</span></p>
+                        <p className="text-sm text-slate-500">Configura el pack de bienvenida para <span className="font-bold text-slate-800 dark:text-slate-200">{employeeName || 'el empleado'}</span></p>
                     </div>
                     <button onClick={onClose} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors">
                         <X size={20} />
@@ -138,13 +138,13 @@ export default function OnboardingWizard({ employeeId, employeeName, onClose, on
                         </div>
 
                         <div className="pl-11 space-y-6">
-                            {/* Uniforms */}
+                            {/* Uniforms/Clothing/Tools */}
                             <div className="space-y-2">
                                 <label className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                                    <Shirt size={14} /> Uniformes
+                                    <ShieldCheck size={14} /> EPIs (Equipos de Protección Individual)
                                 </label>
                                 <div className="flex flex-wrap gap-2">
-                                    {inventory.filter(i => i.category === 'UNIFORM' && i.quantity > 0).map(item => (
+                                    {inventory.filter(i => (i.category === 'CLOTHING' || i.category === 'UNIFORM' || i.category === 'TOOL') && i.quantity > 0).map(item => (
                                         <button
                                             key={item.id}
                                             onClick={() => toggleArrayItem(item.id, selectedUniforms, setSelectedUniforms)}
@@ -153,17 +153,17 @@ export default function OnboardingWizard({ employeeId, employeeName, onClose, on
                                                     : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                                                 }`}
                                         >
-                                            {item.name} {item.size && `(${item.size})`}
+                                            {item.name} {item.size && `(${item.size})`} <span className="opacity-70">x{item.quantity}</span>
                                         </button>
                                     ))}
-                                    {inventory.filter(i => i.category === 'UNIFORM').length === 0 && <span className="text-sm text-slate-400 italic">Sin stock disponible</span>}
+                                    {inventory.filter(i => i.category === 'CLOTHING' || i.category === 'UNIFORM' || i.category === 'TOOL').length === 0 && <span className="text-sm text-slate-400 italic">Sin stock disponible</span>}
                                 </div>
                             </div>
 
-                            {/* Tech */}
+                            {/* Tech/Devices */}
                             <div className="space-y-2">
                                 <label className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                                    <Smartphone size={14} /> Tecnología
+                                    <Smartphone size={14} /> Tecnología (dispositivos)
                                 </label>
                                 <select
                                     className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium"
@@ -171,7 +171,7 @@ export default function OnboardingWizard({ employeeId, employeeName, onClose, on
                                     onChange={e => setSelectedTech(e.target.value)}
                                 >
                                     <option value="">-- Ninguno --</option>
-                                    {inventory.filter(i => i.category !== 'UNIFORM' && i.category !== 'EPI').map(item => (
+                                    {inventory.filter(i => i.category === 'DEVICE' || i.category === 'TECH').map(item => (
                                         <option key={item.id} value={item.id}>
                                             {item.name} (Stock: {item.quantity})
                                         </option>

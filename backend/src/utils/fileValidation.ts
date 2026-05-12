@@ -83,13 +83,7 @@ export function validateFileSignature(buffer: Buffer, extension: string): string
             if (slice.equals(sig.magicBytes)) {
                 return sig.mimeType;
             }
-        }
-    }
-
-    for (const sig of FILE_SIGNATURES) {
-        const slice = buffer.slice(sig.offset, sig.offset + sig.magicBytes.length);
-        if (slice.equals(sig.magicBytes)) {
-            return sig.mimeType;
+            throw new AppError(`El archivo tiene extensión ${extension} pero el contenido no coincide`, 400);
         }
     }
 

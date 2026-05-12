@@ -22,7 +22,12 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
     const [isSigned, setIsSigned] = useState(false);
     const [processing, setProcessing] = useState(false);
 
-    const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/uploads/${fileUrl}`;
+    // Handle both relative fileUrl paths and absolute download URLs
+    const fullUrl = fileUrl.startsWith('http')
+        ? fileUrl
+        : fileUrl.startsWith('/')
+            ? `${import.meta.env.VITE_API_URL || ''}${fileUrl}`
+            : `${import.meta.env.VITE_API_URL || ''}/uploads/${fileUrl}`;
 
     // Signature functions temporarily unused
     /*

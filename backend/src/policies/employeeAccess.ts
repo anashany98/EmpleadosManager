@@ -40,8 +40,10 @@ export function sanitizeEmployeeListItem(employee: EmployeeRecord) {
     const {
         socialSecurityNumber,
         iban,
-        annualGrossSalary,
-        monthlyGrossSalary,
+    annualGrossSalary,
+    monthlyGrossSalary,
+    annualTotalSalary,
+    monthlyTotalSalary,
         privateNotes,
         payrollRows,
         faceDescriptor,
@@ -52,8 +54,10 @@ export function sanitizeEmployeeListItem(employee: EmployeeRecord) {
 
     void socialSecurityNumber;
     void iban;
-    void annualGrossSalary;
-    void monthlyGrossSalary;
+  void annualGrossSalary;
+  void monthlyGrossSalary;
+  void annualTotalSalary;
+  void monthlyTotalSalary;
     void privateNotes;
     void payrollRows;
     void faceDescriptor;
@@ -74,8 +78,10 @@ export function sanitizeEmployeeDetail(employee: EmployeeRecord, includeSensitiv
         ...safeEmployee,
         socialSecurityNumber: EncryptionService.decrypt(employee.socialSecurityNumber),
         iban: EncryptionService.decrypt(employee.iban),
-        annualGrossSalary: employee.annualGrossSalary,
-        monthlyGrossSalary: employee.monthlyGrossSalary,
+    annualGrossSalary: employee.annualGrossSalary,
+    monthlyGrossSalary: employee.monthlyGrossSalary,
+    annualTotalSalary: employee.annualTotalSalary,
+    monthlyTotalSalary: employee.monthlyTotalSalary,
         privateNotes: employee.privateNotes,
         payrollRows: employee.payrollRows
     };

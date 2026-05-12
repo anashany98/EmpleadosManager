@@ -1,57 +1,113 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, X, Clock, Baby, Plane, Stethoscope, FileText, MoreHorizontal, Plus, Trash2, Calendar as CalendarIcon, Filter, Search, Gift } from 'lucide-react';
-import { api } from '../api/client';
-import { motion, AnimatePresence } from 'framer-motion';
-import { toast } from 'sonner';
-import { useAuth } from '../contexts/AuthContext';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+    Briefcase,
+    Calendar as CalendarIcon,
+    ChevronLeft,
+    ChevronRight,
+    Clock,
+    FileText,
+    Filter,
+    Gift,
+    MapPin,
+    Plus,
+    Search,
+    Trash2,
+    User,
+    X
+} from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { hasModuleAccess, normalizeActor } from '@shared/authz';
+import { api } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
+import { toast } from 'sonner';
+import { ABSENCE_TYPES } from '../features/self-service/vacations/types';
 
-// Extended absence types including events and holidays
-const ABSENCE_TYPES = {
-    VACATION: { label: 'Vacaciones', color: 'bg-emerald-500', text: 'text-emerald-700', bgSoft: 'bg-emerald-50', border: 'border-emerald-200', icon: Plane },
-    SICK: { label: 'Baja Médica', color: 'bg-rose-500', text: 'text-rose-700', bgSoft: 'bg-rose-50', border: 'border-rose-200', icon: Stethoscope },
-    BIRTH: { label: 'Nacimiento', color: 'bg-blue-500', text: 'text-blue-700', bgSoft: 'bg-blue-50', border: 'border-blue-200', icon: Baby },
-    MEDICAL_HOURS: { label: 'Médico', color: 'bg-indigo-500', text: 'text-indigo-700', bgSoft: 'bg-indigo-50', border: 'border-indigo-200', icon: Clock },
-    PERSONAL: { label: 'Personal', color: 'bg-amber-500', text: 'text-amber-700', bgSoft: 'bg-amber-50', border: 'border-amber-200', icon: FileText },
-    OTHER: { label: 'Otros', color: 'bg-slate-500', text: 'text-slate-700', bgSoft: 'bg-slate-50', border: 'border-slate-200', icon: MoreHorizontal },
-    BIRTHDAY: { label: 'Cumpleaños', color: 'bg-pink-500', text: 'text-pink-700', bgSoft: 'bg-pink-50', border: 'border-pink-200', icon: Gift },
-    EVENT: { label: 'Evento', color: 'bg-blue-500', text: 'text-blue-700', bgSoft: 'bg-blue-50', border: 'border-blue-200', icon: CalendarIcon },
-    HOLIDAY: { label: 'Festivo', color: 'bg-slate-500', text: 'text-slate-700', bgSoft: 'bg-slate-50', border: 'border-slate-200', icon: CalendarIcon },
-};
+type UnifiedEventType = 'vacation-own' | 'vacation-team' | 'birthday' | 'event' | 'holiday' | 'fichaje';
+type UnifiedEventSource = 'vacation' | 'calendar_event' | 'birthday' | 'holiday';
+type CalendarEventKind = 'EVENT' | 'HOLIDAY' | 'CORPORATE';
 
-// Interface for unified calendar events
-interface UnifiedEvent {
+interface UnifiedCalendarEvent {
     id: string;
+    entityId: string;
     title: string;
+    description?: string;
+    location?: string;
     start: string;
     end: string;
-    type: string;
+    allDay: boolean;
+    type: UnifiedEventType;
     color: string;
-    description?: string;
+    source: UnifiedEventSource;
+    editable: boolean;
+    deletable: boolean;
+    calendarEventType?: string;
+    employeeId?: string;
+    employeeName?: string;
+    employeeDepartment?: string | null;
 }
-
-interface EmployeeSummary {
-    id: string;
-    name: string;
-    department?: string | null;
-}
-
-interface VacationEvent {
-    id: string;
-    employeeId: string;
-    startDate: string;
-    endDate: string;
-    type: string;
-    reason?: string | null;
-    employee?: EmployeeSummary | null;
-}
-
-type CalendarModalEvent = VacationEvent | UnifiedEvent;
 
 interface ApiEnvelope<T> {
+    success?: boolean;
     data?: T;
+    message?: string;
 }
+
+interface CalendarLinkResponse {
+    url: string;
+}
+
+interface EventAppearance {
+    label: string;
+    shortLabel: string;
+    color: string;
+    pill: string;
+}
+
+const EVENT_APPEARANCE: Record<UnifiedEventType, EventAppearance> = {
+    'vacation-own': {
+        label: 'Mis vacaciones',
+        shortLabel: 'Vacaciones',
+        color: 'bg-emerald-500',
+        pill: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800'
+    },
+    'vacation-team': {
+        label: 'Vacaciones equipo',
+        shortLabel: 'Equipo',
+        color: 'bg-emerald-300',
+        pill: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-300 dark:border-emerald-800'
+    },
+    birthday: {
+        label: 'Cumpleaños',
+        shortLabel: 'Cumple',
+        color: 'bg-pink-500',
+        pill: 'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-900/20 dark:text-pink-300 dark:border-pink-800'
+    },
+    event: {
+        label: 'Evento',
+        shortLabel: 'Evento',
+        color: 'bg-blue-500',
+        pill: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800'
+    },
+    holiday: {
+        label: 'Festivo',
+        shortLabel: 'Festivo',
+        color: 'bg-slate-500',
+        pill: 'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
+    },
+    fichaje: {
+        label: 'Fichaje',
+        shortLabel: 'Fichaje',
+        color: 'bg-orange-500',
+        pill: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/20 dark:text-orange-300 dark:border-orange-800'
+    }
+};
+
+const CALENDAR_EVENT_TYPE_OPTIONS: Array<{ value: CalendarEventKind; label: string }> = [
+    { value: 'EVENT', label: 'Evento interno' },
+    { value: 'HOLIDAY', label: 'Festivo empresa' },
+    { value: 'CORPORATE', label: 'Corporativo' }
+];
 
 function extractEnvelopeData<T>(response: T | ApiEnvelope<T> | undefined, fallback: T): T {
     if (response && typeof response === 'object' && 'data' in response) {
@@ -61,440 +117,592 @@ function extractEnvelopeData<T>(response: T | ApiEnvelope<T> | undefined, fallba
     return (response ?? fallback) as T;
 }
 
+function formatDateInput(date: Date): string {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
+function getEventTitle(event: UnifiedCalendarEvent): string {
+    if (event.source === 'vacation' && event.employeeName) {
+        return event.employeeName;
+    }
+
+    return event.title;
+}
+
+function getEventSubtitle(event: UnifiedCalendarEvent): string {
+    if (event.source === 'vacation') {
+        return event.type === 'vacation-own' ? 'Vacaciones aprobadas' : 'Ausencia aprobada del equipo';
+    }
+
+    if (event.source === 'birthday' && event.employeeName) {
+        return event.employeeName;
+    }
+
+    if (event.source === 'calendar_event' && event.calendarEventType === 'CORPORATE') {
+        return 'Evento corporativo';
+    }
+
+    return EVENT_APPEARANCE[event.type]?.label || 'Evento';
+}
+
 export default function CalendarPage() {
     const { user } = useAuth();
-    const actor = normalizeActor(user);
-    const canManageAllVacations = Boolean(actor && actor.role !== 'employee' && hasModuleAccess(actor, 'vacations', 'write'));
+    const actor = useMemo(() => normalizeActor(user), [user]);
+    const canManageCalendarEvents = Boolean(actor && actor.role !== 'employee' && hasModuleAccess(actor, 'calendar', 'write'));
+    const canFilterByDepartment = Boolean(actor && actor.role !== 'employee');
 
-    // Core State
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [vacations, setVacations] = useState<VacationEvent[]>([]);
-    const [employees, setEmployees] = useState<EmployeeSummary[]>([]);
-    const [departments, setDepartments] = useState<string[]>([]);
-    
-    // Unified Calendar Events (birthdays, events, holidays)
-    const [unifiedEvents, setUnifiedEvents] = useState<UnifiedEvent[]>([]);
-    const [showUnifiedEvents, setShowUnifiedEvents] = useState(true);
-
-    // UI State
-    const [showModal, setShowModal] = useState(false);
+    const [events, setEvents] = useState<UnifiedCalendarEvent[]>([]);
+    const [departments, setDepartments] = useState<string[]>(['ALL']);
     const [selectedDepartment, setSelectedDepartment] = useState('ALL');
-    const [viewMode, setViewMode] = useState<'VIEW' | 'ADD'>('VIEW');
     const [searchTerm, setSearchTerm] = useState('');
+    const [loading, setLoading] = useState(true);
 
-    // Selection State
-    const [selectionStart, setSelectionStart] = useState<Date | null>(null);
-    const [selectedDateEvents, setSelectedDateEvents] = useState<CalendarModalEvent[]>([]);
+    const [showDayModal, setShowDayModal] = useState(false);
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    const [selectedDateEvents, setSelectedDateEvents] = useState<UnifiedCalendarEvent[]>([]);
 
-    // Form State
-    const [selectedEmployee, setSelectedEmployee] = useState('');
-    const [vacationType, setVacationType] = useState('VACATION');
-    const [reason, setReason] = useState('');
-    const [medicalHours, setMedicalHours] = useState('');
+    const [eventTitle, setEventTitle] = useState('');
+    const [eventDescription, setEventDescription] = useState('');
+    const [eventLocation, setEventLocation] = useState('');
+    const [eventType, setEventType] = useState<CalendarEventKind>('EVENT');
+    const [eventStartDate, setEventStartDate] = useState('');
+    const [eventEndDate, setEventEndDate] = useState('');
+    const [savingEvent, setSavingEvent] = useState(false);
+
     const [calendarLink, setCalendarLink] = useState('');
     const [showLinkModal, setShowLinkModal] = useState(false);
 
-    const fetchData = useCallback(async () => {
-        try {
-            if (canManageAllVacations) {
-                const [vacRes, empRes] = await Promise.all([
-                    api.get<ApiEnvelope<VacationEvent[]>>('/vacations'),
-                    api.get<ApiEnvelope<EmployeeSummary[]>>('/employees')
-                ]);
-                setVacations(extractEnvelopeData(vacRes, []));
-                const emps = extractEnvelopeData(empRes, []);
-                setEmployees(emps);
-                const depts = new Set(emps.map((employee) => employee.department).filter(Boolean) as string[]);
-                setDepartments(['ALL', ...Array.from(depts)]);
-            } else {
-                const vacRes = await api.get<ApiEnvelope<VacationEvent[]>>('/vacations/my-vacations');
-                setVacations(extractEnvelopeData(vacRes, []));
-                setEmployees([]);
-                setDepartments(['ALL']);
-            }
-            
-            // Fetch unified calendar events (birthdays, events, holidays)
-            try {
-                const start = format(startOfMonth(currentDate), 'yyyy-MM-dd');
-                const end = format(endOfMonth(currentDate), 'yyyy-MM-dd');
-                const unifiedRes = await api.get<ApiEnvelope<UnifiedEvent[]>>(`/calendar/unified?start=${start}&end=${end}`);
-                setUnifiedEvents(extractEnvelopeData(unifiedRes, []));
-            } catch (error) {
-                console.error('Error fetching unified events:', error);
-                setUnifiedEvents([]);
-            }
-        } catch (error) {
-            console.error(error);
-            toast.error('Error al cargar datos');
-        }
-    }, [canManageAllVacations, currentDate]);
+    const [showAbsenceModal, setShowAbsenceModal] = useState(false);
+    const [absenceEmployees, setAbsenceEmployees] = useState<{ id: string; name: string }[]>([]);
+    const [selectedAbsenceEmployee, setSelectedAbsenceEmployee] = useState('');
+    const [absenceStartDate, setAbsenceStartDate] = useState('');
+    const [absenceEndDate, setAbsenceEndDate] = useState('');
+    const [absenceType, setAbsenceType] = useState<string>('VACATION');
+    const [absenceNotes, setAbsenceNotes] = useState('');
+    const [savingAbsence, setSavingAbsence] = useState(false);
 
     useEffect(() => {
-        const run = async () => {
-            await fetchData();
-        };
+        if (canManageCalendarEvents) {
+            api.get('/employees').then((res: any) => {
+                const employees = res.data || res;
+                if (Array.isArray(employees)) {
+                    setAbsenceEmployees(employees.map((e: any) => ({
+                        id: e.id,
+                        name: `${e.firstName || ''} ${e.lastName || ''}`.trim()
+                    })));
+                }
+            }).catch(console.error);
+        }
+    }, [canManageCalendarEvents]);
 
-        void run();
-    }, [fetchData]);
-
-    // Derived Data
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
     const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
     const offset = firstDay === 0 ? 6 : firstDay - 1;
 
-    const filteredVacations = vacations.filter(v => {
-        if (selectedDepartment !== 'ALL' && v.employee?.department !== selectedDepartment) return false;
-        if (searchTerm && !v.employee?.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
-        return true;
-    });
-
-    // Get configuration for unified events
-    const getUnifiedEventConfig = (type: string) => {
-        switch (type) {
-            case 'birthday':
-                return ABSENCE_TYPES.BIRTHDAY;
-            case 'event':
-                return ABSENCE_TYPES.EVENT;
-            case 'holiday':
-                return ABSENCE_TYPES.HOLIDAY;
-            default:
-                return ABSENCE_TYPES.OTHER;
-        }
+    const resetEventForm = (baseDate: Date) => {
+        const normalizedDate = formatDateInput(baseDate);
+        setEventTitle('');
+        setEventDescription('');
+        setEventLocation('');
+        setEventType('EVENT');
+        setEventStartDate(normalizedDate);
+        setEventEndDate(normalizedDate);
     };
 
-    const getDayEvents = (day: number) => {
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+
+        try {
+            const start = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+            const end = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+
+            const requests: Array<Promise<unknown>> = [
+                api.get<ApiEnvelope<UnifiedCalendarEvent[]>>(`/calendar/unified?start=${start}&end=${end}`)
+            ];
+
+            if (canFilterByDepartment) {
+                requests.push(api.get<ApiEnvelope<string[]>>('/employees/departments'));
+            }
+
+            const [eventsResponse, departmentsResponse] = await Promise.all(requests);
+            setEvents(extractEnvelopeData(eventsResponse as ApiEnvelope<UnifiedCalendarEvent[]>, []));
+
+            if (canFilterByDepartment) {
+                const departmentValues = extractEnvelopeData(departmentsResponse as ApiEnvelope<string[]>, []);
+                setDepartments(['ALL', ...departmentValues]);
+            } else {
+                setDepartments(['ALL']);
+                setSelectedDepartment('ALL');
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error('Error al cargar el calendario global');
+            setEvents([]);
+        } finally {
+            setLoading(false);
+        }
+    }, [canFilterByDepartment, currentDate]);
+
+    useEffect(() => {
+        void fetchData();
+    }, [fetchData]);
+
+    const filteredEvents = useMemo(() => {
+        return events.filter((event) => {
+            const searchableText = `${event.title} ${event.employeeName || ''}`.toLowerCase();
+            if (searchTerm && !searchableText.includes(searchTerm.toLowerCase())) {
+                return false;
+            }
+
+            if (selectedDepartment !== 'ALL' && event.employeeDepartment && event.employeeDepartment !== selectedDepartment) {
+                return false;
+            }
+
+            return true;
+        });
+    }, [events, searchTerm, selectedDepartment]);
+
+    const getDayEvents = useCallback((day: number) => {
         const target = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
         const targetTime = target.getTime();
 
-        const vacationEvents = filteredVacations.filter(v => {
-            const start = new Date(v.startDate).setHours(0, 0, 0, 0);
-            const end = new Date(v.endDate).setHours(23, 59, 59, 999);
-            return targetTime >= start && targetTime <= end;
-        });
-        
-        // Include unified events (birthdays, events, holidays) based on toggle
-        const unifiedDayEvents = showUnifiedEvents ? unifiedEvents.filter(event => {
+        return filteredEvents.filter((event) => {
             const start = new Date(event.start).setHours(0, 0, 0, 0);
             const end = new Date(event.end).setHours(23, 59, 59, 999);
             return targetTime >= start && targetTime <= end;
-        }) : [];
-        
-        return [...vacationEvents, ...unifiedDayEvents];
-    };
+        });
+    }, [currentDate, filteredEvents]);
 
-    const upcomingEvents = filteredVacations
-        .filter(v => {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const end = new Date(v.endDate);
-            end.setHours(23, 59, 59, 999);
-            return end >= today;
-        })
-        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
-        .slice(0, 5);
+    const upcomingEvents = useMemo(() => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
 
-    const handleDayClick = (day: number) => {
+        return [...filteredEvents]
+            .filter((event) => {
+                const end = new Date(event.end);
+                end.setHours(23, 59, 59, 999);
+                return end >= today;
+            })
+            .sort((left, right) => new Date(left.start).getTime() - new Date(right.start).getTime())
+            .slice(0, 6);
+    }, [filteredEvents]);
+
+    const openDayModal = (day: number) => {
         const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-        setSelectionStart(date);
+        setSelectedDate(date);
         setSelectedDateEvents(getDayEvents(day));
-        setViewMode(getDayEvents(day).length > 0 ? 'VIEW' : 'ADD');
-        setShowModal(true);
+        setShowDayModal(true);
     };
 
-    const handleDelete = async (id: string) => {
-        if (await api.delete(`/vacations/${id}`)) {
-            toast.success('Evento eliminado');
-            void fetchData();
-            setShowModal(false);
+    const openCreateModal = (baseDate: Date) => {
+        resetEventForm(baseDate);
+        setSelectedDate(baseDate);
+        setShowDayModal(false);
+        setShowCreateModal(true);
+    };
+
+    const handleCreateEvent = async (event: React.FormEvent) => {
+        event.preventDefault();
+
+        // Validate date range
+        if (eventEndDate < eventStartDate) {
+            toast.error('La fecha de fin debe ser igual o posterior a la de inicio');
+            return;
+        }
+
+        setSavingEvent(true);
+
+        try {
+            const response = await api.post<ApiEnvelope<UnifiedCalendarEvent>>('/calendar/events', {
+                title: eventTitle.trim(),
+                description: eventDescription.trim() || undefined,
+                location: eventLocation.trim() || undefined,
+                startDate: new Date(eventStartDate).toISOString(),
+                endDate: new Date(eventEndDate).toISOString(),
+                type: eventType,
+                allDay: true,
+                isPublic: true
+            });
+
+            toast.success(response.message || 'Evento guardado');
+            setShowCreateModal(false);
+            await fetchData();
+        } catch (error) {
+            console.error(error);
+            toast.error(error instanceof Error ? error.message : 'Error al guardar el evento');
+        } finally {
+            setSavingEvent(false);
         }
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            const targetEmployeeId = canManageAllVacations ? selectedEmployee : user?.employeeId;
-            if (!targetEmployeeId) {
-                toast.error('No se pudo identificar el empleado');
-                return;
-            }
+    const handleCreateAbsence = async (event: React.FormEvent) => {
+        event.preventDefault();
 
+        // Validate date range
+        if (absenceEndDate < absenceStartDate) {
+            toast.error('La fecha de fin debe ser igual o posterior a la de inicio');
+            return;
+        }
+
+        if (!selectedAbsenceEmployee) {
+            toast.error('Selecciona un empleado');
+            return;
+        }
+
+        setSavingAbsence(true);
+        try {
             await api.post('/vacations', {
-                employeeId: targetEmployeeId,
-                startDate: selectionStart?.toISOString(),
-                endDate: selectionStart?.toISOString(), // Single day logic for now or expand later
-                type: vacationType,
-                reason
+                employeeId: selectedAbsenceEmployee,
+                startDate: absenceStartDate,
+                endDate: absenceEndDate,
+                type: absenceType,
+                notes: absenceNotes.trim() || undefined,
+                status: 'APPROVED'
             });
-            void fetchData();
-            setShowModal(false);
-            toast.success('Guardado');
-            // Reset form
-            if (canManageAllVacations) {
-                setSelectedEmployee('');
-            }
-            setReason('');
-        } catch {
-            toast.error('Error al guardar');
+
+            toast.success('Ausencia registrada correctamente');
+            setShowAbsenceModal(false);
+            setSelectedAbsenceEmployee('');
+            setAbsenceStartDate('');
+            setAbsenceEndDate('');
+            setAbsenceType('VACATION');
+            setAbsenceNotes('');
+            await fetchData();
+        } catch (error) {
+            console.error(error);
+            toast.error(error instanceof Error ? error.message : 'Error al registrar la ausencia');
+        } finally {
+            setSavingAbsence(false);
+        }
+    };
+
+    const openAbsenceModal = (date: Date) => {
+        const normalizedDate = formatDateInput(date);
+        setAbsenceStartDate(normalizedDate);
+        setAbsenceEndDate(normalizedDate);
+        setShowAbsenceModal(true);
+    };
+
+    const handleDeleteCalendarEvent = async (eventItem: UnifiedCalendarEvent) => {
+        try {
+            await api.delete(`/calendar/events/${eventItem.entityId}`);
+            toast.success('Evento eliminado');
+            const updatedEvents = selectedDateEvents.filter((item) => item.id !== eventItem.id);
+            setSelectedDateEvents(updatedEvents);
+            await fetchData();
+        } catch (error) {
+            console.error(error);
+            toast.error(error instanceof Error ? error.message : 'Error al eliminar el evento');
         }
     };
 
     const fetchCalendarLink = async () => {
         try {
-            const res = await api.get<ApiEnvelope<{ url: string }>>('/calendar/link');
-            const data = extractEnvelopeData(res, { url: '' });
-            if (data.url) {
-                setCalendarLink(data.url);
+            const response = await api.get<ApiEnvelope<CalendarLinkResponse>>('/calendar/link');
+            const payload = extractEnvelopeData(response, { url: '' });
+            if (payload.url) {
+                setCalendarLink(payload.url);
                 setShowLinkModal(true);
             }
-        } catch {
-            toast.error('Error al generar enlace');
+        } catch (error) {
+            console.error(error);
+            toast.error('No se pudo generar el enlace de sincronización');
         }
     };
 
     return (
-        <div className="h-[calc(100vh-100px)] flex flex-col xl:flex-row gap-6 animate-in fade-in duration-500 font-sans">
-            {/* Main Calendar Area */}
-            <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden">
-                {/* Toolbar */}
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 rounded-xl p-1">
-                            <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-sm"><ChevronLeft size={18} /></button>
-                            <span className="px-4 font-bold text-slate-700 dark:text-slate-200 min-w-[140px] text-center capitalize">
-                                {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
-                            </span>
-                            <button onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-sm"><ChevronRight size={18} /></button>
-                        </div>
-                        <button onClick={() => setCurrentDate(new Date())} className="px-4 py-2 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 text-xs font-bold rounded-xl hover:bg-indigo-100 transition-colors">
-                            Hoy
-                        </button>
-                        <button onClick={fetchCalendarLink} className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-sm border border-slate-200 dark:border-slate-700 text-xs font-bold">
-                            <Clock size={16} className="text-indigo-500" />
-                            Sincronizar
-                        </button>
-                        <button 
-                            onClick={() => setShowUnifiedEvents(!showUnifiedEvents)} 
-                            className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-colors shadow-sm border text-xs font-bold ${showUnifiedEvents ? 'bg-pink-50 border-pink-200 text-pink-600 dark:bg-pink-900/20 dark:border-pink-800 dark:text-pink-400' : 'bg-white border-slate-200 text-slate-500 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-400'}`}
-                        >
-                            <Gift size={16} className={showUnifiedEvents ? 'text-pink-500' : ''} />
-                            Eventos
-                        </button>
-                    </div>
-
-                    {canManageAllVacations && (
-                        <div className="flex items-center gap-3 w-full md:w-auto">
-                            <div className="relative group flex-1 md:flex-none">
-                                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                <input
-                                    type="text"
-                                    placeholder="Buscar empleado..."
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full md:w-48 pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all border border-transparent focus:border-indigo-500/50"
-                                />
-                            </div>
-                            <div className="relative">
-                                <select
-                                    value={selectedDepartment}
-                                    onChange={(e) => setSelectedDepartment(e.target.value)}
-                                    className="appearance-none pl-4 pr-10 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 outline-none cursor-pointer border border-transparent hover:border-slate-200 focus:border-indigo-500/50 transition-all"
-                                >
-                                    {departments.map(d => <option key={d} value={d}>{d === 'ALL' ? 'Todos los Departamentos' : d}</option>)}
-                                </select>
-                                <Filter size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            </div>
-                        </div>
-                    )}
+        <div className="space-y-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                    <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">Calendario global mixto</h1>
+                    <p className="mt-1 text-slate-500 dark:text-slate-400">
+                        Agenda de coordinación con vacaciones aprobadas, cumpleaños, eventos y festivos. Las solicitudes y aprobaciones viven en `Vacaciones`.
+                    </p>
                 </div>
 
-                {/* Grid */}
-                <div className="flex-1 p-6 overflow-y-auto">
-                    <div className="grid grid-cols-7 mb-4">
-                        {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((d, i) => (
-                            <div key={d} className={`text-center py-2 text-[11px] font-bold uppercase tracking-widest ${i >= 5 ? 'text-rose-500/70' : 'text-slate-400'}`}>
-                                {d.substring(0, 3)}
-                            </div>
-                        ))}
-                    </div>
-                    <div className="grid grid-cols-7 grid-rows-5 gap-2 h-full min-h-[500px]">
-                        {Array.from({ length: offset }).map((_, i) => <div key={`empty-${i}`} />)}
-                        {Array.from({ length: daysInMonth }).map((_, i) => {
-                            const day = i + 1;
-                            const events = getDayEvents(day);
-                            const isToday = day === new Date().getDate() && currentDate.getMonth() === new Date().getMonth();
-                            const isWeekend = (offset + day) % 7 === 0 || (offset + day) % 7 === 6;
+                <div className="flex flex-wrap items-center gap-3">
+                    {user?.employeeId && (
+                        <button onClick={fetchCalendarLink} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                            <Clock size={16} className="text-indigo-500" />
+                            Sincronizar mis vacaciones
+                        </button>
+                    )}
 
-                            return (
-                                <div key={day} onClick={() => handleDayClick(day)} className={`
-                                    relative p-2 rounded-2xl border transition-all cursor-pointer group flex flex-col gap-1
-                                    ${isToday ? 'bg-indigo-50/50 border-indigo-200 dark:bg-indigo-900/10 dark:border-indigo-800 shadow-inner' : 'bg-transparent border-slate-100 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700/50'}
-                                    ${isWeekend ? 'bg-slate-50/50 dark:bg-slate-900/50' : ''}
-                                `}>
-                                    <span className={`text-sm font-bold ${isToday ? 'text-indigo-600' : 'text-slate-700 dark:text-slate-300'}`}>{day}</span>
+                    {canManageCalendarEvents && (
+                        <button onClick={() => openCreateModal(selectedDate || new Date())} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700">
+                            <Plus size={16} />
+                            Nuevo evento
+                        </button>
+                    )}
 
-                                    {/* Events Preview */}
-                                    <div className="flex-1 flex flex-col gap-1 overflow-hidden">
-                                        {events.slice(0, 3).map((ev, idx) => {
-                                            // Check if it's a unified event (has type like 'birthday', 'event', 'holiday')
-                                            const conf = (ev.type === 'birthday' || ev.type === 'event' || ev.type === 'holiday') 
-                                                ? getUnifiedEventConfig(ev.type) 
-                                                : ABSENCE_TYPES[ev.type as keyof typeof ABSENCE_TYPES] || ABSENCE_TYPES.VACATION;
-                                            const eventTitle = ev.employee?.name ? `${ev.employee.name} - ${conf.label}` : ev.title || conf.label;
-                                            return (
-                                                <div key={idx} className={`h-1.5 rounded-full ${conf.color} w-full opacity-60 group-hover:opacity-100 transition-opacity`} title={eventTitle} />
-                                            );
-                                        })}
-                                        {events.length > 3 && (
-                                            <div className="text-[9px] font-bold text-slate-400 pl-0.5">+{events.length - 3}</div>
-                                        )}
-                                    </div>
-
-                                    {/* Add Button on Hover */}
-                                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shadow-sm">
-                                            <Plus size={12} strokeWidth={3} />
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
+                    {canManageCalendarEvents && (
+                        <button onClick={() => openAbsenceModal(selectedDate || new Date())} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-700">
+                            <User size={16} />
+                            Nueva ausencia
+                        </button>
+                    )}
                 </div>
             </div>
 
-            {/* Sidebar (Right) */}
-            <div className="w-full xl:w-80 flex flex-col gap-6 shrink-0">
-                {/* Upcoming Events Card */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl flex flex-col gap-4 flex-1 max-h-[500px]">
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        <CalendarIcon size={18} className="text-indigo-500" />
-                        Próximos Eventos
-                    </h3>
-                    <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                        {upcomingEvents.length === 0 ? (
-                            <p className="text-sm text-slate-400 italic">No hay eventos próximos.</p>
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-6">
+                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-xl overflow-hidden">
+                    <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex flex-col gap-4">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                            <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto">
+                                <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-800 rounded-xl p-1 shrink-0">
+                                    <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-sm">
+                                        <ChevronLeft size={18} />
+                                    </button>
+                                    <span className="px-3 sm:px-4 font-bold text-slate-700 dark:text-slate-200 min-w-[150px] text-center text-sm capitalize">
+                                        {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                                    </span>
+                                    <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} className="p-2 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-all shadow-sm">
+                                        <ChevronRight size={18} />
+                                    </button>
+                                </div>
+
+                                <button onClick={() => setCurrentDate(new Date())} className="px-4 py-2 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/20 dark:text-indigo-400 text-sm font-bold rounded-xl hover:bg-indigo-100 transition-colors shrink-0">
+                                    Hoy
+                                </button>
+                            </div>
+
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <label className="relative">
+                                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar persona o evento..."
+                                        value={searchTerm}
+                                        onChange={(inputEvent) => setSearchTerm(inputEvent.target.value)}
+                                        className="w-full sm:w-64 pl-9 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/20 border border-transparent focus:border-indigo-500/40"
+                                    />
+                                </label>
+
+                                {canFilterByDepartment && (
+                                    <label className="relative">
+                                        <Filter size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                        <select
+                                            value={selectedDepartment}
+                                            onChange={(inputEvent) => setSelectedDepartment(inputEvent.target.value)}
+                                            className="appearance-none min-w-[220px] pl-4 pr-10 py-2.5 bg-slate-50 dark:bg-slate-800 rounded-xl text-sm font-semibold text-slate-700 dark:text-slate-200 outline-none border border-transparent focus:border-indigo-500/40"
+                                        >
+                                            {departments.map((department) => (
+                                                <option key={department} value={department}>
+                                                    {department === 'ALL' ? 'Todos los departamentos' : department}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                            <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">
+                                <CalendarIcon size={14} className="text-indigo-500" />
+                                Solo se muestran vacaciones aprobadas en esta vista
+                            </span>
+                            <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">
+                                <FileText size={14} className="text-slate-500" />
+                                Solicitudes, adjuntos y estados viven en `Vacaciones`
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="p-3 sm:p-6">
+                        <div className="grid grid-cols-7 mb-3">
+                            {['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'].map((dayName, index) => (
+                                <div key={dayName} className={`text-center py-2 text-[11px] font-bold uppercase tracking-widest ${index >= 5 ? 'text-rose-500/70' : 'text-slate-400'}`}>
+                                    {dayName.substring(0, 3)}
+                                </div>
+                            ))}
+                        </div>
+
+                        {loading ? (
+                            <div className="min-h-[420px] rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 flex items-center justify-center text-slate-400">
+                                Cargando calendario...
+                            </div>
                         ) : (
-                            upcomingEvents.map((ev, idx) => {
-                                const conf = ABSENCE_TYPES[ev.type as keyof typeof ABSENCE_TYPES] || ABSENCE_TYPES.VACATION;
-                                const date = new Date(ev.startDate);
-                                return (
-                                    <div key={idx} className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 group hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition-all border border-transparent hover:border-slate-100 dark:hover:border-slate-700">
-                                        <div className={`w-10 h-10 rounded-xl ${conf.bgSoft} ${conf.text} flex items-center justify-center shrink-0`}>
-                                            <conf.icon size={18} />
-                                        </div>
-                                        <div className="min-w-0">
-                                            <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{ev.employee?.name}</p>
-                                            <p className="text-xs text-slate-500 font-medium">{date.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} • {conf.label}</p>
-                                        </div>
-                                    </div>
-                                );
-                            })
+                            <div className="grid grid-cols-7 gap-2 min-h-[520px] auto-rows-fr">
+                                {Array.from({ length: offset }).map((_, index) => (
+                                    <div key={`empty-${index}`} className="rounded-2xl bg-slate-50/60 dark:bg-slate-800/20" />
+                                ))}
+
+                                {Array.from({ length: daysInMonth }).map((_, index) => {
+                                    const day = index + 1;
+                                    const dayEvents = getDayEvents(day);
+                                    const isToday = day === new Date().getDate() && currentDate.getMonth() === new Date().getMonth() && currentDate.getFullYear() === new Date().getFullYear();
+                                    const weekdayPosition = offset + day;
+                                    const isWeekend = weekdayPosition % 7 === 0 || weekdayPosition % 7 === 6;
+
+                                    return (
+                                        <button
+                                            key={day}
+                                            type="button"
+                                            onClick={() => openDayModal(day)}
+                                            className={`relative min-h-[110px] rounded-2xl border p-2 text-left transition-all ${isToday ? 'border-indigo-300 bg-indigo-50/60 dark:border-indigo-700 dark:bg-indigo-900/20' : 'border-slate-100 bg-white hover:border-indigo-300 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:border-indigo-700'} ${isWeekend ? 'bg-slate-50/60 dark:bg-slate-900/60' : ''}`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <span className={`text-sm font-bold ${isToday ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'}`}>{day}</span>
+                                                {canManageCalendarEvents && (
+                                                    <span className="rounded-full bg-slate-100 p-1 text-slate-400 dark:bg-slate-800">
+                                                        <Plus size={12} />
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            <div className="mt-2 space-y-1 overflow-hidden">
+                                                {dayEvents.slice(0, 3).map((eventItem) => {
+                                                    const appearance = EVENT_APPEARANCE[eventItem.type] || EVENT_APPEARANCE.event;
+                                                    return (
+                                                        <div key={eventItem.id} className={`rounded-lg px-2 py-1 text-[10px] font-bold text-white truncate ${appearance.color}`} title={getEventTitle(eventItem)}>
+                                                            {getEventTitle(eventItem)}
+                                                        </div>
+                                                    );
+                                                })}
+                                                {dayEvents.length > 3 && (
+                                                    <div className="text-[10px] font-bold text-slate-400">+{dayEvents.length - 3} más</div>
+                                                )}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         )}
                     </div>
                 </div>
 
-                {/* Legend */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl">
-                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Leyenda</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                        {Object.entries(ABSENCE_TYPES).map(([key, conf]) => (
-                            <div key={key} className="flex items-center gap-2">
-                                <div className={`w-2.5 h-2.5 rounded-full ${conf.color}`} />
-                                <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{conf.label}</span>
-                            </div>
-                        ))}
+                <div className="space-y-6">
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl">
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                            <CalendarIcon size={18} className="text-indigo-500" />
+                            Próximos eventos
+                        </h3>
+
+                        <div className="mt-4 space-y-3">
+                            {upcomingEvents.length === 0 ? (
+                                <p className="text-sm text-slate-400 italic">No hay eventos próximos.</p>
+                            ) : (
+                                upcomingEvents.map((eventItem) => {
+                                    const appearance = EVENT_APPEARANCE[eventItem.type] || EVENT_APPEARANCE.event;
+                                    return (
+                                        <button
+                                            key={eventItem.id}
+                                            type="button"
+                                            onClick={() => {
+                                                setSelectedDate(new Date(eventItem.start));
+                                                setSelectedDateEvents([eventItem]);
+                                                setShowDayModal(true);
+                                            }}
+                                            className="w-full text-left rounded-2xl border border-slate-100 bg-slate-50/80 p-4 transition hover:border-indigo-200 hover:bg-white dark:border-slate-800 dark:bg-slate-800/40 dark:hover:border-indigo-800 dark:hover:bg-slate-800"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`h-10 w-10 rounded-2xl ${appearance.color} flex items-center justify-center text-white shrink-0`}>
+                                                    {eventItem.source === 'vacation' ? <User size={18} /> : eventItem.source === 'holiday' ? <Gift size={18} /> : <Briefcase size={18} />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-sm font-bold text-slate-900 dark:text-white">{getEventTitle(eventItem)}</p>
+                                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                                        {new Date(eventItem.start).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} · {getEventSubtitle(eventItem)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl">
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Leyenda</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                            {Object.entries(EVENT_APPEARANCE).map(([key, appearance]) => (
+                                <div key={key} className="flex items-center gap-2">
+                                    <div className={`w-3 h-3 rounded-full ${appearance.color}`} />
+                                    <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{appearance.label}</span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
 
-            {/* Modal */}
             <AnimatePresence>
-                {showModal && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden">
-                            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+                {showDayModal && selectedDate && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 p-0 sm:p-4 backdrop-blur-sm">
+                        <motion.div initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 32, opacity: 0 }} className="w-full max-w-2xl rounded-t-[2rem] bg-white shadow-2xl dark:bg-slate-900 sm:rounded-[2rem] max-h-[85vh] overflow-y-auto">
+                            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-800/50">
                                 <div>
                                     <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                                        {selectionStart?.toLocaleDateString('es-ES', { day: 'numeric', month: 'long' })}
+                                        {selectedDate.toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
                                     </h3>
-                                    <p className="text-xs font-bold text-indigo-500 uppercase tracking-wider">{viewMode === 'VIEW' ? 'Eventos' : 'Nueva Ausencia'}</p>
+                                    <p className="text-xs font-bold uppercase tracking-wider text-indigo-500">Eventos del día</p>
                                 </div>
-                                <div className="flex gap-2">
-                                    {viewMode === 'VIEW' && <button onClick={() => setViewMode('ADD')} className="p-2 bg-indigo-600 text-white rounded-xl hover:scale-105 transition-transform"><Plus size={16} /></button>}
-                                    <button onClick={() => setShowModal(false)} className="p-2 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl transition-colors"><X size={18} /></button>
+                                <div className="flex items-center gap-2">
+                                    {canManageCalendarEvents && (
+                                        <button onClick={() => openCreateModal(selectedDate)} className="rounded-xl bg-indigo-600 p-2 text-white transition hover:bg-indigo-700">
+                                            <Plus size={16} />
+                                        </button>
+                                    )}
+                                    <button onClick={() => setShowDayModal(false)} className="rounded-xl p-2 transition hover:bg-slate-200 dark:hover:bg-slate-700">
+                                        <X size={18} />
+                                    </button>
                                 </div>
                             </div>
 
-                            <div className="p-6">
-                                {viewMode === 'VIEW' ? (
-                                    <div className="space-y-3">
-                                        {selectedDateEvents.length === 0 ? <p className="text-center text-slate-400 text-sm">Sin eventos</p> : selectedDateEvents.map((ev, i) => {
-                                            const conf = ABSENCE_TYPES[ev.type as keyof typeof ABSENCE_TYPES] || ABSENCE_TYPES.VACATION;
-                                            return (
-                                                <div key={i} className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/30 rounded-2xl border border-slate-100 dark:border-slate-800">
-                                                    <div className={`w-8 h-8 rounded-full ${conf.color} flex items-center justify-center text-white`}><conf.icon size={14} /></div>
-                                                    <div className="flex-1">
-                                                        <p className="text-sm font-bold text-slate-900 dark:text-white">{ev.employee?.name}</p>
-                                                        <p className="text-xs text-slate-500">{conf.label}</p>
-                                                    </div>
-                                                    <button onClick={() => handleDelete(ev.id)} className="text-slate-400 hover:text-rose-500"><Trash2 size={16} /></button>
-                                                </div>
-                                            )
-                                        })}
+                            <div className="p-6 space-y-4">
+                                {selectedDateEvents.length === 0 ? (
+                                    <div className="rounded-2xl border border-dashed border-slate-200 p-10 text-center text-slate-400 dark:border-slate-700">
+                                        No hay eventos registrados este día.
                                     </div>
                                 ) : (
-                                    <form onSubmit={handleSubmit} className="space-y-4">
-                                        {canManageAllVacations ? (
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-bold text-slate-500 uppercase">Empleado</label>
-                                                <select required value={selectedEmployee} onChange={e => setSelectedEmployee(e.target.value)} className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-medium transition-all">
-                                                    <option value="">Seleccionar...</option>
-                                                    {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                                </select>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-bold text-slate-500 uppercase">Empleado</label>
-                                                <div className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-sm font-medium text-slate-600 dark:text-slate-300">
-                                                    Tu solicitud se registrará en tu perfil.
+                                    selectedDateEvents.map((eventItem) => {
+                                        const appearance = EVENT_APPEARANCE[eventItem.type] || EVENT_APPEARANCE.event;
+
+                                        return (
+                                            <article key={eventItem.id} className="rounded-2xl border border-slate-100 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-800/40">
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                    <div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <h4 className="text-base font-black text-slate-900 dark:text-white">{getEventTitle(eventItem)}</h4>
+                                                            <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-bold ${appearance.pill}`}>
+                                                                {getEventSubtitle(eventItem)}
+                                                            </span>
+                                                        </div>
+                                                        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                                                            {new Date(eventItem.start).toLocaleDateString('es-ES')} {eventItem.start !== eventItem.end ? `- ${new Date(eventItem.end).toLocaleDateString('es-ES')}` : ''}
+                                                        </p>
+                                                    </div>
+
+                                                    {canManageCalendarEvents && eventItem.deletable && eventItem.source === 'calendar_event' && (
+                                                        <button onClick={() => void handleDeleteCalendarEvent(eventItem)} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 dark:border-rose-900/40 dark:hover:bg-rose-900/20">
+                                                            <Trash2 size={16} />
+                                                            Eliminar
+                                                        </button>
+                                                    )}
                                                 </div>
-                                            </div>
-                                        )}
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
-                                            <div className="grid grid-cols-3 gap-2">
-                                                {Object.entries(ABSENCE_TYPES).map(([k, c]) => (
-                                                    <button type="button" key={k} onClick={() => setVacationType(k)} className={`p-2 rounded-xl border text-xs font-bold transition-all ${vacationType === k ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>{c.label}</button>
-                                                ))}
-                                            </div>
-                                        </div>
 
-                                        {vacationType === 'MEDICAL_HOURS' && (
-                                            <div className="space-y-1 animate-in fade-in slide-in-from-top-1">
-                                                <label className="text-xs font-bold text-indigo-500 uppercase">Horas Médicas</label>
-                                                <input
-                                                    type="number"
-                                                    step="0.5"
-                                                    value={medicalHours}
-                                                    onChange={(e) => setMedicalHours(e.target.value)}
-                                                    placeholder="Ej: 2.5"
-                                                    className="w-full p-3 rounded-xl bg-indigo-50/50 border-indigo-100 dark:bg-slate-800 dark:border-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold transition-all"
-                                                />
-                                            </div>
-                                        )}
+                                                {eventItem.description && (
+                                                    <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-700 dark:text-slate-200">
+                                                        {eventItem.description}
+                                                    </p>
+                                                )}
 
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-bold text-slate-500 uppercase">Observaciones</label>
-                                            <textarea
-                                                value={reason}
-                                                onChange={(e) => setReason(e.target.value)}
-                                                placeholder="Detalles opcionales..."
-                                                className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-medium transition-all resize-none h-20"
-                                            />
-                                        </div>
-
-                                        <button className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 hover:-translate-y-0.5 transition-all">Guardar Evento</button>
-                                    </form>
+                                                {eventItem.location && (
+                                                    <div className="mt-4 inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                                                        <MapPin size={15} />
+                                                        {eventItem.location}
+                                                    </div>
+                                                )}
+                                            </article>
+                                        );
+                                    })
                                 )}
                             </div>
                         </motion.div>
@@ -503,24 +711,199 @@ export default function CalendarPage() {
             </AnimatePresence>
 
             <AnimatePresence>
-                {showLinkModal && (
-                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-                        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden p-8 text-center space-y-6">
-                            <h3 className="text-xl font-black text-slate-900 dark:text-white">Sincroniza tu Calendario</h3>
-                            <p className="text-sm text-slate-500">Copia este enlace y añádelo como "Suscripción a URL" en Google Calendar, Outlook o Apple Calendar para ver tus vacaciones sincronizadas.</p>
-
-                            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                                <code className="flex-1 text-xs font-mono break-all text-left text-slate-600 dark:text-slate-400 select-all">{calendarLink}</code>
-                                <button onClick={() => { navigator.clipboard.writeText(calendarLink); toast.success('Enlace copiado'); }} className="p-2 bg-white dark:bg-slate-700 shadow-sm rounded-lg hover:text-indigo-600">
-                                    <FileText size={16} />
+                {showCreateModal && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-950/60 p-0 sm:p-4 backdrop-blur-sm">
+                        <motion.div initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 32, opacity: 0 }} className="w-full max-w-xl rounded-t-[2rem] bg-white shadow-2xl dark:bg-slate-900 sm:rounded-[2rem] max-h-[85vh] overflow-y-auto">
+                            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-800/50">
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900 dark:text-white">Nuevo evento de calendario</h3>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">Esta acción afecta al calendario global mixto, no al flujo de vacaciones.</p>
+                                </div>
+                                <button onClick={() => setShowCreateModal(false)} className="rounded-xl p-2 transition hover:bg-slate-200 dark:hover:bg-slate-700">
+                                    <X size={18} />
                                 </button>
                             </div>
 
-                            <button onClick={() => setShowLinkModal(false)} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700">Cerrar</button>
+                            <form onSubmit={handleCreateEvent} className="p-6 space-y-4">
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Título</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        value={eventTitle}
+                                        onChange={(inputEvent) => setEventTitle(inputEvent.target.value)}
+                                        className="w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none ring-0 transition focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-800"
+                                        placeholder="Ej: Jornada de seguridad, cierre de oficina..."
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Desde</label>
+                                        <input type="date" required value={eventStartDate} onChange={(inputEvent) => setEventStartDate(inputEvent.target.value)} className="w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-800" />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Hasta</label>
+                                        <input type="date" required value={eventEndDate} onChange={(inputEvent) => setEventEndDate(inputEvent.target.value)} className="w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-800" />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Tipo</label>
+                                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                        {CALENDAR_EVENT_TYPE_OPTIONS.map((option) => (
+                                            <button
+                                                key={option.value}
+                                                type="button"
+                                                onClick={() => setEventType(option.value)}
+                                                className={`rounded-xl border px-3 py-3 text-sm font-bold transition ${eventType === option.value ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300' : 'border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                                            >
+                                                {option.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Ubicación</label>
+                                    <input
+                                        type="text"
+                                        value={eventLocation}
+                                        onChange={(inputEvent) => setEventLocation(inputEvent.target.value)}
+                                        className="w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-800"
+                                        placeholder="Opcional"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Descripción</label>
+                                    <textarea
+                                        value={eventDescription}
+                                        onChange={(inputEvent) => setEventDescription(inputEvent.target.value)}
+                                        className="h-28 w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-800"
+                                        placeholder="Información adicional para el equipo"
+                                    />
+                                </div>
+
+                                <button type="submit" disabled={savingEvent} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50">
+                                    <Plus size={16} />
+                                    {savingEvent ? 'Guardando...' : 'Guardar evento'}
+                                </button>
+                            </form>
                         </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div >
+
+            <AnimatePresence>
+                {showAbsenceModal && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-950/60 p-0 sm:p-4 backdrop-blur-sm">
+                        <motion.div initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 32, opacity: 0 }} className="w-full max-w-xl rounded-t-[2rem] bg-white shadow-2xl dark:bg-slate-900 sm:rounded-[2rem] max-h-[85vh] overflow-y-auto">
+                            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 p-6 dark:border-slate-800 dark:bg-slate-800/50">
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900 dark:text-white">Nueva ausencia</h3>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400">Registrar ausencia o vacaciones para un empleado</p>
+                                </div>
+                                <button onClick={() => setShowAbsenceModal(false)} className="rounded-xl p-2 transition hover:bg-slate-200 dark:hover:bg-slate-700">
+                                    <X size={18} />
+                                </button>
+                            </div>
+
+                            <form onSubmit={handleCreateAbsence} className="p-6 space-y-4">
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Empleado</label>
+                                    <div className="relative">
+                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <select
+                                            required
+                                            value={selectedAbsenceEmployee}
+                                            onChange={(e) => setSelectedAbsenceEmployee(e.target.value)}
+                                            className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
+                                        >
+                                            <option value="">Selecciona empleado</option>
+                                            {absenceEmployees.map((emp) => (
+                                                <option key={emp.id} value={emp.id}>{emp.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Desde</label>
+                                        <input type="date" required value={absenceStartDate} onChange={(e) => setAbsenceStartDate(e.target.value)} className="w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:bg-slate-800" />
+                                    </div>
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Hasta</label>
+                                        <input type="date" required value={absenceEndDate} onChange={(e) => setAbsenceEndDate(e.target.value)} className="w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:bg-slate-800" />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Tipo de ausencia</label>
+                                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                        {Object.entries(ABSENCE_TYPES).map(([key, config]) => (
+                                            <button
+                                                key={key}
+                                                type="button"
+                                                onClick={() => setAbsenceType(key)}
+                                                className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${absenceType === key ? `border-emerald-500 ${config.bgSoft} ${config.text} dark:bg-emerald-900/20 dark:text-emerald-300` : 'border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'}`}
+                                            >
+                                                {config.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Notas</label>
+                                    <textarea
+                                        value={absenceNotes}
+                                        onChange={(e) => setAbsenceNotes(e.target.value)}
+                                        className="h-20 w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-emerald-500/20 dark:bg-slate-800"
+                                        placeholder="Opcional"
+                                    />
+                                </div>
+
+                                <button type="submit" disabled={savingAbsence} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50">
+                                    <User size={16} />
+                                    {savingAbsence ? 'Guardando...' : 'Registrar ausencia'}
+                                </button>
+                            </form>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {showLinkModal && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-slate-950/60 p-0 sm:p-4 backdrop-blur-sm">
+                        <motion.div initial={{ y: 32, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 32, opacity: 0 }} className="w-full max-w-lg rounded-t-[2rem] bg-white p-6 shadow-2xl dark:bg-slate-900 sm:rounded-[2rem] sm:p-8 text-center space-y-4">
+                            <h3 className="text-xl font-black text-slate-900 dark:text-white">Sincroniza mis vacaciones</h3>
+                            <p className="text-sm text-slate-500 dark:text-slate-400">
+                                Este enlace sincroniza tus vacaciones aprobadas y avisos operativos personales. No incluye cumpleaños ni eventos globales del calendario mixto.
+                            </p>
+
+                            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-100 p-3 dark:border-slate-700 dark:bg-slate-800">
+                                <code className="flex-1 break-all text-left text-xs text-slate-600 dark:text-slate-300">{calendarLink}</code>
+                                <button
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(calendarLink);
+                                        toast.success('Enlace copiado');
+                                    }}
+                                    className="rounded-lg bg-white p-2 text-slate-600 shadow-sm transition hover:text-indigo-600 dark:bg-slate-700 dark:text-slate-200"
+                                >
+                                    <FileText size={16} />
+                                </button>
+                            </div>
+
+                            <button onClick={() => setShowLinkModal(false)} className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700">
+                                Cerrar
+                            </button>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
     );
 }

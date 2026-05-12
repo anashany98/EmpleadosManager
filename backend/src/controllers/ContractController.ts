@@ -1,7 +1,6 @@
 import { Request, Response } from 'express';
 import { ContractService } from '../services/ContractService';
 import { ApiResponse } from '../utils/ApiResponse';
-import { AppError } from '../utils/AppError';
 import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('ContractController');

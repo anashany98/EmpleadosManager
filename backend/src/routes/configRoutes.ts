@@ -1,16 +1,22 @@
 import { Router } from 'express';
 import { ConfigController } from '../controllers/ConfigController';
-import { protect, restrictTo } from '../middlewares/authMiddleware';
+import { SmtpController } from '../controllers/SmtpController';
+import { protect, requireGlobalAdmin } from '../middlewares/authMiddleware';
 
 const router = Router();
 
 // Backup routes
-router.post('/backup', protect, restrictTo('admin'), ConfigController.createBackup);
-router.get('/backups', protect, restrictTo('admin'), ConfigController.getBackups);
-router.get('/backup/download', protect, restrictTo('admin'), ConfigController.downloadBackup);
+router.post('/backup', protect, requireGlobalAdmin, ConfigController.createBackup);
+router.get('/backups', protect, requireGlobalAdmin, ConfigController.getBackups);
+router.get('/backup/download', protect, requireGlobalAdmin, ConfigController.downloadBackup);
+
+// SMTP explicit routes (typed)
+router.get('/smtp', protect, requireGlobalAdmin, SmtpController.getSmtpConfig);
+router.post('/smtp', protect, requireGlobalAdmin, SmtpController.saveSmtpConfig);
+router.post('/smtp/test', protect, requireGlobalAdmin, SmtpController.testSmtpConfig);
 
 // Generic config routes
-router.get('/:key', protect, restrictTo('admin'), ConfigController.getConfig);
-router.post('/:key', protect, restrictTo('admin'), ConfigController.saveConfig);
+router.get('/:key', protect, requireGlobalAdmin, ConfigController.getConfig);
+router.post('/:key', protect, requireGlobalAdmin, ConfigController.saveConfig);
 
 export default router;

@@ -1,0 +1,268 @@
+﻿name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Job 1: Lint and Type Check (frontend & backend)
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            ${{ matrix.component }}/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd ${{ matrix.component }}
+          npm ci
+
+      - name: Run ESLint
+        if: matrix.component == 'backend'
+        run: |
+          cd backend
+          npm run lint
+
+      - name: Run ESLint
+        if: matrix.component == 'frontend'
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: TypeScript type check
+        if: matrix.component == 'backend'
+        run: |
+          cd backend
+          npx tsc --noEmit
+
+      - name: TypeScript type check (frontend)
+        if: matrix.component == 'frontend'
+        run: |
+          cd frontend
+          npx tsc --noEmit
+
+  # Job 2: Backend Tests with Coverage
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          npm ci
+
+      - name: Generate Prisma Client
+        run: |
+          cd backend
+          npx prisma generate --schema=../database/prisma/schema.prisma
+
+      - name: Setup test database
+        run: |
+          cd backend
+          npx prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
+
+      - name: Run tests with coverage
+        run: |
+          cd backend
+          npm run test:coverage
+        env:
+          JWT_SECRET: test-jwt-secret-for-ci
+          ENCRYPTION_KEY: 12345678901234567890123456789012
+          NODE_ENV: test
+          DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          COOKIE_SECURE: false
+          COOKIE_SAMESITE: lax
+          RETURN_TOKENS: false
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./backend/coverage/*.json
+          flags: backend
+          name: backend-coverage
+          fail_ci_if_error: false
+
+  # Job 3: Frontend Tests
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Run tests
+        run: |
+          cd frontend
+          npm run test:coverage -- --run
+        env:
+          VITE_API_URL: http://localhost:3000/api
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./frontend/coverage/*.json
+          flags: frontend
+          name: frontend-coverage
+          fail_ci_if_error: false
+
+  # Job 4: Build Docker Images
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, backend-tests, frontend-tests]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub (optional)
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Build and push backend image
+        if: github.event_name != 'pull_request'
+        run: |
+          docker build -f backend/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-backend:${{ github.sha }} -t ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-backend:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-backend:${{ github.sha }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-backend:latest
+
+      - name: Build and push frontend image
+        if: github.event_name != 'pull_request'
+        run: |
+          docker build -f frontend/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-frontend:${{ github.sha }} -t ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-frontend:latest .
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-frontend:${{ github.sha }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-frontend:latest
+
+      - name: Build images (PR only - no push)
+        if: github.event_name == 'pull_request'
+        run: |
+          docker build -f backend/Dockerfile -t rrhh-backend:${{ github.sha }} .
+          docker build -f frontend/Dockerfile -t rrhh-frontend:${{ github.sha }} .
+
+  # Job 5: Security Scanning
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+      - name: Check for secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
+          head: HEAD
+          extra_args: --debug --only-verified
+
+  # Job 6: Deploy to Coolify (only on push to main)
+  deploy:
+    name: Deploy to Coolify
+    runs-on: ubuntu-latest
+    needs: [build, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Coolify via Webhook
+        run: |
+          curl -X POST ${{ secrets.COOLIFY_WEBHOOK_URL }}
+        env:
+          COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+

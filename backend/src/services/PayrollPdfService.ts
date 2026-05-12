@@ -1,6 +1,5 @@
-const PDFDocument = require('pdfkit');
+import PDFDocument from 'pdfkit';
 import { Response } from 'express';
-import path from 'path';
 
 interface PayrollData {
     id: string;
@@ -37,8 +36,7 @@ interface PayrollData {
 }
 
 export const PayrollPdfService = {
-    generate: async (res: Response, data: PayrollData): Promise<Buffer> => {
-        return new Promise((resolve, reject) => {
+    generate: async (res: Response, data: PayrollData): Promise<Buffer> => new Promise((resolve, reject) => {
             const doc = new PDFDocument({ margin: 50, size: 'A4' });
             const buffers: any[] = [];
 
@@ -169,13 +167,14 @@ export const PayrollPdfService = {
                 // if we are past the footer area, add page
                 doc.addPage();
             }
-            doc.fontSize(8).text('Documento generado automáticamente por NominasApp', 50, footerY, { align: 'center', color: 'grey' });
+            doc.fontSize(8).fillColor('grey').text('Documento generado automáticamente por NominasApp', 50, footerY, { align: 'center' });
 
             doc.end();
-        });
-    }
+        })
 };
 
-function formatMoney(amount: number) {
+function _formatMoney(amount: number) {
     return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 }
+
+void _formatMoney;

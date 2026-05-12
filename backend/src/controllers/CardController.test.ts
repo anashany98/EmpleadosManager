@@ -20,6 +20,9 @@ vi.mock('../lib/prisma', () => ({
             create: vi.fn(),
             update: vi.fn(),
             delete: vi.fn()
+        },
+        employee: {
+            findUnique: vi.fn()
         }
     }
 }));
@@ -55,9 +58,67 @@ describe('CardController', () => {
     });
 
     it('should delete a card', async () => {
+        vi.mocked(prisma.card.findUnique).mockResolvedValue({ id: '1' } as never);
         vi.mocked(prisma.card.delete).mockResolvedValue({ id: '1' } as never);
 
         const res = await request(app).delete('/api/cards/1');
         expect(res.status).toBe(200);
+    });
+
+    it('should sanitize readonly and relation fields when updating a card assignment', async () => {
+        vi.mocked(prisma.card.findUnique).mockResolvedValue({
+            id: '1',
+            companyId: null,
+            employee: null
+        } as never);
+        vi.mocked(prisma.employee.findUnique).mockResolvedValue({
+            companyId: 'company-1'
+        } as never);
+        vi.mocked(prisma.card.update).mockResolvedValue({
+            id: '1',
+            alias: 'Visa Juan',
+            panLast4: '1234',
+            provider: 'VISA',
+            type: 'CREDIT',
+            employeeId: 'emp-1',
+            companyId: 'company-1'
+        } as never);
+
+        const res = await request(app).put('/api/cards/1').send({
+            id: '1',
+            alias: 'Visa Juan',
+            panLast4: '1234',
+            provider: 'VISA',
+            type: 'CREDIT',
+            limit: 0,
+            currency: 'EUR',
+            expiryDate: null,
+            employeeId: 'emp-1',
+            companyId: null,
+            status: 'ACTIVE',
+            pin: null,
+            createdAt: '2026-04-23T13:22:16.108Z',
+            updatedAt: '2026-04-23T13:22:16.108Z',
+            employee: null,
+            company: null
+        });
+
+        expect(res.status).toBe(200);
+        expect(prisma.card.update).toHaveBeenCalledWith({
+            where: { id: '1' },
+            data: {
+                alias: 'Visa Juan',
+                panLast4: '1234',
+                provider: 'VISA',
+                type: 'CREDIT',
+                limit: 0,
+                currency: 'EUR',
+                expiryDate: null,
+                employeeId: 'emp-1',
+                companyId: 'company-1',
+                status: 'ACTIVE',
+                pin: null
+            }
+        });
     });
 });

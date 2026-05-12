@@ -2,13 +2,31 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { createLogger } from '../services/LoggerService';
+import { AuthenticatedRequest } from '../types/express';
+import { AppError } from '../utils/AppError';
+import { resolveAuthorizedCompanyId } from '../utils/companyAccess';
 
 const log = createLogger('InsightController');
 
+const getCompanyScope = (req: Request): string | undefined => {
+    const user = (req as AuthenticatedRequest).user;
+    return resolveAuthorizedCompanyId(user, req.query.companyId as string | undefined);
+};
+
+const respondWithError = (res: Response, error: unknown, logMessage: string, fallbackMessage: string) => {
+    log.error({ error }, logMessage);
+
+    if (error instanceof AppError) {
+        return ApiResponse.error(res, error.message, error.statusCode);
+    }
+
+    return ApiResponse.error(res, fallbackMessage, 500);
+};
+
 export class InsightController {
     async getDashboardInsights(req: Request, res: Response) {
-        const { companyId } = req.query;
         try {
+            const companyId = getCompanyScope(req);
             const whereClause: any = { active: true };
             if (companyId) whereClause.companyId = String(companyId);
 
@@ -144,7 +162,7 @@ export class InsightController {
                 if (!emp.entryDate) return false;
                 const entry = new Date(emp.entryDate);
                 const currentYear = now.getFullYear();
-                let anniversary = new Date(currentYear, entry.getMonth(), entry.getDate());
+                const anniversary = new Date(currentYear, entry.getMonth(), entry.getDate());
                 if (anniversary < now) {
                     anniversary.setFullYear(currentYear + 1);
                 }
@@ -162,14 +180,14 @@ export class InsightController {
             }
 
             return ApiResponse.success(res, insights);
-        } catch (error: any) {
-            log.error({ error }, 'Error generating insights');
-            return ApiResponse.error(res, 'Error al generar insights', 500);
+        } catch (error) {
+            return respondWithError(res, error, 'Error generating insights', 'Error al generar insights');
         }
     }
 
     async getDepartmentAbsences(req: Request, res: Response) {
         try {
+            const companyId = getCompanyScope(req);
             const today = new Date();
             const firstDay = today.getDate() - today.getDay() + 1;
             const lastDay = firstDay + 6;
@@ -183,7 +201,8 @@ export class InsightController {
                 where: {
                     OR: [
                         { startDate: { lte: sunday }, endDate: { gte: monday } }
-                    ]
+                    ],
+                    ...(companyId ? { employee: { companyId } } : {})
                 },
                 include: {
                     employee: true
@@ -202,17 +221,17 @@ export class InsightController {
             })).sort((a, b) => b.count - a.count);
 
             return ApiResponse.success(res, result);
-        } catch (error: any) {
-            log.error({ error }, 'Error fetching absences');
-            return ApiResponse.error(res, 'Error al obtener ausencias', 500);
+        } catch (error) {
+            return respondWithError(res, error, 'Error fetching absences', 'Error al obtener ausencias');
         }
     }
 
     async getUpcomingBirthdays(req: Request, res: Response) {
         try {
+            const companyId = getCompanyScope(req);
             const currentMonth = new Date().getMonth() + 1;
             const employees = await prisma.employee.findMany({
-                where: { active: true },
+                where: { active: true, ...(companyId ? { companyId } : {}) },
                 select: {
                     id: true,
                     firstName: true,
@@ -231,20 +250,20 @@ export class InsightController {
             });
 
             return ApiResponse.success(res, upcoming);
-        } catch (error: any) {
-            log.error({ error }, 'Error fetching birthdays');
-            return ApiResponse.error(res, 'Error al obtener cumpleaños', 500);
+        } catch (error) {
+            return respondWithError(res, error, 'Error fetching birthdays', 'Error al obtener cumpleaños');
         }
     }
 
     async getUpcomingCelebrations(req: Request, res: Response) {
         try {
+            const companyId = getCompanyScope(req);
             const today = new Date();
             const threshold = new Date();
             threshold.setDate(today.getDate() + 30); // Próximos 30 días
 
             const employees = await prisma.employee.findMany({
-                where: { active: true },
+                where: { active: true, ...(companyId ? { companyId } : {}) },
                 select: {
                     id: true,
                     name: true,
@@ -302,7 +321,7 @@ export class InsightController {
                             date: thisYearAnniv,
                             originalDate: emp.entryDate,
                             type: 'ANNIVERSARY',
-                            years: years,
+                            years,
                             description: `${years} ${years === 1 ? 'año' : 'años'} en la empresa`
                         });
                     }
@@ -312,14 +331,15 @@ export class InsightController {
             celebrations.sort((a, b) => a.date.getTime() - b.date.getTime());
 
             return ApiResponse.success(res, celebrations);
-        } catch (error: any) {
-            log.error({ error }, 'Error fetching celebrations');
-            return ApiResponse.error(res, 'Error al obtener celebraciones', 500);
+        } catch (error) {
+            return respondWithError(res, error, 'Error fetching celebrations', 'Error al obtener celebraciones');
         }
     }
     async getTurnoverRate(req: Request, res: Response) {
         // (Leavers / ((Start + End)/2)) * 100
         try {
+            const companyId = getCompanyScope(req);
+            const companyFilter = companyId ? { companyId } : {};
             const now = new Date();
             const startOfPeriod = new Date();
             startOfPeriod.setFullYear(now.getFullYear() - 1); // Last 12 months
@@ -327,6 +347,7 @@ export class InsightController {
             // Active at start: (Entry < Start) AND (Exit is NULL OR Exit > Start)
             const startCount = await prisma.employee.count({
                 where: {
+                    ...companyFilter,
                     entryDate: { lte: startOfPeriod },
                     OR: [
                         { exitDate: null },
@@ -338,6 +359,7 @@ export class InsightController {
             // Active at end: (Entry < Now) AND (Exit is NULL OR Exit > Now)
             const endCount = await prisma.employee.count({
                 where: {
+                    ...companyFilter,
                     entryDate: { lte: now },
                     OR: [
                         { exitDate: null },
@@ -349,6 +371,7 @@ export class InsightController {
             // Leavers: Exit between Start and Now
             const leavers = await prisma.employee.count({
                 where: {
+                    ...companyFilter,
                     exitDate: {
                         gte: startOfPeriod,
                         lte: now
@@ -366,20 +389,22 @@ export class InsightController {
                 period: 'Últimos 12 meses'
             });
 
-        } catch (error: any) {
-            log.error({ error }, 'Error calculating turnover');
-            return ApiResponse.error(res, 'Error al calcular rotación', 500);
+        } catch (error) {
+            return respondWithError(res, error, 'Error calculating turnover', 'Error al calcular rotación');
         }
     }
 
     async getAbsenteeismRate(req: Request, res: Response) {
         // (Total Absence Days / Total Workable Days) * 100
         try {
+            const companyId = getCompanyScope(req);
             const now = new Date();
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
             const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-            const totalEmployees = await prisma.employee.count({ where: { active: true } });
+            const totalEmployees = await prisma.employee.count({
+                where: { active: true, ...(companyId ? { companyId } : {}) }
+            });
 
             // Approximate working days in month (Total Emps * 21 days)
             // This is a simplified estimation.
@@ -390,7 +415,8 @@ export class InsightController {
                 where: {
                     type: { in: ['SICK', 'ABSENCE', 'UNPAID'] },
                     startDate: { lte: endOfMonth },
-                    endDate: { gte: startOfMonth }
+                    endDate: { gte: startOfMonth },
+                    ...(companyId ? { employee: { companyId } } : {})
                 }
             });
 
@@ -412,19 +438,14 @@ export class InsightController {
                 period: 'Mes actual'
             });
 
-        } catch (error: any) {
-            log.error({ error }, 'Error calculating absenteeism');
-            return ApiResponse.error(res, 'Error al calcular absentismo', 500);
+        } catch (error) {
+            return respondWithError(res, error, 'Error calculating absenteeism', 'Error al calcular absentismo');
         }
     }
 
     async getCostByDepartment(req: Request, res: Response) {
         try {
-            // Aggregate from PayrollRow linked to Employee
-            const employees = await prisma.employee.findMany({
-                where: { active: true },
-                select: { id: true, department: true }
-            });
+            const companyId = getCompanyScope(req);
 
             // Hack: Grouping by Prisma is tricky with relations sometimes, manual agg for now
             // Or aggregate payroll rows directly? PayrollRow has employeeId.
@@ -438,7 +459,8 @@ export class InsightController {
                 where: {
                     batch: {
                         year: currentYear
-                    }
+                    },
+                    ...(companyId ? { employee: { companyId } } : {})
                 },
                 include: {
                     employee: { select: { department: true } }
@@ -461,9 +483,8 @@ export class InsightController {
 
             return ApiResponse.success(res, result);
 
-        } catch (error: any) {
-            log.error({ error }, 'Error calculating costs');
-            return ApiResponse.error(res, 'Error al calcular costes', 500);
+        } catch (error) {
+            return respondWithError(res, error, 'Error calculating costs', 'Error al calcular costes');
         }
     }
 }

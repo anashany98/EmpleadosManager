@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+﻿import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ExcelParser } from '../services/ExcelParser';
 import { MappingService } from '../services/MappingService';
@@ -11,7 +11,8 @@ import { PayrollAutomationService } from '../services/PayrollAutomationService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { AppError } from '../utils/AppError';
-import { canManagePayroll, canReadPayroll } from '../policies/payrollAccess';
+import { canReadPayroll } from '../policies/payrollAccess';
+import { withRetry } from '../utils/dbRetry';
 
 const log = createLogger('PayrollController');
 
@@ -21,15 +22,15 @@ export const PayrollController = {
     upload: async (req: Request, res: Response) => {
         try {
             if (!req.file) {
-                return ApiResponse.error(res, 'No se ha subido ningún archivo', 400);
+                return ApiResponse.error(res, 'No se ha subido ningÃºn archivo', 400);
             }
 
             const { user } = req as AuthenticatedRequest;
             const userId = user?.id || 'system';
 
-            // Leemos buffer para sacar headers de forma asíncrona
+            // Leemos buffer para sacar headers de forma asÃ­ncrona
             const buffer = req.file.buffer;
-            const headers = ExcelParser.getHeaders(buffer);
+            const headers = await ExcelParser.getHeaders(buffer);
 
             // Crear el Batch
             const batch = await prisma.payrollImportBatch.create({
@@ -64,16 +65,16 @@ export const PayrollController = {
                 filename: key,
             }, 'Archivo subido correctamente. Por favor configura el mapeo.');
 
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error processing payroll upload');
-            return ApiResponse.error(res, error.message || 'Error al procesar el archivo Excel', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al procesar el archivo Excel', 500);
         }
     },
 
     // 2. Aplicar Mapeo y generar rows
     applyMapping: async (req: Request, res: Response) => {
         const { id } = req.params; // Batch ID
-        const { mappingRules, filename } = req.body; // Rules { "neto": "Importe Neto" } y el nombre físico temp
+        const { mappingRules, filename } = req.body; // Rules { "neto": "Importe Neto" } y el nombre fÃ­sico temp
         const { user } = req as AuthenticatedRequest;
         const userId = user?.id || 'system';
 
@@ -112,13 +113,13 @@ export const PayrollController = {
                 return ApiResponse.error(res, 'El archivo original ha caducado o no existe', 404);
             }
 
-            const rawData = ExcelParser.parseBuffer(buffer);
+            const rawData = await ExcelParser.parseBuffer(buffer);
 
             // Transformar
             const rowsData = MappingService.applyMapping(rawData, mappingRules, id);
 
-            // Guardar en BD (Transactions)
-            await prisma.$transaction([
+            // Guardar en BD (Transactions) - wrapped with retry for transient failures
+            await withRetry(() => prisma.$transaction([
                 prisma.payrollRow.deleteMany({ where: { batchId: id } }),
                 prisma.payrollRow.createMany({
                     data: rowsData as any
@@ -127,19 +128,19 @@ export const PayrollController = {
                     where: { id },
                     data: { status: 'MAPPED' }
                 })
-            ]);
+            ]), { operationName: 'applyPayrollMapping' });
 
             await AuditService.log('APPLY_MAPPING', 'PAYROLL_BATCH', id, { rowCount: rowsData.length }, userId);
 
             return ApiResponse.success(res, { rowsCreated: rowsData.length }, 'Mapeo aplicado correctamente');
 
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error applying mapping');
-            return ApiResponse.error(res, error.message || 'Error al aplicar el mapeo', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al aplicar el mapeo', 500);
         }
     },
 
-    // Obtener últimos lotes (para Dashboard)
+    // Obtener Ãºltimos lotes (para Dashboard)
     getLatestBatches: async (req: Request, res: Response) => {
         try {
             const { limit = 5 } = req.query;
@@ -180,13 +181,13 @@ export const PayrollController = {
             }));
 
             return ApiResponse.success(res, formatted);
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error fetching latest batches');
             return ApiResponse.error(res, 'Error al obtener lotes recientes', 500);
         }
     },
 
-    // Obtener filas de un lote con paginación
+    // Obtener filas de un lote con paginaciÃ³n
     getRows: async (req: Request, res: Response) => {
         const { id } = req.params;
         const page = parseInt(req.query.page as string) || 1;
@@ -226,9 +227,9 @@ export const PayrollController = {
                 limit,
                 totalPages: Math.ceil(total / limit)
             });
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error fetching rows');
-            return ApiResponse.error(res, error.message || 'Error al obtener filas', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al obtener filas', 500);
         }
     },
 
@@ -253,7 +254,7 @@ export const PayrollController = {
                 orderBy: { createdAt: 'asc' }
             });
             return ApiResponse.success(res, items);
-        } catch (error: any) {
+        } catch (error) {
             return ApiResponse.error(res, 'Error al obtener desglose', 500);
         }
     },
@@ -289,7 +290,7 @@ export const PayrollController = {
             ]);
 
             return ApiResponse.success(res, { message: 'Desglose actualizado correctamente' });
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Save breakdown error');
             return ApiResponse.error(res, 'Error al guardar el desglose', 500);
         }
@@ -318,8 +319,8 @@ export const PayrollController = {
                 orderBy: { batch: { month: 'desc' } }
             });
             return ApiResponse.success(res, rows);
-        } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al obtener nóminas del empleado', error.statusCode || 500);
+} catch (error) {
+            return ApiResponse.error(res, (error as Error).message || 'Error al obtener nóminas del empleado', (error as any).statusCode || 500);
         }
     },
 
@@ -338,7 +339,7 @@ export const PayrollController = {
                 if (!user.companyId) throw new AppError('Usuario sin empresa', 403);
                 const employee = await prisma.employee.findUnique({ where: { id: employeeId }, select: { companyId: true } });
                 if (!employee || employee.companyId !== user.companyId) {
-                    throw new AppError('No autorizado para crear nómina de este empleado', 403);
+                    throw new AppError('No autorizado para crear nÃ³mina de este empleado', 403);
                 }
             }
 
@@ -362,7 +363,7 @@ export const PayrollController = {
 
             // If batch exists, verify it is open
             if (batch && (batch.status === 'VALID' || batch.status === 'PAID' || batch.status === 'CLOSED')) {
-                return ApiResponse.error(res, 'El lote de nóminas manuales para este mes ya está cerrado o validado.', 400);
+                return ApiResponse.error(res, 'El lote de nÃ³minas manuales para este mes ya estÃ¡ cerrado o validado.', 400);
             }
 
             if (!batch) {
@@ -389,10 +390,10 @@ export const PayrollController = {
                 }
             });
 
-            return ApiResponse.success(res, row, 'Nómina creada correctamente');
-        } catch (error: any) {
-            log.error({ error }, 'Error creating manual payroll');
-            return ApiResponse.error(res, 'Error al crear nómina manual', 500);
+            return ApiResponse.success(res, row, 'NÃ³mina creada correctamente');
+        } catch (err) {
+            log.error({ error: err }, 'Error creating manual payroll');
+            return ApiResponse.error(res, 'Error al crear nÃ³mina manual', 500);
         }
     },
 
@@ -410,8 +411,8 @@ export const PayrollController = {
                 }
             });
 
-            if (!payroll) return ApiResponse.error(res, 'Nómina no encontrada', 404);
-            if (!payroll.employee) return ApiResponse.error(res, 'Empleado no asociado a la nómina', 400);
+            if (!payroll) return ApiResponse.error(res, 'NÃ³mina no encontrada', 404);
+            if (!payroll.employee) return ApiResponse.error(res, 'Empleado no asociado a la nÃ³mina', 400);
 
             // Security Check
             const { user } = req as AuthenticatedRequest;
@@ -419,9 +420,9 @@ export const PayrollController = {
             // Self: OK (payroll.employeeId === user.employeeId)
             // HR/Company: OK (payroll.employee.companyId === user.companyId)
 
-            if (!canReadPayroll(user, { employeeId: payroll.employeeId, companyId: payroll.employee.companyId })) {
+            if (!canReadPayroll(user, { employeeId: payroll.employeeId || '', companyId: payroll.employee.companyId || '' })) {
 
-                return ApiResponse.error(res, 'No tiene permiso para descargar esta nómina', 403);
+                return ApiResponse.error(res, 'No tiene permiso para descargar esta nÃ³mina', 403);
             }
 
             // Default company if missing
@@ -437,9 +438,9 @@ export const PayrollController = {
                 ssTrabajador: Number(payroll.ssTrabajador),
                 irpf: Number(payroll.irpf),
                 company: {
-                    name: companyData?.name || 'Empresa Genérica S.L.',
+                    name: companyData?.name || 'Empresa GenÃ©rica S.L.',
                     cif: companyData?.cif || 'B00000000',
-                    address: (companyData as any)?.address || 'Calle Sin Dirección',
+                    address: (companyData as any)?.address || 'Calle Sin DirecciÃ³n',
                     city: (companyData as any)?.city || 'Madrid',
                     postalCode: (companyData as any)?.postalCode || '28000'
                 },
@@ -462,8 +463,8 @@ export const PayrollController = {
             res.setHeader('Content-Disposition', `attachment; filename=Nomina_${payroll.batch.month}_${payroll.batch.year}_${payroll.employee.dni}.pdf`);
             res.send(pdfBuffer);
 
-        } catch (error: any) {
-            log.error({ error }, 'PDF Generation Error');
+        } catch (err) {
+            log.error({ error: err }, 'PDF Generation Error');
             return ApiResponse.error(res, 'Error al generar el PDF', 500);
         }
     },
@@ -474,13 +475,13 @@ export const PayrollController = {
         const userId = user?.id || 'system';
 
         if (!year || !month || !companyId) {
-            return ApiResponse.error(res, 'Año, mes y empresa son obligatorios', 400);
+            return ApiResponse.error(res, 'AÃ±o, mes y empresa son obligatorios', 400);
         }
 
         try {
             // Security Check
             if (user.role !== 'admin') {
-                if (companyId !== user.companyId) throw new AppError('No puedes generar nóminas para otra empresa', 403);
+                if (companyId !== user.companyId) throw new AppError('No puedes generar nÃ³minas para otra empresa', 403);
             }
 
             const batch = await PayrollAutomationService.generateFromAttendance(
@@ -490,10 +491,12 @@ export const PayrollController = {
                 userId
             );
 
-            return ApiResponse.success(res, batch, 'Lote de nóminas generado automáticamente desde datos de Kiosco');
-        } catch (error: any) {
-            log.error({ error }, 'Payroll Generation Error');
-            return ApiResponse.error(res, 'Error al generar nóminas automáticas: ' + error.message, 500);
+            return ApiResponse.success(res, batch, 'Lote de nÃ³minas generado automÃ¡ticamente desde datos de Kiosco');
+        } catch (err: any) {
+            log.error({ error: err }, 'Payroll Generation Error');
+            return ApiResponse.error(res, 'Error al generar nÃ³minas automÃ¡ticas: ' + err.message, 500);
         }
     }
 };
+
+

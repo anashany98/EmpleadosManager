@@ -4,6 +4,8 @@ import { Users, AlertTriangle, TrendingUp, Briefcase, UserCheck, Clock } from 'l
 
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
+import { AlertsWidget } from './AlertsWidget';
+import { PendingRequestsWidget } from './PendingRequestsWidget';
 
 interface HRTabProps {
     metrics: any;
@@ -135,6 +137,16 @@ export default function HRTab({ metrics }: HRTabProps) {
                         </div>
                     </div>
                 </motion.div>
+            </div>
+
+            {/* Widgets Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
+                    <AlertsWidget metrics={metrics} />
+                </div>
+                <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm">
+                    <PendingRequestsWidget metrics={metrics} />
+                </div>
             </div>
 
             {/* Charts Row */}

@@ -156,8 +156,8 @@ export const TimeEntryController = {
             }
 
             const { start, end, from, to } = req.query;
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 50;
+            const page = Math.min(parseInt(req.query.page as string) || 1, 100);
+            const limit = Math.min(parseInt(req.query.limit as string) || 50, 1000);
             const skip = (page - 1) * limit;
             const startDate = (start || from) as string | undefined;
             const endDate = (end || to) as string | undefined;
@@ -168,7 +168,6 @@ export const TimeEntryController = {
                 if (requestedEmployeeId) {
                     query.employeeId = requestedEmployeeId;
                 }
-                // Tenant isolation: scoped admins/HR only see their company.
                 if (user.companyId) {
                     query.employee = { is: { companyId: user.companyId } };
                 }
@@ -191,6 +190,12 @@ export const TimeEntryController = {
                 }
             }
             if (Object.keys(timestampFilter).length > 0) {
+                if (timestampFilter.gte && timestampFilter.lte) {
+                    const rangeDays = (timestampFilter.lte.getTime() - timestampFilter.gte.getTime()) / (1000 * 60 * 60 * 24);
+                    if (rangeDays > 366) {
+                        return ApiResponse.error(res, 'El rango de fechas no puede exceder 1 año', 400);
+                    }
+                }
                 query.timestamp = timestampFilter;
             }
 
@@ -206,12 +211,17 @@ export const TimeEntryController = {
                     }
                 },
                 orderBy: { timestamp: 'desc' },
-                skip: req.query.page ? skip : undefined,
-                take: req.query.page ? limit : 500
+                skip,
+                take: limit
             });
 
-            return ApiResponse.success(res, history);
-        } catch (error) {
+            const total = await prisma.timeEntry.count({ where: query });
+
+            return ApiResponse.success(res, {
+                data: history,
+                pagination: { page, limit, total, pages: Math.ceil(total / limit) }
+            });
+        } catch {
             return ApiResponse.error(res, 'Error al obtener historial', 500);
         }
     },

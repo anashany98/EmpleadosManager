@@ -2,6 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { OnboardingService } from '../services/OnboardingService';
+import { AuthenticatedRequest } from '../types/express';
+import { canReadEmployeeDetail, canSelfEditEmployee, canManageEmployee } from '../policies/employeeAccess';
+import { isGlobalAdmin } from '../utils/companyAccess';
 
 export const OnboardingController = {
     // Automation
@@ -28,9 +31,19 @@ export const OnboardingController = {
     // Templates
     getTemplates: async (req: Request, res: Response, next: NextFunction) => {
         try {
-            // For now, get all templates. Add company filter if needed later.
+            const { user } = req as AuthenticatedRequest;
+            const where = isGlobalAdmin(user)
+                ? { isActive: true }
+                : {
+                    isActive: true,
+                    OR: [
+                        { companyId: user.companyId || null },
+                        { companyId: null }
+                    ]
+                };
+
             const templates = await prisma.onboardingTemplate.findMany({
-                where: { isActive: true },
+                where,
                 orderBy: { createdAt: 'desc' }
             });
 
@@ -48,6 +61,7 @@ export const OnboardingController = {
 
     createTemplate: async (req: Request, res: Response, next: NextFunction) => {
         try {
+            const { user } = req as AuthenticatedRequest;
             const { title, description, items, companyId } = req.body;
 
             // Validations
@@ -60,7 +74,7 @@ export const OnboardingController = {
                     title,
                     description,
                     items: JSON.stringify(items), // Store as JSON string [ "Item 1", "Item 2" ]
-                    companyId
+                    companyId: isGlobalAdmin(user) ? companyId || null : user.companyId || null
                 }
             });
 
@@ -73,7 +87,21 @@ export const OnboardingController = {
     // Employee Checklists
     assignTemplate: async (req: Request, res: Response, next: NextFunction) => {
         try {
+            const { user } = req as AuthenticatedRequest;
             const { employeeId, templateId } = req.body;
+
+            const employee = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { id: true, companyId: true }
+            });
+
+            if (!employee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+
+            if (!canManageEmployee(user, employee)) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
 
             const template = await prisma.onboardingTemplate.findUnique({
                 where: { id: templateId }
@@ -108,7 +136,21 @@ export const OnboardingController = {
 
     getEmployeeChecklists: async (req: Request, res: Response, next: NextFunction) => {
         try {
+            const { user } = req as AuthenticatedRequest;
             const { employeeId } = req.params;
+
+            const employee = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { id: true, companyId: true }
+            });
+
+            if (!employee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+
+            if (!canReadEmployeeDetail(user, employee)) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
 
             const checklists = await prisma.employeeOnboarding.findMany({
                 where: { employeeId },
@@ -128,11 +170,32 @@ export const OnboardingController = {
 
     updateChecklist: async (req: Request, res: Response, next: NextFunction) => {
         try {
+            const { user } = req as AuthenticatedRequest;
             const { id } = req.params;
             const { items } = req.body; // Expecting full array of items { text, completed }
 
             if (!items || !Array.isArray(items)) {
                 return ApiResponse.error(res, 'Items inválidos', 400);
+            }
+
+            const checklist = await prisma.employeeOnboarding.findUnique({
+                where: { id },
+                include: {
+                    employee: {
+                        select: {
+                            id: true,
+                            companyId: true
+                        }
+                    }
+                }
+            });
+
+            if (!checklist) {
+                return ApiResponse.error(res, 'Checklist no encontrado', 404);
+            }
+
+            if (!canManageEmployee(user, checklist.employee) && !canSelfEditEmployee(user, checklist.employee)) {
+                return ApiResponse.error(res, 'No autorizado', 403);
             }
 
             // Calculate progress

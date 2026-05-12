@@ -1,11 +1,11 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../../backend/node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../../backend/node_modules/.prisma/client"
 }
 
 generator client_root {
-  provider = "prisma-client-js"
-  output   = "../../node_modules/.prisma/client"
+  provider      = "prisma-client-js"
+  output        = "../../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -14,22 +14,26 @@ datasource db {
 }
 
 model User {
-  id          String               @id @default(uuid())
-  email       String               @unique
-  dni         String?              @unique // Login alternative
-  employeeId  String?              // Link to specific employee record
-  password    String
-  role        String               @default("user")
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  permissions String?
-  auditLogs   AuditLog[]
-  exports     Export[]
-  batches     PayrollImportBatch[]
-  refreshTokens RefreshToken[]
-  notifications Notification[]
-  employee    Employee?            @relation(fields: [employeeId], references: [id])
-  createdEvents CalendarEvent[]    @relation("EventCreator")
+  id                    String               @id @default(uuid())
+  email                 String               @unique
+  dni                   String?              @unique // Login alternative
+  employeeId            String?              // Link to specific employee record
+  password              String
+  role                  String               @default("user")
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+  permissions           String?
+  isActive              Boolean              @default(true)
+  sessionVersion        Int                  @default(0)
+  failedLoginAttempts   Int                  @default(0)
+  lockedUntil           DateTime?
+  auditLogs             AuditLog[]
+  exports               Export[]
+  batches               PayrollImportBatch[]
+  refreshTokens         RefreshToken[]
+  notifications         Notification[]
+  employee              Employee?            @relation(fields: [employeeId], references: [id])
+  createdEvents         CalendarEvent[]      @relation("EventCreator")
 }
 
 model RefreshToken {
@@ -42,6 +46,20 @@ model RefreshToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model PasswordResetToken {
+  id          String    @id @default(uuid())
+  tokenHash   String    @unique
+  employeeId  String
+  purpose     String    @default("PASSWORD_RESET")
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, purpose, usedAt])
+  @@index([expiresAt])
 }
 
 model Company {
@@ -63,7 +81,8 @@ model Company {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   employees Employee[]
-  onboardingTemplates OnboardingTemplate[] // Optional: if we want company-specific templates later, but for now just global? The plan didn't specify company relation for templates yet. 
+  onboardingTemplates OnboardingTemplate[]
+  documentTemplates DocumentTemplate[]
   vehicles    Vehicle[]
   cards       Card[]
   fileMappings FileMapping[]
@@ -124,8 +143,11 @@ model Employee {
   createdAt                DateTime              @default(now())
   updatedAt                DateTime              @updatedAt
   country                  String?               @default("España")
-  annualGrossSalary        Decimal?              @default(0)
-  monthlyGrossSalary       Decimal?              @default(0)
+  annualGrossSalary    Decimal?  @db.Decimal(15,2) @default(0)
+  monthlyGrossSalary  Decimal?  @db.Decimal(15,2) @default(0)
+  annualTotalSalary   Decimal?  @db.Decimal(15,2) @default(0)
+  monthlyTotalSalary  Decimal?  @db.Decimal(15,2) @default(0)
+  companyShortPhone String?
   privateNotes             String?
   accountingEntries        AccountingEntry[]
   alerts                   Alert[]
@@ -144,6 +166,7 @@ model Employee {
   timeEntries              TimeEntry[]
   trainings                Training[]
   vacations                Vacation[]
+  vacationBalances         EmployeeVacationBalance[]
   emergencyContacts        EmergencyContact[]
   anomalies                AnomalyEvent[]
   kioskPin                 String?              // Encrypted PIN for kiosk backup
@@ -151,6 +174,7 @@ model Employee {
   vehicles                 Vehicle[]
   cards                    Card[]
   users                    User[]
+  passwordResetTokens      PasswordResetToken[]
   evaluations              Evaluation[]           @relation("EvaluationEmployee")
   evaluationsAsEvaluator   Evaluation[]           @relation("EvaluationEvaluator")
   peerReviews              PeerReview[]
@@ -158,6 +182,32 @@ model Employee {
   pdis                     PDI[]
 
   @@index([companyId])
+  @@index([active])
+  @@index([department])
+  @@index([contractType])
+  @@index([contractEndDate])
+  @@index([entryDate])
+  @@index([dniExpiration])
+  @@index([managerId])
+  @@index([email])
+  @@index([companyId, active])
+  @@index([companyId, department])
+  @@index([active, contractEndDate])
+}
+
+model EmployeeVacationBalance {
+  id               String   @id @default(uuid())
+  employeeId       String
+  year             Int
+  annualQuotaDays  Decimal  @default(30)
+  carriedOverDays  Decimal  @default(0)
+  importedUsedDays Decimal  @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, year])
+  @@index([year])
 }
 
 model EmergencyContact {
@@ -254,6 +304,9 @@ model Expense {
 
   @@index([employeeId])
   @@index([status])
+  @@index([date])
+  @@index([category])
+  @@index([employeeId, status])
 }
 
 model Document {
@@ -271,6 +324,9 @@ model Document {
 
   @@index([employeeId])
   @@index([category])
+  @@index([expiryDate])
+  @@index([uploadDate])
+  @@index([employeeId, category])
 }
 
 model MedicalReview {
@@ -299,18 +355,82 @@ model Training {
 }
 
 model Vacation {
-  id         String   @id @default(uuid())
-  employeeId String
-  startDate  DateTime
-  endDate    DateTime
-  type       String   @default("VACATION")
-  days       Int      @default(0)
-  reason     String?
-  fileUrl    String?
-  status     String   @default("PENDING")
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now()) @updatedAt
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id              String       @id @default(uuid())
+  employeeId      String
+  startDate       DateTime
+  endDate         DateTime
+  type            String       @default("VACATION")
+  absenceType     AbsenceType  @default(VACATION)
+  days            Int          @default(0)
+  reason          String?
+  fileUrl         String?
+  status          String       @default("PENDING")
+  rejectionReason String?
+  managerComment  String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @default(now()) @updatedAt
+  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId, status])
+  @@index([startDate, endDate])
+  @@index([status])
+}
+
+model VacationArchive {
+  id              String       @id @default(uuid())
+  employeeId      String
+  startDate       DateTime
+  endDate         DateTime
+  type            String       @default("VACATION")
+  absenceType     AbsenceType  @default(VACATION)
+  days            Int          @default(0)
+  reason          String?
+  fileUrl         String?
+  status          String       @default("PENDING")
+  rejectionReason String?
+  managerComment  String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  createdAt       DateTime
+  updatedAt       DateTime
+  archivedAt      DateTime     @default(now())
+  archiveReason  String?
+}
+
+enum AbsenceType {
+  VACATION
+  SICK
+  MATERNITY
+  PATERNITY
+  MEDICAL_APPOINTMENT
+  UNPAID
+  OTHER
+  MARRIAGE
+  DEATH
+  MOVING
+  FAMILY_SICK
+  PUBLIC_DUTY
+  LACTATION
+}
+
+model DocumentTemplate {
+  id          String   @id @default(uuid())
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type        String   // NDA, RGPD, MODEL_145, UNIFORM, EPI, TECH_DEVICE, PAYROLL, CONTRACT
+  name        String   // Nombre descriptivo
+  content     String   // Contenido HTML/Markdown con variables {{variable}}
+  variables   String   // JSON con lista de variables soportadas
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false) // Si es el default para empresas sin template específico
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([companyId, type])
+  @@index([companyId])
+  @@index([type])
 }
 
 model MappingProfile {
@@ -423,6 +543,10 @@ model AuditLog {
   createdAt        DateTime  @default(now())
   targetEmployee   Employee? @relation("TargetEmployee", fields: [targetEmployeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   user             User?     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([userId])
+  @@index([targetEmployeeId])
+  @@index([createdAt, entity])
 }
 
 model CategoryRate {
@@ -474,6 +598,7 @@ model Alert {
   title       String
   message     String
   actionUrl   String?
+  metadata    Json?
   isRead      Boolean   @default(false)
   isDismissed Boolean   @default(false)
   createdAt   DateTime  @default(now())
@@ -485,17 +610,24 @@ model Alert {
 }
 
 model InventoryItem {
-  id          String              @id @default(uuid())
-  category    String
-  name        String
-  size        String?
-  quantity    Int                 @default(0)
-  minQuantity Int                 @default(5)
-  description String?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  assets      Asset[]
-  movements   InventoryMovement[]
+  id                String              @id @default(uuid())
+  category          String
+  name              String
+  size              String?
+  quantity          Int                 @default(0)
+  minQuantity       Int                 @default(5)
+  description      String?
+  entryDate        DateTime?
+  unitPrice        Decimal?            @default(0)
+  type             String?
+  brand            String?
+  sku              String?
+  supplier         String?
+  warehouseLocation String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  assets           Asset[]
+  movements        InventoryMovement[]
 
   @@unique([name, size])
 }
@@ -525,6 +657,11 @@ model InboxDocument {
   ocrStatus    String    @default("PENDING") // PENDING, COMPLETED, FAILED
   processed    Boolean   @default(false)
   processedAt  DateTime?
+
+  @@index([processed])
+  @@index([source])
+  @@index([receivedAt])
+  @@index([ocrStatus])
 }
 
 model Configuration {
@@ -547,6 +684,9 @@ model TimeEntry {
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@index([employeeId, timestamp])
+  @@index([timestamp])
+  @@index([employeeId, type])
+  @@index([timestamp, employeeId])
 }
 
 model Notification {
@@ -560,6 +700,46 @@ model Notification {
   createdAt DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Dashboard customization
+model DashboardConfig {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  layout    String   // JSON: array of widget positions { id, x, y, w, h, config }
+  widgets   String   // JSON: available widgets list with visibility
+  tab       String   @default("overview") // overview, hr, financial
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Scheduled reports
+model ReportSchedule {
+  id          String   @id @default(uuid())
+  name        String
+  reportType  String   // attendance, overtime, vacation, costs, absences, kpis, genderGap, custom
+  params      String   // JSON: filter parameters
+  frequency   String   // DAILY, WEEKLY, MONTHLY
+  sendEmail   Boolean  @default(false)
+  recipients  String   // JSON: email addresses array
+  isActive    Boolean  @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime
+  companyId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive, nextRunAt])
+}
+
+// Notification categories for proactive alerts
+model NotificationCategory {
+  id          String   @id @default(uuid())
+  name        String   // CONTRACT_EXPIRY, VACATION_REMINDER, PAYROLL_READY, etc.
+  description String?
+  isActive    Boolean  @default(true)
+  delayDays   Int      @default(0) // days before event to send notification
+  createdAt   DateTime @default(now())
 }
 
 model OnboardingTemplate {
@@ -624,7 +804,7 @@ model Vehicle {
 
   // Current State
   currentMileage      Int       @default(0)
-  
+
   // Assignment
   employeeId          String?
   employee            Employee? @relation(fields: [employeeId], references: [id])
@@ -635,12 +815,51 @@ model Vehicle {
 
   // Images or Documents
   image               String?
+  logs                VehicleLog[]
+  documents           VehicleDocument[]
   
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
   @@index([employeeId])
   @@index([companyId])
+}
+
+model VehicleDocument {
+  id          String   @id @default(uuid())
+  vehicleId   String
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  type        String   // INSURANCE, REGISTRATION, ITV, INVOICE, OTHER
+  name        String
+  fileUrl     String
+  expiryDate  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([vehicleId])
+}
+
+model VehicleLog {
+  id             String   @id @default(uuid())
+  vehicleId      String
+  vehicle        Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  type           String   // WORKSHOP_REVIEW, MAINTENANCE, ALERT, DAMAGE, NOTE
+  title          String
+  description    String?
+  eventDate      DateTime @default(now())
+  mileage        Int?
+  cost           Decimal? @default(0)
+  workshop       String?
+  severity       String?  // LOW, MEDIUM, HIGH, CRITICAL
+  status         String?  // OPEN, IN_PROGRESS, RESOLVED
+  nextActionDate DateTime?
+  resolvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([vehicleId])
+  @@index([eventDate])
+  @@index([type])
 }
 
 model Card {
@@ -896,4 +1115,31 @@ model CalendarEvent {
   @@index([companyId, startDate])
   @@index([type])
   @@index([startDate, endDate])
+}
+
+// ============================================
+// EMPLOYEE LOCK AUDIT MODEL
+// ============================================
+
+model EmployeeLockAudit {
+  id          String   @id @default(uuid())
+  employeeId  String
+  userId      String
+  userEmail   String
+  userName    String
+  action      String   // LockAction enum values: ACQUIRED, RELEASED, EXPIRED, FORCE_RELEASED, REFRESHED
+  timestamp   DateTime @default(now())
+  metadata    String?  // JSON string for additional context
+
+  @@index([employeeId])
+  @@index([userId])
+  @@index([timestamp])
+}
+
+enum LockAction {
+  ACQUIRED
+  RELEASED
+  EXPIRED
+  FORCE_RELEASED
+  REFRESHED
 }

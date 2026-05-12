@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import multer from 'multer';
-import path from 'path';
 import { DocumentController } from '../controllers/DocumentController';
 import { createMulterOptions } from '../config/multer';
 import { authorize } from '../middlewares/authMiddleware';
@@ -43,12 +42,13 @@ const resolveStoredDocumentTarget = async (req: any) => {
         : null;
 };
 // ...
-router.post('/generate-uniform', DocumentTemplateController.generateUniform);
-router.post('/generate-epi', DocumentTemplateController.generateEPI);
-router.post('/generate-tech', DocumentTemplateController.generateTech);
-router.post('/generate-145', DocumentTemplateController.generate145);
-router.post('/generate-nda', DocumentTemplateController.generateNDA);
-router.post('/generate-rgpd', DocumentTemplateController.generateRGPD);
+router.post('/generate-uniform', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateUniform);
+router.post('/generate-epi', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateEPI);
+router.post('/generate-material', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateMaterial);
+router.post('/generate-tech', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateTech);
+router.post('/generate-145', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generate145);
+router.post('/generate-nda', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateNDA);
+router.post('/generate-rgpd', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateRGPD);
 
 router.post('/upload', upload.single('file'), authorize('document.write', resolveDocumentEmployeeTarget), DocumentController.upload);
 router.post('/ocr', upload.single('file'), DocumentController.processOCR);

@@ -24,9 +24,9 @@ export default function ExpensesPortalPage() {
     const [mode, setMode] = useState<ExpensesPortalMode>(defaultMode);
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
             <div>
-                <h1 className="text-3xl font-black text-slate-900 dark:text-white">Gastos y dietas</h1>
+                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">Gastos y dietas</h1>
                 <p className="text-slate-500 dark:text-slate-400 mt-1">
                     {hasBackoffice && hasSelfService
                         ? 'Autoservicio y revision operativa separados bajo la misma policy.'
@@ -36,8 +36,8 @@ export default function ExpensesPortalPage() {
                 </p>
             </div>
 
-            {hasSelfService && hasBackoffice && (
-                <div className="flex bg-white dark:bg-slate-900 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm w-fit">
+            {hasBackoffice ? (
+                <div className="flex flex-wrap bg-white dark:bg-slate-900 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm w-fit">
                     <button
                         onClick={() => setMode('SELF')}
                         className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all flex items-center gap-2 ${mode === 'SELF' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
@@ -53,7 +53,7 @@ export default function ExpensesPortalPage() {
                         Backoffice
                     </button>
                 </div>
-            )}
+            ) : null}
 
             {mode === 'BACKOFFICE' && hasBackoffice ? <ExpenseManagementView /> : <MyExpensesView />}
         </div>

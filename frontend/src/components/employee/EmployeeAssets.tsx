@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
-import { Package, Plus, Trash2, Tag } from 'lucide-react';
+import { Package, Trash2, Tag, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Asset {
@@ -18,15 +18,6 @@ interface Asset {
 export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
     const [assets, setAssets] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showAdd, setShowAdd] = useState(false);
-    const [formData, setFormData] = useState({
-        category: 'LAPTOP',
-        name: '',
-        serialNumber: '',
-        size: '',
-        assignedDate: new Date().toISOString().split('T')[0],
-        notes: ''
-    });
 
     useEffect(() => {
         fetchAssets();
@@ -43,26 +34,6 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
         }
     };
 
-    const handleCreate = async (e: React.FormEvent) => {
-        e.preventDefault();
-        try {
-            await api.post('/assets', { ...formData, employeeId });
-            toast.success('Activo asignado');
-            setShowAdd(false);
-            setFormData({
-                category: 'LAPTOP',
-                name: '',
-                serialNumber: '',
-                size: '',
-                assignedDate: new Date().toISOString().split('T')[0],
-                notes: ''
-            });
-            fetchAssets();
-        } catch (error) {
-            toast.error('Error al asignar activo');
-        }
-    };
-
     const handleDelete = async (id: string) => {
         if (!confirm('¿Eliminar este activo?')) return;
         try {
@@ -71,6 +42,17 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
             fetchAssets();
         } catch (error) {
             toast.error('Error al eliminar');
+        }
+    };
+
+    const handleReturn = async (id: string) => {
+        if (!confirm('¿Devolver este activo al inventario?')) return;
+        try {
+            await api.post(`/assets/${id}/return`);
+            toast.success('Activo devuelto al inventario');
+            fetchAssets();
+        } catch (error) {
+            toast.error('Error al devolver el activo');
         }
     };
 
@@ -86,100 +68,9 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium">Gestión de Activos e Inventario</h3>
-                <button
-                    onClick={() => setShowAdd(!showAdd)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
-                >
-                    <Plus className="w-4 h-4" />
-                    Asignar Activo
-                </button>
+                <h3 className="text-lg font-medium">Activos Asignados</h3>
+                <span className="text-sm text-slate-500">Gestionar desde Inventario</span>
             </div>
-
-            {showAdd && (
-                <form onSubmit={handleCreate} className="bg-slate-800/50 p-4 rounded-xl border border-slate-700 grid grid-cols-1 md:grid-cols-3 gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
-                    <div>
-                        <label className="block text-xs text-slate-400 mb-1">Categoría</label>
-                        <select
-                            value={formData.category}
-                            onChange={e => setFormData({ ...formData, category: e.target.value })}
-                            className="w-full bg-slate-900 border-slate-700 rounded-lg text-sm text-white px-3 py-2 outline-none focus:border-blue-500 transition-colors"
-                        >
-                            <option value="LAPTOP">Portátil / PC</option>
-                            <option value="MOBILE">Teléfono Móvil</option>
-                            <option value="TOOLS">Herramientas</option>
-                            <option value="CLOTHING">Ropa / Uniforme</option>
-                            <option value="OTHER">Otro</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-xs text-slate-400 mb-1">Nombre / Modelo</label>
-                        <input
-                            type="text"
-                            required
-                            value={formData.name}
-                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                            className="w-full bg-slate-900 border-slate-700 rounded-lg text-sm text-white px-3 py-2 outline-none focus:border-blue-500 transition-colors"
-                            placeholder="Ej: Dell Latitude 5420"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-xs text-slate-400 mb-1">Nº Serie / Identificador</label>
-                        <input
-                            type="text"
-                            value={formData.serialNumber}
-                            onChange={e => setFormData({ ...formData, serialNumber: e.target.value })}
-                            className="w-full bg-slate-900 border-slate-700 rounded-lg text-sm text-white px-3 py-2 outline-none focus:border-blue-500 transition-colors"
-                        />
-                    </div>
-                    {formData.category === 'CLOTHING' && (
-                        <div>
-                            <label className="block text-xs text-slate-400 mb-1">Talla</label>
-                            <input
-                                type="text"
-                                value={formData.size}
-                                onChange={e => setFormData({ ...formData, size: e.target.value })}
-                                className="w-full bg-slate-900 border-slate-700 rounded-lg text-sm text-white px-3 py-2 outline-none focus:border-blue-500 transition-colors"
-                                placeholder="Ej: M, 42, XL"
-                            />
-                        </div>
-                    )}
-                    <div>
-                        <label className="block text-xs text-slate-400 mb-1">Fecha Asignación</label>
-                        <input
-                            type="date"
-                            value={formData.assignedDate}
-                            onChange={e => setFormData({ ...formData, assignedDate: e.target.value })}
-                            className="w-full bg-slate-900 border-slate-700 rounded-lg text-sm text-white px-3 py-2 outline-none focus:border-blue-500 transition-colors"
-                        />
-                    </div>
-                    <div className="md:col-span-2">
-                        <label className="block text-xs text-slate-400 mb-1">Notas</label>
-                        <input
-                            type="text"
-                            value={formData.notes}
-                            onChange={e => setFormData({ ...formData, notes: e.target.value })}
-                            className="w-full bg-slate-900 border-slate-700 rounded-lg text-sm text-white px-3 py-2 outline-none focus:border-blue-500 transition-colors"
-                            placeholder="Detalles adicionales..."
-                        />
-                    </div>
-                    <div className="md:col-span-3 flex justify-end gap-2 pt-2">
-                        <button
-                            type="button"
-                            onClick={() => setShowAdd(false)}
-                            className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
-                        >
-                            Cancelar
-                        </button>
-                        <button
-                            type="submit"
-                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg text-sm font-medium transition-colors"
-                        >
-                            Confirmar Asignación
-                        </button>
-                    </div>
-                </form>
-            )}
 
             <div className="overflow-x-auto">
                 <table className="w-full text-left">

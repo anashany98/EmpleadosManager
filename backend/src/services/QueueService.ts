@@ -12,12 +12,16 @@ function buildRedisConfig(): string | RedisOptions {
         return redisUrl;
     }
 
-    const host = process.env.REDIS_HOST || 'localhost';
+    const host = process.env.REDIS_HOST;
     const port = parseInt(process.env.REDIS_PORT || '6379');
     const password = process.env.REDIS_PASSWORD;
 
+    if (!host && process.env.NODE_ENV === 'production') {
+        throw new Error('FATAL: REDIS_HOST or REDIS_URL must be defined in production.');
+    }
+
     const config: RedisOptions = {
-        host,
+        host: host || 'localhost',
         port,
         maxRetriesPerRequest: null,
     };
@@ -54,7 +58,7 @@ export const QUEUES = {
     OCR: 'ocr-queue',
 };
 
-class QueueService {
+export class QueueService {
     private queues: Record<string, Queue> = {};
     private workers: Record<string, Worker> = {};
     private queueEvents: Record<string, QueueEvents> = {};

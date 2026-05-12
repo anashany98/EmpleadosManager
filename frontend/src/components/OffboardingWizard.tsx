@@ -31,11 +31,15 @@ export default function OffboardingWizard({ employeeId, employeeName, onClose, o
                 const res = await api.get(`/offboarding/${employeeId}/prepare`);
                 if (res.success) {
                     setData(res.data);
-                    // Pre-select all assets for return by default
                     setSelectedAssets(res.data.pendingAssets.map((a: any) => a.id));
                 }
             } catch (err: any) {
-                toast.error('Error cargando datos de baja: ' + err.message);
+                const errorMessage = err.response?.status === 403
+                    ? 'No tienes permisos para tramitar la baja. Se requiere rol de administrador global.'
+                    : err.response?.status === 401
+                    ? 'Sesión expirada. Por favor, inicia sesión de nuevo.'
+                    : 'Error cargando datos de baja: ' + (err.message || 'Error desconocido');
+                toast.error(errorMessage);
                 onClose();
             } finally {
                 setLoading(false);

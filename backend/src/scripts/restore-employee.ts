@@ -24,7 +24,7 @@ async function main() {
                 name: 'Carmen Martinez Diaz',
                 firstName: 'Carmen',
                 lastName: 'Martinez Diaz',
-                dni: dni,
+                dni,
                 email: 'carmen.martinez@demo.com',
                 companyId: company.id,
                 active: true,

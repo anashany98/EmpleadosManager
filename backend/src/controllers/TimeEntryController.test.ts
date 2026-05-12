@@ -10,6 +10,7 @@ vi.mock('../lib/prisma', () => ({
             findFirst: vi.fn(),
             findMany: vi.fn(),
             findUnique: vi.fn(),
+            count: vi.fn(),
             create: vi.fn()
         },
         employee: {
@@ -207,13 +208,17 @@ describe('TimeEntryController', () => {
                 { id: 'e2', type: 'OUT', timestamp: new Date() }
             ];
             (prisma.timeEntry.findMany as any).mockResolvedValue(entries);
+            (prisma.timeEntry.count as any).mockResolvedValue(entries.length);
 
             await TimeEntryController.getHistory(req, res);
 
             expect(prisma.timeEntry.findMany).toHaveBeenCalled();
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
                 success: true,
-                data: entries
+                data: expect.objectContaining({
+                    data: entries,
+                    pagination: expect.objectContaining({ total: entries.length })
+                })
             }));
         });
     });

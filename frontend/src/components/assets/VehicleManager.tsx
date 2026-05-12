@@ -1,10 +1,12 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../api/client';
+import { api, API_URL } from '../../api/client';
 import { toast } from 'sonner';
-import { Car, Truck, Plus, Check, Trash2, PenSquare, AlertTriangle, Calendar, Activity } from 'lucide-react';
+import { Car, Plus, Trash2, PenSquare, Calendar, Activity, FileText, Download, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { normalizeApiCollection, normalizeApiItem } from './vehicleUtils';
+import { getEmployeeDisplayName } from '../../utils/employeeDisplay';
 
 interface Vehicle {
     id: string;
@@ -19,9 +21,46 @@ interface Vehicle {
     nextITVDate?: string;
     lastMaintenanceDate?: string;
     nextMaintenanceKm?: number;
-    employee?: { id: string; firstName: string; lastName: string };
+    employee?: { id: string; name?: string | null; firstName?: string | null; lastName?: string | null };
     employeeId?: string;
     image?: string;
+    documents?: VehicleDocument[];
+}
+
+interface VehicleDocument {
+    id: string;
+    vehicleId: string;
+    type: string;
+    name: string;
+    fileUrl: string;
+    expiryDate?: string;
+    createdAt: string;
+}
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+    INSURANCE: 'Seguro',
+    REGISTRATION: 'Permiso circulación',
+    ITV: 'ITV',
+    INVOICE: 'Factura taller',
+    OTHER: 'Otro'
+};
+
+const DOC_TYPE_COLORS: Record<string, string> = {
+    INSURANCE: 'bg-blue-100 text-blue-700',
+    REGISTRATION: 'bg-green-100 text-green-700',
+    ITV: 'bg-amber-100 text-amber-700',
+    INVOICE: 'bg-purple-100 text-purple-700',
+    OTHER: 'bg-slate-100 text-slate-700'
+};
+
+function getExpiryStatus(expiryDate?: string) {
+    if (!expiryDate) return null;
+    const expiry = new Date(expiryDate);
+    const now = new Date();
+    const oneMonth = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    if (expiry < now) return { text: 'VENCIDO', color: 'bg-red-500 text-white' };
+    if (expiry < oneMonth) return { text: 'Vence pronto', color: 'bg-amber-500 text-white' };
+    return { text: `Vence: ${expiry.toLocaleDateString()}`, color: 'bg-emerald-500 text-white' };
 }
 
 export function VehicleManager() {
@@ -33,17 +72,17 @@ export function VehicleManager() {
         queryKey: ['vehicles'],
         queryFn: async () => {
             const res = await api.get('/vehicles');
-            return res.data?.data || res.data || [];
+            return normalizeApiCollection<Vehicle>(res);
         }
     });
 
     const deleteMutation = useMutation({
         mutationFn: async (id: string) => api.delete(`/vehicles/${id}`),
         onSuccess: () => {
-            toast.success('Vehículo eliminado');
+            toast.success('Vehiculo dado de baja');
             queryClient.invalidateQueries({ queryKey: ['vehicles'] });
         },
-        onError: () => toast.error('Error al eliminar vehículo')
+        onError: () => toast.error('Error al dar de baja el vehiculo')
     });
 
     return (
@@ -92,7 +131,7 @@ export function VehicleManager() {
                                 )}
                                 <div className="flex items-center gap-2">
                                     <span className="w-4 h-4 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-[10px] font-bold">👤</span>
-                                    <span>{vehicle.employee ? `${vehicle.employee.firstName} ${vehicle.employee.lastName}` : 'Sin asignar'}</span>
+                                    <span>{getEmployeeDisplayName(vehicle.employee, 'Sin asignar')}</span>
                                 </div>
                             </div>
 
@@ -105,7 +144,7 @@ export function VehicleManager() {
                                 </button>
                                 <button
                                     onClick={() => {
-                                        if (confirm('¿Seguro que quieres eliminar este vehículo?')) deleteMutation.mutate(vehicle.id);
+                                        if (confirm('¿Seguro que quieres dar de baja este vehículo?')) deleteMutation.mutate(vehicle.id);
                                     }}
                                     className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm hover:text-red-600"
                                 >
@@ -138,24 +177,44 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
     const [formData, setFormData] = useState<Partial<Vehicle>>(vehicle || {
         plate: '', make: '', model: '', type: 'CAR', status: 'ACTIVE', currentMileage: 0
     });
+    const queryClient = useQueryClient();
+    const vehicleId = vehicle?.id;
+    const { data: vehicleDetails } = useQuery({
+        queryKey: ['vehicle', vehicleId],
+        enabled: !!vehicleId,
+        queryFn: async () => normalizeApiItem<Vehicle>(await api.get(`/vehicles/${vehicleId}`))
+    });
+    const activeVehicle = vehicleDetails || vehicle;
 
     const mutation = useMutation({
         mutationFn: async (data: any) => {
-            if (isEdit) return api.put(`/vehicles/${vehicle.id}`, data);
+            if (!data.make?.trim()) {
+                throw new Error('La marca es obligatoria');
+            }
+            if (!data.model?.trim()) {
+                throw new Error('El modelo es obligatorio');
+            }
+            if (!data.plate?.trim()) {
+                throw new Error('La matrícula es obligatoria');
+            }
+            if (isEdit && vehicleId) return api.put(`/vehicles/${vehicleId}`, data);
             return api.post('/vehicles', data);
         },
         onSuccess: () => {
             toast.success(`Vehículo ${isEdit ? 'actualizado' : 'creado'}`);
+            if (vehicleId) {
+                queryClient.invalidateQueries({ queryKey: ['vehicle', vehicleId] });
+            }
             onSuccess();
         },
-        onError: (err: any) => toast.error(err.response?.data?.message || 'Error al guardar')
+        onError: (err: any) => toast.error(err.response?.data?.message || err.message || 'Error al guardar')
     });
 
     const { data: employees = [] } = useQuery({
         queryKey: ['employees'],
         queryFn: async () => {
             const res = await api.get('/employees');
-            return res.data?.data || res.data || [];
+            return normalizeApiCollection<any>(res);
         }
     });
 
@@ -222,7 +281,7 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
                         >
                             <option value="">-- Sin asignar --</option>
                             {employees.map((emp: any) => (
-                                <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                                <option key={emp.id} value={emp.id}>{getEmployeeDisplayName(emp)}</option>
                             ))}
                         </select>
                     </div>
@@ -249,7 +308,248 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
                         {mutation.isPending ? 'Guardando...' : 'Guardar Vehículo'}
                     </button>
                 </div>
+
+                {isEdit && activeVehicle && (
+                    <DocumentsSection vehicleId={activeVehicle.id} documents={activeVehicle.documents} />
+                )}
+
+                {isEdit && activeVehicle && (
+                    <VehicleHistorySection vehicleId={activeVehicle.id} currentMileage={activeVehicle.currentMileage} />
+                )}
             </motion.div>
+        </div>
+    );
+}
+
+function DocumentsSection({ vehicleId, documents = [] }: { vehicleId: string, documents?: VehicleDocument[] }) {
+    const queryClient = useQueryClient();
+    const [docExpiryDates, setDocExpiryDates] = useState<Record<string, string>>({});
+
+    const docTypes = [
+        { value: 'INSURANCE', label: 'Seguro' },
+        { value: 'REGISTRATION', label: 'Permiso circulación' },
+        { value: 'ITV', label: 'ITV' },
+        { value: 'INVOICE', label: 'Factura taller' },
+        { value: 'OTHER', label: 'Otro' }
+    ];
+
+    const handleUpload = async (type: string, file: File) => {
+        const formData = new FormData();
+        formData.append('document', file);
+        formData.append('type', type);
+        formData.append('name', file.name);
+        formData.append('expiryDate', docExpiryDates[type] || '');
+        
+        try {
+            await api.post(`/vehicles/${vehicleId}/documents`, formData);
+            toast.success('Documento subido');
+            queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+            queryClient.invalidateQueries({ queryKey: ['vehicle', vehicleId] });
+        } catch {
+            toast.error('Error al subir');
+        }
+    };
+
+    const handleDelete = async (docId: string) => {
+        if (!confirm('¿Eliminar documento?')) return;
+        try {
+            await api.delete(`/vehicles/${vehicleId}/documents/${docId}`);
+            toast.success('Documento eliminado');
+            queryClient.invalidateQueries({ queryKey: ['vehicles'] });
+            queryClient.invalidateQueries({ queryKey: ['vehicle', vehicleId] });
+        } catch {
+            toast.error('Error al eliminar');
+        }
+    };
+
+    return (
+        <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Documentos del vehículo</h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                {docTypes.map(docType => {
+                    const doc = documents.find(d => d.type === docType.value);
+                    return (
+                        <div key={docType.value} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                            <div className="flex items-center gap-2 mb-2">
+                                <FileText size={16} className={DOC_TYPE_COLORS[docType.value].split(' ')[0]} />
+                                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{docType.label}</span>
+                                {doc && <span className="text-emerald-500 text-xs">✓</span>}
+                            </div>
+                            <input
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png"
+                                className="hidden"
+                                id={`doc-${docType.value}`}
+                                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(docType.value, f); }}
+                            />
+                            {doc ? (
+                                <div className="space-y-2">
+                                    <label htmlFor={`doc-${docType.value}`} className="block w-full text-center text-xs py-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg cursor-pointer">
+                                        Cambiar
+                                    </label>
+                                    <input
+                                        type="date"
+                                        className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-2 py-1"
+                                        placeholder="Vencimiento"
+                                        value={docExpiryDates[docType.value] || (doc.expiryDate ? doc.expiryDate.split('T')[0] : '')}
+                                        onChange={(e) => setDocExpiryDates(prev => ({ ...prev, [docType.value]: e.target.value }))}
+                                    />
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <label htmlFor={`doc-${docType.value}`} className="block w-full text-center text-xs py-1.5 bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 rounded-lg cursor-pointer">
+                                        Seleccionar
+                                    </label>
+                                    {['INSURANCE', 'ITV', 'REGISTRATION'].includes(docType.value) && (
+                                        <input
+                                            type="date"
+                                            className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 px-2 py-1"
+                                            placeholder="Vencimiento"
+                                            value={docExpiryDates[docType.value] || ''}
+                                            onChange={(e) => setDocExpiryDates(prev => ({ ...prev, [docType.value]: e.target.value }))}
+                                        />
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+
+            {documents.length > 0 && (
+                <div className="space-y-2">
+                    {documents.map(doc => {
+                        const status = getExpiryStatus(doc.expiryDate);
+                        return (
+                            <div key={doc.id} className="flex items-center justify-between p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                                <div className="flex items-center gap-3">
+                                    <FileText size={16} />
+                                    <div>
+                                        <div className="text-sm font-medium text-slate-900 dark:text-white">{doc.name}</div>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className={`text-xs px-2 py-0.5 rounded ${DOC_TYPE_COLORS[doc.type]}`}>
+                                                {DOC_TYPE_LABELS[doc.type] || doc.type}
+                                            </span>
+                                            {status && (
+                                                <span className={`text-xs px-2 py-0.5 rounded ${status.color}`}>
+                                                    {status.text}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <a href={`${API_URL}/vehicles/${vehicleId}/documents/${doc.id}/download`} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-500 hover:text-slate-700">
+                                        <Download size={16} />
+                                    </a>
+                                    <button onClick={() => handleDelete(doc.id)} className="p-2 text-rose-500 hover:text-rose-700">
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+interface HistoryEvent {
+    id: string;
+    vehicleId: string;
+    type: string;
+    title?: string;
+    description: string;
+    mileage?: number;
+    createdAt: string;
+    user?: string;
+    userId?: string;
+}
+
+function VehicleHistorySection({ vehicleId, currentMileage }: { vehicleId: string; currentMileage: number }) {
+    const [showForm, setShowForm] = useState(false);
+    const [newEvent, setNewEvent] = useState({ type: 'MAINTENANCE', description: '', mileage: currentMileage });
+    const queryClient = useQueryClient();
+
+    const { data: events = [], isLoading } = useQuery<HistoryEvent[]>({
+        queryKey: ['vehicle-logs', vehicleId],
+        queryFn: async () => {
+            const res = await api.get(`/vehicles/${vehicleId}/logs`);
+            return normalizeApiCollection<HistoryEvent>(res);
+        }
+    });
+
+    const addLogMutation = useMutation({
+        mutationFn: async (data: { type: string; description: string; mileage?: number; title?: string }) => {
+            return api.post(`/vehicles/${vehicleId}/logs`, data);
+        },
+        onSuccess: () => {
+            toast.success('Evento añadido');
+            setShowForm(false);
+            setNewEvent({ type: 'MAINTENANCE', description: '', mileage: currentMileage });
+            queryClient.invalidateQueries({ queryKey: ['vehicle-logs', vehicleId] });
+        },
+        onError: () => toast.error('Error al añadir evento')
+    });
+
+    const eventTypeLabels: Record<string, string> = {
+        ASSIGN: 'Asignación', MAINTENANCE: 'Mantenimiento', ITV: 'ITV', ACCIDENT: 'Accidente', FINE: 'Multa', OTHER: 'Otro'
+    };
+    const eventTypeColors: Record<string, string> = {
+        ASSIGN: 'bg-blue-100 text-blue-700', MAINTENANCE: 'bg-orange-100 text-orange-700', ITV: 'bg-green-100 text-green-700',
+        ACCIDENT: 'bg-red-100 text-red-700', FINE: 'bg-purple-100 text-purple-700', OTHER: 'bg-slate-100 text-slate-700'
+    };
+
+    const handleAddEvent = () => {
+        if (!newEvent.description.trim()) {
+            toast.error('La descripción es obligatoria');
+            return;
+        }
+        addLogMutation.mutate({
+            type: newEvent.type,
+            description: newEvent.description,
+            mileage: newEvent.mileage || currentMileage,
+            title: eventTypeLabels[newEvent.type]
+        });
+    };
+
+    return (
+        <div className="mt-8 pt-6 border-t border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <History className="w-5 h-5" /> Historial del Vehículo
+                </h3>
+                <button onClick={() => setShowForm(!showForm)} className="text-sm text-indigo-600 font-medium">
+                    {showForm ? 'Cancelar' : '+ Añadir'}
+                </button>
+            </div>
+            {showForm && (
+                <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl mb-4 space-y-3">
+                    <select value={newEvent.type} onChange={(e) => setNewEvent({ ...newEvent, type: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700">
+                        <option value="MAINTENANCE">Mantenimiento</option><option value="ASSIGN">Asignación</option><option value="ITV">ITV</option><option value="ACCIDENT">Accidente</option><option value="FINE">Multa</option><option value="OTHER">Otro</option>
+                    </select>
+                    <input type="text" placeholder="Descripción..." value={newEvent.description} onChange={(e) => setNewEvent({ ...newEvent, description: e.target.value })} className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700" />
+                    <input type="number" placeholder="Kilometraje" value={newEvent.mileage} onChange={(e) => setNewEvent({ ...newEvent, mileage: Number(e.target.value) })} className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-700" />
+                    <button onClick={handleAddEvent} disabled={addLogMutation.isPending} className="w-full py-2 bg-indigo-600 text-white rounded-lg font-bold disabled:opacity-50">
+                        {addLogMutation.isPending ? 'Guardando...' : 'Guardar'}
+                    </button>
+                </div>
+            )}
+            {isLoading ? <div className="text-center py-4 text-slate-500">Cargando...</div> : events.length === 0 ? <div className="text-center py-4 text-slate-500">No hay eventos registrados</div> : (
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                    {events.map(event => (
+                        <div key={event.id} className="flex items-start gap-3 p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                            <div className={`px-2 py-1 rounded text-xs font-bold ${eventTypeColors[event.type]}`}>{eventTypeLabels[event.type] || event.type}</div>
+                            <div className="flex-1">
+                                <div className="text-sm font-medium text-slate-900 dark:text-white">{event.title || event.description}</div>
+                                <div className="text-xs text-slate-500 mt-1">{new Date(event.createdAt).toLocaleDateString('es-ES')}{event.mileage && ` • ${event.mileage.toLocaleString()} km`}{event.userId && ` • ${event.userId}`}</div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }

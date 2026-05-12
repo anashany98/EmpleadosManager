@@ -80,7 +80,6 @@ const PERMISSION_RANK: Record<PermissionLevel, number> = {
     write: 2
 };
 
-const ALL_ROLES = ROLE_VALUES;
 const COMPANY_STAFF_ROLES: readonly Role[] = ['admin', 'hr', 'manager'];
 const EMPLOYEE_SELF_ROLES: readonly Role[] = ['admin', 'hr', 'manager', 'employee'];
 
@@ -159,6 +158,8 @@ export const APP_FEATURES = {
     calendar: { module: 'calendar', level: 'read' },
     audit: { module: 'audit', level: 'read', roles: ['admin'] as const },
     assets: { module: 'assets', level: 'read', roles: COMPANY_STAFF_ROLES },
+    fleet: { module: 'fleet', level: 'read', roles: COMPANY_STAFF_ROLES },
+    cards: { module: 'cards', level: 'read', roles: COMPANY_STAFF_ROLES },
     reports: { module: 'reports', level: 'read', roles: COMPANY_STAFF_ROLES },
     timesheetManagement: { module: 'timesheet', level: 'read', roles: COMPANY_STAFF_ROLES },
     inbox: { module: 'inbox', level: 'read', roles: COMPANY_STAFF_ROLES },
@@ -197,7 +198,7 @@ export const DOMAIN_POLICIES = {
         grants: [{ scope: 'company', roles: COMPANY_STAFF_ROLES, module: 'employees', level: 'write' }]
     },
     'employee.write.self': {
-        grants: [{ scope: 'self', roles: EMPLOYEE_SELF_ROLES, module: 'employees', level: 'read', requireEmployee: true }]
+        grants: [{ scope: 'self', roles: EMPLOYEE_SELF_ROLES, requireEmployee: true }]
     },
     'document.read': {
         grants: [
@@ -323,17 +324,17 @@ export function getDefaultPermissionsForRole(role: Role): PermissionMap {
 
 export function getEffectivePermissions(actor: AuthActor): PermissionMap {
     const role = normalizeRole(actor.role);
-    const defaults = getDefaultPermissionsForRole(role);
     const overrides = coercePermissionMap(actor.permissions);
-    const effective: PermissionMap = { ...defaults };
 
-    Object.entries(overrides).forEach(([moduleKey, level]) => {
-        const module = moduleKey as PermissionModule;
-        const current = effective[module] || 'none';
-        effective[module] = maxPermissionLevel(current, level as PermissionLevel);
-    });
+    if (role === 'admin' && !actor.companyId) {
+        return getDefaultPermissionsForRole('admin');
+    }
 
-    return effective;
+    if (Object.keys(overrides).length > 0) {
+        return { ...overrides };
+    }
+
+    return getDefaultPermissionsForRole(role);
 }
 
 export function normalizeActor(actor: AuthActor | null | undefined): NormalizedAuthActor | null {
@@ -424,22 +425,25 @@ export function canAccessPolicy(
     }
 
     return policy.grants.some((grant) => {
+        const accessGrant = grant as AccessGrant;
+
         if (grant.roles && !grant.roles.includes(normalized.role)) {
             return false;
         }
 
-        if (grant.requireEmployee && !normalized.employeeId) {
+        if (accessGrant.requireEmployee && !normalized.employeeId) {
             return false;
         }
 
-        if (grant.module && !hasModuleAccess(normalized, grant.module, grant.level || 'read')) {
+        if (accessGrant.module && !hasModuleAccess(normalized, accessGrant.module, accessGrant.level || 'read')) {
             return false;
         }
 
-        if (normalized.role === 'admin') {
+        if (normalized.role === 'admin' && !normalized.companyId) {
             return true;
         }
 
         return matchesScope(grant.scope, normalized, target);
     });
 }
+

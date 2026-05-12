@@ -29,6 +29,18 @@ describe('EmployeeWriteService', () => {
         expect(payload.name).toBe('Ana Gómez');
     });
 
+    it('builds create payloads without appending null to the name', () => {
+        const payload = buildEmployeeCreateData({
+            dni: '12345678A',
+            firstName: 'Anas Hany Lahroudy',
+            lastName: null
+        }, 'company-1');
+
+        expect(payload.name).toBe('Anas Hany Lahroudy');
+        expect(payload.firstName).toBe('Anas Hany Lahroudy');
+        expect(payload.lastName).toBeNull();
+    });
+
     it('builds company update payloads with encrypted sensitive fields and replace semantics for contacts', () => {
         const payload = buildCompanyEmployeeUpdateData({
             socialSecurityNumber: '321',
@@ -49,5 +61,19 @@ describe('EmployeeWriteService', () => {
             create: [{ name: 'Contacto', phone: '600', relationship: 'Padre' }]
         });
     });
-});
 
+    it('recomputes the canonical name when firstName or lastName change', () => {
+        const payload = buildCompanyEmployeeUpdateData({
+            firstName: 'Anas Hany Lahroudy',
+            lastName: null
+        }, {
+            name: 'Anas Hany Lahroudy null',
+            firstName: 'Anas Hany Lahroudy',
+            lastName: 'null'
+        });
+
+        expect(payload.name).toBe('Anas Hany Lahroudy');
+        expect(payload.firstName).toBe('Anas Hany Lahroudy');
+        expect(payload.lastName).toBeNull();
+    });
+});

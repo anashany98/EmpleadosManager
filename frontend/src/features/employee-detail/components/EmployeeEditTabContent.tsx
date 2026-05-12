@@ -1,6 +1,6 @@
 import { EmployeePersonalSection } from '../forms/EmployeePersonalSection';
 import { EmployeeSecondarySections } from '../forms/EmployeeSecondarySections';
-import type { CompanyOption, EmployeeFormData, EmployeeOption, NewEmergencyContact } from '../types';
+import type { CompanyOption, EmployeeFieldOptions, EmployeeFormData, EmployeeOption, NewEmergencyContact } from '../types';
 
 interface EmployeeEditTabContentProps {
     activeTab: string;
@@ -9,6 +9,7 @@ interface EmployeeEditTabContentProps {
     formData: EmployeeFormData;
     companies: CompanyOption[];
     allEmployees: EmployeeOption[];
+    fieldOptions: EmployeeFieldOptions;
     newContact: NewEmergencyContact;
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
     setFormData: React.Dispatch<React.SetStateAction<EmployeeFormData>>;
@@ -36,6 +37,7 @@ export function EmployeeEditTabContent(props: EmployeeEditTabContentProps) {
             formData={props.formData}
             companies={props.companies}
             allEmployees={props.allEmployees}
+            fieldOptions={props.fieldOptions}
             onChange={props.onChange}
         />
     );

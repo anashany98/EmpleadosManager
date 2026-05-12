@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, User, Package, LayoutDashboard, Inbox, Settings, X, Command, FileText, Calendar, Clock, Users, Building2 } from 'lucide-react';
+import { Search, User, Package, LayoutDashboard, Inbox, Settings, X, Command, FileText, Calendar, Clock, Users, Building2, AlertCircle, Shield, Upload, GitBranch } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
 
 interface SearchResult {
     id: string;
@@ -14,6 +15,8 @@ interface SearchResult {
 }
 
 export default function CommandPalette() {
+    const { user, canAccessFeature } = useAuth();
+    const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
     const [isOpen, setIsOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<SearchResult[]>([]);
@@ -23,7 +26,7 @@ export default function CommandPalette() {
     const inputRef = useRef<HTMLInputElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
 
-    const pages: SearchResult[] = [
+    const pages: SearchResult[] = useMemo(() => [
         { id: 'p1', type: 'page', title: 'Dashboard', path: '/', icon: <LayoutDashboard size={18} />, subtitle: 'Vista general del sistema' },
         { id: 'p2', type: 'page', title: 'Empleados', path: '/employees', icon: <Users size={18} />, subtitle: 'Gestión de personal' },
         { id: 'p3', type: 'page', title: 'Calendario', path: '/calendar', icon: <Calendar size={18} />, subtitle: 'Eventos y citas' },
@@ -32,8 +35,66 @@ export default function CommandPalette() {
         { id: 'p6', type: 'page', title: 'Bandeja de Entrada', path: '/inbox', icon: <Inbox size={18} />, subtitle: 'Documentos pendientes' },
         { id: 'p7', type: 'page', title: 'Empresas', path: '/companies', icon: <Building2 size={18} />, subtitle: 'Gestión empresarial' },
         { id: 'p8', type: 'page', title: 'Reportes', path: '/reports', icon: <FileText size={18} />, subtitle: 'Informes y estadísticas' },
-        { id: 'p9', type: 'page', title: 'Configuración', path: '/settings', icon: <Settings size={18} />, subtitle: 'Ajustes del sistema' },
-    ];
+        { id: 'p9', type: 'page', title: 'Plantillas', path: '/templates', icon: <FileText size={18} />, subtitle: 'Modelos legales y documentales' },
+        { id: 'p10', type: 'page', title: 'Configuración', path: '/settings', icon: <Settings size={18} />, subtitle: 'Ajustes del sistema' },
+        // Missing routes from plan
+        { id: 'p11', type: 'page', title: 'Vacaciones', path: '/vacations', icon: <Calendar size={18} />, subtitle: 'Gestión de vacaciones' },
+        { id: 'p12', type: 'page', title: 'Gastos', path: '/expenses', icon: <FileText size={18} />, subtitle: 'Gestión de gastos' },
+        { id: 'p13', type: 'page', title: 'Anomalías', path: '/anomalies', icon: <AlertCircle size={18} />, subtitle: 'Detección de anomalías' },
+        { id: 'p14', type: 'page', title: 'Auditoría', path: '/audit', icon: <Shield size={18} />, subtitle: 'Logs de auditoría' },
+        { id: 'p15', type: 'page', title: 'Importar Nómina', path: '/import', icon: <Upload size={18} />, subtitle: 'Importar datos de nómina' },
+        { id: 'p16', type: 'page', title: 'Usuarios', path: '/users', icon: <Users size={18} />, subtitle: 'Gestión de usuarios' },
+        { id: 'p17', type: 'page', title: 'Mi Perfil', path: '/profile', icon: <User size={18} />, subtitle: 'Mi información personal' },
+        { id: 'p18', type: 'page', title: 'Mis Documentos', path: '/my-documents', icon: <FileText size={18} />, subtitle: 'Documentos personales' },
+        { id: 'p19', type: 'page', title: 'Organigrama', path: '/employees/org-chart', icon: <GitBranch size={18} />, subtitle: 'Estructura organizativa' },
+        { id: 'p20', type: 'page', title: 'Reconciliación', path: '/reconciliation', icon: <Clock size={18} />, subtitle: 'Reconciliación de asistencia' },
+    ], []);
+
+    const availablePages = useMemo(() => pages.filter((page) => {
+        switch (page.path) {
+            case '/':
+                return canAccessFeature('dashboard');
+            case '/employees':
+            case '/employees/org-chart':
+                return canAccessFeature('employees');
+            case '/calendar':
+                return canAccessFeature('calendar');
+            case '/timesheet':
+                return canAccessFeature('timesheetManagement');
+            case '/assets':
+                return canAccessFeature('assets');
+            case '/inbox':
+                return canAccessFeature('inbox');
+            case '/companies':
+                return canAccessFeature('companies');
+            case '/reports':
+                return canAccessFeature('reports');
+            case '/templates':
+                return canAccessFeature('settings');
+            case '/settings':
+                return canAccessFeature('settings');
+            case '/vacations':
+                return canAccessFeature('vacations');
+            case '/expenses':
+                return canAccessFeature('expenses');
+            case '/anomalies':
+                return isGlobalAdmin;
+            case '/audit':
+                return isGlobalAdmin;
+            case '/import':
+                return isGlobalAdmin;
+            case '/users':
+                return isGlobalAdmin;
+            case '/profile':
+                return true;
+            case '/my-documents':
+                return canAccessFeature('inbox');
+            case '/reconciliation':
+                return canAccessFeature('reconciliation');
+            default:
+                return false;
+        }
+    }), [canAccessFeature, isGlobalAdmin, pages]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -54,10 +115,10 @@ export default function CommandPalette() {
         if (isOpen) {
             setQuery('');
             setSelectedIndex(0);
-            setResults(pages);
+            setResults(availablePages);
             setTimeout(() => inputRef.current?.focus(), 100);
         }
-    }, [isOpen]);
+    }, [availablePages, isOpen]);
 
     // Scroll selected item into view
     useEffect(() => {
@@ -72,36 +133,44 @@ export default function CommandPalette() {
     useEffect(() => {
         const search = async () => {
             if (query.length < 2) {
-                setResults(pages.filter(p => p.title.toLowerCase().includes(query.toLowerCase())));
+                setResults(availablePages.filter(p => p.title.toLowerCase().includes(query.toLowerCase())));
                 return;
             }
 
             setIsLoading(true);
             try {
+                const includeEmployees = canAccessFeature('employees');
+                const includeInventory = isGlobalAdmin && canAccessFeature('assets');
                 const [empRes, invRes] = await Promise.all([
-                    api.get(`/employees?search=${query}`).catch(() => ({ data: [] })),
-                    api.get(`/inventory?search=${query}`).catch(() => ({ data: [] }))
+                    includeEmployees ? api.get(`/employees?search=${query}`).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
+                    includeInventory ? api.get('/inventory').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
                 ]);
 
-                const employees = (empRes.data?.data || empRes.data || []).slice(0, 5).map((e: any) => ({
-                    id: e.id,
-                    type: 'employee' as const,
-                    title: `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.name || 'Sin nombre',
-                    subtitle: e.dni || e.department || 'Empleado',
-                    path: `/employees/${e.id}`,
-                    icon: <User size={18} className="text-blue-500" />
-                }));
+                const employees = includeEmployees
+                    ? (empRes.data?.data || empRes.data || []).slice(0, 5).map((e: any) => ({
+                        id: e.id,
+                        type: 'employee' as const,
+                        title: `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.name || 'Sin nombre',
+                        subtitle: e.dni || e.department || 'Empleado',
+                        path: `/employees/${e.id}`,
+                        icon: <User size={18} className="text-blue-500" />
+                    }))
+                    : [];
 
-                const inventory = (invRes.data?.data || invRes.data || []).slice(0, 5).map((i: any) => ({
-                    id: i.id,
-                    type: 'inventory' as const,
-                    title: i.name,
-                    subtitle: i.category || 'Activo',
-                    path: `/assets?q=${i.name}`,
-                    icon: <Package size={18} className="text-amber-500" />
-                }));
+                const inventorySource = includeInventory ? (invRes.data?.data || invRes.data || []) : [];
+                const inventory = inventorySource
+                    .filter((i: any) => String(i.name || '').toLowerCase().includes(query.toLowerCase()))
+                    .slice(0, 5)
+                    .map((i: any) => ({
+                        id: i.id,
+                        type: 'inventory' as const,
+                        title: i.name,
+                        subtitle: i.category || 'Activo',
+                        path: `/assets?q=${i.name}`,
+                        icon: <Package size={18} className="text-amber-500" />
+                    }));
 
-                const filteredPages = pages.filter(p => 
+                const filteredPages = availablePages.filter(p => 
                     p.title.toLowerCase().includes(query.toLowerCase()) ||
                     p.subtitle?.toLowerCase().includes(query.toLowerCase())
                 );
@@ -116,7 +185,7 @@ export default function CommandPalette() {
 
         const timer = setTimeout(search, 300);
         return () => clearTimeout(timer);
-    }, [query]);
+    }, [availablePages, canAccessFeature, isGlobalAdmin, query]);
 
     const handleSelect = (result: SearchResult) => {
         navigate(result.path);

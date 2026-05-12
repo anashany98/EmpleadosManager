@@ -7,17 +7,32 @@ const prisma = new PrismaClient();
 async function main() {
     console.log('🚀 Setting up Demo Environment...');
 
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || process.env.ADMIN_INITIAL_PASSWORD;
+    const demoPassword = process.env.SEED_DEMO_PASSWORD || 'CHANGE_ME';
+
+    if (!adminPassword || adminPassword.length < 8) {
+        console.error('❌ FATAL: SEED_ADMIN_PASSWORD env var is required (min 8 chars)');
+        console.error('   Usage: SEED_ADMIN_PASSWORD=YourSecurePassword npx ts-node scripts/setup_demo.ts');
+        process.exit(1);
+    }
+
+    if (!demoPassword || demoPassword.length < 6) {
+        console.error('❌ FATAL: SEED_DEMO_PASSWORD env var is required (min 6 chars)');
+        console.error('   Usage: SEED_DEMO_PASSWORD=YourPassword npx ts-node scripts/setup_demo.ts');
+        process.exit(1);
+    }
+
+    const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+
     // 1. Create/Update Admin
     const adminEmail = 'admin@empresa.com';
-    const adminPassword = 'admin123';
-    const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
 
     const admin = await prisma.user.upsert({
         where: { email: adminEmail },
         update: { password: hashedAdminPassword, role: 'admin' },
         create: { email: adminEmail, password: hashedAdminPassword, role: 'admin' }
     });
-    console.log(`✅ Admin: ${adminEmail} / ${adminPassword}`);
+    console.log(`✅ Admin: ${adminEmail}`);
 
     // 2. Ensure Company Exists
     let company = await prisma.company.findFirst();
@@ -36,7 +51,6 @@ async function main() {
 
     // 3. Create Demo Employee
     const demoEmail = 'empleado@empresa.com';
-    const demoPassword = 'empleado123';
     const dni = '12345678A';
 
     let employee = await prisma.employee.findUnique({ where: { dni } });
@@ -70,7 +84,7 @@ async function main() {
         },
         create: {
             email: demoEmail,
-            dni: dni,
+            dni,
             password: hashedDemoPassword,
             role: 'employee',
             employeeId: employee.id
@@ -136,8 +150,8 @@ async function main() {
     console.log('✅ Created Sample Payroll (Jan 2024)');
 
     console.log('\n🎉 DEMO READY!');
-    console.log(`Admin:    ${adminEmail} / ${adminPassword}`);
-    console.log(`Employee: ${demoEmail} / ${demoPassword}`);
+    console.log(`Admin:    ${adminEmail} (password via SEED_ADMIN_PASSWORD)`);
+    console.log(`Employee: ${demoEmail} (password via SEED_DEMO_PASSWORD)`);
 }
 
 main()

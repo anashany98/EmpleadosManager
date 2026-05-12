@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { validateUpload } from '../config/multer';
 
 import { createWorker } from 'tesseract.js';
 import { StorageService } from '../services/StorageService';
@@ -27,6 +28,7 @@ export const DocumentController = {
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
 
         try {
+            validateUpload(file);
             const worker = await createWorker('spa');
             const { data: { text } } = await worker.recognize(file.buffer);
             await worker.terminate();
@@ -42,7 +44,7 @@ export const DocumentController = {
             else if (cleanText.includes('curso') || cleanText.includes('formación') || cleanText.includes('diploma')) suggestedCategory = 'TRAINING';
 
             // 2. Extracción de fecha (DNI caducidad, fecha de contrato, etc.)
-            const dateRegex = /(\d{1,2})[\/\-\. ](\d{1,2})[\/\-\. ](\d{4}|\d{2})/;
+            const dateRegex = /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})/;
             const dateMatch = cleanText.match(dateRegex);
             let suggestedDate = null;
             if (dateMatch) {
@@ -73,6 +75,8 @@ export const DocumentController = {
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
         if (!employeeId) throw new AppError('employeeId requerido', 400);
 
+        validateUpload(file);
+
         let savedKey: string | null = null;
 
         try {
@@ -91,8 +95,7 @@ export const DocumentController = {
             });
             savedKey = key;
 
-            const document = await prisma.$transaction(async (tx) => {
-                return await tx.document.create({
+            const document = await prisma.$transaction(async (tx) => await tx.document.create({
                     data: {
                         employeeId,
                         name: name || file.originalname,
@@ -100,8 +103,7 @@ export const DocumentController = {
                         fileUrl: key,
                         expiryDate: expiryDate ? new Date(expiryDate) : null
                     }
-                });
-            });
+                }));
 
             return ApiResponse.success(res, document, 'Documento subido correctamente', 201);
         } catch (error) {
@@ -181,8 +183,8 @@ export const DocumentController = {
             if (!document) throw new AppError('Documento no encontrado', 404);
 
             if (StorageService.provider === 'local') {
-                const fs = require('fs');
-                const path = require('path');
+                const fs = await import('fs');
+                const path = await import('path');
                 const filePath = path.join(process.cwd(), 'uploads', document.fileUrl);
                 if (!fs.existsSync(filePath)) {
                     log.warn({ filePath }, 'File missing');

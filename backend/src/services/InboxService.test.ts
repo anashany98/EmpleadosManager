@@ -20,7 +20,15 @@ vi.mock('../lib/prisma', () => ({
         fileMapping: {
             count: vi.fn(),
             createMany: vi.fn()
-        }
+        },
+        $transaction: vi.fn(async (callback) => callback({
+            document: {
+                create: vi.fn((args) => prisma.document.create(args))
+            },
+            inboxDocument: {
+                update: vi.fn((args) => prisma.inboxDocument.update(args))
+            }
+        }))
     }
 }));
 

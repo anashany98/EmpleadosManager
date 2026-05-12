@@ -22,7 +22,7 @@ export class MappingService {
                 if (typeof val === 'number') return val;
                 // Reemplazar puntos de miles por nada, y comas decimales por puntos (asumiendo formato ES)
                 // Ojo: Esto depende del locale del perfil. Simplificamos para ES.
-                let str = String(val).replace(/\./g, '').replace(',', '.');
+                const str = String(val).replace(/\./g, '').replace(',', '.');
                 return parseFloat(str) || 0;
             };
 

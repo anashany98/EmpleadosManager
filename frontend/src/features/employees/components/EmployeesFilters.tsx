@@ -57,8 +57,9 @@ export function EmployeesFilters(props: EmployeesFiltersProps) {
                     >
                         <div className="flex flex-wrap items-end gap-4 pt-4 mt-4 border-t border-slate-200 dark:border-slate-700">
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Departamento</label>
+                                <label htmlFor="department-select" className="text-xs font-medium text-slate-500 dark:text-slate-400">Departamento</label>
                                 <select
+                                    id="department-select"
                                     value={props.filters.department}
                                     onChange={(event) => props.onFiltersChange({ ...props.filters, department: event.target.value })}
                                     className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
@@ -71,8 +72,9 @@ export function EmployeesFilters(props: EmployeesFiltersProps) {
                             </div>
 
                             <div className="flex flex-col gap-1.5">
-                                <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Estado</label>
+                                <label htmlFor="status-select" className="text-xs font-medium text-slate-500 dark:text-slate-400">Estado</label>
                                 <select
+                                    id="status-select"
                                     value={props.filters.status}
                                     onChange={(event) => props.onFiltersChange({ ...props.filters, status: event.target.value as FilterState['status'] })}
                                     className="px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"

@@ -1,6 +1,7 @@
 import { Building2, CreditCard, MessageCircle, MoreHorizontal, Plus, User } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Employee } from '../types';
+import { getEmployeeDisplayName, getEmployeeInitials } from '../../../utils/employeeDisplay';
 
 interface EmployeesTableProps {
     employees: Employee[];
@@ -54,8 +55,11 @@ export function EmployeesTable(props: EmployeesTableProps) {
                             </tr>
                         ))
                     ) : (
-                        props.employees.map((employee) => (
-                            <tr key={employee.id} className={`group transition-colors ${props.selectedIds.includes(employee.id) ? 'bg-blue-50 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
+                        props.employees.map((employee) => {
+                            const displayName = getEmployeeDisplayName(employee, 'Sin nombre');
+
+                            return (
+                            <tr key={employee.id} className={`group transition-colors ${props.selectedIds.includes(employee.id) ? 'bg-blue-50 dark:bg-blue-900/10' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'} ${!employee.active ? 'opacity-50' : ''}`}>
                                 <td className="px-6 py-4">
                                     <label className="flex items-center cursor-pointer">
                                         <input
@@ -63,20 +67,20 @@ export function EmployeesTable(props: EmployeesTableProps) {
                                             className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4 cursor-pointer"
                                             checked={props.selectedIds.includes(employee.id)}
                                             onChange={() => props.onSelectOne(employee.id)}
-                                            aria-label={`Seleccionar ${employee.name || `${employee.firstName} ${employee.lastName}`}`}
+                                            aria-label={`Seleccionar ${displayName}`}
                                         />
                                     </label>
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold shadow-inner">
-                                        {(employee.name || employee.firstName || '?').charAt(0)}
+                                        {getEmployeeInitials(employee, '?')}
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="font-semibold text-slate-900 dark:text-white">
+                                        <div className={`font-semibold text-slate-900 dark:text-white ${!employee.active ? 'line-through text-slate-400' : ''}`}>
                                             <Link to={`/employees/${employee.id}`} className="hover:text-blue-600 dark:hover:text-blue-400 transition-colors focus:outline-none focus-visible:underline">
-                                                {employee.name || `${employee.firstName} ${employee.lastName}`}
+                                                {displayName}
                                             </Link>
                                         </div>
                                         {employee.phone && (
@@ -84,12 +88,13 @@ export function EmployeesTable(props: EmployeesTableProps) {
                                                 href={`https://api.whatsapp.com/send?phone=${employee.phone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${employee.phone.replace(/\D/g, '')}`}
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="p-1.5 bg-green-500 text-white rounded-full hover:bg-green-600 transition-all hover:scale-110 active:scale-90 shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-green-500"
+                                                className="group/whatsapp relative inline-flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-[#25D366] to-[#128C7E] text-white shadow-md shadow-green-500/25 ring-1 ring-white/10 transition-all hover:scale-110 hover:shadow-lg hover:shadow-green-500/35 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900"
                                                 title={`Contactar por WhatsApp a ${employee.phone}`}
                                                 onClick={(event) => event.stopPropagation()}
-                                                aria-label={`Contactar por WhatsApp a ${employee.name || `${employee.firstName} ${employee.lastName}`}`}
+                                                aria-label={`Contactar por WhatsApp a ${displayName}`}
                                             >
-                                                <MessageCircle size={12} aria-hidden="true" />
+                                                <span className="absolute inset-0 rounded-full bg-white/0 transition-colors group-hover/whatsapp:bg-white/10" aria-hidden="true" />
+                                                <MessageCircle size={17} strokeWidth={2.6} className="relative drop-shadow-sm" aria-hidden="true" />
                                             </a>
                                         )}
                                     </div>
@@ -114,12 +119,12 @@ export function EmployeesTable(props: EmployeesTableProps) {
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <Link to={`/employees/${employee.id}`} className="inline-block text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label={`Ver detalles de ${employee.name || `${employee.firstName} ${employee.lastName}`}`}>
+                                    <Link to={`/employees/${employee.id}`} className="inline-block text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" aria-label={`Ver detalles de ${displayName}`}>
                                         <MoreHorizontal size={20} aria-hidden="true" />
                                     </Link>
                                 </td>
                             </tr>
-                        ))
+                        )})
                     )}
 
                     {!props.isLoading && props.employees.length === 0 && (

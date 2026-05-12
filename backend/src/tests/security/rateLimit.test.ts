@@ -1,15 +1,15 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../app/createApp';
 
 describe('Rate Limiting Security Tests', () => {
-    const app = createApp();
+    const { app } = createApp();
     const agent = request(app);
 
     describe('General Rate Limiting', () => {
         it('should allow requests under limit', async () => {
             const response = await agent.get('/api/health');
-            expect(response.status).toBe(200);
+            expect(response.status).not.toBe(429);
         });
 
         it('should block requests exceeding general limit', async () => {

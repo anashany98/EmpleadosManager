@@ -1,23 +1,37 @@
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import { 
     Star, Target, TrendingUp, Users, Calendar, Award, 
     Plus, Filter, ChevronRight, Clock, CheckCircle2,
-    BarChart3, FileText, User
+    BarChart3, FileText, User, X
 } from 'lucide-react';
 import { 
     useEvaluations, 
     useObjectives, 
     usePDIs,
     useEvaluationStats,
-    useObjectiveStats 
+    useObjectiveStats,
+    useCreateEvaluation,
+    useCreateObjective,
+    useCreatePDI
 } from '../hooks/usePerformance';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../api/client';
+import { getEmployeeDisplayName } from '../utils/employeeDisplay';
 
 type TabType = 'overview' | 'evaluations' | 'objectives' | 'pdis';
 
 export default function PerformancePage() {
     const [activeTab, setActiveTab] = useState<TabType>('overview');
     const [statusFilter, setStatusFilter] = useState<string>('');
+    const [showModal, setShowModal] = useState<'evaluation' | 'objective' | 'pdi' | null>(null);
+    const [newEvaluation, setNewEvaluation] = useState({
+        employeeId: '',
+        periodStart: '',
+        periodEnd: '',
+        dueDate: ''
+    });
 
     // Queries
     const { data: evaluations, isLoading: evalLoading } = useEvaluations(
@@ -29,6 +43,19 @@ export default function PerformancePage() {
     const { data: pdis, isLoading: pdiLoading } = usePDIs();
     const { data: evalStats } = useEvaluationStats();
     const { data: objStats } = useObjectiveStats();
+    const { data: employeesRes } = useQuery({
+        queryKey: ['employees-list'],
+        queryFn: async () => {
+            const res = await api.get('/employees');
+            return res.data?.data || res.data || [];
+        }
+    });
+    const employees = employeesRes || [];
+
+    // Mutations
+    const createEvaluation = useCreateEvaluation();
+    const createObjective = useCreateObjective();
+    const createPDI = useCreatePDI();
 
     const isLoading = evalLoading || objLoading || pdiLoading;
 
@@ -85,16 +112,16 @@ export default function PerformancePage() {
     };
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-6">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6">
             {/* Header */}
             <motion.div
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mb-8"
+                className="mb-6 sm:mb-8"
             >
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
-                        <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+                        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
                             Gestión del Desempeño
                         </h1>
                         <p className="text-slate-500 dark:text-slate-400 mt-1">
@@ -115,7 +142,10 @@ export default function PerformancePage() {
                             <option value="ACTIVE">Activo</option>
                         </select>
 
-                        <button className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors">
+                        <button 
+                            onClick={() => setShowModal('evaluation')} 
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors"
+                        >
                             <Plus size={18} />
                             <span className="text-sm font-medium">Nuevo</span>
                         </button>
@@ -124,12 +154,12 @@ export default function PerformancePage() {
             </motion.div>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+            <div className="flex gap-2 mb-4 sm:mb-6 overflow-x-auto pb-2">
                 {tabs.map((tab) => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id as TabType)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                        className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
                             activeTab === tab.id
                                 ? 'bg-blue-500 text-white shadow-sm'
                                 : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
@@ -550,6 +580,116 @@ export default function PerformancePage() {
                     )}
                 </div>
             )}
+
+            {/* Modal de creación */}
+            <AnimatePresence>
+                {showModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-2xl p-6 shadow-2xl"
+                        >
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">
+                                    Nueva Evaluación
+                                </h3>
+                                <button onClick={() => setShowModal(null)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
+                                    <X size={20} />
+                                </button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                        Empleado
+                                    </label>
+                                    <select
+                                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                                        onChange={(e) => {
+                                            const emp = employees.find(em => em.id === e.target.value);
+                                            if (emp) {
+                                                setNewEvaluation({ ...newEvaluation, employeeId: emp.id });
+                                            }
+                                        }}
+                                    >
+                                        <option value="">Seleccionar empleado...</option>
+                                        {employees.map((emp: any) => (
+                                            <option key={emp.id} value={emp.id}>
+                                                {getEmployeeDisplayName(emp)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                            Fecha inicio
+                                        </label>
+                                        <input
+                                            type="date"
+                                            className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                                            value={newEvaluation.periodStart}
+                                            onChange={(e) => setNewEvaluation({ ...newEvaluation, periodStart: e.target.value })}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                            Fecha fin
+                                        </label>
+                                        <input
+                                            type="date"
+                                            className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                                            value={newEvaluation.periodEnd}
+                                            onChange={(e) => setNewEvaluation({ ...newEvaluation, periodEnd: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                                        Fecha límite
+                                    </label>
+                                    <input
+                                        type="date"
+                                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
+                                        value={newEvaluation.dueDate}
+                                        onChange={(e) => setNewEvaluation({ ...newEvaluation, dueDate: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-6">
+                                <button
+                                    onClick={() => setShowModal(null)}
+                                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold rounded-xl"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (!newEvaluation.employeeId || !newEvaluation.periodStart || !newEvaluation.periodEnd || !newEvaluation.dueDate) {
+                                            toast.error('Todos los campos son obligatorios');
+                                            return;
+                                        }
+                                        createEvaluation.mutate({
+                                            ...newEvaluation,
+                                            evaluatorId: newEvaluation.employeeId
+                                        });
+                                        setShowModal(null);
+                                    }}
+                                    disabled={createEvaluation.isPending}
+                                    className="flex-1 py-3 bg-blue-600 text-white font-bold rounded-xl disabled:opacity-50"
+                                >
+                                    {createEvaluation.isPending ? 'Guardando...' : 'Crear Evaluación'}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }

@@ -10,6 +10,9 @@ node_modules
 dist
 build
 coverage
+test-results
+playwright-report
+.playwright-mcp
 
 # Ignore env files (secrets should be passed via environment variables)
 .env
@@ -18,6 +21,13 @@ coverage
 # Ignore logs
 *.log
 npm-debug.log*
+cookies.txt
+*cookies.txt
+login_response.json
+*.png
+BUG_REPORT_*.md
+TESTING_REPORT_*.md
+nul
 
 # Ignore IDE files
 .vscode

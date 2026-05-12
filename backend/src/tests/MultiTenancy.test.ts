@@ -52,7 +52,8 @@ import { prisma } from '../lib/prisma';
 
 // Mock Prisma
 vi.mock('../lib/prisma', () => ({
-    prisma: {
+    prisma: (() => {
+        const prismaMock: any = {
         employee: {
             findMany: vi.fn(),
             count: vi.fn(),
@@ -64,15 +65,24 @@ vi.mock('../lib/prisma', () => ({
         },
         vacation: {
             findMany: vi.fn(),
+            count: vi.fn(),
         },
         expense: {
             findMany: vi.fn(),
+            count: vi.fn(),
+        },
+        employeeVacationBalance: {
+            findUnique: vi.fn(),
+            upsert: vi.fn(),
         },
         timeEntry: {
             create: vi.fn(),
             findFirst: vi.fn()
         }
-    }
+        };
+        prismaMock.$transaction = vi.fn(async (callback: any) => callback(prismaMock));
+        return prismaMock;
+    })()
 }));
 
 // Helper to create mock request/response
@@ -109,6 +119,8 @@ describe('Multi-tenancy Security', () => {
 
             (prisma.employee.findUnique as any).mockResolvedValue(null); // No dup DNI/Subaccount
             (prisma.employee.create as any).mockResolvedValue({ id: 'new-1', ...req.body });
+            (prisma.employeeVacationBalance.findUnique as any).mockResolvedValue(null);
+            (prisma.employeeVacationBalance.upsert as any).mockResolvedValue({ id: 'balance-1' });
 
             await EmployeeController.create(req, res);
 

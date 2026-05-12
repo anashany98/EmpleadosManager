@@ -2,11 +2,9 @@ import { inboxService } from '../services/InboxService';
 import { schedulerService } from '../services/SchedulerService';
 import { queueService } from '../services/QueueService';
 import { initWorkers } from '../workers';
-import { EncryptionService } from '../services/EncryptionService';
+import { validateRuntimeConfiguration } from './configValidator';
 
-export function validateRuntimeConfiguration(): void {
-    EncryptionService.validateKey();
-}
+export { validateRuntimeConfiguration };
 
 export function startInfrastructure(): void {
     inboxService.start();

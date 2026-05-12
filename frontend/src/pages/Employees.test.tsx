@@ -26,10 +26,18 @@ describe('Employees page', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         vi.mocked(api.get).mockResolvedValue({
-            data: [
-                { id: 'emp-1', firstName: 'Ana', lastName: 'Gomez', dni: '111', subaccount465: '4651', department: 'IT', active: true },
-                { id: 'emp-2', firstName: 'Luis', lastName: 'Perez', dni: '222', subaccount465: '4652', department: 'Ventas', active: false }
-            ]
+            data: {
+                data: [
+                    { id: 'emp-1', firstName: 'Ana', lastName: 'Gomez', dni: '111', subaccount465: '4651', department: 'IT', active: true },
+                    { id: 'emp-2', firstName: 'Luis', lastName: 'Perez', dni: '222', subaccount465: '4652', department: 'Ventas', active: false }
+                ],
+                meta: {
+                    total: 2,
+                    page: 1,
+                    limit: 20,
+                    totalPages: 1
+                }
+            }
         } as never);
     });
 

@@ -1,157 +1,362 @@
-import { useState, useEffect } from 'react';
-import { Plus, FileSpreadsheet, ChevronDown, LayoutDashboard, Users, DollarSign } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { api } from '../api/client';
-import OverviewTab from '../components/dashboard/OverviewTab';
-import HRTab from '../components/dashboard/HRTab';
-import FinancialTab from '../components/dashboard/FinancialTab';
-import { AnimatePresence, motion } from 'framer-motion';
+﻿import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
+import { api } from "../api/client";
+import { motion } from "framer-motion";
+import {
+  Users, Clock, AlertTriangle, FileText,
+  Calendar, Activity, CheckCircle, Plus
+} from "lucide-react";
+
+function MetricCard({ title, value, subtitle, icon, color }: {
+  title: string;
+  value: number | string;
+  subtitle?: string;
+  icon: React.ReactNode;
+  color: "blue" | "emerald" | "amber" | "violet";
+}) {
+  const colors = {
+    blue: "from-blue-500 to-blue-600",
+    emerald: "from-emerald-500 to-emerald-600",
+    amber: "from-amber-500 to-amber-600",
+    violet: "from-violet-500 to-violet-600"
+  };
+  const displayValue = typeof value === "object" ? 0 : value;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 hover:shadow-lg transition-shadow"
+    >
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">{title}</p>
+          <p className="text-3xl font-bold text-slate-900 dark:text-white mt-2">{displayValue}</p>
+          {subtitle && <p className="text-xs text-slate-400 mt-1">{subtitle}</p>}
+        </div>
+        <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${colors[color]} flex items-center justify-center`}>
+          {icon}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function QuickAction({ icon, label, href, bgClass }: {
+  icon: React.ReactNode;
+  label: string;
+  href: string;
+  bgClass: string;
+}) {
+  return (
+    <Link
+      to={href}
+      className={`flex flex-col items-center gap-2 p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:scale-105 hover:shadow-md transition-all ${bgClass}`}
+    >
+      <div className="w-10 h-10 flex items-center justify-center">{icon}</div>
+      <span className="text-xs font-semibold text-center">{label}</span>
+    </Link>
+  );
+}
+
+function ActivityItem({ action, user, time, type }: {
+  action: string;
+  user?: string;
+  time: string;
+  type: "create" | "update" | "delete" | "system";
+}) {
+  const dotColors = {
+    create: "bg-emerald-500",
+    update: "bg-blue-500",
+    delete: "bg-rose-500",
+    system: "bg-slate-400"
+  };
+  return (
+    <div className="flex items-start gap-3 py-3 border-b border-slate-100 dark:border-slate-800 last:border-0">
+      <div className={`w-2 h-2 rounded-full mt-2 shrink-0 ${dotColors[type]}`} />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-slate-900 dark:text-white">{action}</p>
+        <p className="text-xs text-slate-500 mt-0.5">{user || "Sistema"} - {time}</p>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard() {
-    const { user } = useAuth();
-    const [metrics, setMetrics] = useState<any>(null);
-    const [companies, setCompanies] = useState<any[]>([]);
-    const [selectedCompany, setSelectedCompany] = useState<string>('');
-    const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'HR' | 'FINANCIAL'>('OVERVIEW');
-    const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
+  const [metrics, setMetrics] = useState<Record<string, any>>({});
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [selectedCompany, setSelectedCompany] = useState("");
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
+  const [whosOutCount, setWhosOutCount] = useState(0);
+  const [alertsCount, setAlertsCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-    const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === "admin";
+  const isEmployee = user?.role === "employee";
 
-    useEffect(() => {
-        if (isAdmin) fetchCompanies();
-    }, [isAdmin]);
+  useEffect(() => {
+    if (isAdmin) {
+      api.get("/companies").then(res => setCompanies(res.data || [])).catch(() => {});
+    }
+  }, [isAdmin]);
 
-    useEffect(() => {
-        if (isAdmin) fetchMetrics();
-    }, [selectedCompany, isAdmin]);
+  useEffect(() => {
+    const query = selectedCompany ? `?companyId=${selectedCompany}` : "";
 
-    const fetchCompanies = async () => {
-        try {
-            const res = await api.get('/companies');
-            setCompanies(res.data || res || []);
-        } catch (err) { console.error(err); }
-    };
+    Promise.all([
+      api.get(`/dashboard/v2/employees${query}`).catch(() => ({ data: null })),
+      api.get("/dashboard/audit?limit=5").catch(() => ({ data: [] })),
+      api.get("/alerts").catch(() => ({ data: [] }))
+    ]).then(([metricsRes, auditRes, alertsRes]) => {
+      const data = metricsRes.data;
+      setMetrics(data || {});
 
-    const fetchMetrics = async () => {
-        setLoading(true);
-        try {
-            const query = selectedCompany ? `?companyId=${selectedCompany}` : '';
-            // v2/employees serves as the base for many specific metrics
-            const res = await api.get(`/dashboard/v2/employees${query}`);
-            setMetrics(res.data || res);
-        } catch (error) {
-            console.error('Failed to load dashboard metrics', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+      const activityData = auditRes.data || [];
+      setRecentActivity(Array.isArray(activityData) ? activityData : []);
 
-    const TabButton = ({ id, label, icon: Icon }: { id: typeof activeTab, label: string, icon: any }) => (
-        <button
-            onClick={() => setActiveTab(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-all ${activeTab === id
-                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-lg scale-105'
-                : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
-                }`}
-        >
-            <Icon size={14} />
-            {label}
-        </button>
-    );
+      const alertsData = alertsRes.data;
+      if (Array.isArray(alertsData)) {
+        setAlertsCount(alertsData.length);
+      } else if (alertsData && typeof alertsData === "object") {
+        setAlertsCount(alertsData.count || 0);
+      }
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [selectedCompany, isAdmin]);
 
-    return (
-        <div className="h-[calc(100vh-60px)] p-2 -m-6 flex flex-col gap-4 bg-slate-50/50 dark:bg-slate-950/50 overflow-hidden font-sans">
-            {/* Header Area */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between px-4 pt-2 shrink-0 gap-4 md:gap-0 z-10">
-                <div className="flex items-center gap-6">
-                    <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Dashboard</h1>
+  const getNumericValue = (obj: any, fallback = 0): number => {
+    if (typeof obj === "number") return obj;
+    if (typeof obj === "string") return parseInt(obj, 10) || fallback;
+    return fallback;
+  };
 
-                    {/* Tab Navigation */}
-                    <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-full border border-slate-200 dark:border-slate-800 shadow-sm">
-                        <TabButton id="OVERVIEW" label="Resumen" icon={LayoutDashboard} />
-                        {isAdmin && <TabButton id="HR" label="RRHH" icon={Users} />}
-                        {isAdmin && <TabButton id="FINANCIAL" label="Financiero" icon={DollarSign} />}
-                    </div>
+  const stats = [
+    {
+      title: "Empleados",
+      value: getNumericValue(metrics?.headcount?.active),
+      subtitle: "Activos actualmente",
+      icon: <Users size={24} className="text-white" />,
+      color: "blue" as const
+    },
+    {
+      title: "Ausentes",
+      value: getNumericValue(metrics?.attendance?.onLeaveToday),
+      subtitle: "No trabajan hoy",
+      icon: <Clock size={24} className="text-white" />,
+      color: "emerald" as const
+    },
+    {
+      title: "Alertas",
+      value: alertsCount,
+      subtitle: "Requieren atención",
+      icon: <AlertTriangle size={24} className="text-white" />,
+      color: "amber" as const
+    },
+    {
+      title: "Nóminas",
+      value: getNumericValue(metrics?.payroll?.thisMonth),
+      subtitle: "Este mes",
+      icon: <span className="text-white text-xl font-bold">€</span>,
+      color: "violet" as const
+    }
+  ];
 
-                    {isAdmin && <div className="hidden md:block h-6 w-px bg-slate-200 dark:bg-slate-800"></div>}
+  const quickActions = [
+    { icon: <Plus size={20} className="text-blue-600" />, label: "Nuevo Empleado", href: "/employees/new", bgClass: "bg-blue-50 dark:bg-blue-900/20" },
+    { icon: <Calendar size={20} className="text-emerald-600" />, label: "Vacaciones", href: "/vacations", bgClass: "bg-emerald-50 dark:bg-emerald-900/20" },
+    { icon: <FileText size={20} className="text-amber-600" />, label: "Informes", href: "/reports", bgClass: "bg-amber-50 dark:bg-amber-900/20" },
+    { icon: <Activity size={20} className="text-rose-600" />, label: "Fichajes", href: "/timesheet", bgClass: "bg-rose-50 dark:bg-rose-900/20" }
+  ];
 
-                    {/* Company Selector */}
-                    {isAdmin && (
-                        <div className="relative group">
-                            <div className="flex items-center gap-2 cursor-pointer bg-white dark:bg-slate-900 px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-800 hover:border-blue-500 transition-colors shadow-sm">
-                                <span className="text-xs font-medium text-slate-600 dark:text-slate-300 truncate max-w-[150px]">
-                                    {selectedCompany ? companies.find(c => c.id === selectedCompany)?.name : 'Todas las Empresas'}
-                                </span>
-                                <ChevronDown size={14} className="text-slate-400 group-hover:text-blue-500" />
-                                <select
-                                    value={selectedCompany}
-                                    onChange={(e) => setSelectedCompany(e.target.value)}
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                >
-                                    <option value="">Todas las Empresas</option>
-                                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    )}
-                </div>
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 lg:p-8">
+      <div className="max-w-7xl mx-auto space-y-6">
 
-                <div className="flex items-center gap-2">
-                    {isAdmin && (
-                        <>
-                            <Link to="/employees" className="flex items-center gap-2 px-4 py-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 rounded-full text-xs font-bold transition-all shadow-lg shadow-slate-900/10 active:scale-95 whitespace-nowrap">
-                                <Plus size={14} /> Nuevo Empleado
-                            </Link>
-                            <Link to="/import" className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold transition-all active:scale-95 whitespace-nowrap">
-                                <FileSpreadsheet size={14} /> Importar Nómina
-                            </Link>
-                        </>
-                    )}
-                </div>
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">
+              {isEmployee ? "Mi Dashboard" : "Panel de Control"}
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 capitalize">
+              {new Date().toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
+            </p>
+          </div>
+          
+
+          {isAdmin && (
+            <div className="flex items-center gap-3">
+              <select
+                value={selectedCompany}
+                onChange={(e) => setSelectedCompany(e.target.value)}
+                className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-blue-500 outline-none"
+              >
+                <option value="">Todas las Empresas</option>
+                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+              <Link
+                to="/import"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl text-sm font-bold hover:bg-blue-700 transition-colors"
+              >
+                <FileText size={16} />
+                <span className="hidden sm:inline">Importar</span>
+              </Link>
             </div>
-
-            {/* Tab Content */}
-            <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-4">
-                <AnimatePresence mode="wait">
-                    {activeTab === 'OVERVIEW' && (
-                        <motion.div
-                            key="overview"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            transition={{ duration: 0.2 }}
-                            className="h-full"
-                        >
-                            <OverviewTab selectedCompany={selectedCompany} metrics={metrics} loading={loading} />
-                        </motion.div>
-                    )}
-                    {activeTab === 'HR' && (
-                        <motion.div
-                            key="hr"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            transition={{ duration: 0.2 }}
-                            className="h-full"
-                        >
-                            <HRTab metrics={metrics} />
-                        </motion.div>
-                    )}
-                    {activeTab === 'FINANCIAL' && (
-                        <motion.div
-                            key="financial"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 20 }}
-                            transition={{ duration: 0.2 }}
-                            className="h-full"
-                        >
-                            <FinancialTab selectedCompany={selectedCompany} metrics={metrics} />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
+          )}
         </div>
-    );
+
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {stats.map((stat, idx) => (
+            <MetricCard key={idx} {...stat} />
+          ))}
+        </div>
+
+        {/* Quick Actions */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4">
+          <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-4">Acciones Rápidas</h3>
+          <div className="grid grid-cols-4 gap-3">
+            {quickActions.map((action, idx) => (
+              <QuickAction key={idx} {...action} />
+            ))}
+          </div>
+        </div>
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          {/* Left Column - Activity */}
+          <div className="lg:col-span-2 space-y-6">
+
+            {/* Activity Feed */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                  <Activity size={16} className="text-blue-500" />
+                  Actividad Reciente
+                </h3>
+                <Link to="/audit" className="text-xs text-blue-600 hover:text-blue-700 font-medium">Ver todo</Link>
+              </div>
+              <div className="p-4">
+                {recentActivity.length === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-8">Sin actividad reciente</p>
+                ) : (
+                  recentActivity.slice(0, 5).map((item: any, idx: number) => (
+                    <ActivityItem
+                      key={idx}
+                      action={item.action || item.description || "Actividad"}
+                      user={item.user?.name || item.userName || item.email || "Sistema"}
+                      time={item.createdAt ? new Date(item.createdAt).toLocaleString("es-ES") : "Ahora"}
+                      type={item.type || "system"}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Alerts Summary */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                  <AlertTriangle size={16} className="text-amber-500" />
+                  Alertas
+                </h3>
+                <span className="px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 rounded-full text-xs font-bold">
+                  {alertsCount}
+                </span>
+              </div>
+              <div className="p-4">
+                {alertsCount === 0 ? (
+                  <div className="flex items-center gap-3 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
+                    <CheckCircle size={20} className="text-emerald-500" />
+                    <span className="text-sm text-emerald-700 dark:text-emerald-300">Todo bajo control</span>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {alertsCount} alerta{alertsCount !== 1 ? "s" : ""} pendiente{alertsCount !== 1 ? "s" : ""}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column */}
+          <div className="space-y-6">
+
+            {/* Who's Out Summary */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                  <Clock size={16} className="text-emerald-500" />
+                  Fuera de Oficina
+                </h3>
+                <span className="px-2 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-full text-xs font-bold">
+                  {whosOutCount}
+                </span>
+              </div>
+              <div className="p-4">
+                {whosOutCount === 0 ? (
+                  <p className="text-sm text-slate-400 text-center py-6">Nadie fuera hoy</p>
+                ) : (
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {whosOutCount} persona{whosOutCount !== 1 ? "s" : ""} fuera de oficina
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Info */}
+            <div className="bg-gradient-to-br from-violet-500 to-purple-600 rounded-2xl p-5 text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-24 h-24 bg-white/10 rounded-full -mr-12 -mt-12" />
+              <div className="absolute bottom-0 left-0 w-20 h-20 bg-white/10 rounded-full -ml-10 -mb-10" />
+              <div className="relative">
+                <div className="flex items-center gap-2 mb-4">
+                  <Activity size={20} className="text-white" />
+                  <h3 className="text-sm font-bold uppercase tracking-wide">Resumen</h3>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 p-3 bg-white/10 rounded-xl backdrop-blur-sm">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-amber-400 to-orange-400 flex items-center justify-center text-lg">
+                      <Users size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold">Empleados Activos</p>
+                      <p className="text-xs text-white/70">{getNumericValue(metrics?.headcount?.active)} registros</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-white/10 rounded-xl backdrop-blur-sm">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-400 to-indigo-400 flex items-center justify-center text-lg">
+                      <Clock size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold">Ausentes Hoy</p>
+                      <p className="text-xs text-white/70">{getNumericValue(metrics?.attendance?.onLeaveToday)} personas</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Stats */}
+        {!isEmployee && (
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 text-center">
+              <p className="text-2xl font-bold text-emerald-600">{getNumericValue(metrics?.vacations?.pending)}</p>
+              <p className="text-xs text-slate-500 mt-1">Vacaciones Pendientes</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 text-center">
+              <p className="text-2xl font-bold text-blue-600">{getNumericValue(metrics?.contracts?.expiringThisMonth)}</p>
+              <p className="text-xs text-slate-500 mt-1">Contratos por Vencer</p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 text-center">
+              <p className="text-2xl font-bold text-amber-600">{getNumericValue(metrics?.overtime?.hoursThisMonth)}h</p>
+              <p className="text-xs text-slate-500 mt-1">Horas Extra Mes</p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

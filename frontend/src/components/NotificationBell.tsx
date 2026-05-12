@@ -38,7 +38,7 @@ export default function NotificationBell() {
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isOpen]);
+    }, []);
 
     const fetchNotifications = async () => {
         try {

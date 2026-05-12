@@ -1,3 +1,7 @@
+if (process.env.NODE_ENV === 'production') {
+  console.error('❌ Cannot run seed in production!');
+  process.exit(1);
+}
 
 import { PrismaClient } from '@prisma/client';
 
@@ -39,7 +43,7 @@ async function main() {
     const admin = await prisma.user.create({
         data: {
             email: 'admin@empresa.com',
-            password: 'hashed_password',
+            password: '$2b$10$mEbLgCTb2jfYlZb3KRVIwOgLsvZSez6JBEpafmFUqq1C3BAryIRFS',
             role: 'admin'
         }
     });

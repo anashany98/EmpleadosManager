@@ -5,6 +5,7 @@ import { api } from '../../api/client';
 import { toast } from 'sonner';
 import { CreditCard, Plus, Trash2, PenSquare, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getEmployeeDisplayName } from '../../utils/employeeDisplay';
 
 interface Card {
     id: string;
@@ -15,7 +16,7 @@ interface Card {
     status: 'ACTIVE' | 'BLOCKED' | 'CANCELLED';
     limit?: number;
     expiryDate?: string;
-    employee?: { id: string; firstName: string; lastName: string };
+    employee?: { id: string; name?: string | null; firstName?: string | null; lastName?: string | null };
     employeeId?: string;
 }
 
@@ -76,7 +77,7 @@ export function CardManager() {
                             <div className="flex justify-between items-end">
                                 <div>
                                     <p className="text-[10px] uppercase opacity-60 tracking-wider">Titular</p>
-                                    <p className="font-bold text-sm">{card.employee ? `${card.employee.firstName} ${card.employee.lastName}` : 'NO ASIGNADO'}</p>
+                                    <p className="font-bold text-sm">{getEmployeeDisplayName(card.employee, 'NO ASIGNADO')}</p>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-[10px] uppercase opacity-60 tracking-wider">Caduca</p>
@@ -244,7 +245,7 @@ function CardModal({ card, onClose, onSuccess }: { card: Card | null, onClose: (
                         >
                             <option value="">-- Sin asignar --</option>
                             {employees.map((emp: any) => (
-                                <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+                                <option key={emp.id} value={emp.id}>{getEmployeeDisplayName(emp)}</option>
                             ))}
                         </select>
                     </div>

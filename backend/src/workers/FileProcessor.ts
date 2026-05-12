@@ -6,9 +6,11 @@ import { StorageService } from '../services/StorageService';
 import { NotificationService } from '../services/NotificationService';
 import { createLogger } from '../services/LoggerService';
 import { inboxService } from '../services/InboxService';
+import { createWorker } from 'tesseract.js';
 import jsQR from 'jsqr';
 import { PDFDocument } from 'pdf-lib';
-import { createWorker } from 'tesseract.js';
+import { PNG } from 'pngjs';
+import jpeg from 'jpeg-js';
 
 const log = createLogger('FileProcessor');
 
@@ -25,7 +27,7 @@ export const FileProcessor = async (job: Job) => {
 
         // Check if already in DB (Double check, though queue handles concurrency better)
         const existing = await prisma.inboxDocument.findFirst({
-            where: { filename: filename }
+            where: { filename }
         });
 
         if (existing) {
@@ -49,7 +51,9 @@ export const FileProcessor = async (job: Job) => {
                             qrData = parsed;
                             log.info({ type: qrData.t }, 'Found system metadata in PDF Subject');
                         }
-                    } catch (e) { }
+                    } catch {
+                        // Silently ignore - QR metadata is optional
+                    }
                 }
             } catch (e) {
                 log.warn({ error: e }, 'Error reading PDF metadata');
@@ -92,7 +96,7 @@ export const FileProcessor = async (job: Job) => {
         // 3. Create Inbox Entry
         const inboxDoc = await prisma.inboxDocument.create({
             data: {
-                filename: filename,
+                filename,
                 originalName: filename,
                 source: 'SCANNER',
                 fileUrl: key,
@@ -165,16 +169,13 @@ export const FileProcessor = async (job: Job) => {
  */
 async function scanImageForQR(buffer: Buffer): Promise<any | null> {
     try {
-        const png = require('pngjs').PNG;
-        const jpeg = require('jpeg-js');
-
-        let imageData: { data: Uint8ClampedArray | Buffer, width: number, height: number } | null = null;
+        let imageData: { data: Uint8Array | Uint8ClampedArray | Buffer, width: number, height: number } | null = null;
 
         // Try detecting format (basic signature check)
         if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
             // PNG
             const pngData = await new Promise<any>((resolve, reject) => {
-                new png().parse(buffer, (error: any, data: any) => {
+                new PNG().parse(buffer, (error: any, data: any) => {
                     if (error) reject(error);
                     else resolve(data);
                 });

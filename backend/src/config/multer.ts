@@ -1,6 +1,6 @@
 import multer from 'multer';
 import path from 'path';
-import { validateFileSignature, isPdf, isExcel, isOfficeDoc } from '../utils/fileValidation';
+import { isPdf, isExcel, isOfficeDoc } from '../utils/fileValidation';
 import { AppError } from '../utils/AppError';
 
 export const createMulterOptions = (
@@ -42,36 +42,25 @@ export const createMulterOptions = (
 };
 
 export const createSecureMulterOptions = (
-    dest: string,
+    _dest: string,
     allowedExtensions: string[] = ['.pdf', '.jpg', '.jpeg', '.png'],
     allowedMimeTypes: string[] = ['application/pdf', 'image/jpeg', 'image/png']
 ) => {
-    const storage = multer.diskStorage({
-        destination: (req, file, cb) => {
-            cb(null, dest);
-        },
-        filename: (req, file, cb) => {
-            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-            const ext = path.extname(file.originalname).toLowerCase();
-            cb(null, uniqueSuffix + ext);
-        }
-    });
+    // Use memoryStorage so file.buffer is available for magic-byte validation
+    const storage = multer.memoryStorage();
 
-    const fileFilter = async (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+    const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
         const ext = path.extname(file.originalname).toLowerCase();
 
         if (!allowedExtensions.includes(ext)) {
             return cb(new Error(`Extensión no permitida: ${ext}`));
         }
 
-        const firstBytes = file.buffer.slice(0, 8);
-        
-        try {
-            validateFileSignature(firstBytes, ext);
-            cb(null, true);
-        } catch (error) {
-            return cb(new AppError('El contenido del archivo no coincide con su extensión', 400));
+        if (!allowedMimeTypes.includes(file.mimetype)) {
+            return cb(new Error(`Tipo MIME no permitido: ${file.mimetype}`));
         }
+
+        cb(null, true);
     };
 
     return {

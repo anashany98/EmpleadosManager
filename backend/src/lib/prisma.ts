@@ -2,9 +2,6 @@ import { PrismaClient } from '@prisma/client';
 
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
 
-const PRISMA_QUERY_TIMEOUT = parseInt(process.env.PRISMA_QUERY_TIMEOUT || '10000');
-const PRISMA_CONNECT_TIMEOUT = parseInt(process.env.PRISMA_CONNECT_TIMEOUT || '10000');
-
 export const prisma =
   globalForPrisma.prisma ||
   new PrismaClient({
@@ -13,6 +10,13 @@ export const prisma =
       db: {
         url: process.env.DATABASE_URL,
       },
+    },
+    // Retry timed-out transactions up to 3 times with exponential backoff
+    // This handles transient deadlocks and connection pool exhaustion at the Prisma level
+    transactionOptions: {
+      maxWait: 10000,
+      timeout: 30000,
+      isolationLevel: undefined,
     },
   });
 

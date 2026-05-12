@@ -1,70 +1,70 @@
-# 👥 EmpleadosManager - Sistema de Gestión de RRHH
+﻿# ðŸ‘¥ EmpleadosManager - Sistema de GestiÃ³n de RRHH
 
-Sistema completo de gestión de empleados con nóminas, control de ausencias, horas extras y fichajes.
+Sistema completo de gestiÃ³n de empleados con nÃ³minas, control de ausencias, horas extras y fichajes.
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
-## ✨ Características Principales
+## âœ¨ CaracterÃ­sticas Principales
 
-### 📊 Gestión de Empleados
+### ðŸ“Š GestiÃ³n de Empleados
 - Ficha completa de empleado con datos personales, laborales y financieros
-- Importación masiva desde Excel
-- Seguimiento de documentación (DNI, carnet de conducir, contratos)
-- Historial de cambios y auditoría
+- ImportaciÃ³n masiva desde Excel
+- Seguimiento de documentaciÃ³n (DNI, carnet de conducir, contratos)
+- Historial de cambios y auditorÃ­a
 
-### 💰 Nóminas y Finanzas
-- Importación de nóminas desde Excel
-- Cálculo automático de costes
-- Gestión de horas extras con tarifas por categoría
+### ðŸ’° NÃ³minas y Finanzas
+- ImportaciÃ³n de nÃ³minas desde Excel
+- CÃ¡lculo automÃ¡tico de costes
+- GestiÃ³n de horas extras con tarifas por categorÃ­a
 - Subcuentas contables (465)
 
-### 📅 Gestión de Ausencias
+### ðŸ“… GestiÃ³n de Ausencias
 - Calendario global de empresa
-- Tipos: Vacaciones, Bajas médicas, Permisos, Horas médicas
-- Cálculo automático de días laborables
-- Cupo proporcional según fecha de alta
-- Generación de justificantes PDF
+- Tipos: Vacaciones, Bajas mÃ©dicas, Permisos, Horas mÃ©dicas
+- CÃ¡lculo automÃ¡tico de dÃ­as laborables
+- Cupo proporcional segÃºn fecha de alta
+- GeneraciÃ³n de justificantes PDF
 
-### ⏰ Control de Fichajes
+### â° Control de Fichajes
 - Registro de entradas/salidas
-- Gestión de pausas
-- Cálculo automático de horas trabajadas
+- GestiÃ³n de pausas
+- CÃ¡lculo automÃ¡tico de horas trabajadas
 - Vista individual por empleado
 - Calendario global de control horario
-- Importación desde Excel
+- ImportaciÃ³n desde Excel
 
-### 🏢 Multi-empresa
-- Gestión de múltiples empresas
+### ðŸ¢ Multi-empresa
+- GestiÃ³n de mÃºltiples empresas
 - Filtrado por empresa en dashboard
-- Asignación de empleados por empresa
+- AsignaciÃ³n de empleados por empresa
 
-### 📈 Analytics y Reportes
-- Dashboard con métricas clave
-- Alertas automáticas (vencimientos, ausencias)
-- Tendencias de contratación
+### ðŸ“ˆ Analytics y Reportes
+- Dashboard con mÃ©tricas clave
+- Alertas automÃ¡ticas (vencimientos, ausencias)
+- Tendencias de contrataciÃ³n
 - Informes de ausencias
 
-## 🛠️ Tecnologías
+## ðŸ› ï¸ TecnologÃ­as
 
 ### Frontend
 - **React 18** + **TypeScript**
-- **Vite** - Build tool ultrarrápido
+- **Vite** - Build tool ultrarrÃ¡pido
 - **TailwindCSS** - Styling
 - **Framer Motion** - Animaciones
-- **Recharts** - Gráficos
+- **Recharts** - GrÃ¡ficos
 - **Lucide React** - Iconos
 - **Sonner** - Notificaciones
-- **jsPDF** - Generación de PDFs
+- **jsPDF** - GeneraciÃ³n de PDFs
 
 ### Backend
 - **Node.js** + **Express** + **TypeScript**
 - **Prisma ORM** - Base de datos
-- **SQLite** - Base de datos (fácil de cambiar a PostgreSQL/MySQL)
+- **SQLite** - Base de datos (fÃ¡cil de cambiar a PostgreSQL/MySQL)
 - **Multer** - Upload de archivos
 - **XLSX** - Procesamiento de Excel
 
-## 📦 Instalación
+## ðŸ“¦ InstalaciÃ³n
 
 ### Requisitos Previos
 - **Node.js** >= 18.0.0
@@ -100,7 +100,7 @@ npm install
 npm run infra:up
 ```
 
-Si `5432` o `6379` ya estÃ¡n ocupados por otro stack local, ajusta `.env` o `backend/.env`:
+Si `5432` o `6379` ya estÃƒÂ¡n ocupados por otro stack local, ajusta `.env` o `backend/.env`:
 
 ```bash
 POSTGRES_PORT=55432
@@ -115,7 +115,7 @@ npm run db:generate
 npm run db:migrate
 ```
 
-4. **Iniciar la aplicación**
+4. **Iniciar la aplicaciÃ³n**
 
 Abrir 2 terminales:
 
@@ -124,23 +124,23 @@ Abrir 2 terminales:
 cd backend
 npm run dev
 ```
-El backend correrá en `http://localhost:3000`
+El backend correrÃ¡ en `http://localhost:3000`
 
 **Terminal 2 - Frontend:**
 ```bash
 cd frontend
 npm run dev
 ```
-El frontend correrá en `http://localhost:5173`
+El frontend correrÃ¡ en `http://localhost:5173`
 
-5. **Acceder a la aplicación**
+5. **Acceder a la aplicaciÃ³n**
    
 Abrir el navegador en `http://localhost:5173`
 
-## 📚 Uso
+## ðŸ“š Uso
 
 ### Importar Empleados
-1. Ir a **Configuración** → **Importar Empleados**
+1. Ir a **ConfiguraciÃ³n** â†’ **Importar Empleados**
 2. Descargar la plantilla Excel
 3. Rellenar los datos
 4. Subir el archivo
@@ -152,56 +152,56 @@ Abrir el navegador en `http://localhost:5173`
 4. Guardar
 
 ### Importar Fichajes
-1. Ir a **Configuración** → **Importar Horas**
+1. Ir a **ConfiguraciÃ³n** â†’ **Importar Horas**
 2. Subir Excel con columnas: DNI, Fecha, Entrada, Salida, Pausa
-3. El sistema calculará automáticamente las horas
+3. El sistema calcularÃ¡ automÃ¡ticamente las horas
 
 ### Ver Fichajes
-- **Vista Individual**: Abrir ficha de empleado → Pestaña "Fichajes"
-- **Vista Global**: Menú → Fichajes
+- **Vista Individual**: Abrir ficha de empleado â†’ PestaÃ±a "Fichajes"
+- **Vista Global**: MenÃº â†’ Fichajes
 
-## 🗂️ Estructura del Proyecto
+## ðŸ—‚ï¸ Estructura del Proyecto
 
 ```
 EmpleadosManager/
-├── frontend/          # Aplicación React
-│   ├── src/
-│   │   ├── api/      # Cliente API
-│   │   ├── components/  # Componentes reutilizables
-│   │   ├── pages/    # Páginas principales
-│   │   └── utils/    # Utilidades (festivos, etc.)
-│   └── public/
-├── backend/           # API Express
-│   ├── src/
-│   │   ├── controllers/  # Lógica de negocio
-│   │   ├── routes/   # Definición de rutas
-│   │   └── services/ # Servicios (validación, mapeo, etc.)
-│   └── uploads/      # Archivos subidos
-└── database/          # Configuración Prisma
-    ├── prisma/
-    │   └── schema.prisma  # Esquema de base de datos
-    └── dev.db         # Base de datos SQLite (generada)
+â”œâ”€â”€ frontend/          # AplicaciÃ³n React
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ api/      # Cliente API
+â”‚   â”‚   â”œâ”€â”€ components/  # Componentes reutilizables
+â”‚   â”‚   â”œâ”€â”€ pages/    # PÃ¡ginas principales
+â”‚   â”‚   â””â”€â”€ utils/    # Utilidades (festivos, etc.)
+â”‚   â””â”€â”€ public/
+â”œâ”€â”€ backend/           # API Express
+â”‚   â”œâ”€â”€ src/
+â”‚   â”‚   â”œâ”€â”€ controllers/  # LÃ³gica de negocio
+â”‚   â”‚   â”œâ”€â”€ routes/   # DefiniciÃ³n de rutas
+â”‚   â”‚   â””â”€â”€ services/ # Servicios (validaciÃ³n, mapeo, etc.)
+â”‚   â””â”€â”€ uploads/      # Archivos subidos
+â””â”€â”€ database/          # ConfiguraciÃ³n Prisma
+    â”œâ”€â”€ prisma/
+    â”‚   â””â”€â”€ schema.prisma  # Esquema de base de datos
+    â””â”€â”€ dev.db         # Base de datos SQLite (generada)
 ```
 
-## 🔐 Seguridad
+## ðŸ” Seguridad
 
 > [!IMPORTANT]
 > El sistema implementa las siguientes medidas de seguridad para proteger los datos:
-> - **Autenticación Robusta**: Uso de JWT con Refresh Tokens.
-> - **Protección CSRF**: Implementada mediante middleware.
+> - **AutenticaciÃ³n Robusta**: Uso de JWT con Refresh Tokens.
+> - **ProtecciÃ³n CSRF**: Implementada mediante middleware.
 > - **Cifrado**: Datos sensibles (DNI, SS) cifrados en reposo.
-> - **Políticas de Contraseña**: Validación de complejidad obligatoria.
-> - **Control de Acceso**: Roles de administrador, manager y usuario común.
+> - **PolÃ­ticas de ContraseÃ±a**: ValidaciÃ³n de complejidad obligatoria.
+> - **Control de Acceso**: Roles de administrador, manager y usuario comÃºn.
 
-## 🚀 Despliegue
+## ðŸš€ Despliegue
 
-### Opción 1: Docker (Recomendado)
+### OpciÃ³n 1: Docker (Recomendado)
 
 ```bash
 docker-compose up -d
 ```
 
-### Opción 2: Manual
+### OpciÃ³n 2: Manual
 
 **Backend:**
 ```bash
@@ -217,17 +217,17 @@ npm run build
 # Servir la carpeta dist/ con nginx o similar
 ```
 
-## 📝 Roadmap
+## ðŸ“ Roadmap
 
-- [x] Sistema de autenticación y roles
+- [x] Sistema de autenticaciÃ³n y roles
 - [x] Portal de autoservicio para empleados
-- [x] Gestión de nóminas y exportación PDF
-- [/] Gestión de documentos adjuntos (Próximamente)
+- [x] GestiÃ³n de nÃ³minas y exportaciÃ³n PDF
+- [/] GestiÃ³n de documentos adjuntos (PrÃ³ximamente)
 - [/] Tests automatizados (En progreso)
-- [ ] Aplicación móvil (Roadmap)
+- [ ] AplicaciÃ³n mÃ³vil (Roadmap)
 - [ ] Notificaciones por email avanzadas (Roadmap)
 
-## 🤝 Contribuir
+## ðŸ¤ Contribuir
 
 Las contribuciones son bienvenidas. Por favor:
 
@@ -237,21 +237,22 @@ Las contribuciones son bienvenidas. Por favor:
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
-## 📄 Licencia
+## ðŸ“„ Licencia
 
-Este proyecto está bajo la licencia MIT - ver el archivo [LICENSE](LICENSE) para más detalles.
+Este proyecto estÃ¡ bajo la licencia MIT - ver el archivo [LICENSE](LICENSE) para mÃ¡s detalles.
 
-## 👨‍💻 Autor
+## ðŸ‘¨â€ðŸ’» Autor
 
 **Anas Hany Lahroudy**
 - GitHub: [@anashany98](https://github.com/anashany98)
 
-## 🙏 Agradecimientos
+## ðŸ™ Agradecimientos
 
 - Iconos por [Lucide](https://lucide.dev/)
-- UI inspirado en diseños modernos de RRHH
+- UI inspirado en diseÃ±os modernos de RRHH
 - Comunidad de React y Node.js
 
 ---
 
-⭐ Si este proyecto te fue útil, considera darle una estrella en GitHub!
+â­ Si este proyecto te fue Ãºtil, considera darle una estrella en GitHub!
+

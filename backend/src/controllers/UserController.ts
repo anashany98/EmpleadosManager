@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { validatePassword } from '../utils/passwordPolicy';
-import { coercePermissionMap, normalizeRole } from '../../../shared/authz';
+import { coercePermissionMap, getEffectivePermissions, normalizeRole } from '../../../shared/authz';
 
 export const UserController = {
     list: async (req: Request, res: Response) => {
@@ -14,22 +14,33 @@ export const UserController = {
                 email: true,
                 role: true,
                 permissions: true,
+                isActive: true,
                 createdAt: true,
+                employee: {
+                    select: {
+                        companyId: true
+                    }
+                }
             },
             orderBy: { createdAt: 'desc' }
         });
 
         const parsedUsers = users.map(user => {
-            let parsed = {};
+            const { employee, ...safeUser } = user;
+            let permissions;
             try {
-                parsed = coercePermissionMap(user.permissions ? JSON.parse(user.permissions) : {});
+                permissions = coercePermissionMap(user.permissions ? JSON.parse(user.permissions) : {});
             } catch {
-                parsed = {};
+                permissions = {};
             }
             return {
-                ...user,
+                ...safeUser,
                 role: normalizeRole(user.role),
-                permissions: parsed
+                permissions: getEffectivePermissions({
+                    role: user.role,
+                    permissions,
+                    companyId: employee?.companyId
+                })
             };
         });
 
@@ -67,13 +78,14 @@ export const UserController = {
             }
         });
 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password: _, ...userWithoutPassword } = user;
         return ApiResponse.success(res, userWithoutPassword, 'Usuario creado correctamente', 201);
     },
 
     update: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const { email, password, role, permissions } = req.body;
+        const { email, password, role, permissions, isActive } = req.body;
 
         const data: any = {};
         if (email) data.email = email;
@@ -86,12 +98,17 @@ export const UserController = {
             }
             data.password = await bcrypt.hash(password, 10);
         }
+        if (typeof isActive === 'boolean') {
+            data.isActive = isActive;
+            data.sessionVersion = { increment: 1 };
+        }
 
         const user = await prisma.user.update({
             where: { id },
             data
         });
 
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { password: _, ...userWithoutPassword } = user;
         return ApiResponse.success(res, userWithoutPassword, 'Usuario actualizado correctamente');
     },
@@ -116,5 +133,44 @@ export const UserController = {
         await prisma.user.delete({ where: { id } });
 
         return ApiResponse.success(res, null, 'Usuario eliminado correctamente');
+    },
+
+    toggleActive: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        const { isActive } = req.body;
+
+        if (typeof isActive !== 'boolean') {
+            throw new AppError('El campo isActive es requerido y debe ser booleano', 400);
+        }
+
+        const userToUpdate = await prisma.user.findUnique({ where: { id } });
+        if (!userToUpdate) {
+            throw new AppError('Usuario no encontrado', 404);
+        }
+
+        if (!isActive && userToUpdate.role === 'admin') {
+            const activeAdminCount = await prisma.user.count({
+                where: {
+                    role: 'admin',
+                    isActive: true
+                }
+            });
+
+            if (activeAdminCount <= 1) {
+                throw new AppError('No se puede desactivar el último administrador activo', 400);
+            }
+        }
+
+        const user = await prisma.user.update({
+            where: { id },
+            data: {
+                isActive,
+                sessionVersion: { increment: 1 }
+            }
+        });
+
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password: _, ...userWithoutPassword } = user;
+        return ApiResponse.success(res, userWithoutPassword, isActive ? 'Usuario habilitado' : 'Usuario deshabilitado');
     }
 };

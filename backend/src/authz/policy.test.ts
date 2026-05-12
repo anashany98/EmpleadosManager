@@ -7,7 +7,25 @@ describe('shared authz policies', () => {
         expect(normalizeRole('ADMIN')).toBe('admin');
     });
 
-    it('keeps admin access global for company-scoped policies', () => {
+    it('does not let a company admin escape its own company scope', () => {
+        expect(
+            canAccessPolicy(
+                'payroll.read',
+                { role: 'admin', companyId: 'company-1' },
+                { employeeId: 'emp-1', companyId: 'company-1' }
+            )
+        ).toBe(true);
+
+        expect(
+            canAccessPolicy(
+                'payroll.read',
+                { role: 'admin', companyId: 'company-1' },
+                { employeeId: 'emp-2', companyId: 'company-2' }
+            )
+        ).toBe(false);
+    });
+
+    it('keeps global admin access for company-scoped policies', () => {
         expect(
             canAccessPolicy(
                 'payroll.read',

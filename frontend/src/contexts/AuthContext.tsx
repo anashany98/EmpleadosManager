@@ -116,7 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [setSessionHint]);
 
     const canAccessFeature = useCallback((feature: AppFeatureKey): boolean => {
-        return canSharedAccessFeature(feature, user);
+        const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
+
+        if ((feature === 'users' || feature === 'settings' || feature === 'audit') && !isGlobalAdmin) {
+            return false;
+        }
+
+        return true;
     }, [user]);
 
     const value = useMemo(() => ({

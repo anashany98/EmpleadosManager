@@ -46,8 +46,24 @@ export const StorageService = {
         if (STORAGE_PROVIDER === 'local') {
             const filePath = path.join(LOCAL_UPLOAD_DIR, key);
             const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(filePath, params.buffer);
+            // Use fs.promises.mkdir for better async handling and ensure recursive creation
+            try {
+                await fs.promises.mkdir(dir, { recursive: true });
+            } catch (mkdirErr: any) {
+                // EEXIST is fine, rethrow other errors
+                if (mkdirErr.code !== 'EEXIST') {
+                    // Try with explicit mode as fallback
+                    try {
+                        await fs.promises.mkdir(dir, { recursive: true, mode: 0o777 });
+                    } catch (fallbackErr) {
+                        console.error(`Failed to create directory ${dir}:`, fallbackErr);
+                        const err = new Error(`No se pudo crear el directorio de almacenamiento: ${dir}`);
+                        (err as any).cause = fallbackErr;
+                        throw err;
+                    }
+                }
+            }
+            await fs.promises.writeFile(filePath, params.buffer);
             return { key };
         }
 
@@ -97,5 +113,21 @@ export const StorageService = {
         if (!s3Client) throw new Error('S3 client not initialized');
         const bucket = process.env.S3_BUCKET!;
         return getSignedUrl(s3Client, new GetObjectCommand({ Bucket: bucket, Key: key }), { expiresIn: expiresInSeconds });
+    },
+
+    async getUrl(key: string): Promise<string> {
+        if (!key) return '';
+
+        if (STORAGE_PROVIDER === 'local') {
+            return `/uploads/${key}`;
+        }
+
+        if (!s3Client) throw new Error('S3 client not initialized');
+        const bucket = process.env.S3_BUCKET!;
+        const endpoint = process.env.S3_ENDPOINT;
+        if (endpoint) {
+            return `${endpoint}/${bucket}/${key}`;
+        }
+        return `https://${bucket}.s3.amazonaws.com/${key}`;
     }
 };

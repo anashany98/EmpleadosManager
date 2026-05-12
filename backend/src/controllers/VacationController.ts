@@ -6,16 +6,29 @@ import { NotificationService } from '../services/NotificationService';
 import { AnomalyService } from '../services/AnomalyService';
 import { StorageService } from '../services/StorageService';
 import { EmailService } from '../services/EmailService';
+import { CacheService } from '../services/CacheService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { canAccessPolicy } from '../../../shared/authz';
 import {
     notifyVacationCreated,
     saveVacationAttachment,
-    validateVacationRequest
+    validateVacationRequest,
+    updateVacationStatus,
+    transformVacationWithUrl,
+    transformVacationListWithUrl
 } from '../services/VacationRequestService';
+import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
+import fs from 'fs';
+import path from 'path';
 
 const log = createLogger('VacationController');
+
+function invalidateVacationBalanceCache(employeeId: string, year: number): void {
+    const cacheKey = `vacation:balance:${employeeId}:${year}`;
+    CacheService.del(cacheKey);
+    log.info({ cacheKey }, 'Vacation balance cache invalidated');
+}
 
 export const VacationController = {
     // Obtener todas las vacaciones (Global)
@@ -30,13 +43,38 @@ export const VacationController = {
                 where.employee = { companyId: user.companyId };
             }
 
-            const vacations = await prisma.vacation.findMany({
-                where,
-                include: { employee: true },
-                orderBy: { startDate: 'desc' }
-            });
-            return ApiResponse.success(res, vacations);
-        } catch (error) {
+            const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
+            if (startDate) {
+                where.startDate = { ...where.startDate, gte: new Date(startDate) };
+            }
+            if (endDate) {
+                where.endDate = { ...where.endDate, lte: new Date(endDate) };
+            }
+
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
+
+            const [total, vacations] = await Promise.all([
+                prisma.vacation.count({ where }),
+                prisma.vacation.findMany({
+                    where,
+                    include: { employee: true },
+                    orderBy: { startDate: 'desc' },
+                    ...prismaPagination
+                })
+            ]);
+
+            const vacationsWithUrl = await transformVacationListWithUrl(vacations);
+
+            if (pagination.isPaginationRequested) {
+                return ApiResponse.success(res, {
+                    data: vacationsWithUrl,
+                    meta: buildPaginationMeta(total, pagination)
+                });
+            }
+
+            return ApiResponse.success(res, vacationsWithUrl);
+        } catch {
             throw new AppError('Error al obtener vacaciones', 500);
         }
     },
@@ -61,28 +99,49 @@ export const VacationController = {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
 
-            const vacations = await prisma.vacation.findMany({
-                where: { employeeId },
-                orderBy: { startDate: 'desc' }
-            });
-            res.json(vacations);
-        } catch (error) {
-            res.status(500).json({ error: 'Error al obtener vacaciones' });
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
+            const where = { employeeId };
+
+            const [total, vacations] = await Promise.all([
+                prisma.vacation.count({ where }),
+                prisma.vacation.findMany({
+                    where,
+                    orderBy: { startDate: 'desc' },
+                    ...prismaPagination
+                })
+            ]);
+
+            const vacationsWithUrl = await transformVacationListWithUrl(vacations);
+
+            if (pagination.isPaginationRequested) {
+                return ApiResponse.success(res, {
+                    data: vacationsWithUrl,
+                    meta: buildPaginationMeta(total, pagination)
+                });
+            }
+
+            return ApiResponse.success(res, vacationsWithUrl);
+        } catch {
+            return ApiResponse.error(res, 'Error al obtener vacaciones', 500);
         }
     },
 
     // Crear vacaciones
     create: async (req: Request, res: Response) => {
         try {
-            let { employeeId, startDate, endDate, type, reason } = req.body;
+            const { employeeId: bodyEmployeeId, startDate, endDate, type, reason } = req.body as { employeeId?: string; startDate: string; endDate: string; type?: string; reason?: string };
+            let employeeId = bodyEmployeeId || (req as AuthenticatedRequest).user?.employeeId;
             const { user } = req as AuthenticatedRequest;
+
+            log.info({ body: req.body, employeeId, startDate, endDate, type, userId: user?.id }, 'VacationController.create called');
 
             if (!employeeId && user?.employeeId) {
                 employeeId = user.employeeId;
             }
 
             if (!employeeId || !startDate || !endDate) {
-                return res.status(400).json({ error: 'Faltan campos requeridos (employeeId, startDate, endDate)' });
+                return ApiResponse.error(res, 'Faltan campos requeridos (employeeId, startDate, endDate)', 400);
             }
 
             const targetEmployee = await prisma.employee.findUnique({
@@ -91,143 +150,51 @@ export const VacationController = {
             });
 
             if (!targetEmployee) {
-                return res.status(404).json({ error: 'Empleado no encontrado' });
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
             }
 
             if (!canAccessPolicy('vacation.write', user, { employeeId, companyId: targetEmployee.companyId })) {
-                return res.status(403).json({ error: 'No autorizado' });
+                return ApiResponse.error(res, 'No autorizado', 403);
             }
 
             const start = new Date(startDate);
             const end = new Date(endDate);
-            const { requestedDays } = await validateVacationRequest(employeeId, start, end, type);
-            const fileUrl = await saveVacationAttachment(employeeId, req.file);
+            const vacationStatus = (req.body as any).status || 'PENDING';
 
-            /* Legacy validation and attachment handling replaced by VacationRequestService
-            // 1. Control de Solapamientos
-            const overlapping = await prisma.vacation.findFirst({
-                where: {
-                    employeeId,
-                    OR: [
-                        { startDate: { lte: end }, endDate: { gte: start } }
-                    ]
-                }
-            });
+            const vacation = await prisma.$transaction(async (tx) => {
+                const { requestedDays } = await validateVacationRequest(employeeId, start, end, type, tx);
+                const fileUrl = await saveVacationAttachment(employeeId, req.file);
 
-            if (overlapping) {
-                return res.status(400).json({
-                    error: 'Ya existe un registro de ausencia que se solapa con estas fechas.'
+                return tx.vacation.create({
+                    data: {
+                        employeeId,
+                        startDate: start,
+                        endDate: end,
+                        type: type || 'VACATION',
+                        days: requestedDays,
+                        reason: reason || null,
+                        fileUrl,
+                        status: vacationStatus
+                    },
+                    include: { employee: true }
                 });
-            }
-
-            // 2. Cálculo de Días Real (Restando Fines de Semana y FESTIVOS)
-            const diffDays = HolidayService.getBusinessDaysCount(start, end);
-
-            // Validar cupo solo para vacaciones
-            if (type === 'VACATION' || !type) {
-                const employee = await prisma.employee.findUnique({
-                    where: { id: employeeId },
-                    include: { vacations: true }
-                });
-
-                if (!employee) return res.status(404).json({ error: 'Empleado no encontrado' });
-
-                const currentYear = start.getFullYear();
-                const usedDays = employee.vacations.reduce((acc: number, v: any) => {
-                    const vStart = new Date(v.startDate);
-                    const vEnd = new Date(v.endDate);
-                    if ((v.type === 'VACATION' || !v.type) && vStart.getFullYear() === currentYear && v.status !== 'REJECTED') {
-                        // Nota: Excluimos REJECTED del conteo
-                        return acc + HolidayService.getBusinessDaysCount(vStart, vEnd);
-                    }
-                    return acc;
-                }, 0);
-
-                const quota = employee.vacationDaysTotal || 30;
-                if (usedDays + diffDays > quota) {
-                    return res.status(400).json({
-                        error: `Excede cupo. Disponibles: ${quota - usedDays}, Solicitados: ${diffDays}.`,
-                        insufficientDays: true
-                    });
-                }
-            }
-
-            let fileUrl = null;
-            if (req.file) {
-                const safeEmployeeId = employeeId.replace(/[^a-zA-Z0-9-]/g, '');
-                const { key } = await StorageService.saveBuffer({
-                    folder: `vacations/${safeEmployeeId}`,
-                    originalName: req.file.originalname,
-                    buffer: req.file.buffer,
-                    contentType: req.file.mimetype
-                });
-                fileUrl = key;
-            }
-            */
-
-            const vacation = await prisma.vacation.create({
-                data: {
-                    employeeId,
-                    startDate: start,
-                    endDate: end,
-                    type: type || 'VACATION',
-                    days: requestedDays,
-                    reason: reason || null,
-                    fileUrl,
-                    status: 'PENDING'
-                } as any,
-                include: { employee: true } // Include employee for name in notification
             });
 
             AnomalyService.detectVacation(vacation as any).catch(err => log.error({ err }, 'Anomaly detection failed'));
-            await notifyVacationCreated(vacation, process.env.FRONTEND_URL || 'http://localhost:5173');
 
-            /* Legacy notification flow replaced by VacationRequestService
-            // NOTIFY ADMINS
-            const empName = (vacation as any).employee?.name || 'Un empleado';
-            await NotificationService.notifyAdmins(
-                'Nueva Solicitud de Vacaciones',
-                `${empName} ha solicitado ${diffDays} días de ${type || 'vacaciones'}.`,
-                '/vacations'
-            );
+            const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+            notifyVacationCreated(vacation, FRONTEND_URL).catch(err => log.error({ err }, 'Vacation notification failed'));
 
-            // Notify Manager via Email
-            if ((vacation as any).employee?.managerId) {
-                const manager = await prisma.employee.findUnique({
-                    where: { id: (vacation as any).employee.managerId },
-                    select: { email: true, name: true }
-                });
+            invalidateVacationBalanceCache(vacation.employeeId, new Date(vacation.startDate).getFullYear());
 
-                if (manager?.email) {
-                    const subject = `Nueva Solicitud de Vacaciones: ${empName}`;
-                    const html = `
-                        <div style="font-family: sans-serif; padding: 20px;">
-                            <h2>Nueva Solicitud de Vacaciones</h2>
-                            <p>Hola ${manager.name},</p>
-                            <p><b>${empName}</b> ha solicitado vacaciones del <b>${vacation.startDate.toLocaleDateString()}</b> al <b>${vacation.endDate.toLocaleDateString()}</b>.</p>
-                            <p>Días: ${vacation.days}</p>
-                            <p>Motivo: ${vacation.reason || 'Sin motivo especificado'}</p>
-                            <br/>
-                            <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}/vacations" style="background: #2563eb; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Revisar Solicitud</a>
-                        </div>
-                    `;
-                    EmailService.sendMail(manager.email, subject, html).catch(err => {
-                        log.error({ err }, 'Error sending manager notification email');
-                    });
-                }
-            }
-            */
-
-            res.json(vacation);
-        } catch (error) {
+            const vacationWithUrl = await transformVacationWithUrl(vacation);
+            return ApiResponse.success(res, vacationWithUrl, 'Solicitud de vacaciones creada', 201);
+        } catch (error: any) {
             if (error instanceof AppError) {
-                return res.status(error.statusCode || 400).json({
-                    error: error.message,
-                    insufficientDays: error.message.includes('Excede cupo')
-                });
+                return ApiResponse.error(res, error.message, error.statusCode || 400);
             }
             log.error({ error }, 'Error creating vacation');
-            res.status(500).json({ error: 'Internal server error' });
+            return ApiResponse.error(res, 'Error al crear vacaciones', 500);
         }
     },
 
@@ -240,24 +207,33 @@ export const VacationController = {
                 where: { id },
                 include: { employee: { select: { companyId: true } } }
             });
-            if (!vacation) return res.status(404).json({ error: 'No encontrado' });
+            if (!vacation) return ApiResponse.error(res, 'No encontrado', 404);
             if (!canAccessPolicy('vacation.write', user, { employeeId: vacation.employeeId, companyId: vacation.employee?.companyId })) {
-                return res.status(403).json({ error: 'No autorizado' });
+                return ApiResponse.error(res, 'No autorizado', 403);
             }
 
+            const employeeId = vacation.employeeId;
+            const year = new Date(vacation.startDate).getFullYear();
             await prisma.vacation.delete({ where: { id } });
-            res.json({ message: 'Vacaciones eliminadas' });
-        } catch (error) {
-            res.status(500).json({ error: 'Error al eliminar' });
+
+            invalidateVacationBalanceCache(employeeId, year);
+
+            return ApiResponse.success(res, null, 'Vacaciones eliminadas');
+        } catch {
+            return ApiResponse.error(res, 'Error al eliminar', 500);
         }
     },
 
     updateStatus: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const { status } = req.body; // PENDING, APPROVED, REJECTED
+        const { status, rejectionReason, managerComment } = req.body as { status: string; rejectionReason?: string; managerComment?: string };
 
         if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) {
             throw new AppError('Estado no válido', 400);
+        }
+
+        if (status === 'REJECTED' && !rejectionReason) {
+            throw new AppError('El motivo de rechazo es requerido', 400);
         }
 
         try {
@@ -272,11 +248,8 @@ export const VacationController = {
                 throw new AppError('No autorizado', 403);
             }
 
-            const vacation = await prisma.vacation.update({
-                where: { id },
-                data: { status },
-                include: { employee: true }
-            });
+            const approvedBy = (status === 'APPROVED' || status === 'REJECTED') ? user.id : undefined;
+            const vacation = await updateVacationStatus(id, status, rejectionReason, managerComment, approvedBy);
 
             // NOTIFY EMPLOYEE
             if (vacation.employee?.email) {
@@ -312,8 +285,11 @@ export const VacationController = {
                     log.error({ err }, 'Error sending vacation status email');
                 });
             }
-            return ApiResponse.success(res, vacation, 'Estado de vacaciones actualizado');
-        } catch (error) {
+
+            invalidateVacationBalanceCache(vacation.employeeId, new Date(vacation.startDate).getFullYear());
+            const vacationWithUrl = await transformVacationWithUrl(vacation);
+            return ApiResponse.success(res, vacationWithUrl, 'Estado de vacaciones actualizado');
+        } catch {
             throw new AppError('Error al actualizar el estado de las vacaciones', 500);
         }
     },
@@ -330,8 +306,9 @@ export const VacationController = {
                 include: { employee: true }
             });
 
-            return ApiResponse.success(res, vacations);
-        } catch (error) {
+            const vacationsWithUrl = await transformVacationListWithUrl(vacations);
+            return ApiResponse.success(res, vacationsWithUrl);
+        } catch (error: any) {
             log.error({ error }, 'Error getting my vacations');
             return ApiResponse.error(res, 'Error al obtener mis vacaciones', 500);
         }
@@ -356,46 +333,9 @@ export const VacationController = {
                 orderBy: { startDate: 'asc' }
             });
 
-            return ApiResponse.success(res, manageableVacations);
-            /* Legacy subordinate-based flow intentionally removed after policy unification.
-            const whereClause: any = {};
-
-            // Si es admin, filtramos por su compañia
-            if (user.role === 'admin') {
-                if (user.companyId) {
-                    whereClause.employee = { companyId: user.companyId };
-                }
-            } else {
-                // Si no es admin, filtramos por subordinados
-                const me = await prisma.employee.findFirst({ where: { email: user.email } });
-
-                if (!me) {
-                    // Si no es empleado y no es admin, no puede aprobar nada
-                    return ApiResponse.success(res, []);
-                }
-
-                // Buscar empleados que reportan a este usuario
-                const subordinates = await prisma.employee.findMany({
-                    where: { managerId: me.id },
-                    select: { id: true }
-                });
-
-                if (subordinates.length === 0) {
-                    return ApiResponse.success(res, []);
-                }
-
-                whereClause.employeeId = { in: subordinates.map(s => s.id) };
-            }
-
-            const vacations = await prisma.vacation.findMany({
-                where: whereClause,
-                include: { employee: true },
-                orderBy: { startDate: 'asc' }
-            });
-
-            return ApiResponse.success(res, vacations);
-            */
-        } catch (error) {
+            const vacationsWithUrl = await transformVacationListWithUrl(manageableVacations);
+            return ApiResponse.success(res, vacationsWithUrl);
+        } catch (error: any) {
             log.error({ error }, 'Error getting pending vacations');
             return ApiResponse.error(res, 'Error al obtener solicitudes pendientes', 500);
         }
@@ -418,8 +358,6 @@ export const VacationController = {
             }
 
             if (StorageService.provider === 'local') {
-                const fs = require('fs');
-                const path = require('path');
                 const filePath = path.join(process.cwd(), 'uploads', vacation.fileUrl);
                 if (!fs.existsSync(filePath)) {
                     throw new AppError('El archivo físico no existe', 404);
@@ -430,7 +368,7 @@ export const VacationController = {
             const signedUrl = await StorageService.getSignedDownloadUrl(vacation.fileUrl);
             if (!signedUrl) throw new AppError('No se pudo generar URL de descarga', 500);
             return res.redirect(signedUrl);
-        } catch (error) {
+        } catch (error: any) {
             if (error instanceof AppError) throw error;
             log.error({ error }, 'Download error');
             throw new AppError('Error al descargar el archivo', 500);

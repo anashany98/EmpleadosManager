@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { Settings, DollarSign, Upload, AlertCircle, Folder, Mail, Save, Send } from 'lucide-react';
@@ -6,10 +6,9 @@ import ChecklistManager from '../components/onboarding/ChecklistManager';
 import BackupManager from '../components/BackupManager';
 import FileMappingManager from '../components/FileMappingManager';
 
-const CATEGORIAS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4', 'Grupo 5', 'Grupo 6', 'Grupo 7', 'Oficial de 1ª', 'Oficial de 2ª', 'Oficial de 3ª', 'Peón', 'Otros'];
-
 export default function SettingsPage() {
     const [rates, setRates] = useState<any[]>([]);
+    const [employeeCategories, setEmployeeCategories] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
     const [importing, setImporting] = useState(false);
     const [savingInbox, setSavingInbox] = useState(false);
@@ -44,14 +43,23 @@ export default function SettingsPage() {
         fetchData();
     }, []);
 
+    const categories = useMemo(() => {
+        return Array.from(new Set([
+            ...rates.map((rate) => rate.category).filter(Boolean),
+            ...employeeCategories
+        ])).sort((left, right) => left.localeCompare(right, 'es'));
+    }, [employeeCategories, rates]);
+
     const fetchData = async () => {
         try {
-            const [ratesRes, configRes, smtpRes] = await Promise.all([
+            const [ratesRes, configRes, smtpRes, employeeOptionsRes] = await Promise.all([
                 api.get('/overtime/rates'),
                 api.get('/config/inbox_settings'),
-                api.get('/config/smtp').catch(() => ({ data: {} })) // Handle error if route not ready
+                api.get('/config/smtp').catch(() => ({ data: {} })), // Handle error if route not ready
+                api.get('/employees/options').catch(() => ({ data: { data: { categories: [] } } }))
             ]);
             setRates(ratesRes.data || ratesRes || []);
+            setEmployeeCategories(employeeOptionsRes.data?.data?.categories || employeeOptionsRes.data?.categories || []);
             if (configRes.data) {
                 setInboxConfig(prev => ({ ...prev, ...configRes.data }));
             }
@@ -171,29 +179,29 @@ export default function SettingsPage() {
         }
     };
 
-    if (loading) return <div className="p-10 text-center animate-pulse">Cargando configuración...</div>;
+    if (loading) return <div className="p-4 sm:p-10 text-center animate-pulse">Cargando configuración...</div>;
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500 pb-20">
-            <div className="flex items-center gap-3 mb-2">
-                <div className="p-2 bg-blue-600 rounded-lg text-white">
-                    <Settings size={24} />
-                </div>
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Configuración del Sistema</h1>
+    <div className="space-y-4 sm:space-y-8 animate-in fade-in duration-500 pb-20">
+      <div className="flex items-center gap-3 mb-2">
+        <div className="p-2 bg-blue-600 rounded-lg text-white">
+          <Settings size={24} />
+        </div>
+        <div>
+          <h1 className="text-xl sm:text-3xl font-bold text-slate-900 dark:text-white">Configuración del Sistema</h1>
                     <p className="text-slate-500">Gestiona las tarifas y preferencias globales</p>
                 </div>
             </div>
 
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center gap-3">
-                    <DollarSign className="text-blue-500" size={20} />
-                    <h2 className="font-bold text-slate-900 dark:text-white text-lg">Tarifas de Horas Extras por Categoría</h2>
+      <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center gap-3">
+        <DollarSign className="text-blue-500" size={20} />
+        <h2 className="font-bold text-slate-900 dark:text-white text-base sm:text-lg">Tarifas de Horas Extras por Categoría</h2>
                 </div>
 
-                <div className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {CATEGORIAS.map(cat => {
+      <div className="p-4 sm:p-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+                        {categories.map(cat => {
                             const rate = rates.find(r => r.category === cat);
                             return (
                                 <div key={cat} className="p-5 rounded-2xl border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm space-y-4">
@@ -231,20 +239,26 @@ export default function SettingsPage() {
                                 </div>
                             );
                         })}
+
+                        {categories.length === 0 && (
+                            <div className="col-span-full p-6 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 text-sm text-slate-500 dark:text-slate-400 text-center">
+                                Aun no hay categorías detectadas en empleados ni en tarifas guardadas.
+                            </div>
+                        )}
                     </div>
                 </div>
             </div>
 
             {/* Importador de Horas Extras */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Upload className="text-indigo-500" size={20} />
-                        <h2 className="font-bold text-slate-900 dark:text-white text-lg">Importador de Horas de Fichaje</h2>
+      <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Upload className="text-indigo-500" size={20} />
+          <h2 className="font-bold text-slate-900 dark:text-white text-base sm:text-lg">Importador de Horas de Fichaje</h2>
                     </div>
                 </div>
 
-                <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
+                <div className="p-4 sm:p-6 grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 items-center">
                     <div>
                         <p className="text-slate-600 dark:text-slate-400 text-sm mb-4">
                             Sube el archivo Excel exportado de tu sistema de fichajes. El sistema identificará a los empleados por su <b>DNI</b> y registrará las horas de la columna <b>Extr</b>.
@@ -294,10 +308,10 @@ export default function SettingsPage() {
 
             {/* Configuración de Correo (SMTP) */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Mail className="text-orange-500" size={20} />
-                        <h2 className="font-bold text-slate-900 dark:text-white text-lg">Configuración de Envío de Correos (SMTP)</h2>
+      <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Mail className="text-orange-500" size={20} />
+          <h2 className="font-bold text-slate-900 dark:text-white text-base sm:text-lg">Configuración de Envío de Correos (SMTP)</h2>
                     </div>
                     <button
                         onClick={handleSaveSmtpConfig}
@@ -309,10 +323,10 @@ export default function SettingsPage() {
                     </button>
                 </div>
 
-                <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
                     <div className="space-y-4">
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="sm:col-span-2">
                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Servidor SMTP</label>
                                 <input
                                     type="text"
@@ -334,16 +348,16 @@ export default function SettingsPage() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Usuario</label>
-                                <input
-                                    type="text"
-                                    value={smtpConfig.user}
-                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, user: e.target.value })}
-                                    className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
-                                />
-                            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Usuario</label>
+              <input
+                type="text"
+                value={smtpConfig.user}
+                onChange={(e) => setSmtpConfig({ ...smtpConfig, user: e.target.value })}
+                className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+              />
+            </div>
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Contraseña</label>
                                 <input
@@ -355,9 +369,9 @@ export default function SettingsPage() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Remitente (From)</label>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Remitente (From)</label>
                                 <input
                                     type="text"
                                     value={smtpConfig.from}
@@ -380,12 +394,12 @@ export default function SettingsPage() {
                         </div>
                     </div>
 
-                    <div className="p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                        <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
-                            <Send size={16} />
-                            Probar Configuración
-                        </h3>
-                        <div className="flex gap-2">
+      <div className="p-4 sm:p-6 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+        <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
+          <Send size={16} />
+          Probar Configuración
+        </h3>
+        <div className="flex flex-col sm:flex-row gap-2">
                             <input
                                 type="email"
                                 placeholder="tu-email@ejemplo.com"
@@ -415,10 +429,10 @@ export default function SettingsPage() {
 
             {/* Configuración de Bandeja de Entrada */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Folder className="text-blue-500" size={20} />
-                        <h2 className="font-bold text-slate-900 dark:text-white text-lg">Configuración de Bandeja de Entrada (IMAP)</h2>
+      <div className="p-4 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Folder className="text-blue-500" size={20} />
+          <h2 className="font-bold text-slate-900 dark:text-white text-base sm:text-lg">Configuración de Bandeja de Entrada (IMAP)</h2>
                     </div>
                     <button
                         onClick={handleSaveInboxConfig}
@@ -430,8 +444,8 @@ export default function SettingsPage() {
                     </button>
                 </div>
 
-                <div className="p-6 space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className="p-4 sm:p-6 space-y-6 sm:space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
                         {/* Scanner Config */}
                         <div className="space-y-4">
                             <h3 className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-2">
@@ -472,8 +486,8 @@ export default function SettingsPage() {
 
                                 {inboxConfig.emailEnabled && (
                                     <div className="space-y-4 animate-in slide-in-from-top-2 duration-300">
-                                        <div className="grid grid-cols-3 gap-3">
-                                            <div className="col-span-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="sm:col-span-2">
                                                 <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Servidor IMAP</label>
                                                 <input
                                                     type="text"
@@ -494,13 +508,13 @@ export default function SettingsPage() {
                                             </div>
                                         </div>
 
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Usuario / Email</label>
-                                                <input
-                                                    type="text"
-                                                    value={inboxConfig.imap.user}
-                                                    onChange={(e) => setInboxConfig({ ...inboxConfig, imap: { ...inboxConfig.imap, user: e.target.value } })}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">Usuario / Email</label>
+                <input
+                  type="text"
+                  value={inboxConfig.imap.user}
+                  onChange={(e) => setInboxConfig({ ...inboxConfig, imap: { ...inboxConfig.imap, user: e.target.value } })}
                                                     className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
                                                 />
                                             </div>
@@ -526,7 +540,7 @@ export default function SettingsPage() {
             <FileMappingManager />
 
             {/* Onboarding Templates */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-6">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden p-4 sm:p-6">
                 <ChecklistManager />
             </div>
 

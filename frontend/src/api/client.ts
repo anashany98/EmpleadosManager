@@ -1,16 +1,54 @@
 import { toast } from 'sonner';
 
 export const BASE_URL = import.meta.env.VITE_API_URL || '';
-// Avoid double /api if VITE_API_URL already ends with it
 export const API_URL = BASE_URL.endsWith('/api') || BASE_URL.endsWith('/api/')
     ? BASE_URL.replace(/\/$/, '')
     : `${BASE_URL.replace(/\/$/, '')}/api`;
 
-// Request options type
-interface RequestOptions {
-    params?: Record<string, string | number | boolean>;
+const REQUEST_TIMEOUT = 30000;
+const MAX_RETRIES = 3;
+const RETRY_DELAYS = [1000, 2000, 4000];
+const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
+
+export class NetworkError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'NetworkError';
+    }
+}
+
+export class TimeoutError extends Error {
+    constructor(message: string = 'Request timed out') {
+        super(message);
+        this.name = 'TimeoutError';
+    }
+}
+
+export class ApiError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+        super(message);
+        this.name = 'ApiError';
+        this.status = status;
+    }
+}
+
+export interface RequestOptions {
+    params?: Record<string, string | number | boolean | undefined | null>;
     responseType?: 'blob' | 'json';
 }
+
+const buildUrlWithParams = (url: string, params?: Record<string, string | number | boolean | undefined | null>): string => {
+    if (!params) return url;
+    const searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+            searchParams.append(key, String(value));
+        }
+    });
+    const queryString = searchParams.toString();
+    return queryString ? `${url}?${queryString}` : url;
+};
 
 const getCookie = (name: string): string => {
     const value = `; ${document.cookie}`;
@@ -22,7 +60,6 @@ const getCookie = (name: string): string => {
 const getHeaders = (isFormData = false, method: string = 'GET'): Record<string, string> => {
     const headers: Record<string, string> = {};
     if (!isFormData) headers['Content-Type'] = 'application/json';
-
     const upper = method.toUpperCase();
     if (upper !== 'GET' && upper !== 'HEAD' && upper !== 'OPTIONS') {
         const csrfToken = getCookie('csrf_token');
@@ -31,7 +68,6 @@ const getHeaders = (isFormData = false, method: string = 'GET'): Record<string, 
     return headers;
 };
 
-// Queue to hold requests while refreshing
 let isRefreshing = false;
 interface QueueItem {
     resolve: (value: unknown) => void;
@@ -41,126 +77,151 @@ let failedQueue: QueueItem[] = [];
 
 const processQueue = (error: Error | null, token: string | null = null): void => {
     failedQueue.forEach(prom => {
-        if (error) {
-            prom.reject(error);
-        } else {
-            prom.resolve(token);
-        }
+        if (error) prom.reject(error);
+        else prom.resolve(token);
     });
     failedQueue = [];
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const customFetch = async <T = any>(endpoint: string, options: RequestOptions & { method?: string; body?: unknown } = {}): Promise<T> => {
-    const url = `${API_URL}${endpoint}`;
+const isRetryableStatus = (status: number, attempt: number): boolean => {
+    if (attempt === 0 && status >= 500) return false;
+    if (status >= 400 && status < 500 && status !== 408 && status !== 429) return false;
+    return RETRYABLE_STATUS_CODES.includes(status);
+};
 
-    // Config fetch
+const customFetch = async <T>(endpoint: string, options: RequestOptions & { method?: string; body?: unknown } = {}): Promise<T> => {
+    const url = buildUrlWithParams(`${API_URL}${endpoint}`, options.params);
     const method = options.method || 'GET';
-    const config: RequestInit = {
-        method,
-        headers: getHeaders(options.body instanceof FormData, method),
-        body: options.body instanceof FormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined),
-        credentials: 'include'
-    };
+    const isFormData = options.body instanceof FormData;
+    const headers = getHeaders(isFormData, method);
+    const body = isFormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined);
 
-    try {
-        const res = await fetch(url, config);
+    let attempt = 0;
+    
+    while (attempt <= MAX_RETRIES) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
 
-        // Handle 401 (Unauthorized) - Only if not logging in or refreshing
-        if (res.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh') && !endpoint.includes('/auth/me')) {
-            if (isRefreshing) {
-                // If already refreshing, queue this request
-                return new Promise((resolve, reject) => {
-                    failedQueue.push({ resolve, reject });
-                }).then(() => {
-                    return customFetch<T>(endpoint, options);
-                }).catch((err) => {
-                    throw err;
-                }) as Promise<T>;
-            }
+        try {
+            const config: RequestInit = {
+                method,
+                headers,
+                body,
+                credentials: 'include',
+                signal: controller.signal
+            };
 
-            isRefreshing = true;
-            try {
-                // Attempt refresh
-                const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include'
-                });
+            const res = await fetch(url, config);
+            clearTimeout(timeoutId);
 
-                if (!refreshRes.ok) {
-                    throw new Error('Refresh failed');
+            if (res.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
+                if (isRefreshing) {
+                    return new Promise((resolve, reject) => {
+                        failedQueue.push({ resolve, reject });
+                    }).then(() => customFetch<T>(endpoint, options)).catch((err) => { throw err; }) as Promise<T>;
                 }
 
-                await refreshRes.json();
+                isRefreshing = true;
+                let refreshAttempts = 0;
+                const maxRefreshAttempts = 2;
+                
+                while (refreshAttempts < maxRefreshAttempts) {
+                    try {
+                        const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            credentials: 'include'
+                        });
+
+                        if (!refreshRes.ok) {
+                            if (refreshRes.status === 401) {
+                                refreshAttempts = maxRefreshAttempts;
+                                break;
+                            }
+                            throw new Error('Refresh failed');
+                        }
+
+                        await refreshRes.json();
+                        processQueue(null, null);
+                        isRefreshing = false;
+                        return customFetch<T>(endpoint, options);
+                    } catch {
+                        refreshAttempts++;
+                        if (refreshAttempts >= maxRefreshAttempts) break;
+                        await new Promise(r => setTimeout(r, 500));
+                    }
+                }
 
                 isRefreshing = false;
-                processQueue(null, null);
-
-                // Retry original request
-                return customFetch<T>(endpoint, options);
-
-            } catch (refreshErr) {
-                isRefreshing = false;
-                processQueue(refreshErr as Error, null);
-
-                // Complete logout (avoid reload loop if already on auth pages)
+                processQueue(new Error('Refresh failed'), null);
                 const path = window.location.pathname;
                 const isAuthPage = path.startsWith('/login') || path.startsWith('/request-reset') || path.startsWith('/reset-password');
-                if (!isAuthPage) {
-                    window.location.href = '/login';
-                }
-                throw refreshErr;
+                if (!isAuthPage) window.location.href = '/login';
+                throw new Error('Session expired');
             }
-        }
 
-        if (!res.ok) {
-            // Generic error handling
-            let errMsg = res.statusText;
-            try {
-                const text = await res.text();
-                try {
-                    const json = JSON.parse(text);
-                    if (json.message) errMsg = json.message;
-                    else errMsg = text;
-                } catch {
-                    errMsg = text;
+            if (!res.ok) {
+                if (attempt < MAX_RETRIES && isRetryableStatus(res.status, attempt)) {
+                    attempt++;
+                    const delay = RETRY_DELAYS[attempt - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
                 }
-                throw new Error(text);
-            } catch (e: unknown) {
-                const error = e as Error;
-                let finalMsg = error.message || errMsg;
-                try {
-                    const json = JSON.parse(finalMsg);
-                    if (json.message) finalMsg = json.message;
-                } catch { }
 
-                if (res.status === 403) {
+                let errMsg = res.statusText;
+                try {
+                    const text = await res.text();
+                    try {
+                        const json = JSON.parse(text);
+                        errMsg = json.message || text;
+                    } catch { errMsg = text; }
+                } catch {
+                        // Ignore parse errors, use text value
+                    }
+
+                    if (res.status === 403) {
                     toast.error('⛔ Acceso denegado: No tienes permiso para esta acción.');
                 }
 
-                throw new Error(finalMsg);
+                throw new ApiError(errMsg, res.status);
             }
-        }
 
-        if (options.responseType === 'blob') {
-            return res.blob() as Promise<T>;
-        }
-        return res.json();
+            if (options.responseType === 'blob') {
+                return res.blob() as Promise<T>;
+            }
+            return res.json();
 
-    } catch (error) {
-        throw error;
+        } catch (error) {
+            clearTimeout(timeoutId);
+            
+            if (error instanceof DOMException && error.name === 'AbortError') {
+                if (attempt < MAX_RETRIES) {
+                    attempt++;
+                    const delay = RETRY_DELAYS[attempt - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
+                }
+                throw new TimeoutError();
+            }
+            
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                if (attempt < MAX_RETRIES) {
+                    attempt++;
+                    const delay = RETRY_DELAYS[attempt - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                    await new Promise(r => setTimeout(r, delay));
+                    continue;
+                }
+                throw new NetworkError('Network error occurred');
+            }
+
+            throw error;
+        }
     }
+
+    throw new Error('Max retries exceeded');
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const api: {
-    get: <T = any>(endpoint: string, options?: RequestOptions) => Promise<T>;
-    post: <T = any>(endpoint: string, body?: unknown, options?: RequestOptions) => Promise<T>;
-    put: <T = any>(endpoint: string, body?: unknown, options?: RequestOptions) => Promise<T>;
-    patch: <T = any>(endpoint: string, body?: unknown, options?: RequestOptions) => Promise<T>;
-    delete: <T = any>(endpoint: string) => Promise<T>;
-} = {
+export const api = {
     get: <T>(endpoint: string, options: RequestOptions = {}) => 
         customFetch<T>(endpoint, { ...options, method: 'GET' }),
     post: <T>(endpoint: string, body?: unknown, options: RequestOptions = {}) => 

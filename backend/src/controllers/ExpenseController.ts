@@ -8,6 +8,7 @@ import { AnomalyService } from '../services/AnomalyService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { canAccessPolicy } from '../../../shared/authz';
+import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
 
 const log = createLogger('ExpenseController');
 
@@ -17,10 +18,10 @@ export const ExpenseController = {
         const file = req.file;
         if (!file) return res.status(400).json({ error: 'No se ha subido ningún archivo' });
 
+        let worker;
         try {
-            const worker = await createWorker('spa');
+            worker = await createWorker('spa');
             const { data: { text } } = await worker.recognize(file.buffer);
-            await worker.terminate();
 
             // Limpieza básica del texto OCR para mejorar la detección
             const cleanText = text.replace(/\s+/g, ' ').toLowerCase();
@@ -31,7 +32,7 @@ export const ExpenseController = {
             const amounts: number[] = [];
             let match;
             while ((match = amountRegex.exec(cleanText)) !== null) {
-                let val = match[1].replace(',', '.');
+                const val = match[1].replace(',', '.');
                 amounts.push(parseFloat(val));
             }
 
@@ -48,7 +49,7 @@ export const ExpenseController = {
 
             // 2. Buscar fechas Mejorado
             // Soporta dd/mm/yyyy, dd-mm-yyyy, y formatos con espacios o puntos
-            const dateRegex = /(\d{1,2})[\/\-\. ](\d{1,2})[\/\-\. ](\d{4}|\d{2})/;
+            const dateRegex = /(\d{1,2})[/. -](\d{1,2})[/. -](\d{4}|\d{2})/;
             const dateMatch = cleanText.match(dateRegex);
             let suggestedDate = null;
             if (dateMatch) {
@@ -72,6 +73,10 @@ export const ExpenseController = {
         } catch (error) {
             log.error({ error }, 'Error OCR Gastos');
             throw new AppError('Error al procesar el recibo mediante OCR', 500);
+        } finally {
+            if (worker) {
+                await worker.terminate();
+            }
         }
     },
 
@@ -143,11 +148,8 @@ export const ExpenseController = {
         const { employeeId } = req.params;
         try {
             const { user } = req as AuthenticatedRequest;
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 50;
-            const isPaginationRequested = req.query.page !== undefined;
-            const skip = (page - 1) * limit;
-            const take = isPaginationRequested ? limit : 500;
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
 
             const employee = await prisma.employee.findUnique({
                 where: { id: employeeId },
@@ -162,12 +164,20 @@ export const ExpenseController = {
                 return res.status(403).json({ error: 'No autorizado' });
             }
 
-            const expenses = await prisma.expense.findMany({
-                where: { employeeId },
-                orderBy: { date: 'desc' },
-                skip: isPaginationRequested ? skip : undefined,
-                take
-            });
+            const where = { employeeId };
+            const [total, expenses] = await Promise.all([
+                prisma.expense.count({ where }),
+                prisma.expense.findMany({
+                    where,
+                    orderBy: { date: 'desc' },
+                    ...prismaPagination
+                })
+            ]);
+
+            if (pagination.isPaginationRequested) {
+                const meta = buildPaginationMeta(total, pagination);
+                return res.json({ data: expenses, meta });
+            }
             res.json(expenses);
         } catch (error) {
             res.status(500).json({ error: 'Error al obtener gastos' });
@@ -177,11 +187,8 @@ export const ExpenseController = {
     // Obtener todos los gastos (Admin view)
     getAll: async (req: Request, res: Response) => {
         try {
-            const page = parseInt(req.query.page as string) || 1;
-            const limit = parseInt(req.query.limit as string) || 50;
-            const isPaginationRequested = req.query.page !== undefined;
-            const skip = (page - 1) * limit;
-            const take = isPaginationRequested ? limit : 500;
+            const pagination = getPaginationParams(req);
+            const prismaPagination = getPrismaPagination(pagination);
 
             const { user } = req as AuthenticatedRequest;
             if (!canAccessPolicy('expense.manage', user, { companyId: user.companyId })) {
@@ -193,17 +200,24 @@ export const ExpenseController = {
                 where.employee = { companyId: user.companyId };
             }
 
-            const expenses = await prisma.expense.findMany({
-                where,
-                include: {
-                    employee: {
-                        select: { name: true, firstName: true, lastName: true }
-                    }
-                },
-                orderBy: { createdAt: 'desc' },
-                skip: isPaginationRequested ? skip : undefined,
-                take
-            });
+            const [total, expenses] = await Promise.all([
+                prisma.expense.count({ where }),
+                prisma.expense.findMany({
+                    where,
+                    include: {
+                        employee: {
+                            select: { name: true, firstName: true, lastName: true }
+                        }
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    ...prismaPagination
+                })
+            ]);
+
+            if (pagination.isPaginationRequested) {
+                const meta = buildPaginationMeta(total, pagination);
+                return res.json({ data: expenses, meta });
+            }
             res.json(expenses);
         } catch (error) {
             res.status(500).json({ error: 'Error al obtener todos los gastos' });
@@ -286,8 +300,8 @@ export const ExpenseController = {
             }
 
             if (StorageService.provider === 'local') {
-                const fs = require('fs');
-                const path = require('path');
+                const fs = await import('fs');
+                const path = await import('path');
                 const filePath = path.join(process.cwd(), 'uploads', expense.receiptUrl);
                 if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
                 return res.download(filePath);

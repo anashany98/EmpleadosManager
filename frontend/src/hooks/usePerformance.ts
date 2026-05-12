@@ -262,6 +262,21 @@ export function useActivePDI(employeeId: string) {
     });
 }
 
+export function useCreateEvaluation() {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (data: any) => {
+            const response = await api.post('/performance/evaluations', data);
+            return response.data;
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['evaluations'] });
+            toast.success('Evaluación creada correctamente');
+        },
+        onError: (err: any) => toast.error(err.response?.data?.message || 'Error al crear evaluación'),
+    });
+}
+
 export function useCreatePDI() {
     const queryClient = useQueryClient();
     
@@ -280,7 +295,6 @@ export function useCreatePDI() {
     });
 }
 
-// Stats hooks
 export function useEvaluationStats(filters?: { department?: string }) {
     return useQuery({
         queryKey: ['evaluation-stats', filters],

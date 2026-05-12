@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { EmployeesBulkPanel } from '../features/employees/components/EmployeesBulkPanel';
 import { EmployeesFilters } from '../features/employees/components/EmployeesFilters';
 import { EmployeesHeader } from '../features/employees/components/EmployeesHeader';
+import { EmployeeImportWizard } from '../features/employees/components/EmployeeImportWizard';
 import { EmployeesMobileList } from '../features/employees/components/EmployeesMobileList';
 import { EmployeesSelectionBar } from '../features/employees/components/EmployeesSelectionBar';
 import { EmployeesTable } from '../features/employees/components/EmployeesTable';
@@ -22,7 +23,7 @@ export default function EmployeeList() {
                 total={stats.total}
                 active={stats.active}
                 inactive={stats.inactive}
-                importPending={page.importMutation.isPending}
+                importPending={page.importBusy}
                 onDownloadTemplate={page.handleDownloadTemplate}
                 onImportFile={page.handleImportFile}
             />
@@ -50,7 +51,7 @@ export default function EmployeeList() {
                     employees={page.filteredEmployees}
                     isLoading={page.isLoading}
                     selectedIds={page.selectedIds}
-                    totalEmployees={page.employees.length}
+                    totalEmployees={page.paginationMeta.total}
                     searchTerm={page.searchTerm}
                     activeFilterCount={page.activeFilterCount}
                     onSelectAll={page.handleSelectAll}
@@ -64,9 +65,30 @@ export default function EmployeeList() {
                     activeFilterCount={page.activeFilterCount}
                 />
 
-                {!page.isLoading && page.filteredEmployees.length > 0 && (
-                    <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 text-sm text-slate-500 dark:text-slate-400">
-                        Mostrando {page.filteredEmployees.length} de {page.employees.length} empleados
+                {!page.isLoading && (
+                    <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                        <div className="text-sm text-slate-500 dark:text-slate-400">
+                            Mostrando {page.employees.length} de {page.paginationMeta.total} empleados
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => page.setPage(p => Math.max(1, p - 1))}
+                                disabled={page.paginationMeta.page <= 1}
+                                className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800"
+                            >
+                                Anterior
+                            </button>
+                            <span className="text-sm text-slate-600 dark:text-slate-300">
+                                Página {page.paginationMeta.page} de {page.paginationMeta.totalPages || 1}
+                            </span>
+                            <button
+                                onClick={() => page.setPage(p => Math.min(page.paginationMeta.totalPages, p + 1))}
+                                disabled={page.paginationMeta.page >= page.paginationMeta.totalPages}
+                                className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-50 dark:hover:bg-slate-800"
+                            >
+                                Siguiente
+                            </button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -76,6 +98,14 @@ export default function EmployeeList() {
                 totalCount={page.filteredEmployees.length}
                 onClearSelection={() => page.setSelectedIds([])}
                 onAction={page.handleBulkAction}
+            />
+
+            <EmployeeImportWizard
+                isOpen={page.showImportWizard}
+                file={page.importFile}
+                onClose={page.handleCloseImportWizard}
+                onImported={page.handleImportCompleted}
+                onBusyChange={page.setImportBusy}
             />
         </div>
     );

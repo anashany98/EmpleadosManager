@@ -80,17 +80,28 @@ export function EmployeePersonalSection({
                 </div>
                 <input name="phone" value={formData.phone} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
             </div>
-            <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono de Empresa</label>
-                    {formData.companyPhone && (
-                        <a href={`https://api.whatsapp.com/send?phone=${formData.companyPhone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${formData.companyPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-green-600 font-bold hover:underline flex items-center gap-1">
-                            <MessageCircle size={10} /> WhatsApp
-                        </a>
-                    )}
-                </div>
-                <input name="companyPhone" value={formData.companyPhone} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: 600..." />
-            </div>
+    <div className="space-y-2">
+      <div className="flex justify-between items-center">
+        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono de Empresa</label>
+        {formData.companyPhone && (
+        <a href={`https://api.whatsapp.com/send?phone=${formData.companyPhone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${formData.companyPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-green-600 font-bold hover:underline flex items-center gap-1">
+          <MessageCircle size={10} /> WhatsApp
+        </a>
+        )}
+      </div>
+      <input name="companyPhone" value={formData.companyPhone} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: 600..." />
+    </div>
+    <div className="space-y-2">
+      <div className="flex justify-between items-center">
+        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Teléfono Corto / Extensión</label>
+        {formData.companyShortPhone && (
+        <a href={`https://api.whatsapp.com/send?phone=${formData.companyShortPhone.replace(/\D/g, '').startsWith('34') ? '' : '34'}${formData.companyShortPhone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="text-[10px] text-green-600 font-bold hover:underline flex items-center gap-1">
+          <MessageCircle size={10} /> WhatsApp
+        </a>
+        )}
+      </div>
+      <input name="companyShortPhone" value={formData.companyShortPhone} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Ej: 1234" />
+    </div>
             <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Género</label>
                 <select name="gender" value={formData.gender} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">

@@ -23,9 +23,7 @@ const baseLogger = pino({
 /**
  * Creates a child logger with a specific context (service/module name)
  */
-export const createLogger = (context: string) => {
-    return baseLogger.child({ context });
-};
+export const createLogger = (context: string) => baseLogger.child({ context });
 
 /**
  * Default logger for general use

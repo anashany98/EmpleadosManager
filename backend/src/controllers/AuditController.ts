@@ -1,6 +1,38 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { AuditService } from '../services/AuditService';
+import { AuthenticatedRequest } from '../types/express';
+import { AppError } from '../utils/AppError';
+import { resolveAuthorizedCompanyId } from '../utils/companyAccess';
+
+const SYSTEM_AUDIT_ACTIONS = [
+    'LOGIN',
+    'LOGIN_FAILED',
+    'LOGIN_ATTEMPT',
+    'LOGIN_SUCCESS',
+    'LOGOUT',
+    'PASSWORD_CHANGE',
+    'PASSWORD_RESET',
+    'PERMISSION_CHANGE',
+    'ACCESS_DENIED',
+    'ACCESS_GENERATED',
+    'SECURITY_VIOLATION',
+    'VIEW',
+    'ACCESS',
+    'READ',
+    'DATA_EXPORT'
+];
+
+const EMPLOYEE_RECORD_ACTIONS = [
+    'CREATE',
+    'UPDATE',
+    'DELETE',
+    'IMPORT',
+    'PRIVATE_NOTE_UPDATE',
+    'VACATION_BALANCE_UPDATE',
+    'DATA_CREATE',
+    'DATA_UPDATE',
+    'DATA_DELETE'
+];
 
 export const AuditController = {
     getLogs: async (req: Request, res: Response) => {
@@ -9,25 +41,49 @@ export const AuditController = {
             if (!entity || !entityId) {
                 return res.status(400).json({ error: 'Faltan parámetros de entidad' });
             }
+
+            const showAccess = req.query.showAccess === 'true';
+            const normalizedEntity = entity.toUpperCase();
+            const where: any = { entity: normalizedEntity, entityId };
+
+            if (!showAccess && normalizedEntity === 'EMPLOYEE') {
+                where.action = { in: EMPLOYEE_RECORD_ACTIONS };
+            }
+
             const logs = await prisma.auditLog.findMany({
-                where: { entity: entity.toUpperCase(), entityId },
+                where,
                 orderBy: { createdAt: 'desc' },
                 include: { user: true, targetEmployee: true }
             });
             res.json(logs);
         } catch (error) {
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ error: error.message });
+            }
+
             res.status(500).json({ error: 'Error al obtener registros de auditoría' });
         }
     },
 
     getRecentActivity: async (req: Request, res: Response) => {
         try {
+            const user = (req as AuthenticatedRequest).user;
+            const companyId = resolveAuthorizedCompanyId(user, req.query.companyId as string | undefined);
+            const where: any = {
+                action: {
+                    notIn: SYSTEM_AUDIT_ACTIONS
+                }
+            };
+
+            if (companyId) {
+                where.OR = [
+                    { targetEmployee: { companyId } },
+                    { user: { employee: { companyId } } }
+                ];
+            }
+
             const logs = await prisma.auditLog.findMany({
-                where: {
-                    action: {
-                        notIn: ['VIEW', 'ACCESS', 'READ', 'LOGIN_ATTEMPT', 'LOGIN_SUCCESS']
-                    }
-                },
+                where,
                 orderBy: { createdAt: 'desc' },
                 take: 10,
                 include: { user: true, targetEmployee: true }
@@ -38,6 +94,10 @@ export const AuditController = {
             }));
             res.json(mapped);
         } catch (error) {
+            if (error instanceof AppError) {
+                return res.status(error.statusCode).json({ error: error.message });
+            }
+
             res.status(500).json({ error: 'Error fetching recent activity' });
         }
     },
@@ -47,19 +107,31 @@ export const AuditController = {
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 50;
             const skip = (page - 1) * limit;
+            const showSystem = req.query.showSystem === 'true';
+
+            const where: any = {};
+            if (!showSystem) {
+                where.action = {
+                    notIn: SYSTEM_AUDIT_ACTIONS
+                };
+                where.entity = {
+                    notIn: ['USER']
+                };
+            }
 
             const [logs, total] = await Promise.all([
                 prisma.auditLog.findMany({
+                    where,
                     orderBy: { createdAt: 'desc' },
                     skip,
                     take: limit,
                     include: { user: true, targetEmployee: true }
                 }),
-                prisma.auditLog.count()
+                prisma.auditLog.count({ where })
             ]);
 
             const mappedLogs = logs.map(log => {
-                let details = '';
+                let details: string;
                 try {
                     const meta = log.metadata ? JSON.parse(log.metadata) : {};
                     if (log.action === 'CREATE') {
@@ -79,7 +151,7 @@ export const AuditController = {
                         const targetName = `${firstName} ${lastName}`.trim();
                         details += ` (Afec. a ${targetName})`;
                     }
-                } catch (e) {
+                } catch {
                     details = log.action;
                 }
 
@@ -99,9 +171,8 @@ export const AuditController = {
                     pages: Math.ceil(total / limit)
                 }
             });
-        } catch (error) {
+        } catch {
             res.status(500).json({ success: false, error: 'Error fetching global audit logs' });
         }
     }
 };
-

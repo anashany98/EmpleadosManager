@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Hoist mocks
-const { mockLogger, mockGenerateTech, mockGenerateEPI, mockGenerateUniform } = vi.hoisted(() => {
-    return {
+const { mockLogger, mockGenerateTech, mockGenerateEPI, mockGenerateUniform } = vi.hoisted(() => ({
         mockLogger: {
             error: vi.fn(),
             info: vi.fn(),
@@ -11,8 +10,7 @@ const { mockLogger, mockGenerateTech, mockGenerateEPI, mockGenerateUniform } = v
         mockGenerateTech: vi.fn(),
         mockGenerateEPI: vi.fn(),
         mockGenerateUniform: vi.fn()
-    }
-});
+    }));
 
 vi.mock('../services/LoggerService', () => ({
     createLogger: () => mockLogger

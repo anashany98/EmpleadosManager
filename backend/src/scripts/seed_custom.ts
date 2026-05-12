@@ -1,4 +1,3 @@
-
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
@@ -10,22 +9,28 @@ async function main() {
     // 1. Create/Update Default Admin (admin@admin.com)
     // This user is NOT linked to an employee request (pure system admin)
     const adminEmail = 'admin@admin.com';
-    const adminPassword = await bcrypt.hash('admin123', 10);
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || process.env.ADMIN_INITIAL_PASSWORD;
+
+    if (!adminPassword || adminPassword.length < 8) {
+        console.error('❌ FATAL: SEED_ADMIN_PASSWORD or ADMIN_INITIAL_PASSWORD env var is required and must be at least 8 characters');
+        console.error('   Usage: SEED_ADMIN_PASSWORD=YourSecurePassword npx ts-node scripts/seed_custom.ts');
+        process.exit(1);
+    }
+
+    const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
 
     console.log(`Upserting Admin: ${adminEmail} ...`);
-    const adminUser = await prisma.user.upsert({
+    await prisma.user.upsert({
         where: { email: adminEmail },
         update: {
-            password: adminPassword,
+            password: hashedAdminPassword,
             role: 'ADMIN',
             permissions: JSON.stringify({ all: true })
         },
         create: {
             email: adminEmail,
-            // We need a dummy DNI for admin if schema enforces unique DNI or null? 
-            // Schema has `dni String? @unique`. So null is fine if DNI is unique.
-            // But verify if DNI is mandatory in some logic. It's optional in schema.
-            password: adminPassword,
+            // Schema has `dni String? @unique`. So null is fine.
+            password: hashedAdminPassword,
             role: 'ADMIN',
             permissions: JSON.stringify({ all: true })
         }
@@ -42,7 +47,6 @@ async function main() {
     if (!company) throw new Error("No company found! Run regular seed first.");
 
     console.log(`Upserting Employee: ${anasName} ...`);
-    // Check if exists to update or create
     let anasEmployee = await prisma.employee.findUnique({ where: { dni: anasDni } });
 
     if (anasEmployee) {
@@ -78,12 +82,15 @@ async function main() {
     }
     console.log(`✅ Employee ready: ${anasName}`);
 
-    // 3. Create/Update User for Anas (Role: EMPLOYEE or USER, NOT ADMIN)
-    // The previous run might have made him ADMIN. We demote him if he exists.
-    const anasUserPassword = await bcrypt.hash('password123', 10);
+    // 3. Create/Update User for Anas (Role: ADMIN for full access)
+    const anasUserPassword = process.env.SEED_ADMIN_PASSWORD;
+    if (!anasUserPassword || anasUserPassword.length < 8) {
+        console.error('❌ FATAL: SEED_ADMIN_PASSWORD env var is required for Anas user');
+        process.exit(1);
+    }
+    const hashedAnasPassword = await bcrypt.hash(anasUserPassword, 10);
 
-    // Check if user exists by DNI or Email
-    let anasUser = await prisma.user.findFirst({
+    const anasUser = await prisma.user.findFirst({
         where: {
             OR: [{ dni: anasDni }, { email: anasEmail }]
         }
@@ -97,7 +104,7 @@ async function main() {
                 email: anasEmail,
                 dni: anasDni,
                 role: 'ADMIN', // Upgraded for full access
-                password: anasUserPassword,
+                password: hashedAnasPassword,
                 employeeId: anasEmployee.id,
                 permissions: JSON.stringify({ all: true })
             }
@@ -109,7 +116,7 @@ async function main() {
                 email: anasEmail,
                 dni: anasDni,
                 role: 'ADMIN', // Upgraded for full access
-                password: anasUserPassword,
+                password: hashedAnasPassword,
                 employeeId: anasEmployee.id,
                 permissions: JSON.stringify({ all: true })
             }

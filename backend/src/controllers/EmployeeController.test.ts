@@ -6,12 +6,35 @@ import { prisma } from '../lib/prisma';
 // Mock Prisma
 vi.mock('../lib/prisma', () => ({
     prisma: {
+        $transaction: vi.fn(async (callback) => callback({
+            employee: {
+                create: vi.fn()
+            },
+            employeeVacationBalance: {
+                findUnique: vi.fn(),
+                upsert: vi.fn()
+            },
+            vacation: {
+                findMany: vi.fn()
+            }
+        })),
         employee: {
             count: vi.fn(),
             findMany: vi.fn(),
             findUnique: vi.fn(),
             create: vi.fn(),
             update: vi.fn()
+        },
+        employeeVacationBalance: {
+            findUnique: vi.fn(),
+            upsert: vi.fn()
+        },
+        vacation: {
+            findMany: vi.fn()
+        },
+        auditLog: {
+            findMany: vi.fn(),
+            create: vi.fn()
         },
         medicalReview: {
             findMany: vi.fn(),
@@ -62,6 +85,20 @@ const mockResponse = () => {
 describe('EmployeeController', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        (prisma.employeeVacationBalance.findUnique as any).mockResolvedValue(null);
+        (prisma.vacation.findMany as any).mockResolvedValue([]);
+        (prisma.$transaction as any).mockImplementation(async (callback: any) => callback({
+            employee: {
+                create: prisma.employee.create
+            },
+            employeeVacationBalance: {
+                findUnique: prisma.employeeVacationBalance.findUnique,
+                upsert: prisma.employeeVacationBalance.upsert
+            },
+            vacation: {
+                findMany: prisma.vacation.findMany
+            }
+        }));
     });
 
     describe('getAll', () => {
@@ -258,6 +295,198 @@ describe('EmployeeController', () => {
             }));
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
                 success: true
+            }));
+        });
+    });
+
+    describe('getVacationBalance', () => {
+        it('returns the computed annual vacation balance', async () => {
+            const req = mockRequest({
+                user: { id: 'admin-1', role: 'admin' },
+                params: { id: 'emp-1' },
+                query: { year: '2026' }
+            });
+            const res = mockResponse();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-1',
+                companyId: null,
+                entryDate: new Date('2025-01-01'),
+                createdAt: new Date('2025-01-01')
+            });
+            (prisma.employeeVacationBalance.findUnique as any).mockResolvedValue({
+                employeeId: 'emp-1',
+                year: 2026,
+                annualQuotaDays: 30,
+                carriedOverDays: 5,
+                importedUsedDays: 7
+            });
+            (prisma.vacation.findMany as any).mockResolvedValue([
+                {
+                    type: 'VACATION',
+                    startDate: new Date('2026-08-01'),
+                    endDate: new Date('2026-08-03'),
+                    status: 'APPROVED'
+                }
+            ]);
+
+            await EmployeeController.getVacationBalance(req, res);
+
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true,
+                data: expect.objectContaining({
+                    year: 2026,
+                    totalEntitledDays: 35,
+                    approvedUsedDays: 3,
+                    availableDays: 25
+                })
+            }));
+        });
+    });
+
+    describe('updatePrivateNotes', () => {
+        it('updates private notes and records a history entry', async () => {
+            const req = mockRequest({
+                user: { id: 'admin-1', role: 'admin' },
+                params: { id: 'emp-1' },
+                body: { note: 'Nueva nota interna' }
+            });
+            const res = mockResponse();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-1',
+                companyId: null,
+                privateNotes: 'Nota anterior'
+            });
+            (prisma.employee.update as any).mockResolvedValue({
+                id: 'emp-1',
+                privateNotes: 'Nueva nota interna'
+            });
+
+            await EmployeeController.updatePrivateNotes(req, res);
+
+            expect(prisma.employee.update).toHaveBeenCalledWith({
+                where: { id: 'emp-1' },
+                data: { privateNotes: 'Nueva nota interna' },
+                select: { id: true, privateNotes: true }
+            });
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true,
+                data: expect.objectContaining({ privateNotes: 'Nueva nota interna' })
+            }));
+        });
+    });
+
+    describe('updateVacationBalance', () => {
+        it('updates the selected annual vacation balance and returns the recalculated summary', async () => {
+            const req = mockRequest({
+                user: { id: 'admin-1', role: 'admin' },
+                params: { id: 'emp-1' },
+                body: {
+                    year: 2026,
+                    annualQuotaDays: 30,
+                    carriedOverDays: 6,
+                    importedUsedDays: 4
+                }
+            });
+            const res = mockResponse();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-1',
+                companyId: null,
+                entryDate: new Date('2024-01-01'),
+                createdAt: new Date('2024-01-01'),
+                name: 'John Doe'
+            });
+            (prisma.employeeVacationBalance.findUnique as any)
+                .mockResolvedValueOnce(null)
+                .mockResolvedValueOnce({
+                    employeeId: 'emp-1',
+                    year: 2026,
+                    annualQuotaDays: 30,
+                    carriedOverDays: 6,
+                    importedUsedDays: 4
+                });
+            (prisma.employeeVacationBalance.upsert as any).mockResolvedValue({
+                employeeId: 'emp-1',
+                year: 2026,
+                annualQuotaDays: 30,
+                carriedOverDays: 6,
+                importedUsedDays: 4
+            });
+            (prisma.vacation.findMany as any).mockResolvedValue([]);
+
+            await EmployeeController.updateVacationBalance(req, res);
+
+            expect(prisma.employeeVacationBalance.upsert).toHaveBeenCalledWith(expect.objectContaining({
+                create: expect.objectContaining({
+                    employeeId: 'emp-1',
+                    year: 2026,
+                    annualQuotaDays: 30,
+                    carriedOverDays: 6,
+                    importedUsedDays: 4
+                })
+            }));
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true,
+                data: expect.objectContaining({
+                    totalEntitledDays: 36,
+                    availableDays: 32
+                })
+            }));
+        });
+    });
+
+    describe('getPrivateNotesHistory', () => {
+        it('returns parsed note history entries', async () => {
+            const req = mockRequest({
+                user: { id: 'admin-1', role: 'admin' },
+                params: { id: 'emp-1' }
+            });
+            const res = mockResponse();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-1',
+                companyId: null,
+                privateNotes: 'Nota actual',
+                updatedAt: new Date('2026-04-24T09:00:00.000Z')
+            });
+            (prisma.auditLog.findMany as any).mockResolvedValue([
+                {
+                    id: 'log-1',
+                    createdAt: new Date('2026-04-24T10:00:00.000Z'),
+                    metadata: JSON.stringify({
+                        note: 'Nueva nota interna',
+                        previousNote: 'Nota anterior'
+                    }),
+                    user: {
+                        email: 'admin@test.local',
+                        employee: {
+                            firstName: 'Ana',
+                            lastName: 'Admin',
+                            name: 'Ana Admin'
+                        }
+                    }
+                }
+            ]);
+
+            await EmployeeController.getPrivateNotesHistory(req, res);
+
+            expect(prisma.auditLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: {
+                    entity: 'EMPLOYEE',
+                    entityId: 'emp-1',
+                    action: 'PRIVATE_NOTE_UPDATE'
+                }
+            }));
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true,
+                data: expect.arrayContaining([
+                    expect.objectContaining({
+                        note: 'Nueva nota interna',
+                        authorName: 'Ana Admin'
+                    })
+                ])
             }));
         });
     });

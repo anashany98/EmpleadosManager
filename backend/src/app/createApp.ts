@@ -1,12 +1,17 @@
-import express, { type Express, type Request, type Response } from 'express';
+﻿import express, { type Express, type Request, type Response } from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import { Server } from 'socket.io';
 import { errorMiddleware } from '../middlewares/errorMiddleware';
 import { csrfProtection } from '../middlewares/csrfMiddleware';
 import { registerRoutes } from './registerRoutes';
+import { initializeHealthChecker, healthController } from './health.controller';
+import { initSocketHandlers } from '../websocket/handler';
+import { prisma } from '../lib/prisma';
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
     .split(',')
@@ -47,7 +52,7 @@ function configureSecurity(app: Express): void {
     app.set('trust proxy', 1);
 
     const frontendUrl = process.env.FRONTEND_URL || process.env.CORS_ORIGIN?.split(',')[0] || '';
-    
+
     app.use(helmet({
         crossOriginResourcePolicy: { policy: 'same-site' },
         hsts: isProduction ? {
@@ -56,13 +61,18 @@ function configureSecurity(app: Express): void {
             preload: true
         } : false,
         contentSecurityPolicy: {
+            useDefaults: true,
             directives: {
                 defaultSrc: ["'self'"],
-                scriptSrc: ["'self'", "'unsafe-inline'"],
-                styleSrc: ["'self'", "'unsafe-inline'"],
-                imgSrc: ["'self'", 'data:', 'blob:', frontendUrl],
+                scriptSrc: isProduction
+                    ? ["'self'", "'strict-dynamic'", `'nonce-{NONCE_PLACEHOLDER}'`]
+                    : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+                styleSrc: isProduction
+                    ? ["'self'", "'nonce-{NONCE_PLACEHOLDER}'"]
+                    : ["'self'", "'unsafe-inline'"],
+                imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
                 fontSrc: ["'self'", 'data:'],
-                connectSrc: ["'self'", frontendUrl],
+                connectSrc: ["'self'", frontendUrl, 'ws:', 'wss:'],
                 frameSrc: ["'none'"],
                 objectSrc: ["'none'"],
                 baseUri: ["'self'"],
@@ -109,8 +119,8 @@ function configureSecurity(app: Express): void {
                 return callback(null, true);
             }
 
-            if (!isProduction && allowedOrigins.length === 0) {
-                return callback(null, true);
+            if (allowedOrigins.length === 0) {
+                throw new Error('FATAL: CORS_ORIGIN must be set');
             }
 
             if (isAllowedOrigin(origin)) {
@@ -132,23 +142,48 @@ function configureBaseMiddleware(app: Express): void {
 }
 
 function registerHealthRoutes(app: Express): void {
-    app.get('/api/health', (_req: Request, res: Response) => {
-        res.json({ status: 'ok', timestamp: new Date() });
-    });
+    // Liveness probe - quick check if app is alive
+    app.get('/api/health/liveness', healthController.getLiveness);
+    // Readiness probe - check if app is ready to serve traffic
+    app.get('/api/health/readiness', healthController.getReadiness);
+    // Comprehensive health check with all service details
+    app.get('/api/health', healthController.getHealth);
 
     app.get('/', (_req: Request, res: Response) => {
         res.send('Welcome to the Empleados Manager APP API. Use /api prefix for access.');
     });
 }
 
-export function createApp(): Express {
+export function createApp(): { app: Express; server: ReturnType<Express['listen']>; io: Server } {
     const app = express();
+    const httpServer = createServer(app);
+
+    const io = new Server(httpServer, {
+        cors: {
+            origin: isProduction ? allowedOrigins : '*',
+            credentials: true
+        }
+    });
+
+    initializeHealthChecker(prisma);
 
     configureSecurity(app);
     configureBaseMiddleware(app);
     registerHealthRoutes(app);
     registerRoutes(app);
+
+    initSocketHandlers(io);
+
+    // Add Sentry error handler (v8 API) - must be BEFORE our custom error middleware
+    if (process.env.SENTRY_DSN) {
+        import('@sentry/node').then((Sentry) => {
+            Sentry.setupExpressErrorHandler(app);
+        });
+    }
+
+    // Our custom error middleware - must come AFTER Sentry handler
     app.use(errorMiddleware);
 
-    return app;
+    return { app, server: httpServer, io };
 }
+

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateFileSignature, isPdf, isExcel, isOfficeDoc, validateImageMagicBytes } from '../../utils/fileValidation';
+import { validateFileSignature, isPdf, isExcel, validateImageMagicBytes } from '../../utils/fileValidation';
 
 describe('File Validation Security Tests', () => {
     describe('validateFileSignature', () => {
@@ -55,7 +55,7 @@ describe('File Validation Security Tests', () => {
         });
 
         it('should validate PNG as image', () => {
-            const pngBuffer = Buffer.from([0x89, 0x50, 0x4E, 0x47]);
+            const pngBuffer = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
             expect(validateImageMagicBytes(pngBuffer)).toBe(true);
         });
 

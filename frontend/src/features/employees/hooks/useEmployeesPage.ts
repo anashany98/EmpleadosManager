@@ -4,11 +4,28 @@ import { toast } from 'sonner';
 import { api } from '../../../api/client';
 import { useConfirm } from '../../../context/ConfirmContext';
 import type { Employee, FilterState } from '../types';
+import { getEmployeeDisplayName } from '../../../utils/employeeDisplay';
 
-const fetchEmployees = async (): Promise<Employee[]> => {
-    const res = await api.get('/employees');
-    const data = res.data?.data || res.data || [];
-    return Array.isArray(data) ? data : [];
+const DEFAULT_LIMIT = 20;
+
+interface PaginatedMeta {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+interface EmployeesResponse {
+    data: Employee[];
+    meta: PaginatedMeta;
+}
+
+const fetchEmployees = async (page: number, limit: number, status: string = 'active'): Promise<{ employees: Employee[]; meta: PaginatedMeta }> => {
+    const res = await api.get<EmployeesResponse>('/employees', { params: { page, limit, status } });
+    const payload = res.data?.data ? res.data : (res.data || { data: [], meta: { total: 0, page: 1, limit, totalPages: 1 } });
+    const employees: Employee[] = Array.isArray(payload.data) ? payload.data : [];
+    const meta: PaginatedMeta = payload.meta || { total: 0, page: 1, limit, totalPages: 1 };
+    return { employees, meta };
 };
 
 export function useEmployeesPage() {
@@ -18,28 +35,20 @@ export function useEmployeesPage() {
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [showFilters, setShowFilters] = useState(false);
     const [filters, setFilters] = useState<FilterState>({ department: '', status: 'all' });
+    const [showImportWizard, setShowImportWizard] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importBusy, setImportBusy] = useState(false);
+    const [page, setPage] = useState(1);
+    const [limit] = useState(DEFAULT_LIMIT);
 
-    const { data: employees = [], isLoading } = useQuery({
-        queryKey: ['employees'],
-        queryFn: fetchEmployees,
+    const { data, isLoading } = useQuery({
+        queryKey: ['employees', page, limit, filters.status],
+        queryFn: () => fetchEmployees(page, limit, filters.status),
         staleTime: 1000 * 60 * 5
     });
 
-    const importMutation = useMutation({
-        mutationFn: async (file: File) => {
-            const formData = new FormData();
-            formData.append('file', file);
-            const res = await api.post('/employees/import', formData);
-            return res.data;
-        },
-        onSuccess: (data) => {
-            toast.success(data.message || 'Importación completada');
-            queryClient.invalidateQueries({ queryKey: ['employees'] });
-        },
-        onError: () => {
-            toast.error('Error en la importación');
-        }
-    });
+    const employees = data?.employees || [];
+    const paginationMeta = data?.meta || { total: 0, page: 1, limit: DEFAULT_LIMIT, totalPages: 1 };
 
     const bulkUpdateMutation = useMutation({
         mutationFn: async ({ employeeIds, action, data }: { employeeIds: string[]; action: string; data?: Record<string, unknown> }) => {
@@ -64,7 +73,7 @@ export function useEmployeesPage() {
     const filteredEmployees = useMemo(() => {
         return employees.filter((employee) => {
             const term = searchTerm.toLowerCase();
-            const fullName = (employee.name || `${employee.firstName} ${employee.lastName}`).toLowerCase();
+            const fullName = getEmployeeDisplayName(employee, '').toLowerCase();
             const matchesSearch = fullName.includes(term) || employee.dni.toLowerCase().includes(term);
             const matchesDepartment = !filters.department || (employee.department || 'General') === filters.department;
             const matchesStatus = filters.status === 'all'
@@ -147,16 +156,26 @@ export function useEmployeesPage() {
     };
 
     const handleImportFile = (file: File) => {
-        const promise = importMutation.mutateAsync(file);
-        toast.promise(promise, {
-            loading: 'Importando empleados...',
-            success: 'Proceso finalizado',
-            error: 'Error al importar'
-        });
+        setImportFile(file);
+        setShowImportWizard(true);
+    };
+
+    const handleCloseImportWizard = () => {
+        setShowImportWizard(false);
+        setImportFile(null);
+        setImportBusy(false);
+    };
+
+    const handleImportCompleted = () => {
+        queryClient.invalidateQueries({ queryKey: ['employees'] });
+        setShowImportWizard(false);
+        setImportFile(null);
+        setImportBusy(false);
     };
 
     return {
         employees,
+        paginationMeta,
         isLoading,
         searchTerm,
         selectedIds,
@@ -165,16 +184,22 @@ export function useEmployeesPage() {
         departments,
         filteredEmployees,
         activeFilterCount,
-        importMutation,
+        importFile,
+        showImportWizard,
+        importBusy,
         setSearchTerm,
         setShowFilters,
         setFilters,
         setSelectedIds,
+        setImportBusy,
         clearFilters,
         handleSelectAll,
         handleSelectOne,
         handleBulkAction,
         handleDownloadTemplate,
-        handleImportFile
+        handleImportFile,
+        handleCloseImportWizard,
+        handleImportCompleted,
+        setPage
     };
 }

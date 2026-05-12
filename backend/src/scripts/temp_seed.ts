@@ -1,5 +1,6 @@
 
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -25,6 +26,16 @@ function randomDate(start: Date, end: Date) {
 async function main() {
     console.log('🌱 Starting database seed...');
 
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+
+    if (!adminPassword || adminPassword.length < 8) {
+        console.error('❌ FATAL: SEED_ADMIN_PASSWORD env var is required (min 8 chars)');
+        console.error('   Usage: SEED_ADMIN_PASSWORD=YourSecurePassword npx ts-node scripts/temp_seed.ts');
+        process.exit(1);
+    }
+
+    const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+
     // Clear existing data
     await prisma.timeEntry.deleteMany({});
     await prisma.overtimeEntry.deleteMany({});
@@ -39,7 +50,7 @@ async function main() {
     const admin = await prisma.user.create({
         data: {
             email: 'admin@empresa.com',
-            password: 'hashed_password',
+            password: hashedAdminPassword,
             role: 'admin'
         }
     });
@@ -254,7 +265,7 @@ async function main() {
                 batchId: batch.id,
                 employeeId: emp.id,
                 rawEmployeeName: emp.name,
-                bruto: bruto,
+                bruto,
                 ssEmpresa: bruto * 0.32,
                 ssTrabajador: bruto * 0.0635,
                 irpf: bruto * 0.15,
@@ -469,6 +480,7 @@ async function main() {
     console.log('   - Expenses, assets, documents');
     console.log('   - Trainings, medical reviews');
     console.log('   - Alerts and checklists');
+    console.log('   - Admin password set via SEED_ADMIN_PASSWORD');
     console.log('🌱 Ready for screenshots!\n');
 
 }

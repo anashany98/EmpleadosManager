@@ -6,8 +6,13 @@ const prisma = new PrismaClient();
 
 async function main() {
     const email = 'admin@admin.com';
-    const password = 'admin123';
-    const role = 'admin';
+    const password = process.env.SEED_ADMIN_PASSWORD || process.env.ADMIN_INITIAL_PASSWORD || 'CHANGE_ME_IN_PRODUCTION';
+    
+    if (password === 'CHANGE_ME_IN_PRODUCTION' || password.length < 8) {
+        console.error('❌ FATAL: Password too weak or not set via SEED_ADMIN_PASSWORD env var');
+        console.error('   Usage: SEED_ADMIN_PASSWORD=YourSecurePassword123 npx ts-node scripts/seed-admin.ts');
+        process.exit(1);
+    }
 
     // Full permissions for admin
     const permissions = {
@@ -19,10 +24,25 @@ async function main() {
         assets: 'write',
         reports: 'write',
         timesheet: 'write',
-        projects: 'write'
+        projects: 'write',
+        inbox: 'write',
+        users: 'write',
+        settings: 'write',
+        documents: 'write',
+        vacations: 'write',
+        expenses: 'write',
+        analytics: 'write',
+        performance: 'write',
+        fleet: 'write',
+        cards: 'write',
+        kiosk: 'write',
+        notifications: 'write',
+        onboarding: 'write',
+        offboarding: 'write'
     };
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    const role = 'admin';
 
     await prisma.user.upsert({
         where: { email },
@@ -41,6 +61,7 @@ async function main() {
 
     console.log('Admin user updated/created successfully with full permissions!');
     console.log(`Email: ${email}`);
+    console.log(`Password: ${'*'.repeat(8)} (hidden for security)`);
 }
 
 main()

@@ -1,14 +1,29 @@
 import { prisma } from '../lib/prisma';
+import { Prisma } from '@prisma/client';
 import { AppError } from '../utils/AppError';
-import { HolidayService } from './HolidayService';
 import { StorageService } from './StorageService';
 import { NotificationService } from './NotificationService';
 import { EmailService } from './EmailService';
+import {
+    calculateVacationRequestDays,
+    getEmployeeVacationBalanceSummary,
+    isVacationType
+} from './VacationBalanceService';
 
-export async function validateVacationRequest(employeeId: string, start: Date, end: Date, type?: string) {
-    const overlapping = await prisma.vacation.findFirst({
+export async function validateVacationRequest(employeeId: string, start: Date, end: Date, type?: string, tx?: Prisma.TransactionClient) {
+    const db = tx || prisma;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (start < today) {
+        throw new AppError('La fecha de inicio no puede ser anterior a hoy.', 400);
+    }
+
+    // Check for overlapping APPROVED/EXISTING vacations
+    const overlapping = await db.vacation.findFirst({
         where: {
             employeeId,
+            status: { in: ['APPROVED', 'EXISTING'] },
             OR: [{ startDate: { lte: end }, endDate: { gte: start } }]
         }
     });
@@ -17,15 +32,38 @@ export async function validateVacationRequest(employeeId: string, start: Date, e
         throw new AppError('Ya existe un registro de ausencia que se solapa con estas fechas.', 400);
     }
 
-    const requestedDays = HolidayService.getBusinessDaysCount(start, end);
+    // Check for adjacent date conflicts (new startDate - 1 day = existing endDate, or new endDate + 1 day = existing startDate)
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const dayBeforeStart = new Date(start.getTime() - oneDayMs);
+    const dayAfterEnd = new Date(end.getTime() + oneDayMs);
 
-    if (type !== 'VACATION' && type) {
+    const adjacent = await db.vacation.findFirst({
+        where: {
+            employeeId,
+            status: { in: ['APPROVED', 'EXISTING'] },
+            OR: [
+                { startDate: { equals: dayAfterEnd } },
+                { endDate: { equals: dayBeforeStart } }
+            ]
+        }
+    });
+
+    if (adjacent) {
+        const conflictingDates = adjacent.endDate.getTime() === dayBeforeStart.getTime()
+            ? `La fecha de inicio es un día después de unas vacaciones existentes (${adjacent.startDate.toLocaleDateString()} - ${adjacent.endDate.toLocaleDateString()}).`
+            : `La fecha de fin es un día antes de unas vacaciones existentes (${adjacent.startDate.toLocaleDateString()} - ${adjacent.endDate.toLocaleDateString()}).`;
+        throw new AppError(`Conflicto de fechas adyacentes. ${conflictingDates}`, 400);
+    }
+
+    const requestedDays = calculateVacationRequestDays(start, end, type);
+
+    if (!isVacationType(type)) {
         return { requestedDays };
     }
 
-    const employee = await prisma.employee.findUnique({
+    const employee = await db.employee.findUnique({
         where: { id: employeeId },
-        include: { vacations: true }
+        select: { id: true }
     });
 
     if (!employee) {
@@ -33,18 +71,14 @@ export async function validateVacationRequest(employeeId: string, start: Date, e
     }
 
     const currentYear = start.getFullYear();
-    const usedDays = employee.vacations.reduce((accumulator: number, vacation: any) => {
-        const vacationStart = new Date(vacation.startDate);
-        const vacationEnd = new Date(vacation.endDate);
-        if ((vacation.type === 'VACATION' || !vacation.type) && vacationStart.getFullYear() === currentYear && vacation.status !== 'REJECTED') {
-            return accumulator + HolidayService.getBusinessDaysCount(vacationStart, vacationEnd);
-        }
-        return accumulator;
-    }, 0);
+    const balance = await getEmployeeVacationBalanceSummary(employeeId, currentYear, tx);
 
-    const quota = employee.vacationDaysTotal || 30;
-    if (usedDays + requestedDays > quota) {
-        throw new AppError(`Excede cupo. Disponibles: ${quota - usedDays}, Solicitados: ${requestedDays}.`, 400);
+    if (!balance) {
+        throw new AppError('No se pudo calcular el saldo de vacaciones del empleado', 500);
+    }
+
+    if (balance.projectedAvailableDays < requestedDays) {
+        throw new AppError(`Excede cupo. Disponibles: ${balance.projectedAvailableDays}, Solicitados: ${requestedDays}.`, 400);
     }
 
     return { requestedDays };
@@ -101,4 +135,37 @@ export async function notifyVacationCreated(vacation: any, frontendUrl: string) 
     `;
 
     EmailService.sendMail(manager.email, subject, html).catch(() => undefined);
+}
+
+export async function updateVacationStatus(vacationId: string, status: string, rejectionReason?: string, managerComment?: string, approvedBy?: string) {
+    const data: Prisma.VacationUpdateInput = { status };
+    if (status === 'REJECTED' && rejectionReason) {
+        data.rejectionReason = rejectionReason;
+    }
+    if (status === 'APPROVED' && managerComment) {
+        data.managerComment = managerComment;
+    }
+    if (approvedBy) {
+        data.approvedBy = approvedBy;
+        data.approvedAt = new Date();
+    }
+    const vacation = await prisma.vacation.update({
+        where: { id: vacationId },
+        data,
+        include: { employee: true }
+    });
+    return vacation;
+}
+
+export async function transformVacationWithUrl(vacation: any): Promise<any> {
+    if (!vacation) return vacation;
+    const result = { ...vacation };
+    if (result.fileUrl) {
+        result.fileUrl = await StorageService.getUrl(result.fileUrl);
+    }
+    return result;
+}
+
+export async function transformVacationListWithUrl(vacations: any[]): Promise<any[]> {
+    return Promise.all(vacations.map(transformVacationWithUrl));
 }

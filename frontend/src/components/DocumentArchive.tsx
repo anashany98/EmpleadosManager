@@ -101,8 +101,10 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
             setNewName('');
             setNewExpiry('');
             fetchDocuments();
-        } catch (error) {
-            toast.error('Error al subir el archivo');
+        } catch (error: any) {
+            const message = error?.response?.data?.message || error?.message || 'Error desconocido';
+            toast.error(`Error al subir el archivo: ${message}`);
+            console.error('Upload error:', error);
         } finally {
             setUploading(false);
             if (e.target) e.target.value = '';

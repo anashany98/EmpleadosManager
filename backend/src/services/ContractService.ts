@@ -22,7 +22,7 @@ export const ContractService = {
                 data: {
                     employeeId,
                     newEndDate: new Date(data.newEndDate),
-                    previousEndDate: previousEndDate,
+                    previousEndDate,
                     notes: data.notes,
                     fileUrl: data.fileUrl,
                 },

@@ -15,6 +15,32 @@ export default function ResetPassword() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState<{ password?: string; confirmPassword?: string }>({});
+
+    const validatePassword = (value: string): string | null => {
+        if (!value) return 'La contraseña es requerida';
+        if (value.length < 10) return 'Mínimo 10 caracteres';
+        if (!/[a-z]/.test(value)) return 'Debe incluir minúsculas';
+        if (!/[A-Z]/.test(value)) return 'Debe incluir mayúsculas';
+        if (!/[0-9]/.test(value)) return 'Debe incluir números';
+        if (!/[^A-Za-z0-9]/.test(value)) return 'Debe incluir un símbolo';
+        return null;
+    };
+
+    const handlePasswordBlur = () => {
+        const error = validatePassword(password);
+        setFieldErrors(prev => ({ ...prev, password: error || undefined }));
+    };
+
+    const handleConfirmBlur = () => {
+        if (!confirmPassword) {
+            setFieldErrors(prev => ({ ...prev, confirmPassword: 'Confirma la contraseña' }));
+        } else if (password !== confirmPassword) {
+            setFieldErrors(prev => ({ ...prev, confirmPassword: 'Las contraseñas no coinciden' }));
+        } else {
+            setFieldErrors(prev => ({ ...prev, confirmPassword: undefined }));
+        }
+    };
 
     useEffect(() => {
         if (!token) {
@@ -26,13 +52,11 @@ export default function ResetPassword() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (password !== confirmPassword) {
-            toast.error('Las contraseñas no coinciden');
-            return;
-        }
+        const passwordError = validatePassword(password);
+        const confirmError = !confirmPassword ? 'Confirma la contraseña' : (password !== confirmPassword ? 'Las contraseñas no coinciden' : null);
+        setFieldErrors({ password: passwordError || undefined, confirmPassword: confirmError || undefined });
 
-        if (password.length < 6) {
-            toast.error('La contraseña debe tener al menos 6 caracteres');
+        if (passwordError || confirmError) {
             return;
         }
 
@@ -91,10 +115,11 @@ export default function ResetPassword() {
                                 type={showPassword ? "text" : "password"}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
-                                className="w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                                placeholder="Mínimo 6 caracteres"
+                                onBlur={handlePasswordBlur}
+                                className={`w-full pl-10 pr-10 py-3 bg-slate-50 dark:bg-slate-800 border ${fieldErrors.password ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all`}
+                                placeholder="Mínimo 10 caracteres"
                                 required
-                                minLength={6}
+                                minLength={10}
                             />
                             <button
                                 type="button"
@@ -104,6 +129,9 @@ export default function ResetPassword() {
                                 {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                             </button>
                         </div>
+                        {fieldErrors.password && (
+                            <p className="text-red-500 text-sm mt-1">{fieldErrors.password}</p>
+                        )}
                     </div>
 
                     <div>
@@ -116,11 +144,15 @@ export default function ResetPassword() {
                                 type={showPassword ? "text" : "password"}
                                 value={confirmPassword}
                                 onChange={(e) => setConfirmPassword(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                onBlur={handleConfirmBlur}
+                                className={`w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border ${fieldErrors.confirmPassword ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all`}
                                 placeholder="Repite la contraseña"
                                 required
                             />
                         </div>
+                        {fieldErrors.confirmPassword && (
+                            <p className="text-red-500 text-sm mt-1">{fieldErrors.confirmPassword}</p>
+                        )}
                     </div>
 
                     <button

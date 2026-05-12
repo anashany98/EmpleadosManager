@@ -1,32 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-
-import PayrollImport from './pages/PayrollImport';
-import Dashboard from './pages/Dashboard';
-import Employees from './pages/Employees';
-import EmployeeDetail from './pages/EmployeeDetail';
-import CalendarPage from './pages/CalendarPage';
-import Companies from './pages/Companies';
-import SettingsPage from './pages/Settings';
-import MyDocumentsPage from './pages/MyDocumentsPage';
-import TimesheetPage from './pages/TimesheetPage';
-import Reports from './pages/Reports';
-import OrgChart from './pages/OrgChart';
-import AuditLogPage from './pages/AuditLogPage';
-import GlobalAssetsPage from './pages/GlobalAssetsPage';
-import UserManagement from './pages/UserManagement';
-import InboxPage from './pages/InboxPage';
-import PayrollBatchDetail from './pages/PayrollBatchDetail';
-import VacationRequests from './pages/VacationRequests';
-import MyProfile from './pages/MyProfile';
-import ExpensesPage from './pages/ExpensesPage';
-import AnomaliesPage from './pages/Anomalies';
-import AttendanceReconciliation from './pages/AttendanceReconciliation';
-import AnalyticsDashboard from './pages/AnalyticsDashboard';
-import PerformancePage from './pages/PerformancePage';
 
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -37,6 +13,43 @@ import ResetPassword from './pages/ResetPassword';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import CommandPalette from './components/CommandPalette';
+import { OfflineBanner } from './components/ui/OfflineBanner';
+import { Breadcrumbs } from './components/ui/Breadcrumbs';
+
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const RRHHDashboard = lazy(() => import('./pages/RRHHDashboard'));
+const FinancialDashboard = lazy(() => import('./pages/FinancialDashboard'));
+const EmployeeDetail = lazy(() => import('./pages/EmployeeDetail'));
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+const Companies = lazy(() => import('./pages/Companies'));
+const SettingsPage = lazy(() => import('./pages/Settings'));
+const MyDocumentsPage = lazy(() => import('./pages/MyDocumentsPage'));
+const TimesheetPage = lazy(() => import('./pages/TimesheetPage'));
+const OrgChart = lazy(() => import('./pages/OrgChart'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage'));
+const GlobalAssetsPage = lazy(() => import('./pages/GlobalAssetsPage'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
+const InboxPage = lazy(() => import('./pages/InboxPage'));
+const PayrollBatchDetail = lazy(() => import('./pages/PayrollBatchDetail'));
+const MyProfile = lazy(() => import('./pages/MyProfile'));
+const ExpensesPage = lazy(() => import('./pages/ExpensesPage'));
+const AnomaliesPage = lazy(() => import('./pages/Anomalies'));
+const AttendanceReconciliation = lazy(() => import('./pages/AttendanceReconciliation'));
+const AnalyticsDashboard = lazy(() => import('./pages/AnalyticsDashboard'));
+const PerformancePage = lazy(() => import('./pages/PerformancePage'));
+const TemplatesPage = lazy(() => import('./pages/TemplatesPage'));
+const Employees = lazy(() => import('./pages/Employees'));
+const Reports = lazy(() => import('./pages/Reports'));
+const PayrollImport = lazy(() => import('./pages/PayrollImport'));
+const VacationRequests = lazy(() => import('./pages/VacationRequests'));
+
+function RouteLoading() {
+  return (
+    <div className="flex items-center justify-center h-48">
+      <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full" />
+    </div>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -127,8 +140,14 @@ function AppContent() {
           setDarkMode={setDarkMode}
         />
 
-        <div className="flex-1 overflow-auto p-4 md:p-8 scroll-smooth">
-          <div className={`${location.pathname === '/calendar' ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto`}>
+        <div className="px-3 sm:px-4 md:px-6">
+          <Breadcrumbs />
+        </div>
+
+        <OfflineBanner />
+
+<div className="flex-1 overflow-auto p-3 sm:p-4 md:p-6 lg:p-8 scroll-smooth safe-bottom">
+                <div className={`${location.pathname === '/calendar' ? 'max-w-[1600px]' : 'max-w-7xl'} mx-auto w-full`}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={location.pathname}
@@ -137,15 +156,17 @@ function AppContent() {
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.3 }}
               >
+                <Suspense fallback={<RouteLoading />}>
                 <Routes location={location} key={location.pathname}>
                   <Route path="/" element={<ProtectedRoute feature="dashboard"><Dashboard /></ProtectedRoute>} />
                   <Route path="/employees" element={<ProtectedRoute feature="employees"><Employees /></ProtectedRoute>} />
                   <Route path="/employees/:id" element={<ProtectedRoute feature="employeeDetail"><EmployeeDetail /></ProtectedRoute>} />
                   <Route path="/employees/org-chart" element={<ProtectedRoute feature="orgChart"><OrgChart /></ProtectedRoute>} />
+                  <Route path="/employees/rrhh-dashboard" element={<ProtectedRoute feature="employees"><RRHHDashboard /></ProtectedRoute>} />
                   <Route path="/companies" element={<ProtectedRoute feature="companies"><Companies /></ProtectedRoute>} />
                   <Route path="/calendar" element={<ProtectedRoute feature="calendar"><CalendarPage /></ProtectedRoute>} />
                   <Route path="/audit" element={<ProtectedRoute feature="audit"><AuditLogPage /></ProtectedRoute>} />
-                  <Route path="/assets" element={<ProtectedRoute feature="assets"><GlobalAssetsPage /></ProtectedRoute>} />
+                  <Route path="/assets" element={<ProtectedRoute anyFeature={['assets', 'fleet', 'cards']}><GlobalAssetsPage /></ProtectedRoute>} />
                   <Route path="/reports" element={<ProtectedRoute feature="reports"><Reports /></ProtectedRoute>} />
                   <Route path="/timesheet" element={<ProtectedRoute feature="timesheetManagement"><TimesheetPage /></ProtectedRoute>} />
                   <Route path="/inbox" element={<ProtectedRoute feature="inbox"><InboxPage /></ProtectedRoute>} />
@@ -162,11 +183,14 @@ function AppContent() {
                   <Route path="/reconciliation" element={<ProtectedRoute feature="reconciliation"><AttendanceReconciliation /></ProtectedRoute>} />
                   <Route path="/profile" element={<ProtectedRoute feature="profileSelf"><MyProfile /></ProtectedRoute>} />
                   <Route path="/users" element={<ProtectedRoute feature="users"><UserManagement /></ProtectedRoute>} />
+                  <Route path="/templates" element={<ProtectedRoute feature="settings"><TemplatesPage /></ProtectedRoute>} />
                   <Route path="/settings" element={<ProtectedRoute feature="settings"><SettingsPage /></ProtectedRoute>} />
+                  <Route path="/admin/financial-dashboard" element={<ProtectedRoute feature="settings"><FinancialDashboard /></ProtectedRoute>} />
                   <Route path="/analytics" element={<ProtectedRoute feature="analytics"><AnalyticsDashboard /></ProtectedRoute>} />
                   <Route path="/performance" element={<ProtectedRoute feature="performance"><PerformancePage /></ProtectedRoute>} />
                   <Route path="/login" element={<Navigate to="/" replace />} />
                 </Routes>
+                </Suspense>
               </motion.div>
             </AnimatePresence>
           </div>

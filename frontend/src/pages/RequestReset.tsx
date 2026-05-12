@@ -10,18 +10,42 @@ export default function RequestReset() {
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
     const [debugLink, setDebugLink] = useState('');
+    const [fieldError, setFieldError] = useState<string | null>(null);
+
+    const validateIdentifier = (value: string): string | null => {
+        if (!value) return 'El DNI o email es requerido';
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && !/^\d{8}[A-Z]$/.test(value)) {
+            return 'Formato inválido (ej: 12345678A o email@ejemplo.com)';
+        }
+        return null;
+    };
+
+    const handleBlur = () => {
+        const error = validateIdentifier(identifier);
+        setFieldError(error);
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setDebugLink('');
+
+        const error = validateIdentifier(identifier);
+        setFieldError(error);
+        if (error) {
+            setLoading(false);
+            return;
+        }
+
         try {
             const res = await api.post('/auth/request-password-reset', { identifier });
             if (res.success) {
                 setSuccess(true);
                 toast.success('Solicitud enviada correctamente');
-                // FOR DEMO PURPOSES ONLY: Show link
+                // DEBUG ONLY: In production this must NEVER display or log - demo link exposure is a security risk
                 if (res.data?.debugLink) {
+                     
+                    console.warn('DEBUG: password reset link captured (should not appear in production):', res.data.debugLink);
                     setDebugLink(res.data.debugLink);
                 }
             }
@@ -43,13 +67,6 @@ export default function RequestReset() {
                     <p className="text-slate-500 dark:text-slate-400 mb-8">
                         Si tus datos coinciden con nuestros registros, recibirás un correo con las instrucciones para restablecer tu contraseña.
                     </p>
-
-                    {debugLink && (
-                        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-900/50 rounded-lg text-left text-sm break-all">
-                            <p className="font-bold text-yellow-800 dark:text-yellow-500 mb-1">MODO DEMO - Enlace generado:</p>
-                            <a href={debugLink} className="text-blue-600 underline">{debugLink}</a>
-                        </div>
-                    )}
 
                     <Link to="/login" className="w-full py-3 px-4 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors block">
                         Volver al inicio de sesión
@@ -84,11 +101,15 @@ export default function RequestReset() {
                                 type="text"
                                 value={identifier}
                                 onChange={(e) => setIdentifier(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                                onBlur={handleBlur}
+                                className={`w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border ${fieldError ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'} rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all`}
                                 placeholder="Ej: 12345678A o nombre@email.com"
                                 required
                             />
                         </div>
+                        {fieldError && (
+                            <p className="text-red-500 text-sm mt-1">{fieldError}</p>
+                        )}
                     </div>
 
                     <button

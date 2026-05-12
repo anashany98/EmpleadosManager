@@ -7,10 +7,16 @@
         "outDir": "./dist",
         "esModuleInterop": true,
         "forceConsistentCasingInFileNames": true,
-        "strict": false,
-        "noImplicitAny": false,
+        "strict": true,
+        "noImplicitAny": true,
+        "strictNullChecks": true,
+        "strictFunctionTypes": true,
+        "strictBindCallApply": true,
+        "strictPropertyInitialization": true,
+        "noImplicitThis": true,
+        "alwaysStrict": true,
         "skipLibCheck": true,
-        "noEmitOnError": false
+        "noEmitOnError": true
     },
     "include": [
         "src/**/*",
@@ -22,6 +28,19 @@
         "**/*.spec.ts",
         "**/*.test.ts",
         "src/tests",
-        "dist"
+        "dist",
+        "src/scripts/debug-*",
+        "src/scripts/test_*",
+        "src/scripts/temp_*",
+        "src/scripts/verify_*",
+        "src/scripts/check-*",
+        "src/scripts/check_*",
+        "src/scripts/find-*",
+        "src/scripts/inspect-*",
+        "src/scripts/get_*",
+        "src/scripts/create_test_*",
+        "src/scripts/seed_special_*",
+        "src/scripts/seed_test_*",
+        "src/scripts/setup_demo*"
     ]
 }

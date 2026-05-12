@@ -12,7 +12,7 @@ async function main() {
     }
 
     const linkedUser = await prisma.user.findFirst({
-        where: { OR: [{ dni: dni }, { employeeId: employee?.id }] }
+        where: { OR: [{ dni }, { employeeId: employee?.id }] }
     });
     console.log('Linked User:', linkedUser ? 'FOUND' : 'NOT FOUND');
     if (linkedUser) {
