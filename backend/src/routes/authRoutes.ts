@@ -13,7 +13,7 @@ const router = Router();
 const shouldSkipAuthThrottling = () => !isAuthThrottlingEnabled();
 
 const loginLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutos
+    windowMs: 2 * 60 * 1000, // 2 minutos
     max: 5, // Máximo 5 intentos por ventana
     standardHeaders: true,
     legacyHeaders: false,
@@ -21,7 +21,7 @@ const loginLimiter = rateLimit({
     skip: shouldSkipAuthThrottling,
     message: {
         status: 429,
-        message: 'Demasiados intentos de login. Por seguridad, intenta de nuevo en 15 minutos.'
+        message: 'Demasiados intentos de login. Por seguridad, intenta de nuevo en 2 minutos.'
     }
 });
 
