@@ -56,7 +56,7 @@ export const healthController = {
             const result = await healthChecker.checkLiveness();
             const statusCode = result.status === 'ok' ? 200 : 503;
             res.status(statusCode).json(result);
-        } catch (error) {
+        } catch {
             res.status(503).json({ status: 'error', message: 'Liveness check failed' });
         }
     },
@@ -76,7 +76,7 @@ export const healthController = {
             const result = await healthChecker.checkReadiness();
             const statusCode = result.status === 'ok' ? 200 : 503;
             res.status(statusCode).json(result);
-        } catch (error) {
+        } catch {
             res.status(503).json({ status: 'error', message: 'Readiness check failed' });
         }
     }

@@ -88,8 +88,7 @@ function getActionFromMethod(method: string): AuditAction {
     }
 }
 
-export const auditSecurityEvents = () => {
-    return async (req: Request, res: Response, next: NextFunction) => {
+export const auditSecurityEvents = () => async (req: Request, res: Response, next: NextFunction) => {
         const authenticatedReq = req as AuthenticatedRequest;
         
         res.on('finish', async () => {
@@ -118,4 +117,3 @@ export const auditSecurityEvents = () => {
 
         next();
     };
-};

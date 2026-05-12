@@ -41,8 +41,11 @@ export interface EmployeeFormData {
     workingDayType: string;
     weeklyHours: string;
     gender: string;
-    annualGrossSalary: string;
-    monthlyGrossSalary: string;
+  annualGrossSalary: string;
+  monthlyGrossSalary: string;
+  annualTotalSalary: string;
+  monthlyTotalSalary: string;
+  companyShortPhone: string;
     managerId: string;
     privateNotes: string;
     active: boolean;
@@ -51,6 +54,14 @@ export interface EmployeeFormData {
 export interface CompanyOption {
     id: string;
     name: string;
+}
+
+export interface EmployeeFieldOptions {
+    departments: string[];
+    categories: string[];
+    jobTitles: string[];
+    contractTypes: string[];
+    agreementTypes: string[];
 }
 
 export interface EmployeeOption {
@@ -64,6 +75,18 @@ export interface NewEmergencyContact {
     name: string;
     phone: string;
     relationship: string;
+}
+
+export interface EmployeeVacationBalanceSummary {
+    year: number;
+    annualQuotaDays: number;
+    carriedOverDays: number;
+    importedUsedDays: number;
+    totalEntitledDays: number;
+    approvedUsedDays: number;
+    pendingDays: number;
+    availableDays: number;
+    projectedAvailableDays: number;
 }
 
 export interface EmployeeViewRecord {
@@ -101,11 +124,15 @@ export interface EmployeeViewRecord {
     emergencyContacts?: EmergencyContact[];
     workingDayType?: string;
     weeklyHours?: string | number;
-    annualGrossSalary?: string | number;
-    monthlyGrossSalary?: string | number;
+  annualGrossSalary?: string | number;
+  monthlyGrossSalary?: string | number;
+  annualTotalSalary?: string | number;
+  monthlyTotalSalary?: string | number;
+    companyShortPhone?: string;
     managerId?: string;
     privateNotes?: string;
     active?: boolean;
+    vacationBalance?: EmployeeVacationBalanceSummary | null;
     [key: string]: unknown;
 }
 
@@ -117,6 +144,16 @@ export interface AuditLogEntry {
         firstName?: string;
         lastName?: string;
     } | null;
+}
+
+export interface PrivateNoteHistoryEntry {
+    id: string;
+    note: string;
+    previousNote?: string | null;
+    createdAt: string;
+    authorName: string;
+    authorEmail?: string | null;
+    isLegacy?: boolean;
 }
 
 export interface OvertimeRate {
@@ -170,8 +207,11 @@ export const createDefaultEmployeeFormData = (): EmployeeFormData => ({
     workingDayType: 'COMPLETE',
     weeklyHours: '',
     gender: '',
-    annualGrossSalary: '',
-    monthlyGrossSalary: '',
+  annualGrossSalary: '',
+  monthlyGrossSalary: '',
+  annualTotalSalary: '',
+  monthlyTotalSalary: '',
+  companyShortPhone: '',
     managerId: '',
     privateNotes: '',
     active: true

@@ -42,7 +42,7 @@ export default function HeatmapCalendar({ data, title = 'Mapa de Actividad' }: H
 
         const weeks: Array<Array<{ date: string; count: number; level: number }>> = [];
         let currentWeek: Array<{ date: string; count: number; level: number }> = [];
-        let currentDate = new Date(startDate);
+        const currentDate = new Date(startDate);
 
         while (currentDate <= today) {
             const dateStr = currentDate.toISOString().split('T')[0];

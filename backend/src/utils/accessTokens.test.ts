@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import jwt from 'jsonwebtoken';
 import { signAccessToken, ACCESS_TOKEN_EXPIRES_IN } from './accessTokens';
 
-const TEST_SECRET = 'test-jwt-secret-for-testing-purposes';
+// Secret used for testing purposes
 
 describe('Access Tokens Utils', () => {
     describe('ACCESS_TOKEN_EXPIRES_IN', () => {

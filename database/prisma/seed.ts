@@ -1,3 +1,7 @@
+if (process.env.NODE_ENV === 'production') {
+  console.error('❌ Cannot run seed in production!');
+  process.exit(1);
+}
 
 import { PrismaClient } from '@prisma/client';
 

@@ -44,6 +44,7 @@ const resolveStoredDocumentTarget = async (req: any) => {
 // ...
 router.post('/generate-uniform', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateUniform);
 router.post('/generate-epi', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateEPI);
+router.post('/generate-material', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateMaterial);
 router.post('/generate-tech', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateTech);
 router.post('/generate-145', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generate145);
 router.post('/generate-nda', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateNDA);

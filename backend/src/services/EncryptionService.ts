@@ -2,8 +2,11 @@ import * as crypto from 'crypto';
 import { createLogger } from './LoggerService';
 
 const log = createLogger('EncryptionService');
-const ALGORITHM = 'aes-256-cbc';
-const IV_LENGTH = 16; // For AES, this is always 16
+const ALGORITHM = 'aes-256-gcm';
+const LEGACY_ALGORITHM = 'aes-256-cbc';
+const IV_LENGTH = 12;
+const LEGACY_IV_LENGTH = 16;
+const GCM_PREFIX = 'gcm';
 
 const getEncryptionKey = (): string => {
     const key = process.env.ENCRYPTION_KEY;
@@ -35,7 +38,8 @@ export class EncryptionService {
         }
     }
     /**
-     * Encrypts plain text using AES-256-CBC
+     * Encrypts plain text using AES-256-GCM.
+     * Format: gcm:ivHex:authTagHex:ciphertextHex
      */
     static encrypt(text: string | null | undefined): string | null {
         if (!text) return null;
@@ -46,15 +50,24 @@ export class EncryptionService {
             const cipher = crypto.createCipheriv(ALGORITHM, Buffer.from(key), iv);
             let encrypted = cipher.update(text);
             encrypted = Buffer.concat([encrypted, cipher.final()]);
-            return iv.toString('hex') + ':' + encrypted.toString('hex');
+            const authTag = cipher.getAuthTag();
+            return [
+                GCM_PREFIX,
+                iv.toString('hex'),
+                authTag.toString('hex'),
+                encrypted.toString('hex')
+            ].join(':');
         } catch (error) {
             log.error({ error }, 'Encryption failed');
-            throw new Error('Encryption failed');
+            const err = new Error('Encryption failed');
+            (err as any).cause = error;
+            throw err;
         }
     }
 
     /**
-     * Decrypts AES-256-CBC encrypted text
+     * Decrypts AES-256-GCM encrypted text.
+     * Legacy AES-256-CBC values are still supported for existing records.
      */
     static decrypt(text: string | null | undefined): string | null {
         if (!text) return null;
@@ -63,9 +76,31 @@ export class EncryptionService {
         try {
             const key = getEncryptionKey();
             const textParts = text.split(':');
+
+            if (textParts[0] === GCM_PREFIX) {
+                const [, ivHex, authTagHex, encryptedHex] = textParts;
+                if (!ivHex || !authTagHex || !encryptedHex) {
+                    return null;
+                }
+
+                const iv = Buffer.from(ivHex, 'hex');
+                const authTag = Buffer.from(authTagHex, 'hex');
+                const encryptedText = Buffer.from(encryptedHex, 'hex');
+                const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(key), iv);
+                decipher.setAuthTag(authTag);
+
+                let decrypted = decipher.update(encryptedText);
+                decrypted = Buffer.concat([decrypted, decipher.final()]);
+                return decrypted.toString();
+            }
+
             const iv = Buffer.from(textParts.shift()!, 'hex');
+            if (iv.length !== LEGACY_IV_LENGTH) {
+                return null;
+            }
+
             const encryptedText = Buffer.from(textParts.join(':'), 'hex');
-            const decipher = crypto.createDecipheriv(ALGORITHM, Buffer.from(key), iv);
+            const decipher = crypto.createDecipheriv(LEGACY_ALGORITHM, Buffer.from(key), iv);
             let decrypted = decipher.update(encryptedText);
             decrypted = Buffer.concat([decrypted, decipher.final()]);
             return decrypted.toString();

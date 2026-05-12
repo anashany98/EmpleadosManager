@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, User, Package, LayoutDashboard, Inbox, Settings, X, Command, FileText, Calendar, Clock, Users, Building2 } from 'lucide-react';
+import { Search, User, Package, LayoutDashboard, Inbox, Settings, X, Command, FileText, Calendar, Clock, Users, Building2, AlertCircle, Shield, Upload, GitBranch } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,7 +35,19 @@ export default function CommandPalette() {
         { id: 'p6', type: 'page', title: 'Bandeja de Entrada', path: '/inbox', icon: <Inbox size={18} />, subtitle: 'Documentos pendientes' },
         { id: 'p7', type: 'page', title: 'Empresas', path: '/companies', icon: <Building2 size={18} />, subtitle: 'Gestión empresarial' },
         { id: 'p8', type: 'page', title: 'Reportes', path: '/reports', icon: <FileText size={18} />, subtitle: 'Informes y estadísticas' },
-        { id: 'p9', type: 'page', title: 'Configuración', path: '/settings', icon: <Settings size={18} />, subtitle: 'Ajustes del sistema' },
+        { id: 'p9', type: 'page', title: 'Plantillas', path: '/templates', icon: <FileText size={18} />, subtitle: 'Modelos legales y documentales' },
+        { id: 'p10', type: 'page', title: 'Configuración', path: '/settings', icon: <Settings size={18} />, subtitle: 'Ajustes del sistema' },
+        // Missing routes from plan
+        { id: 'p11', type: 'page', title: 'Vacaciones', path: '/vacations', icon: <Calendar size={18} />, subtitle: 'Gestión de vacaciones' },
+        { id: 'p12', type: 'page', title: 'Gastos', path: '/expenses', icon: <FileText size={18} />, subtitle: 'Gestión de gastos' },
+        { id: 'p13', type: 'page', title: 'Anomalías', path: '/anomalies', icon: <AlertCircle size={18} />, subtitle: 'Detección de anomalías' },
+        { id: 'p14', type: 'page', title: 'Auditoría', path: '/audit', icon: <Shield size={18} />, subtitle: 'Logs de auditoría' },
+        { id: 'p15', type: 'page', title: 'Importar Nómina', path: '/import', icon: <Upload size={18} />, subtitle: 'Importar datos de nómina' },
+        { id: 'p16', type: 'page', title: 'Usuarios', path: '/users', icon: <Users size={18} />, subtitle: 'Gestión de usuarios' },
+        { id: 'p17', type: 'page', title: 'Mi Perfil', path: '/profile', icon: <User size={18} />, subtitle: 'Mi información personal' },
+        { id: 'p18', type: 'page', title: 'Mis Documentos', path: '/my-documents', icon: <FileText size={18} />, subtitle: 'Documentos personales' },
+        { id: 'p19', type: 'page', title: 'Organigrama', path: '/employees/org-chart', icon: <GitBranch size={18} />, subtitle: 'Estructura organizativa' },
+        { id: 'p20', type: 'page', title: 'Reconciliación', path: '/reconciliation', icon: <Clock size={18} />, subtitle: 'Reconciliación de asistencia' },
     ], []);
 
     const availablePages = useMemo(() => pages.filter((page) => {
@@ -43,6 +55,7 @@ export default function CommandPalette() {
             case '/':
                 return canAccessFeature('dashboard');
             case '/employees':
+            case '/employees/org-chart':
                 return canAccessFeature('employees');
             case '/calendar':
                 return canAccessFeature('calendar');
@@ -56,12 +69,32 @@ export default function CommandPalette() {
                 return canAccessFeature('companies');
             case '/reports':
                 return canAccessFeature('reports');
+            case '/templates':
+                return canAccessFeature('settings');
             case '/settings':
                 return canAccessFeature('settings');
+            case '/vacations':
+                return canAccessFeature('vacations');
+            case '/expenses':
+                return canAccessFeature('expenses');
+            case '/anomalies':
+                return isGlobalAdmin;
+            case '/audit':
+                return isGlobalAdmin;
+            case '/import':
+                return isGlobalAdmin;
+            case '/users':
+                return isGlobalAdmin;
+            case '/profile':
+                return true;
+            case '/my-documents':
+                return canAccessFeature('inbox');
+            case '/reconciliation':
+                return canAccessFeature('reconciliation');
             default:
                 return false;
         }
-    }), [canAccessFeature, pages]);
+    }), [canAccessFeature, isGlobalAdmin, pages]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {

@@ -3,11 +3,13 @@ import { api } from '../api/client';
 import { Search, Camera, X, UserCheck, LogOut, Loader2 } from 'lucide-react';
 import { FaceEnrollModal } from './FaceEnrollModal';
 import { toast } from 'sonner';
+import { getEmployeeDisplayName } from '../utils/employeeDisplay';
 
 interface Employee {
     id: string;
-    firstName: string;
-    lastName: string;
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
     dni: string;
     faceDescriptor?: unknown;
     department?: string;
@@ -153,7 +155,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                     {employees.map(emp => (
                         <div key={emp.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm border border-slate-200 dark:border-slate-700 flex items-center justify-between">
                             <div>
-                                <h3 className="font-bold text-lg dark:text-white">{emp.firstName} {emp.lastName}</h3>
+                                <h3 className="font-bold text-lg dark:text-white">{getEmployeeDisplayName(emp)}</h3>
                                 <div className="text-sm text-slate-500 flex gap-3">
                                     <span>MyDNI: {emp.dni}</span>
                                     <span>{emp.department}</span>
@@ -189,7 +191,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                         setSelectedEmployee(null);
                     }}
                     employeeId={selectedEmployee.id}
-                    employeeName={`${selectedEmployee.firstName} ${selectedEmployee.lastName}`}
+                    employeeName={getEmployeeDisplayName(selectedEmployee)}
                     onSuccess={() => {
                         fetchEmployees(search); // Refresh list to show green state
                         toast.success('BiometrÃ­a guardada');

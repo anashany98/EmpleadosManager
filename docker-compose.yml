@@ -5,7 +5,7 @@
     container_name: manager_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_INITDB_ARGS: ""
     ports:
@@ -37,6 +37,8 @@
   redis:
     image: redis:7-alpine
     container_name: manager_redis
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
@@ -49,9 +51,11 @@
         limits:
           cpus: '0.5'
           memory: 512M
-    command: redis-server --appendonly yes --save 900 1 --save 300 10 --save 60 10000
+    command: >
+      sh -c 'if [ -z "$$REDIS_PASSWORD" ]; then echo "REDIS_PASSWORD is required"; exit 1; fi;
+      exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --save 900 1 --save 300 10 --save 60 10000'
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -65,17 +69,18 @@
     ports:
       - "127.0.0.1:16161:3000"
     environment:
-      - NODE_ENV=${NODE_ENV:-development}
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public&connection_timeout=10
+      - NODE_ENV=${NODE_ENV:?NODE_ENV is required}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB}?schema=public&connection_timeout=10
       - PORT=3000
-      - JWT_SECRET=${JWT_SECRET}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
-      - KIOSK_DEVICE_SECRET=${KIOSK_DEVICE_SECRET}
-      - CORS_ORIGIN=${CORS_ORIGIN}
-      - FRONTEND_URL=${FRONTEND_URL}
-      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
+      - KIOSK_DEVICE_SECRET=${KIOSK_DEVICE_SECRET:-}
+      - CORS_ORIGIN=${CORS_ORIGIN:?CORS_ORIGIN is required}
+      - FRONTEND_URL=${FRONTEND_URL:?FRONTEND_URL is required}
+      - COOKIE_SECURE=${COOKIE_SECURE:?COOKIE_SECURE is required}
       - COOKIE_DOMAIN=${COOKIE_DOMAIN}
       - COOKIE_SAMESITE=${COOKIE_SAMESITE}
+      - RETURN_TOKENS=false
       - CSRF_COOKIE_NAME=${CSRF_COOKIE_NAME}
       - CSRF_HEADER_NAME=${CSRF_HEADER_NAME}
       - CSRF_MAX_AGE_MS=${CSRF_MAX_AGE_MS}
@@ -86,8 +91,10 @@
       - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID}
       - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
       - BACKUP_UPLOAD=${BACKUP_UPLOAD}
+      - BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY is required}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - PRISMA_QUERY_TIMEOUT=10000
       - PRISMA_CONNECT_TIMEOUT=10000
     volumes:
@@ -106,7 +113,7 @@
           cpus: '1'
           memory: 1G
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health', r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health/liveness', r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -159,11 +166,11 @@
           cpus: '0.25'
           memory: 128M
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
       interval: 30s
       timeout: 5s
       retries: 3
-  # Backup Service - Automated PostgreSQL backups
+# Backup Service - Automated PostgreSQL backups with S3 upload
   backup:
     image: prodrigestivill/postgres-backup-local:15
     container_name: manager_backup
@@ -171,14 +178,22 @@
       - POSTGRES_HOST=postgres
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
       - BACKUP_KEEP_DAYS=${BACKUP_RETENTION_DAYS:-30}
       - BACKUP_KEEP_WEEKS=4
       - BACKUP_KEEP_MONTHS=6
       - HEALTHCHECK_PORT=8080
+      # S3 Backup Configuration
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - S3_ENDPOINT=${S3_ENDPOINT:-}
+      - S3_BUCKET=${BACKUP_S3_BUCKET:-}
+      - BACKUP_S3_ENABLED=${BACKUP_S3_ENABLED:-false}
     volumes:
       - backup_data:/backups
+      - backend_uploads:/backups/uploads:ro
     depends_on:
       postgres:
         condition: service_healthy

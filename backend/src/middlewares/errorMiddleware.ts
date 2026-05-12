@@ -6,7 +6,7 @@ export const errorMiddleware = (
     err: Error | AppError,
     req: Request,
     res: Response,
-    next: NextFunction
+    _next: NextFunction
 ) => {
     if (err instanceof AppError) {
         return ApiResponse.error(res, err.message, err.statusCode);

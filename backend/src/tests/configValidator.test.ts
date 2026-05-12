@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validateRuntimeConfiguration } from '../app/configValidator';
+import { EncryptionService } from '../services/EncryptionService';
 
 // Mock dependencies
 vi.mock('../services/EncryptionService', () => ({
@@ -38,8 +39,11 @@ describe('ConfigValidator', () => {
         });
 
         it('should fail if JWT_SECRET is a default/fallback value', () => {
-            process.env.JWT_SECRET = 'secret-key-123';
-            expect(() => validateRuntimeConfiguration()).toThrow('forbidden test/development value');
+            process.env.JWT_SECRET = 'super-secret-key-change-me-and-long-enough-for-validation';
+            process.env.NODE_ENV = 'production';
+            process.env.COOKIE_SECURE = 'true';
+            process.env.CORS_ORIGIN = 'https://internal.company.com';
+            expect(() => validateRuntimeConfiguration()).toThrow('forbidden test/development/placeholder value');
         });
 
         it('should pass with valid JWT_SECRET', () => {
@@ -95,6 +99,7 @@ describe('ConfigValidator', () => {
             process.env.ENCRYPTION_KEY = '12345678901234567890123456789012';
             process.env.NODE_ENV = 'production';
             process.env.CORS_ORIGIN = 'https://internal.company.com';
+            process.env.COOKIE_SECURE = 'true';
             expect(() => validateRuntimeConfiguration()).not.toThrow();
         });
 
@@ -129,7 +134,7 @@ describe('ConfigValidator', () => {
             process.env.CORS_ORIGIN = 'https://internal.company.com';
             process.env.COOKIE_SECURE = 'true';
             process.env.STORAGE_PROVIDER = 's3';
-            // Missing S3_BUCKET
+            delete process.env.S3_BUCKET;
             expect(() => validateRuntimeConfiguration()).toThrow('Required when STORAGE_PROVIDER=s3');
         });
 
@@ -161,7 +166,6 @@ describe('ConfigValidator', () => {
 
     describe('Encryption Service Integration', () => {
         it('should call EncryptionService.validateKey', () => {
-            const { EncryptionService } = require('../services/EncryptionService');
             process.env.JWT_SECRET = 'a-very-long-secret-that-is-at-least-32-characters-long';
             process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/db';
             process.env.ENCRYPTION_KEY = '12345678901234567890123456789012';

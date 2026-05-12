@@ -2,7 +2,9 @@ import PDFDocument from 'pdfkit';
 import { prisma } from '../../lib/prisma';
 import { StorageService } from '../StorageService';
 import { InventoryService } from '../InventoryService';
-import { getLogoPath, addQRCodeToPDF, buildPdfBuffer } from './DocumentPdfUtils';
+import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
+import { CompanyDocumentTemplateService } from './DocumentTemplateService';
+import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
 
 export const generateEPI = async (employeeId: string, items?: Array<{ id?: string; name: string; size?: string }>, authorName?: string): Promise<any> => {
     const doc = await generateEPIInternal(employeeId, items, authorName);
@@ -58,36 +60,39 @@ export const generateEPIInternal = async (employeeId: string, customItems?: Arra
     const doc = new PDFDocument({ margin: 50 });
     const fileName = `Entrega_EPIs_${employee.dni}_${Date.now()}.pdf`;
 
-    await addQRCodeToPDF(doc, { t: 'EPI' }, employeeId);
     const logoPath = getLogoPath();
-    if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
-
-    doc.y = logoPath ? 120 : 50;
-    doc.fontSize(16).font('Helvetica-Bold').text('ACTA DE ENTREGA DE EPIS', { align: 'center' });
-    doc.moveDown();
-
-    doc.fontSize(10).font('Helvetica-Bold').text('EMPRESA:');
-    doc.font('Helvetica').text(`${employee.company?.name || 'N/A'}`);
-    doc.moveDown(0.5);
-    doc.font('Helvetica-Bold').text('TRABAJADOR:');
-    doc.font('Helvetica').text(`${employee.firstName} ${employee.lastName} - DNI: ${employee.dni}`);
-    doc.moveDown();
-
-    doc.text('He recibido los siguientes Equipos de Protección Individual y he sido informado sobre su uso:', { align: 'justify' });
-    doc.moveDown();
-
     const items = (customItems && customItems.length > 0) ? customItems : [];
-    items.forEach(item => {
-        doc.text(`• ${item.name} ${item.size ? `(${item.size})` : ''}`, { indent: 20 });
+    const listado = items.length > 0
+        ? items.map((item) => `- ${item.name}${item.size ? ` (${item.size})` : ''}`).join('\n')
+        : '- Sin articulos especificados';
+    const template = await CompanyDocumentTemplateService.getTemplate('EPI', employee.companyId);
+    const context = await CompanyDocumentTemplateService.buildContext(employeeId, {
+        authorName,
+        extraContext: {
+            entrega: { listado, dispositivo: '', numeroSerie: '' }
+        }
     });
-    doc.moveDown();
+    const layout = parseLayoutTemplate(template?.content || '');
 
-    // Signatures
-    doc.moveDown(4);
-    const startY = doc.y;
+    if (layout) {
+        await renderLayoutTemplate(doc, layout, context as Record<string, unknown>, {
+            employeeId,
+            documentType: 'EPI'
+        });
+    } else {
+        await addQRCodeToPDF(doc, { t: 'EPI' }, employeeId);
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+        doc.y = logoPath ? 120 : 50;
+        const rendered = CompanyDocumentTemplateService.renderTemplate(template?.content || '', context);
+        writeTemplateText(doc, rendered);
 
-    doc.text('Firma Empresa:', 50, startY);
-    doc.text('Firma Trabajador:', 350, startY);
+        // Signatures
+        doc.moveDown(4);
+        const startY = doc.y;
+
+        doc.text('Firma Empresa:', 50, startY);
+        doc.text('Firma Trabajador:', 350, startY);
+    }
 
     const pdfBuffer = await buildPdfBuffer(doc);
     const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });

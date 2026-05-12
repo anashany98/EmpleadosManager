@@ -6,6 +6,46 @@ import { AuthenticatedRequest } from '../types/express';
 import { AppError } from '../utils/AppError';
 import { assertCompanyAccess, isGlobalAdmin } from '../utils/companyAccess';
 
+const hasOwn = (value: Record<string, unknown>, key: string) => Object.prototype.hasOwnProperty.call(value, key);
+
+const normalizeNullableString = (value: unknown) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    return String(value);
+};
+
+const normalizeLimit = (value: unknown) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    return Number(value);
+};
+
+const normalizeExpiryDate = (value: unknown) => {
+    if (value === undefined) return undefined;
+    if (value === null || value === '') return null;
+    return new Date(String(value));
+};
+
+const buildCardUpdateData = (data: Record<string, unknown>, resolvedCompanyId?: string | null) => {
+    const nextData: Record<string, unknown> = {};
+
+    if (hasOwn(data, 'alias')) nextData.alias = data.alias ?? null;
+    if (hasOwn(data, 'panLast4')) nextData.panLast4 = data.panLast4;
+    if (hasOwn(data, 'encryptedPan')) nextData.encryptedPan = normalizeNullableString(data.encryptedPan);
+    if (hasOwn(data, 'provider')) nextData.provider = data.provider;
+    if (hasOwn(data, 'type')) nextData.type = data.type;
+    if (hasOwn(data, 'limit')) nextData.limit = normalizeLimit(data.limit);
+    if (hasOwn(data, 'currency')) nextData.currency = data.currency;
+    if (hasOwn(data, 'expiryDate')) nextData.expiryDate = normalizeExpiryDate(data.expiryDate);
+    if (hasOwn(data, 'employeeId')) nextData.employeeId = normalizeNullableString(data.employeeId);
+    if (resolvedCompanyId !== undefined) nextData.companyId = resolvedCompanyId;
+    else if (hasOwn(data, 'companyId')) nextData.companyId = normalizeNullableString(data.companyId);
+    if (hasOwn(data, 'status')) nextData.status = data.status;
+    if (hasOwn(data, 'pin')) nextData.pin = normalizeNullableString(data.pin);
+
+    return nextData;
+};
+
 export const CardController = {
     getAll: async (req: Request, res: Response) => {
         try {
@@ -60,25 +100,27 @@ export const CardController = {
     create: async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthenticatedRequest;
-            const data = req.body;
+            const data = req.body as Record<string, unknown>;
+            const requestedEmployeeId = normalizeNullableString(data.employeeId);
+            const requestedCompanyId = normalizeNullableString(data.companyId);
             if (!data.panLast4 || !data.provider || !data.alias) {
                 return ApiResponse.error(res, 'Alias, Proveedor y Últimos 4 dígitos son obligatorios', 400);
             }
 
-            const employeeCompanyId = data.employeeId
-                ? (await prisma.employee.findUnique({ where: { id: data.employeeId }, select: { companyId: true } }))?.companyId
+            const employeeCompanyId = requestedEmployeeId
+                ? (await prisma.employee.findUnique({ where: { id: requestedEmployeeId }, select: { companyId: true } }))?.companyId
                 : null;
 
-            if (data.employeeId && !employeeCompanyId) {
+            if (requestedEmployeeId && !employeeCompanyId) {
                 throw new AppError('Empleado no encontrado', 404);
             }
 
-            if (data.companyId && employeeCompanyId && data.companyId !== employeeCompanyId) {
+            if (requestedCompanyId && employeeCompanyId && requestedCompanyId !== employeeCompanyId) {
                 throw new AppError('La empresa de la tarjeta no coincide con la del empleado asignado', 400);
             }
 
             if (!isGlobalAdmin(user)) {
-                const targetCompanyId = employeeCompanyId || data.companyId;
+                const targetCompanyId = employeeCompanyId || requestedCompanyId;
 
                 if (!targetCompanyId) {
                     throw new AppError('Debe indicar una empresa o un empleado de la misma empresa', 403);
@@ -89,8 +131,18 @@ export const CardController = {
 
             const card = await prisma.card.create({
                 data: {
-                    ...data,
-                    limit: data.limit ? Number(data.limit) : 0
+                    alias: String(data.alias),
+                    panLast4: String(data.panLast4),
+                    encryptedPan: normalizeNullableString(data.encryptedPan),
+                    provider: String(data.provider),
+                    type: data.type ? String(data.type) : 'CREDIT',
+                    limit: data.limit === undefined ? 0 : Number(data.limit),
+                    currency: data.currency ? String(data.currency) : 'EUR',
+                    expiryDate: normalizeExpiryDate(data.expiryDate),
+                    employeeId: requestedEmployeeId,
+                    companyId: employeeCompanyId || requestedCompanyId,
+                    status: data.status ? String(data.status) : 'ACTIVE',
+                    pin: normalizeNullableString(data.pin)
                 }
             });
             return ApiResponse.success(res, card, 'Tarjeta creada correctamente');
@@ -103,7 +155,9 @@ export const CardController = {
         try {
             const { user } = req as AuthenticatedRequest;
             const { id } = req.params;
-            const data = req.body;
+            const data = req.body as Record<string, unknown>;
+            const requestedEmployeeId = normalizeNullableString(data.employeeId);
+            const requestedCompanyId = normalizeNullableString(data.companyId);
 
             const existing = await prisma.card.findUnique({
                 where: { id },
@@ -114,30 +168,30 @@ export const CardController = {
                 return ApiResponse.error(res, 'Tarjeta no encontrada', 404);
             }
 
-            const employeeCompanyId = data.employeeId
-                ? (await prisma.employee.findUnique({ where: { id: data.employeeId }, select: { companyId: true } }))?.companyId
+            const employeeCompanyId = requestedEmployeeId
+                ? (await prisma.employee.findUnique({ where: { id: requestedEmployeeId }, select: { companyId: true } }))?.companyId
                 : null;
 
-            if (data.employeeId && !employeeCompanyId) {
+            if (requestedEmployeeId && !employeeCompanyId) {
                 throw new AppError('Empleado no encontrado', 404);
             }
 
-            if (data.companyId && employeeCompanyId && data.companyId !== employeeCompanyId) {
+            if (requestedCompanyId && employeeCompanyId && requestedCompanyId !== employeeCompanyId) {
                 throw new AppError('La empresa de la tarjeta no coincide con la del empleado asignado', 400);
             }
 
             if (!isGlobalAdmin(user)) {
-                const targetCompanyId = employeeCompanyId || data.companyId || existing.companyId || existing.employee?.companyId;
+                const targetCompanyId = employeeCompanyId || requestedCompanyId || existing.companyId || existing.employee?.companyId;
 
                 assertCompanyAccess(user, targetCompanyId, 'No autorizado para actualizar tarjetas de otra empresa');
             }
 
+            const resolvedCompanyId = employeeCompanyId
+                || (hasOwn(data, 'companyId') ? requestedCompanyId : undefined);
+
             const card = await prisma.card.update({
                 where: { id },
-                data: {
-                    ...data,
-                    limit: data.limit ? Number(data.limit) : undefined
-                }
+                data: buildCardUpdateData(data, resolvedCompanyId)
             });
             return ApiResponse.success(res, card, 'Tarjeta actualizada');
         } catch (error: any) {

@@ -22,7 +22,7 @@ export const CATEGORIAS = ['Grupo 1', 'Grupo 2', 'Grupo 3', 'Grupo 4', 'Grupo 5'
 export const TIPOS_CONTRATO = ['Indefinido', 'Temporal', 'Fijo Discontinuo', 'Prácticas', 'Aprendizaje', 'Otros'];
 export const CONVENIOS = ['Comercio', 'Textil', 'Madera', 'Hostelería', 'Metal', 'Construcción', 'Oficinas y Despachos', 'Propio de Empresa', 'Otros'];
 
-export const EDIT_TABS = ['personal', 'laboral', 'financiero', 'fechas', 'expediente', 'prl'];
+export const EDIT_TABS = ['personal', 'laboral', 'financiero', 'fechas'];
 
 export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
     'resumen',

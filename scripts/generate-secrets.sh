@@ -51,6 +51,11 @@ KIOSK_SECRET=$(openssl rand -hex 32)
 echo "KIOSK_DEVICE_SECRET=${KIOSK_SECRET}"
 echo ""
 
+# Generate backup encryption passphrase
+BACKUP_ENCRYPTION_KEY=$(openssl rand -hex 32)
+echo "BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY}"
+echo ""
+
 # Generate Redis password
 REDIS_PASSWORD=$(openssl rand -base64 24 | tr -d '=/+' | head -c 24)
 echo "REDIS_PASSWORD=${REDIS_PASSWORD}"

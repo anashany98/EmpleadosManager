@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { z } from 'zod';
 import { validateResource } from './validateResource';
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response } from 'express';
 
 describe('validateResource Middleware', () => {
     it('should call next() when validation succeeds', async () => {

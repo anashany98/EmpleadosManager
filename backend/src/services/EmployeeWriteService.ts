@@ -10,8 +10,49 @@ const EMPLOYEE_STRING_FIELDS = [
     'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
     'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
     'drivingLicenseType', 'gender', 'managerId', 'lowReason', 'workingDayType',
-    'privateNotes', 'country', 'companyPhone'
+    'privateNotes', 'country', 'companyPhone', 'companyShortPhone'
 ];
+
+type EmployeeIdentitySource = {
+    name?: unknown;
+    firstName?: unknown;
+    lastName?: unknown;
+};
+
+function normalizeEmployeeIdentityValue(value: unknown): string | null {
+    if (typeof value !== 'string') {
+        return value == null ? null : String(value).trim() || null;
+    }
+
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return null;
+    }
+
+    const normalized = trimmed.toLowerCase();
+    if (normalized === 'null' || normalized === 'undefined') {
+        return null;
+    }
+
+    return trimmed;
+}
+
+function resolveEmployeeIdentity(source: EmployeeIdentitySource, current?: EmployeeIdentitySource) {
+    const firstName = normalizeEmployeeIdentityValue(source.firstName ?? current?.firstName);
+    const lastName = normalizeEmployeeIdentityValue(source.lastName ?? current?.lastName);
+    const explicitName = source.name !== undefined
+        ? normalizeEmployeeIdentityValue(source.name)
+        : normalizeEmployeeIdentityValue(current?.name);
+    const combinedName = [firstName, lastName].filter(Boolean).join(' ').trim();
+
+    return {
+        firstName,
+        lastName,
+        name: source.name !== undefined
+            ? (explicitName || combinedName || '')
+            : (combinedName || explicitName || '')
+    };
+}
 
 function mapEmergencyContacts(contacts: unknown) {
     if (!Array.isArray(contacts) || contacts.length === 0) {
@@ -47,11 +88,13 @@ export function buildEmergencyContactsReplace(contacts: unknown) {
 }
 
 export function buildEmployeeCreateData(body: Record<string, any>, effectiveCompanyId: string | null | undefined) {
+    const identity = resolveEmployeeIdentity(body);
+
     return {
         dni: body.dni,
-        name: body.name || `${body.firstName} ${body.lastName}`,
-        firstName: body.firstName,
-        lastName: body.lastName,
+        name: identity.name,
+        firstName: identity.firstName,
+        lastName: identity.lastName,
         email: body.email,
         phone: body.phone,
         companyPhone: body.companyPhone,
@@ -83,14 +126,17 @@ export function buildEmployeeCreateData(body: Record<string, any>, effectiveComp
         gender: body.gender || null,
         managerId: body.managerId || null,
         privateNotes: body.privateNotes || null,
-        annualGrossSalary: body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0,
-        monthlyGrossSalary: body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0,
+  annualGrossSalary: body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0,
+  monthlyGrossSalary: body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0,
+  annualTotalSalary: body.annualTotalSalary ? parseFloat(body.annualTotalSalary) : 0,
+  monthlyTotalSalary: body.monthlyTotalSalary ? parseFloat(body.monthlyTotalSalary) : 0,
+  companyShortPhone: body.companyShortPhone || null,
         country: body.country || 'España',
         active: true
     };
 }
 
-export function buildCompanyEmployeeUpdateData(body: Record<string, any>) {
+export function buildCompanyEmployeeUpdateData(body: Record<string, any>, current?: EmployeeIdentitySource) {
     const updateData: Record<string, any> = {};
 
     EMPLOYEE_STRING_FIELDS.forEach((field) => {
@@ -121,9 +167,17 @@ export function buildCompanyEmployeeUpdateData(body: Record<string, any>) {
         updateData.annualGrossSalary = body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0;
     }
 
-    if (body.monthlyGrossSalary !== undefined) {
-        updateData.monthlyGrossSalary = body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0;
-    }
+  if (body.monthlyGrossSalary !== undefined) {
+    updateData.monthlyGrossSalary = body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0;
+  }
+
+  if (body.annualTotalSalary !== undefined) {
+    updateData.annualTotalSalary = body.annualTotalSalary ? parseFloat(body.annualTotalSalary) : 0;
+  }
+
+  if (body.monthlyTotalSalary !== undefined) {
+    updateData.monthlyTotalSalary = body.monthlyTotalSalary ? parseFloat(body.monthlyTotalSalary) : 0;
+  }
 
     if (updateData.socialSecurityNumber) {
         updateData.socialSecurityNumber = EncryptionService.encrypt(updateData.socialSecurityNumber);
@@ -138,6 +192,18 @@ export function buildCompanyEmployeeUpdateData(body: Record<string, any>) {
         updateData.emergencyContacts = emergencyContacts;
     }
 
+    if (body.name !== undefined || body.firstName !== undefined || body.lastName !== undefined) {
+        const identity = resolveEmployeeIdentity(body, current);
+        updateData.name = identity.name;
+
+        if (body.firstName !== undefined) {
+            updateData.firstName = identity.firstName;
+        }
+
+        if (body.lastName !== undefined) {
+            updateData.lastName = identity.lastName;
+        }
+    }
+
     return updateData;
 }
-

@@ -1,6 +1,73 @@
 ﻿# 🚀 Production Deployment Guide
 ## EmpleadosManager - HR & Payroll System
 
+## Production Gate - 2026-05-11
+
+Do not deploy from a local workstation directly to production. Deploy to staging first with the same Docker Compose topology and production-style environment variables.
+
+### Required Commands Before Deploy
+
+Run from the repository root unless a command changes directory explicitly:
+
+```bash
+node --version
+npm run db:status
+cd backend && npm run build && npm run lint && npm test -- --run
+cd ../frontend && npx tsc --noEmit && npm run build && npm run lint && npm test -- --run
+cd ../backend && npm audit --omit=dev --audit-level=high
+cd .. && docker compose config
+docker build -f backend/Dockerfile -t rrhh-backend:prod .
+docker build -f frontend/Dockerfile -t rrhh-frontend:prod .
+```
+
+Expected:
+
+- Node is 22 in CI/Docker.
+- Backend and frontend commands exit 0.
+- Backend audit reports no HIGH or CRITICAL vulnerabilities.
+- `docker compose config` renders `NODE_ENV: production`, `COOKIE_SECURE: "true"`, `RETURN_TOKENS: "false"`, and a non-empty `BACKUP_ENCRYPTION_KEY`.
+- `npm run db:status` is clean in staging before production migration.
+
+### Migration Rule
+
+Before running Prisma migrations in production:
+
+```bash
+docker compose exec postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backups/pre-migration-$(date +%Y%m%d%H%M%S).sql
+npm run db:status
+npx prisma migrate deploy --schema=database/prisma/schema.prisma
+npm run db:status
+```
+
+Current known blocker from local status on 2026-05-11:
+
+- Pending local migrations: `20260428090000_add_password_reset_tokens`, `20260504000000_add_vehicle_documents_logs_and_indexes`.
+- Database-only migration to investigate: `20260204160932_anomalies`.
+- Do not delete rows from `_prisma_migrations` without a database backup and a written migration-resolution note.
+
+### Smoke Checklist
+
+- [ ] `GET /` returns the frontend over HTTPS.
+- [ ] `GET /api/health` returns OK.
+- [ ] `GET /api/health/liveness` returns OK.
+- [ ] `GET /api/health/readiness` validates DB, Redis, and queues.
+- [ ] Admin login succeeds.
+- [ ] Employee list loads.
+- [ ] Employee create/edit works.
+- [ ] Documents upload/download works.
+- [ ] Vacation request flow works.
+- [ ] Reports page loads and exports.
+
+### Do Not Deploy If
+
+- Tests or lint fail.
+- `prisma migrate status` is not clean in staging.
+- `NODE_ENV` is `development`.
+- `COOKIE_SECURE` is `false`.
+- `RETURN_TOKENS` is enabled.
+- Backend audit reports HIGH or CRITICAL vulnerabilities.
+- Real secrets, cookies, login responses, or TLS private keys are tracked by Git.
+
 This guide covers deployment to production environments with 4-6 concurrent users.
 
 ---

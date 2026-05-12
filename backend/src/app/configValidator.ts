@@ -3,6 +3,14 @@ import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('ConfigValidator');
 
+function failConfigurationValidation(errors: string[]): never {
+    const message = `Configuration validation failed: ${errors.join('; ')}`;
+    if (process.env.VITEST || process.env.VITEST_WORKER_ID) {
+        throw new Error(message);
+    }
+    process.exit(1);
+}
+
 interface EnvValidator {
     name: string;
     required?: boolean;
@@ -113,6 +121,16 @@ export function validateRuntimeConfiguration(): void {
             }
         },
         {
+            name: 'REDIS_PASSWORD',
+            required: false,
+            validate: (v) => {
+                if (process.env.REDIS_URL) return { valid: true };
+                if (!v) return { valid: false, error: 'REDIS_PASSWORD is required in production when REDIS_URL is not set' };
+                if (v.length < 16) return { valid: false, error: 'REDIS_PASSWORD must be at least 16 characters long' };
+                return { valid: true };
+            }
+        },
+        {
             name: 'COOKIE_SECURE',
             required: false,
             validate: (v) => {
@@ -150,6 +168,15 @@ export function validateRuntimeConfiguration(): void {
             name: 'CSRF_HEADER_NAME',
             required: false,
             validate: () => ({ valid: true })
+        },
+        {
+            name: 'BACKUP_ENCRYPTION_KEY',
+            required: true,
+            validate: (v) => {
+                if (!v) return { valid: false, error: 'BACKUP_ENCRYPTION_KEY is required in production' };
+                if (v.length < 32) return { valid: false, error: 'BACKUP_ENCRYPTION_KEY must be at least 32 characters long' };
+                return { valid: true };
+            }
         }
     ];
 
@@ -197,33 +224,12 @@ export function validateRuntimeConfiguration(): void {
     // === STORAGE CONFIGURATION (based on provider) ===
     const storageProvider = (process.env.STORAGE_PROVIDER || 's3').toLowerCase();
     if (storageProvider === 's3') {
-        const s3Validators: EnvValidator[] = [
-            {
-                name: 'S3_BUCKET',
-                required: true,
-                validate: (v) => {
-                    if (!v) return { valid: false, error: 'S3_BUCKET is required when STORAGE_PROVIDER=s3' };
-                    return { valid: true };
-                }
-            },
-            {
-                name: 'S3_ACCESS_KEY_ID',
-                required: true,
-                validate: (v) => {
-                    if (!v) return { valid: false, error: 'S3_ACCESS_KEY_ID is required when STORAGE_PROVIDER=s3' };
-                    return { valid: true };
-                }
-            },
-            {
-                name: 'S3_SECRET_ACCESS_KEY',
-                required: true,
-                validate: (v) => {
-                    if (!v) return { valid: false, error: 'S3_SECRET_ACCESS_KEY is required when STORAGE_PROVIDER=s3' };
-                    return { valid: true };
-                }
-            }
+        const _s3Validators: EnvValidator[] = [
+            { name: 'S3_BUCKET', required: true, validate: (v) => v ? { valid: true } : { valid: false, error: 'S3_BUCKET is required when STORAGE_PROVIDER=s3' } },
+            { name: 'S3_ACCESS_KEY_ID', required: true, validate: (v) => v ? { valid: true } : { valid: false, error: 'S3_ACCESS_KEY_ID is required when STORAGE_PROVIDER=s3' } },
+            { name: 'S3_SECRET_ACCESS_KEY', required: true, validate: (v) => v ? { valid: true } : { valid: false, error: 'S3_SECRET_ACCESS_KEY is required when STORAGE_PROVIDER=s3' } }
         ];
-        // We'll add these conditionally later
+        void _s3Validators;
     }
 
     // Combine all validators
@@ -278,6 +284,10 @@ export function validateRuntimeConfiguration(): void {
         if (process.env.POSTGRES_PASSWORD && forbiddenValues.some(fv => process.env.POSTGRES_PASSWORD!.toLowerCase().includes(fv.toLowerCase()))) {
             errors.push('POSTGRES_PASSWORD contains a forbidden test/development/placeholder value in production');
         }
+
+        if (process.env.BACKUP_ENCRYPTION_KEY && forbiddenValues.some(fv => process.env.BACKUP_ENCRYPTION_KEY!.toLowerCase().includes(fv.toLowerCase()))) {
+            errors.push('BACKUP_ENCRYPTION_KEY contains a forbidden test/development/placeholder value in production');
+        }
     }
 
     // If there are errors, fail fast
@@ -286,7 +296,7 @@ export function validateRuntimeConfiguration(): void {
         console.error('\n=== CONFIGURATION VALIDATION FAILED ===');
         errors.forEach(err => console.error(`  âœ— ${err}`));
         console.error('=== Please fix these issues before starting ===\n');
-        process.exit(1);
+        failConfigurationValidation(errors);
     }
 
     // Run EncryptionService validation
@@ -295,7 +305,7 @@ export function validateRuntimeConfiguration(): void {
     } catch (error) {
         errors.push(`Encryption key validation failed: ${error}`);
         log.fatal({ error }, 'Encryption validation failed');
-        process.exit(1);
+        failConfigurationValidation(errors);
     }
 
     log.info('All configuration validations passed');

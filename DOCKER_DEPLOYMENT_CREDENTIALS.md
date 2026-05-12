@@ -1,158 +1,38 @@
-﻿# 🚀 EmpleadosManager - Docker Deployment Complete
-# ================================================
+# Docker Deployment Credentials
 
-## ✅ Deployment Status
+> Sanitized on 2026-05-11. This repository must not store real passwords, tokens, private keys, cookies, API keys, or host credentials.
 
-All services are running and healthy:
-- ✅ PostgreSQL database: localhost:5432 (mapped from container)
-- ✅ Redis cache: localhost:6379 (mapped from container)
-- ✅ Backend API: localhost:3000 (mapped from container port 16161)
-- ✅ Frontend: http://localhost:17171 (mapped from container port 80)
+## Status
 
-## 🔑 Access Credentials
+Any credential that appeared in previous versions of this document must be treated as compromised and rotated before production deployment.
 
-### Admin User (Created)
-- **Email**: admin@admin.com
-- **Password**: admin123 (default seed password)
-- **Role**: Administrator (full permissions)
-- **Access**: Can manage all companies, employees, payroll, settings
+## Required Production Secrets
 
-### Default Database Credentials
-- **Database**: nominas_db
-- **User**: nominas
-- **Password**: (See docker-compose.yml or .env)
+Store these only in the deployment platform secret manager, for example Coolify environment variables:
 
-## 🌐 Access URLs
+```env
+POSTGRES_PASSWORD=<rotate-before-deploy>
+DATABASE_URL=postgresql://<user>:<password>@<host>:5432/<database>?schema=public
+JWT_SECRET=<64-plus-character-random-secret>
+ENCRYPTION_KEY=<32-byte-random-key>
+KIOSK_DEVICE_SECRET=<64-plus-character-random-secret>
+REDIS_PASSWORD=<rotate-before-deploy>
+REDIS_URL=redis://default:<password>@<host>:6379/0
+BACKUP_ENCRYPTION_KEY=<32-byte-random-key>
+S3_ACCESS_KEY_ID=<object-storage-access-key>
+S3_SECRET_ACCESS_KEY=<object-storage-secret-key>
+```
 
-### Frontend
-**Local Access**: http://localhost:17171
-**Direct Container**: http://127.0.0.1:17171
+## Rotation Checklist
 
-### Backend API
-**Local Access**: http://localhost:3000
-**Direct Container**: http://127.0.0.1:3000
+- [ ] Rotate host panel password and SSH keys if they were copied into this repo.
+- [ ] Rotate PostgreSQL password and update `DATABASE_URL`.
+- [ ] Rotate Redis password and update `REDIS_URL`.
+- [ ] Rotate `JWT_SECRET`, `ENCRYPTION_KEY`, `KIOSK_DEVICE_SECRET`, and `BACKUP_ENCRYPTION_KEY`.
+- [ ] Rotate object storage credentials if configured.
+- [ ] Recreate production cookies/sessions after rotating JWT secrets.
+- [ ] Verify `git ls-files .env cookies.txt login_response.json nginx/ssl/*.pem` does not return tracked secrets.
 
-### Health Endpoints
-- **Liveness**: http://localhost:3000/api/health/liveness
-- **Readiness**: http://localhost:3000/api/health/readiness
-- **Comprehensive**: http://localhost:3000/api/health
+## Operating Rule
 
-## 🧪 First Steps
-
-### 1. Access the Application
-1. Open browser: http://localhost:17171
-2. Login with:
-   - Email: admin@admin.com
-   - Password: admin123
-
-### 2. Configure Your Company
-After login:
-1. Navigate to \"Configuración\" or \"Settings\"
-2. Add your company details
-3. Set up departments and positions
-4. Configure salary bands
-
-### 3. Import Data (Optional)
-- **Employees**: Use \"Importar Empleados\" in Settings
-- **Payroll**: Import from Excel in Nóminas section
-- **Time Entries**: Import from Excel in Fichajes section
-
-### 4. Set Up Security
-1. Change the admin password immediately
-2. Create additional user accounts with appropriate roles
-3. Configure two-factor authentication if needed
-
-## 🔧 Service Management
-
-### Stop Services
-`powershell
-docker-compose stop
-`
-
-### Start Services
-`powershell
-docker-compose start
-`
-
-### Restart Services
-`powershell
-docker-compose restart
-`
-
-### View Logs
-`powershell
-# Backend logs
-docker-compose logs -f backend
-
-# Frontend logs
-docker-compose logs -f frontend
-
-# Database logs
-docker-compose logs -f db
-
-# All logs
-docker-compose logs -f
-`
-
-### Rebuild After Changes
-`powershell
-docker-compose down
-docker-compose build
-docker-compose up -d
-`
-
-## 📊 System Status
-
-- **Docker Compose Version**: 3.8
-- **Backend**: Node.js 22 + Express + TypeScript
-- **Frontend**: React 18 + Vite
-- **Database**: PostgreSQL 15 Alpine
-- **Cache**: Redis 7 Alpine
-- **Architecture**: Microservices with Docker
-
-## 🔒 Security Notes
-
-1. **Change Default Passwords**: The admin password should be changed immediately
-2. **HTTPS Required**: For production, configure SSL certificates
-3. **Environment Variables**: Never commit .env files to version control
-4. **Backup Strategy**: Set up regular database backups
-5. **Monitoring**: Configure Sentry DSN for error tracking
-
-## 📈 Performance Notes
-
-- **Recommended Users**: 4-6 concurrent users (production-ready)
-- **Max Users**: Can handle more with proper scaling
-- **Response Time**: <500ms typical for API endpoints
-- **Database**: Indexed for common queries
-- **Cache**: Redis configured for performance
-
-## 🆘 Troubleshooting
-
-### If Frontend Doesn't Load
-1. Check: docker-compose ps - ensure all containers are \"Up\"
-2. Check: docker-compose logs frontend - view frontend logs
-3. Try: Clear browser cache and reload
-
-### If Backend Errors
-1. Check: docker-compose logs backend - view error logs
-2. Check: docker-compose logs db - ensure database is healthy
-3. Verify: Environment variables in docker-compose.yml
-
-### If Port Conflicts
-1. Current ports: 17171 (frontend), 16161 (backend)
-2. Change ports in docker-compose.yml if needed
-3. Kill conflicting processes: 
-etstat -ano | findstr :<PORT>
-
-## 📝 Documentation
-
-For detailed information:
-- Deployment Guide: docs/PRODUCTION_DEPLOYMENT.md
-- Troubleshooting: docs/TROUBLESHOOTING.md
-- Full Summary: IMPLEMENTATION_COMPLETE.md
-
----
-
-**Deployment Date**: 2026-04-16
-**Deployment Type**: Docker Compose (Local/Development)
-**Status**: ✅ Running and Ready for Testing
+Production secrets live in Coolify/Hostinger secret storage only. Documentation in this repository uses placeholders.

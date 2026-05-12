@@ -72,7 +72,7 @@ export const OffboardingService = {
         if (user) {
             await prisma.user.update({
                 where: { id: user.id },
-                data: { role: 'inactive' } // Or however we handle disabled users
+                data: { isActive: false, sessionVersion: { increment: 1 } }
             });
         }
 

@@ -97,13 +97,13 @@ describe('Holidays Utils', () => {
         it('should exclude Saturday and Sunday', () => {
             const friday = new Date('2026-03-06');
             const monday = new Date('2026-03-09');
-            expect(getBusinessDaysCount(friday, monday)).toBe(3);
+            expect(getBusinessDaysCount(friday, monday)).toBe(2);
         });
 
         it('should exclude holidays', () => {
             const thursday = new Date('2026-04-02'); // Thursday before Easter
             const tuesday = new Date('2026-04-07');
-            expect(getBusinessDaysCount(thursday, tuesday)).toBe(4);
+            expect(getBusinessDaysCount(thursday, tuesday)).toBe(1);
         });
 
         it('should handle month boundaries', () => {

@@ -18,9 +18,7 @@ export class ValidationService {
                 messages.push('Empleado no identificado (sin DNI asociado)');
             }
 
-            // 2. Integridad Numérica
-            const debe = Number(row.bruto) + Number(row.ssEmpresa);
-            const haber = Number(row.neto) + Number(row.irpf) + Number(row.ssTrabajador) + Number(row.ssEmpresa);
+// 2. Integridad Numérica
             // Nota: SS Empresa entra y sale si se paga a TGSS directo? 
             // Asiento típico:
             // (640) Bruto

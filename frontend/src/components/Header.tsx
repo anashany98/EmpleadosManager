@@ -1,4 +1,5 @@
-import { Menu, Sun, Moon, LogOut, User, Search, Command } from 'lucide-react';
+import { useEffect } from 'react';
+import { Menu, Sun, Moon, DoorOpen, User, Search, Command } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useLocation } from 'react-router-dom';
 import AlertCenter from './AlertCenter';
@@ -13,10 +14,24 @@ interface HeaderProps {
   setDarkMode: (dark: boolean) => void;
 }
 
+const THEME_KEY = 'rrhhThemeDark';
+
+export function getStoredTheme(): boolean {
+  if (typeof window === 'undefined') return false;
+  return localStorage.getItem(THEME_KEY) === 'true';
+}
+
 export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: HeaderProps) {
   const location = useLocation();
   const { user, logout, canAccessFeature } = useAuth();
   const confirmAction = useConfirm();
+
+  useEffect(() => {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (stored !== null) {
+      setDarkMode(stored === 'true');
+    }
+  }, [setDarkMode]);
 
   const handleLogout = async () => {
     const confirmed = await confirmAction({
@@ -93,16 +108,27 @@ export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: H
 
         {/* Dark Mode Toggle */}
         <button
-          onClick={() => setDarkMode(!darkMode)}
-          className={`p-2 sm:p-2 rounded-full transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 touch-active ${
+          onClick={() => {
+            const newMode = !darkMode;
+            setDarkMode(newMode);
+            localStorage.setItem(THEME_KEY, String(newMode));
+          }}
+          className={`group relative inline-flex h-9 w-[72px] items-center rounded-full border px-1 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 touch-active ${
             darkMode
-              ? 'bg-slate-800 text-yellow-400 hover:bg-slate-700'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              ? 'border-indigo-400/30 bg-gradient-to-r from-slate-900 to-indigo-950 shadow-inner shadow-black/30'
+              : 'border-amber-200 bg-gradient-to-r from-amber-100 to-sky-100 shadow-sm shadow-amber-100/80'
           }`}
           aria-label={darkMode ? 'Activar modo claro' : 'Activar modo oscuro'}
           title={darkMode ? 'Activar modo claro' : 'Activar modo oscuro'}
         >
-          {darkMode ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+          <span
+            className={`absolute h-7 w-7 rounded-full bg-white shadow-md transition-transform duration-300 ${
+              darkMode ? 'translate-x-8' : 'translate-x-0'
+            }`}
+            aria-hidden="true"
+          />
+          <Sun size={15} className={`z-10 ml-1 transition-colors ${darkMode ? 'text-slate-500' : 'text-amber-500'}`} aria-hidden="true" />
+          <Moon size={15} className={`z-10 ml-auto mr-1 transition-colors ${darkMode ? 'text-indigo-500' : 'text-slate-400'}`} aria-hidden="true" />
         </button>
 
         {/* Logout Button */}
@@ -112,7 +138,7 @@ export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: H
           title="Cerrar Sesión"
           aria-label="Cerrar sesión"
         >
-          <LogOut size={18} aria-hidden="true" />
+          <DoorOpen size={18} aria-hidden="true" />
         </button>
       </div>
     </header>

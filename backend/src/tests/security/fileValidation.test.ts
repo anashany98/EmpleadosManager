@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateFileSignature, isPdf, isExcel, isOfficeDoc, validateImageMagicBytes } from '../../utils/fileValidation';
+import { validateFileSignature, isPdf, isExcel, validateImageMagicBytes } from '../../utils/fileValidation';
 
 describe('File Validation Security Tests', () => {
     describe('validateFileSignature', () => {

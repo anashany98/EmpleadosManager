@@ -1,13 +1,16 @@
 ﻿import express, { type Express, type Request, type Response } from 'express';
+import { createServer } from 'http';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import path from 'path';
+import { Server } from 'socket.io';
 import { errorMiddleware } from '../middlewares/errorMiddleware';
 import { csrfProtection } from '../middlewares/csrfMiddleware';
 import { registerRoutes } from './registerRoutes';
 import { initializeHealthChecker, healthController } from './health.controller';
+import { initSocketHandlers } from '../websocket/handler';
 import { prisma } from '../lib/prisma';
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
@@ -116,8 +119,8 @@ function configureSecurity(app: Express): void {
                 return callback(null, true);
             }
 
-            if (!isProduction && allowedOrigins.length === 0) {
-                return callback(null, true);
+            if (allowedOrigins.length === 0) {
+                throw new Error('FATAL: CORS_ORIGIN must be set');
             }
 
             if (isAllowedOrigin(origin)) {
@@ -151,8 +154,16 @@ function registerHealthRoutes(app: Express): void {
     });
 }
 
-export function createApp(): Express {
+export function createApp(): { app: Express; server: ReturnType<Express['listen']>; io: Server } {
     const app = express();
+    const httpServer = createServer(app);
+
+    const io = new Server(httpServer, {
+        cors: {
+            origin: isProduction ? allowedOrigins : '*',
+            credentials: true
+        }
+    });
 
     initializeHealthChecker(prisma);
 
@@ -160,16 +171,19 @@ export function createApp(): Express {
     configureBaseMiddleware(app);
     registerHealthRoutes(app);
     registerRoutes(app);
-    
+
+    initSocketHandlers(io);
+
     // Add Sentry error handler (v8 API) - must be BEFORE our custom error middleware
     if (process.env.SENTRY_DSN) {
-        const Sentry = require('@sentry/node');
-        Sentry.setupExpressErrorHandler(app);
+        import('@sentry/node').then((Sentry) => {
+            Sentry.setupExpressErrorHandler(app);
+        });
     }
 
     // Our custom error middleware - must come AFTER Sentry handler
     app.use(errorMiddleware);
 
-    return app;
+    return { app, server: httpServer, io };
 }
 

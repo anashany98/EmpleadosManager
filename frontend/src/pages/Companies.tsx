@@ -91,18 +91,18 @@ export default function Companies() {
     };
 
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Empresas</h1>
+    <div className="space-y-4 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-xl sm:text-3xl font-bold text-slate-900 dark:text-white">Empresas</h1>
                     <p className="text-slate-500 dark:text-slate-400">Gestiona las entidades legales y sus ubicaciones</p>
                 </div>
                 {isGlobalAdmin && (
                     <button
                         onClick={() => setIsAdding(true)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-medium shadow-lg flex items-center gap-2 transition-all"
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-6 py-2.5 sm:py-3 rounded-xl font-medium shadow-lg flex items-center gap-2 transition-all w-full sm:w-auto justify-center"
                     >
-                        <Plus size={20} /> Nueva Empresa
+                        <Plus size={20} /> <span className="hidden sm:inline">Nueva Empresa</span><span className="sm:hidden">Nueva</span>
                     </button>
                 )}
             </div>

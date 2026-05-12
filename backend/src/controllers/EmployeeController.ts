@@ -31,13 +31,24 @@ export const EmployeeController = {
 
             const { user } = req as AuthenticatedRequest;
             const search = (req.query.search as string || '').trim();
-            const whereClause: any = { active: true };
+            const status = req.query.status as string || 'active';
 
+            const whereClause: any = {};
+
+            // Company/role filter
             if (user.companyId) {
                 whereClause.companyId = user.companyId;
             } else if (user.role !== 'admin') {
                 throw new AppError('Usuario sin empresa asignada', 403);
             }
+
+            // Status filter - allow 'active', 'inactive', or 'all'
+            if (status === 'inactive') {
+                whereClause.active = false;
+            } else if (status === 'active' || !status) {
+                whereClause.active = true;
+            }
+            // 'all' returns all employees regardless of active status
 
             if (search) {
                 whereClause.OR = [
@@ -68,6 +79,7 @@ export const EmployeeController = {
 
             return ApiResponse.success(res, safeEmployees);
 
+         
         } catch (error: any) {
             log.error({ error }, 'Error fetching employees');
             return ApiResponse.error(res, error.message || 'Error al obtener empleados', error.statusCode || 500);
@@ -400,15 +412,15 @@ export const EmployeeController = {
                         data: updateData
                     });
 
-                    await tx.auditLog.create({
+await tx.auditLog.create({
                         data: {
                             action: logAction,
                             entity: 'EMPLOYEE',
                             entityId: empId,
-                            userId: user.id,
+                            user: { connect: { id: user.id } },
                             targetEmployee: { connect: { id: empId } },
                             metadata: JSON.stringify({ info: logInfo, ...updateData })
-                        } as any
+                        }
                     });
 
                     updatedCount++;
@@ -651,50 +663,306 @@ export const EmployeeController = {
     },
 
     getPortabilityReport: async (req: Request, res: Response) => {
-        const { id } = req.params;
-        const { user } = req as AuthenticatedRequest;
-
         try {
-            const whereClause: any = { id };
-            if (user.companyId) {
+            const { user } = req as AuthenticatedRequest;
+            const isGlobalAdmin = !user.companyId && user.role === 'admin';
+            const whereClause: any = { active: true };
+
+            if (!isGlobalAdmin && user.companyId) {
                 whereClause.companyId = user.companyId;
-            } else if (user.role !== 'admin') {
-                throw new AppError('Usuario sin empresa asignada', 403);
             }
 
-            const employee = await prisma.employee.findFirst({
-                where: whereClause,
-                include: {
-                    company: true,
-                    assets: true,
-                    vacations: true,
-                    medicalReviews: true,
-                    trainings: true,
-                    documents: true,
-                    payrollRows: {
-                        include: { batch: true }
+            const [employees, companies, assets, vacations, medicalReviews, trainings, documents, payrollRows] = await Promise.all([
+                prisma.employee.findMany({
+                    where: whereClause,
+                    include: {
+                        company: true,
+                        assets: true,
+                        vacations: true,
+                        medicalReviews: true,
+                        trainings: true,
+                        documents: true,
+                        payrollRows: {
+                            include: { batch: true }
+                        }
                     }
+                }),
+                isGlobalAdmin ? prisma.company.findMany() : Promise.resolve([]),
+                prisma.asset.findMany({ where: { employeeId: { not: null } } }),
+                prisma.vacation.findMany({ where: { startDate: { gte: new Date(new Date().getFullYear() + '-01-01') } } }),
+                prisma.medicalReview.findMany(),
+                prisma.training.findMany(),
+                prisma.document.findMany(),
+                prisma.payrollRow.findMany({ where: { batch: { status: 'OK' } }, include: { batch: true } })
+            ]);
+
+            const reportData = {
+                generatedAt: new Date().toISOString(),
+                generatedBy: user.email,
+                employees: employees.map(emp => ({
+                    id: emp.id,
+                    name: `${emp.firstName} ${emp.lastName}`,
+                    company: emp.company?.name || 'N/A',
+                    contractType: emp.contractType,
+                    entryDate: emp.entryDate,
+                    active: emp.active
+                })),
+                summary: {
+                    totalEmployees: employees.length,
+                    activeEmployees: employees.filter(e => e.active).length,
+                    totalCompanies: isGlobalAdmin ? companies.length : 1,
+                    totalAssets: assets.length,
+                    totalVacationsThisYear: vacations.length,
+                    totalMedicalReviews: medicalReviews.length,
+                    totalTrainings: trainings.length,
+                    totalDocuments: documents.length,
+                    totalPayrollRows: payrollRows.length
                 }
-            });
+            };
 
-            if (!employee) {
-                return ApiResponse.error(res, 'Empleado no encontrado', 404);
-            }
-
-            if (user.role === 'employee' && user.employeeId !== id) {
-                return ApiResponse.error(res, 'No autorizado', 403);
-            }
-
-            const reportData = buildEmployeePortabilityReport(employee, user.id || 'system');
-
-            await AuditService.log('RGPD_PORTABILITY_REPORT', 'EMPLOYEE', id, { info: 'Generación de reporte de portabilidad' }, user.id, id);
-
-            res.setHeader('Content-Type', 'application/json');
-            res.setHeader('Content-Disposition', `attachment; filename=portabilidad_${employee.lastName}_${employee.firstName}.json`);
             return res.json(reportData);
         } catch (error: any) {
             log.error({ error }, 'Error generating portability report');
             return ApiResponse.error(res, error.message || 'Error al generar reporte de portabilidad', 500);
+        }
+    },
+
+    getFieldOptions: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const isGlobalAdmin = !user.companyId && user.role === 'admin';
+
+            const [employees, companies] = await Promise.all([
+                prisma.employee.findMany({
+                    where: { active: true, ...(user.companyId && !isGlobalAdmin ? { companyId: user.companyId } : {}) },
+                    select: {
+                        department: true,
+                        category: true,
+                        contractType: true,
+                        jobTitle: true
+                    }
+                }),
+                isGlobalAdmin ? prisma.company.findMany({ select: { id: true, name: true } }) : Promise.resolve([])
+            ]);
+
+            const departments = [...new Set(employees.map(e => e.department).filter(Boolean))].sort();
+            const categories = [...new Set(employees.map(e => e.category).filter(Boolean))].sort();
+            const contractTypes = [...new Set(employees.map(e => e.contractType).filter(Boolean))].sort();
+            const jobTitles = [...new Set(employees.map(e => e.jobTitle).filter(Boolean))].sort();
+
+            return ApiResponse.success(res, {
+                departments,
+                categories,
+                contractTypes,
+                jobTitles,
+                companies: isGlobalAdmin ? companies : []
+            });
+        } catch (error: any) {
+            log.error({ error }, 'Error fetching field options');
+            return ApiResponse.error(res, error.message || 'Error al obtener opciones', 500);
+        }
+    },
+
+    getVacationBalance: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const { id } = req.params;
+            const year = parseInt(req.query.year as string) || new Date().getFullYear();
+
+            if (!user || !id) {
+                return ApiResponse.error(res, 'Usuario o empleado no identificado', 401);
+            }
+
+            // Tenant isolation
+            const targetEmployee = await prisma.employee.findUnique({
+                where: { id },
+                select: { id: true, companyId: true }
+            });
+
+            if (!targetEmployee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+
+            const isGlobalAdmin = !user.companyId && user.role === 'admin';
+            if (!isGlobalAdmin && targetEmployee.companyId !== user.companyId) {
+                return ApiResponse.error(res, 'No tienes acceso a este empleado', 403);
+            }
+
+            const { getEmployeeVacationBalanceSummary } = await import('../services/VacationBalanceService');
+            const summary = await getEmployeeVacationBalanceSummary(id, year);
+
+            if (!summary) {
+                return ApiResponse.error(res, 'No se pudo calcular el saldo de vacaciones', 404);
+            }
+
+            return ApiResponse.success(res, summary);
+        } catch (error: any) {
+            log.error({ error }, 'Error fetching vacation balance');
+            return ApiResponse.error(res, error.message || 'Error al obtener saldo de vacaciones', 500);
+        }
+    },
+
+    updateVacationBalance: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const { id } = req.params;
+            const { year, annualQuotaDays, carriedOverDays, importedUsedDays } = req.body;
+
+            if (!user || !id) {
+                return ApiResponse.error(res, 'Usuario o empleado no identificado', 401);
+            }
+
+            // Tenant isolation
+            const targetEmployee = await prisma.employee.findUnique({
+                where: { id },
+                select: { id: true, companyId: true, entryDate: true, createdAt: true }
+            });
+
+            if (!targetEmployee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+
+            const isGlobalAdmin = !user.companyId && user.role === 'admin';
+            if (!isGlobalAdmin && targetEmployee.companyId !== user.companyId) {
+                return ApiResponse.error(res, 'No tienes acceso a este empleado', 403);
+            }
+
+            const { upsertEmployeeVacationBalance, getEmployeeVacationBalanceSummary } = await import('../services/VacationBalanceService');
+
+            const result = await upsertEmployeeVacationBalance(targetEmployee, year, {
+                annualQuotaDays,
+                carriedOverDays,
+                importedUsedDays
+            });
+
+            const summary = await getEmployeeVacationBalanceSummary(id, year);
+
+            return ApiResponse.success(res, summary, 'Saldo de vacaciones actualizado');
+        } catch (error: any) {
+            log.error({ error }, 'Error updating vacation balance');
+            return ApiResponse.error(res, error.message || 'Error al actualizar saldo de vacaciones', 500);
+        }
+    },
+
+    updatePrivateNotes: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const { id } = req.params;
+            const { note } = req.body;
+
+            if (!user || !id) {
+                return ApiResponse.error(res, 'Usuario o empleado no identificado', 401);
+            }
+
+            // Tenant isolation
+            const targetEmployee = await prisma.employee.findUnique({
+                where: { id },
+                select: { id: true, companyId: true, privateNotes: true }
+            });
+
+            if (!targetEmployee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+
+            const isGlobalAdmin = !user.companyId && user.role === 'admin';
+            if (!isGlobalAdmin && targetEmployee.companyId !== user.companyId) {
+                return ApiResponse.error(res, 'No tienes acceso a este empleado', 403);
+            }
+
+            const previousNote = targetEmployee.privateNotes;
+
+            const updated = await prisma.employee.update({
+                where: { id },
+                data: { privateNotes: note },
+                select: { id: true, privateNotes: true }
+            });
+
+            // Record history in audit log
+            await prisma.auditLog.create({
+                data: {
+                    action: 'PRIVATE_NOTE_UPDATE',
+                    entity: 'EMPLOYEE',
+                    entityId: id,
+                    userId: user.id,
+                    targetEmployeeId: id,
+                    metadata: JSON.stringify({
+                        note,
+                        previousNote: previousNote || null
+                    })
+                }
+            });
+
+            return ApiResponse.success(res, { privateNotes: updated.privateNotes }, 'Notas privadas actualizadas');
+        } catch (error: any) {
+            log.error({ error }, 'Error updating private notes');
+            return ApiResponse.error(res, error.message || 'Error al actualizar notas privadas', 500);
+        }
+    },
+
+    getPrivateNotesHistory: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const { id } = req.params;
+
+            if (!user || !id) {
+                return ApiResponse.error(res, 'Usuario o empleado no identificado', 401);
+            }
+
+            // Tenant isolation
+            const targetEmployee = await prisma.employee.findUnique({
+                where: { id },
+                select: { id: true, companyId: true }
+            });
+
+            if (!targetEmployee) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+
+            const isGlobalAdmin = !user.companyId && user.role === 'admin';
+            if (!isGlobalAdmin && targetEmployee.companyId !== user.companyId) {
+                return ApiResponse.error(res, 'No tienes acceso a este empleado', 403);
+            }
+
+            const history = await prisma.auditLog.findMany({
+                where: {
+                    entity: 'EMPLOYEE',
+                    entityId: id,
+                    action: 'PRIVATE_NOTE_UPDATE'
+                },
+                orderBy: { createdAt: 'desc' },
+                include: {
+                    user: {
+                        select: {
+                            email: true,
+                            employee: {
+                                select: {
+                                    firstName: true,
+                                    lastName: true,
+                                    name: true
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            const entries = history.map(entry => {
+                const metadata = typeof entry.metadata === 'string' ? JSON.parse(entry.metadata) : entry.metadata;
+                return {
+                    id: entry.id,
+                    createdAt: entry.createdAt,
+                    note: metadata?.note,
+                    previousNote: metadata?.previousNote,
+                    authorName: entry.user?.employee
+                        ? `${entry.user.employee.firstName} ${entry.user.employee.lastName}`.trim()
+                        : entry.user?.email || 'Desconocido'
+                };
+            });
+
+            return ApiResponse.success(res, entries);
+        } catch (error: any) {
+            log.error({ error }, 'Error fetching private notes history');
+            return ApiResponse.error(res, error.message || 'Error al obtener historial de notas', 500);
         }
     }
 };

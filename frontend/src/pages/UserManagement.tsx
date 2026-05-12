@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import {
     Shield,
-    UserPlus,
     Copy,
     Users as UsersIcon
 } from 'lucide-react';
@@ -15,6 +14,7 @@ interface User {
     email: string;
     role: Role;
     permissions: PermissionMap;
+    isActive: boolean;
     createdAt: string;
 }
 
@@ -22,6 +22,8 @@ interface PermissionProfile {
     id: string;
     name: string;
     permissions: PermissionMap;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 export default function UserManagement() {
@@ -46,7 +48,7 @@ export default function UserManagement() {
     const fetchUsers = async () => {
         try {
             const response = await api.get('/users');
-            setUsers(response.data);
+            setUsers(response.data || []);
         } catch (error) {
             console.error('Error loading users');
         }
@@ -55,7 +57,7 @@ export default function UserManagement() {
     const fetchProfiles = async () => {
         try {
             const response = await api.get('/permission-profiles');
-            setProfiles(response.data);
+            setProfiles(response.data || []);
         } catch (error) {
             console.error('Error loading profiles');
         }
@@ -63,26 +65,26 @@ export default function UserManagement() {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center p-12">
+            <div className="flex items-center justify-center p-8 sm:p-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="space-y-4 sm:space-y-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                         <Shield className="text-blue-600" />
                         Administración de Accesos
                     </h1>
                     <p className="text-slate-500 dark:text-slate-400">Gestiona usuarios y plantillas de permisos</p>
                 </div>
-                <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-900/50 rounded-2xl w-fit border border-slate-200 dark:border-slate-800">
+                <div className="flex w-full max-w-full items-center gap-2 overflow-x-auto rounded-2xl border border-slate-200 bg-slate-100 p-1 dark:border-slate-800 dark:bg-slate-900/50 lg:w-auto">
                     <button
                         onClick={() => setActiveTab('users')}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+                        className={`flex min-w-[140px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold transition-all sm:flex-none sm:px-6 ${
                             activeTab === 'users'
                                 ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm dark:text-white'
                                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
@@ -93,7 +95,7 @@ export default function UserManagement() {
                     </button>
                     <button
                         onClick={() => setActiveTab('profiles')}
-                        className={`flex items-center gap-2 px-6 py-2 rounded-xl text-sm font-bold transition-all ${
+                        className={`flex min-w-[140px] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-bold transition-all sm:flex-none sm:px-6 ${
                             activeTab === 'profiles'
                                 ? 'bg-white dark:bg-slate-800 text-blue-600 shadow-sm dark:text-white'
                                 : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'

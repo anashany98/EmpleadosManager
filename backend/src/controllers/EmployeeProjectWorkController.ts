@@ -3,7 +3,6 @@ import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../types/express';
 import { canManageEmployee, canReadEmployeeDetail } from '../policies/employeeAccess';
 import { ApiResponse } from '../utils/ApiResponse';
-import { AppError } from '../utils/AppError';
 
 export class EmployeeProjectWorkController {
     async getByEmployee(req: Request, res: Response) {
@@ -29,7 +28,7 @@ export class EmployeeProjectWorkController {
                 orderBy: { startDate: 'desc' }
             });
             return ApiResponse.success(res, entries);
-        } catch (error: any) {
+        } catch (error) {
             return ApiResponse.error(res, 'Error al obtener registros de proyecto', 500);
         }
     }
@@ -63,7 +62,7 @@ export class EmployeeProjectWorkController {
                 include: { project: true }
             });
             return ApiResponse.success(res, entry, 'Registro creado', 201);
-        } catch (error: any) {
+        } catch (error) {
             return ApiResponse.error(res, 'Error al crear registro', 500);
         }
     }
@@ -96,7 +95,7 @@ export class EmployeeProjectWorkController {
                 where: { id }
             });
             return ApiResponse.success(res, null, 'Registro eliminado');
-        } catch (error: any) {
+        } catch (error) {
             return ApiResponse.error(res, 'Error al eliminar registro', 500);
         }
     }

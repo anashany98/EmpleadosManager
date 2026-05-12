@@ -2,7 +2,9 @@ import PDFDocument from 'pdfkit';
 import { prisma } from '../../lib/prisma';
 import { StorageService } from '../StorageService';
 import { InventoryService } from '../InventoryService';
-import { getLogoPath, addQRCodeToPDF, buildPdfBuffer } from './DocumentPdfUtils';
+import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
+import { CompanyDocumentTemplateService } from './DocumentTemplateService';
+import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
 
 export const generateUniform = async (employeeId: string, items?: Array<{ id?: string; name: string; size?: string }>, authorName?: string): Promise<any> => {
     const doc = await generateUniformInternal(employeeId, items, authorName);
@@ -60,43 +62,41 @@ export const generateUniformInternal = async (employeeId: string, customItems?: 
     const doc = new PDFDocument({ margin: 50 });
     const fileName = `Entrega_Uniforme_${employee.dni}_${Date.now()}.pdf`;
 
-    await addQRCodeToPDF(doc, { t: 'UNIFORME' }, employeeId);
     const logoPath = getLogoPath();
-    if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
-
-    doc.y = logoPath ? 120 : 50;
-    doc.fontSize(16).font('Helvetica-Bold').text('ACTA DE ENTREGA DE UNIFORME', { align: 'center' });
-    doc.moveDown();
-
-    // ... (Standard Header: Company/Employee)
-    doc.fontSize(10).font('Helvetica-Bold').text('EMPRESA:');
-    doc.font('Helvetica').text(`${employee.company?.name || 'N/A'} - CIF: ${employee.company?.cif || 'N/A'}`);
-    doc.moveDown(0.5);
-    doc.font('Helvetica-Bold').text('TRABAJADOR:');
-    doc.font('Helvetica').text(`${employee.firstName} ${employee.lastName} - DNI: ${employee.dni}`);
-    doc.moveDown();
-
-    doc.text('Recibí de la empresa las siguientes prendas:', { align: 'justify' });
-    doc.moveDown();
-
     const items = (customItems && customItems.length > 0) ? customItems : [];
-    items.forEach(item => {
-        const label = item.size ? `${item.name} (Talla: ${item.size})` : item.name;
-        doc.text(`• ${label}`, { indent: 20 });
+    const listado = items.length > 0
+        ? items.map((item) => `- ${item.size ? `${item.name} (Talla: ${item.size})` : item.name}`).join('\n')
+        : '- Sin articulos especificados';
+    const template = await CompanyDocumentTemplateService.getTemplate('UNIFORM', employee.companyId);
+    const context = await CompanyDocumentTemplateService.buildContext(employeeId, {
+        authorName,
+        extraContext: {
+            entrega: { listado, dispositivo: '', numeroSerie: '' }
+        }
     });
-    doc.moveDown();
+    const layout = parseLayoutTemplate(template?.content || '');
 
-    doc.fontSize(8).text('El trabajador se compromete a su uso obligado y conservación.', { align: 'justify' });
+    if (layout) {
+        await renderLayoutTemplate(doc, layout, context as Record<string, unknown>, {
+            employeeId,
+            documentType: 'UNIFORME'
+        });
+    } else {
+        await addQRCodeToPDF(doc, { t: 'UNIFORME' }, employeeId);
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+        doc.y = logoPath ? 120 : 50;
+        const rendered = CompanyDocumentTemplateService.renderTemplate(template?.content || '', context);
+        writeTemplateText(doc, rendered);
 
-    // Signatures
-    doc.moveDown(4);
-    const startY = doc.y;
-    const place = employee.company?.city || 'Palma';
+        // Signatures
+        doc.moveDown(4);
+        const place = employee.company?.city || 'Palma';
 
-    doc.text(`En ${place}, a ${new Date().toLocaleDateString('es-ES')}`);
-    doc.moveDown();
-    doc.text('Firma Empresa:', 50, doc.y);
-    doc.text('Firma Trabajador:', 350, doc.y - 12);
+        doc.text(`En ${place}, a ${new Date().toLocaleDateString('es-ES')}`);
+        doc.moveDown();
+        doc.text('Firma Empresa:', 50, doc.y);
+        doc.text('Firma Trabajador:', 350, doc.y - 12);
+    }
 
     const pdfBuffer = await buildPdfBuffer(doc);
     const { key } = await StorageService.saveBuffer({

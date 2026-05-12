@@ -2,7 +2,6 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AuthenticatedRequest } from '../types/express';
-import { AppError } from '../utils/AppError';
 import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('EmployeeMedicalController');
@@ -40,7 +39,7 @@ export const EmployeeMedicalController = {
 
     create: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
-        const { date, notes, nextReviewDate } = req.body;
+        const { date, notes, result, nextReviewDate } = req.body;
         const { user } = req as AuthenticatedRequest;
 
         if (!user.companyId && user.role !== 'admin') {
@@ -61,13 +60,13 @@ export const EmployeeMedicalController = {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
 
-            const review = await prisma.medicalReview.create({
-                data: {
-                    employeeId,
-                    date: new Date(date),
-                    result: notes,
-                    nextReviewDate: nextReviewDate ? new Date(nextReviewDate) : null
-                }
+      const review = await prisma.medicalReview.create({
+        data: {
+          employeeId,
+          date: new Date(date),
+          result: result || notes,
+          nextReviewDate: nextReviewDate ? new Date(nextReviewDate) : null
+        }
             });
 
             return ApiResponse.success(res, review, 'Revisión médica creada');

@@ -1,13 +1,71 @@
 import { Router } from 'express';
 import { DocumentTemplateController } from '../controllers/DocumentTemplateController';
-import { protect, checkPermission } from '../middlewares/authMiddleware';
+import { protect, checkPermission, authorize } from '../middlewares/authMiddleware';
+import { prisma } from '../lib/prisma';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
 
 router.use(protect);
 
-router.get('/list', checkPermission('employees', 'read'), DocumentTemplateController.listTemplates);
-router.post('/generate', checkPermission('employees', 'write'), DocumentTemplateController.generate);
-router.post('/sign', checkPermission('employees', 'write'), DocumentTemplateController.sign);
+const resolveTemplateGenerationEmployeeTarget = async (req: any) => {
+    const employeeId = req.body.employeeId;
+
+    if (!employeeId) {
+        return null;
+    }
+
+    const employee = await prisma.employee.findUnique({
+        where: { id: employeeId },
+        select: { id: true, companyId: true }
+    });
+
+    return employee
+        ? { employeeId: employee.id, companyId: employee.companyId }
+        : { employeeId };
+};
+
+const storage = multer.diskStorage({
+    destination: (_req, _file, cb) => {
+        const uploadDir = path.join(process.cwd(), 'uploads', 'template-logos');
+        if (!fs.existsSync(uploadDir)) {
+            fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        cb(null, uploadDir);
+    },
+    filename: (_req, file, cb) => {
+        const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, `${uniqueSuffix}${path.extname(file.originalname)}`);
+    }
+});
+
+const logoUpload = multer({
+    storage,
+    fileFilter: (_req, file, cb) => {
+        const allowed = ['.jpg', '.jpeg', '.png', '.svg', '.webp'];
+        const ext = path.extname(file.originalname).toLowerCase();
+        if (allowed.includes(ext)) {
+            cb(null, true);
+        } else {
+            cb(new Error(`Tipo no permitido: ${ext}`));
+        }
+    },
+    limits: { fileSize: 5 * 1024 * 1024 }
+});
+
+router.get('/list', checkPermission('documents', 'read'), DocumentTemplateController.listTemplates);
+router.get('/stored', checkPermission('documents', 'read'), DocumentTemplateController.listStoredTemplates);
+router.get('/variables', checkPermission('documents', 'read'), DocumentTemplateController.getAvailableVariables);
+router.get('/:type', checkPermission('documents', 'read'), DocumentTemplateController.getTemplate);
+
+router.post('/save', checkPermission('documents', 'write'), DocumentTemplateController.saveTemplate);
+router.post('/logo', checkPermission('documents', 'write'), logoUpload.single('logo'), DocumentTemplateController.uploadLogo);
+router.post('/preview', checkPermission('documents', 'read'), DocumentTemplateController.previewTemplate);
+router.post('/generate', authorize('document.write', resolveTemplateGenerationEmployeeTarget), DocumentTemplateController.generate);
+router.post('/sign', checkPermission('documents', 'write'), DocumentTemplateController.sign);
+
+router.delete('/:id', checkPermission('documents', 'write'), DocumentTemplateController.deleteTemplate);
 
 export default router;

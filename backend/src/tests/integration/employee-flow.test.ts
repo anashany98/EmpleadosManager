@@ -2,12 +2,12 @@ import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../app/createApp';
 
-const app = createApp();
+const { app } = createApp();
 
 describe('Employee Import Integration Tests', () => {
     describe('POST /api/employees/import', () => {
         it('should reject import without authentication', async () => {
-            const res = await request(app as any)
+            const res = await request(app)
                 .post('/api/employees/import');
 
             // 401 or 403 = unauthorized
@@ -15,7 +15,7 @@ describe('Employee Import Integration Tests', () => {
         });
 
         it('should reject import without file', async () => {
-            const res = await request(app as any)
+            const res = await request(app)
                 .post('/api/employees/import')
                 .set('Authorization', 'Bearer invalid_token');
 
@@ -24,10 +24,28 @@ describe('Employee Import Integration Tests', () => {
         });
     });
 
+    describe('POST /api/employees/import/preview', () => {
+        it('should reject preview without authentication', async () => {
+            const res = await request(app)
+                .post('/api/employees/import/preview');
+
+            expect([401, 403]).toContain(res.status);
+        });
+    });
+
     describe('GET /api/employees/template', () => {
         it('should reject template download without authentication', async () => {
-            const res = await request(app as any)
+            const res = await request(app)
                 .get('/api/employees/template');
+
+            expect([401, 403]).toContain(res.status);
+        });
+    });
+
+    describe('GET /api/employees/options', () => {
+        it('should reject options without authentication', async () => {
+            const res = await request(app)
+                .get('/api/employees/options');
 
             expect([401, 403]).toContain(res.status);
         });
@@ -35,14 +53,14 @@ describe('Employee Import Integration Tests', () => {
 
     describe('GET /api/employees', () => {
         it('should reject listing employees without authentication', async () => {
-            const res = await request(app as any)
+            const res = await request(app)
                 .get('/api/employees');
 
             expect(res.status).toBe(401);
         });
 
         it('should accept pagination params without crashing', async () => {
-            const res = await request(app as any)
+            const res = await request(app)
                 .get('/api/employees')
                 .query({ page: '1', limit: '10' });
 
@@ -52,7 +70,7 @@ describe('Employee Import Integration Tests', () => {
 
     describe('POST /api/employees', () => {
         it('should reject employee creation without auth', async () => {
-            const res = await request(app as any)
+            const res = await request(app)
                 .post('/api/employees')
                 .send({ name: 'Test', dni: '12345678A' });
 
@@ -62,7 +80,7 @@ describe('Employee Import Integration Tests', () => {
 
     describe('PATCH /api/employees/:id', () => {
         it('should reject employee update without auth', async () => {
-            const res = await request(app as any)
+            const res = await request(app)
                 .patch('/api/employees/fake-id-123')
                 .send({ name: 'Updated Name' });
 
@@ -72,7 +90,7 @@ describe('Employee Import Integration Tests', () => {
 
     describe('DELETE /api/employees/:id', () => {
         it('should reject employee deletion without auth', async () => {
-            const res = await request(app as any)
+            const res = await request(app)
                 .delete('/api/employees/fake-id-123');
 
             expect([401, 403]).toContain(res.status);

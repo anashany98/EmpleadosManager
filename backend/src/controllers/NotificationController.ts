@@ -13,8 +13,8 @@ export const createNotification = async (userId: string, title: string, message:
         await prisma.notification.create({
             data: { userId, title, message, type, link }
         });
-    } catch (error) {
-        log.error({ error }, 'Error creating notification');
+    } catch {
+        log.error('Error creating notification');
     }
 };
 
@@ -57,8 +57,8 @@ export const NotificationController = {
             });
 
             return ApiResponse.success(res, { notifications, unreadCount });
-        } catch (error) {
-            log.error({ error }, 'Error fetching notifications');
+        } catch {
+            log.error('Error fetching notifications');
             return ApiResponse.error(res, 'Error al obtener notificaciones', 500);
         }
     },
@@ -74,7 +74,7 @@ export const NotificationController = {
             });
 
             return ApiResponse.success(res, { success: true });
-        } catch (error) {
+        } catch {
             return ApiResponse.error(res, 'Error al marcar como leída', 500);
         }
     },
@@ -87,7 +87,7 @@ export const NotificationController = {
                 data: { read: true }
             });
             return ApiResponse.success(res, { success: true });
-        } catch (error) {
+        } catch {
             return ApiResponse.error(res, 'Error al marcar todas como leídas', 500);
         }
     }

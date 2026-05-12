@@ -2,7 +2,9 @@ import PDFDocument from 'pdfkit';
 import { prisma } from '../../lib/prisma';
 import { StorageService } from '../StorageService';
 import { InventoryService } from '../InventoryService';
-import { getLogoPath, addQRCodeToPDF, buildPdfBuffer } from './DocumentPdfUtils';
+import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
+import { CompanyDocumentTemplateService } from './DocumentTemplateService';
+import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
 
 export const generateTechDevice = async (employeeId: string, deviceName: string, serialNumber: string, authorName?: string, itemId?: string): Promise<any> => {
     const doc = await generateTechDeviceInternal(employeeId, deviceName, serialNumber, authorName);
@@ -11,7 +13,7 @@ export const generateTechDevice = async (employeeId: string, deviceName: string,
     try {
         if (itemId) {
             await InventoryService.recordMovement({
-                itemId: itemId,
+                itemId,
                 type: 'ASSIGNMENT',
                 quantity: 1,
                 userId: authorName || 'SYSTEM',
@@ -62,49 +64,44 @@ export const generateTechDeviceInternal = async (employeeId: string, deviceName:
     const doc = new PDFDocument({ margin: 50 });
     const fileName = `Entrega_Material_Tecnologico_${employee.dni}_${Date.now()}.pdf`;
 
-    // QR Code
-    await addQRCodeToPDF(doc, { t: 'TECH_DEVICE', name: deviceName, sn: serialNumber }, employeeId);
-
     const logoPath = getLogoPath();
-    if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+    const template = await CompanyDocumentTemplateService.getTemplate('TECH_DEVICE', employee.companyId);
+    const context = await CompanyDocumentTemplateService.buildContext(employeeId, {
+        authorName,
+        extraContext: {
+            entrega: {
+                listado: `- ${deviceName}`,
+                dispositivo: deviceName,
+                numeroSerie: serialNumber || 'Sin numero de serie'
+            }
+        }
+    });
+    const layout = parseLayoutTemplate(template?.content || '');
 
-    doc.y = logoPath ? 110 : 50;
-    doc.fontSize(18).text('ACTA DE ENTREGA DE MATERIAL TECNOLÓGICO', { align: 'center' });
-    doc.moveDown(2);
+    if (layout) {
+        await renderLayoutTemplate(doc, layout, context as Record<string, unknown>, {
+            employeeId,
+            documentType: 'TECH_DEVICE',
+            qrData: { name: deviceName, sn: serialNumber }
+        });
+    } else {
+        await addQRCodeToPDF(doc, { t: 'TECH_DEVICE', name: deviceName, sn: serialNumber }, employeeId);
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+        doc.y = logoPath ? 110 : 50;
+        const rendered = CompanyDocumentTemplateService.renderTemplate(template?.content || '', context);
+        writeTemplateText(doc, rendered);
 
-    doc.fontSize(12).font('Helvetica-Bold').text('DATOS DE LA EMPRESA:');
-    doc.font('Helvetica').text(`Nombre: ${employee.company?.name || 'N/A'}`);
-    doc.text(`CIF: ${employee.company?.cif || 'N/A'}`);
-    doc.moveDown();
+        const place = employee.company?.city || 'Palma de Mallorca';
+        const author = authorName || employee.company?.legalRep || 'La Direccion';
 
-    doc.fontSize(12).font('Helvetica-Bold').text('DATOS DEL TRABAJADOR:');
-    doc.font('Helvetica').text(`Nombre: ${employee.firstName} ${employee.lastName}`);
-    doc.text(`DNI: ${employee.dni}`);
-    doc.moveDown();
+        doc.moveDown(4);
+        const startY = doc.y;
+        doc.text('Recibi:', 50, startY);
+        doc.text('Firma Trabajador', 50, startY + 15);
+        doc.fontSize(8).text(author, 350, startY + 45);
 
-    doc.font('Helvetica-Bold').text('MATERIAL ENTREGADO:');
-    doc.font('Helvetica').text(`Dispositivo: ${deviceName}`);
-    doc.text(`Número de Serie / IMEI: ${serialNumber}`);
-    doc.moveDown(2);
-
-    doc.font('Helvetica-Bold').text('CONDICIONES DE USO Y RESPONSABILIDAD:', { underline: true });
-    doc.moveDown(0.5);
-    doc.font('Helvetica').text('1. El trabajador recibe el material descrito en perfecto estado de funcionamiento y se compromete a utilizarlo exclusivamente para fines laborales.', { align: 'justify' });
-    doc.moveDown(0.5);
-    doc.text('2. El trabajador se hace responsable de la custodia del equipo. En caso de pérdida, rotura o robo por negligencia, el trabajador asumirá los costes de reparación o sustitución del dispositivo.', { align: 'justify' });
-    doc.moveDown(0.5);
-    doc.text('3. A la finalización de la relación laboral, el trabajador devolverá el equipo y sus accesorios en el mismo estado en que se le entregó, salvo el desgaste normal por el uso.', { align: 'justify' });
-
-    const place = employee.company?.city || 'Palma de Mallorca';
-    const author = authorName || employee.company?.legalRep || 'La Dirección';
-
-    doc.moveDown(4);
-    const startY = doc.y;
-    doc.text('Recibí:', 50, startY);
-    doc.text('Firma Trabajador', 50, startY + 15);
-    doc.fontSize(8).text(author, 350, startY + 45); // Representative name
-
-    doc.fontSize(12).text(`En ${place}, a ${new Date().toLocaleDateString('es-ES')}`, 50, startY + 80);
+        doc.fontSize(12).text(`En ${place}, a ${new Date().toLocaleDateString('es-ES')}`, 50, startY + 80);
+    }
 
     const pdfBuffer = await buildPdfBuffer(doc);
     const { key } = await StorageService.saveBuffer({
@@ -119,7 +116,7 @@ export const generateTechDeviceInternal = async (employeeId: string, deviceName:
             name: `Entrega ${deviceName}`,
             category: 'OTHER',
             fileUrl: key,
-            employeeId: employeeId
+            employeeId
         }
     });
     return docRecord;

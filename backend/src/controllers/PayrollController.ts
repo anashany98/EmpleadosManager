@@ -11,7 +11,7 @@ import { PayrollAutomationService } from '../services/PayrollAutomationService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { AppError } from '../utils/AppError';
-import { canManagePayroll, canReadPayroll } from '../policies/payrollAccess';
+import { canReadPayroll } from '../policies/payrollAccess';
 import { withRetry } from '../utils/dbRetry';
 
 const log = createLogger('PayrollController');
@@ -65,9 +65,9 @@ export const PayrollController = {
                 filename: key,
             }, 'Archivo subido correctamente. Por favor configura el mapeo.');
 
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error processing payroll upload');
-            return ApiResponse.error(res, error.message || 'Error al procesar el archivo Excel', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al procesar el archivo Excel', 500);
         }
     },
 
@@ -134,9 +134,9 @@ export const PayrollController = {
 
             return ApiResponse.success(res, { rowsCreated: rowsData.length }, 'Mapeo aplicado correctamente');
 
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error applying mapping');
-            return ApiResponse.error(res, error.message || 'Error al aplicar el mapeo', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al aplicar el mapeo', 500);
         }
     },
 
@@ -181,7 +181,7 @@ export const PayrollController = {
             }));
 
             return ApiResponse.success(res, formatted);
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error fetching latest batches');
             return ApiResponse.error(res, 'Error al obtener lotes recientes', 500);
         }
@@ -227,9 +227,9 @@ export const PayrollController = {
                 limit,
                 totalPages: Math.ceil(total / limit)
             });
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error fetching rows');
-            return ApiResponse.error(res, error.message || 'Error al obtener filas', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al obtener filas', 500);
         }
     },
 
@@ -254,7 +254,7 @@ export const PayrollController = {
                 orderBy: { createdAt: 'asc' }
             });
             return ApiResponse.success(res, items);
-        } catch (error: any) {
+        } catch (error) {
             return ApiResponse.error(res, 'Error al obtener desglose', 500);
         }
     },
@@ -290,7 +290,7 @@ export const PayrollController = {
             ]);
 
             return ApiResponse.success(res, { message: 'Desglose actualizado correctamente' });
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Save breakdown error');
             return ApiResponse.error(res, 'Error al guardar el desglose', 500);
         }
@@ -319,8 +319,8 @@ export const PayrollController = {
                 orderBy: { batch: { month: 'desc' } }
             });
             return ApiResponse.success(res, rows);
-        } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al obtener nÃ³minas del empleado', error.statusCode || 500);
+} catch (error) {
+            return ApiResponse.error(res, (error as Error).message || 'Error al obtener nóminas del empleado', (error as any).statusCode || 500);
         }
     },
 
@@ -391,8 +391,8 @@ export const PayrollController = {
             });
 
             return ApiResponse.success(res, row, 'NÃ³mina creada correctamente');
-        } catch (error: any) {
-            log.error({ error }, 'Error creating manual payroll');
+        } catch (err) {
+            log.error({ error: err }, 'Error creating manual payroll');
             return ApiResponse.error(res, 'Error al crear nÃ³mina manual', 500);
         }
     },
@@ -463,8 +463,8 @@ export const PayrollController = {
             res.setHeader('Content-Disposition', `attachment; filename=Nomina_${payroll.batch.month}_${payroll.batch.year}_${payroll.employee.dni}.pdf`);
             res.send(pdfBuffer);
 
-        } catch (error: any) {
-            log.error({ error }, 'PDF Generation Error');
+        } catch (err) {
+            log.error({ error: err }, 'PDF Generation Error');
             return ApiResponse.error(res, 'Error al generar el PDF', 500);
         }
     },
@@ -492,9 +492,9 @@ export const PayrollController = {
             );
 
             return ApiResponse.success(res, batch, 'Lote de nÃ³minas generado automÃ¡ticamente desde datos de Kiosco');
-        } catch (error: any) {
-            log.error({ error }, 'Payroll Generation Error');
-            return ApiResponse.error(res, 'Error al generar nÃ³minas automÃ¡ticas: ' + error.message, 500);
+        } catch (err: any) {
+            log.error({ error: err }, 'Payroll Generation Error');
+            return ApiResponse.error(res, 'Error al generar nÃ³minas automÃ¡ticas: ' + err.message, 500);
         }
     }
 };

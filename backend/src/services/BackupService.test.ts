@@ -1,10 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
 import path from 'path';
-import { BackupService } from '../BackupService';
-
-// Store original realpathSync
-const realPathSync = fs.realpathSync;
+import { BackupService } from './BackupService';
 
 describe('BackupService.pruneBackups', () => {
     let tempDir: string;
@@ -27,15 +24,14 @@ describe('BackupService.pruneBackups', () => {
             }
             process.chdir(originalCwd);
             vi.restoreAllMocks();
-        } catch (error) {
+        } catch {
             // Ignore cleanup errors
         }
     });
 
-    const createTestFile = (dir: string, name: string, daysOld: number) => {
+const createTestFile = (dir: string, name: string, daysOld: number) => {
         const filePath = path.join(dir, name);
         fs.writeFileSync(filePath, 'test content');
-        const stats = fs.statSync(filePath);
         // Mock birthtime by using fs.utimesSync to set atime/mtime (birthtime might be readonly)
         // For our test, we'll sort by mtime as fallback
         const pastTime = new Date();
@@ -107,6 +103,7 @@ describe('BackupService.pruneBackups', () => {
         // Should have deleted 5 oldest files (indices 9,8,7,6,5) because we created 0 as newest? Let's check logic:
         // Newest are with lower daysOld: backup_0 is 0 days (newest), backup_9 is 9 days (oldest)
         // We keep 5 newest: indices 0-4 (0,1,2,3,4 days old). We delete indices 5-9.
-        expect(unlinkSyncSpy).toHaveBeenCalledTimes(5);
+        const deletedFromTestDir = unlinkSyncSpy.mock.calls.filter(([filePath]) => String(filePath).startsWith(dir));
+        expect(deletedFromTestDir).toHaveLength(5);
     });
 });

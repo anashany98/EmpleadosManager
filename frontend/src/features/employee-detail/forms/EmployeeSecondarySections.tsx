@@ -1,7 +1,8 @@
 import DocumentArchive from '../../../components/DocumentArchive';
 import PRLArchive from '../../../components/PRLArchive';
-import { CATEGORIAS, CONVENIOS, DEPARTAMENTOS, PUESTOS, TIPOS_CONTRATO } from '../constants';
-import type { CompanyOption, EmployeeFormData, EmployeeOption } from '../types';
+import { CONVENIOS, PUESTOS, TIPOS_CONTRATO } from '../constants';
+import type { CompanyOption, EmployeeFieldOptions, EmployeeFormData, EmployeeOption } from '../types';
+import { getEmployeeDisplayName } from '../../../utils/employeeDisplay';
 
 interface EmployeeSecondarySectionsProps {
     activeTab: string;
@@ -10,6 +11,7 @@ interface EmployeeSecondarySectionsProps {
     formData: EmployeeFormData;
     companies: CompanyOption[];
     allEmployees: EmployeeOption[];
+    fieldOptions: EmployeeFieldOptions;
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
 }
 
@@ -20,6 +22,7 @@ export function EmployeeSecondarySections({
     formData,
     companies,
     allEmployees,
+    fieldOptions,
     onChange
 }: EmployeeSecondarySectionsProps) {
     if (activeTab === 'laboral') {
@@ -36,10 +39,10 @@ export function EmployeeSecondarySections({
                 </div>
                 <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Departamento</label>
-                    <select name="department" value={formData.department} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                        <option value="">Seleccionar...</option>
-                        {DEPARTAMENTOS.map((department) => <option key={department} value={department}>{department}</option>)}
-                    </select>
+                    <input list="department-options" name="department" value={formData.department} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Escribe o elige un departamento" />
+                    <datalist id="department-options">
+                        {fieldOptions.departments.map((department) => <option key={department} value={department} />)}
+                    </datalist>
                 </div>
                 <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Puesto (Job Title)</label>
@@ -50,10 +53,10 @@ export function EmployeeSecondarySections({
                 </div>
                 <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Categoría</label>
-                    <select name="category" value={formData.category} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                        <option value="">Seleccionar...</option>
-                        {CATEGORIAS.map((category) => <option key={category} value={category}>{category}</option>)}
-                    </select>
+                    <input list="category-options" name="category" value={formData.category} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" placeholder="Escribe o elige una categoría" />
+                    <datalist id="category-options">
+                        {fieldOptions.categories.map((category) => <option key={category} value={category} />)}
+                    </datalist>
                 </div>
                 <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Tipo Contrato</label>
@@ -74,7 +77,7 @@ export function EmployeeSecondarySections({
                     <select name="managerId" value={formData.managerId} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-amber-200 dark:border-amber-900/30 bg-amber-50/20 dark:bg-amber-900/10">
                         <option value="">Sin responsable asignado</option>
                         {allEmployees.map((employee) => (
-                            <option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName} ({employee.jobTitle})</option>
+                            <option key={employee.id} value={employee.id}>{getEmployeeDisplayName(employee)}{employee.jobTitle ? ` (${employee.jobTitle})` : ''}</option>
                         ))}
                     </select>
                 </div>
@@ -119,8 +122,24 @@ export function EmployeeSecondarySections({
                             Sueldo Bruto Mensual
                             <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500">€/Mes (12 pagas)</span>
                         </label>
-                        <input type="number" step="0.01" name="monthlyGrossSalary" value={formData.monthlyGrossSalary} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-green-200 dark:border-green-900/50 bg-green-50/30 dark:bg-green-900/10 font-bold text-green-700 dark:text-green-400" placeholder="Ej: 2000" />
-                    </div>
+          <input type="number" step="0.01" name="monthlyGrossSalary" value={formData.monthlyGrossSalary} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-green-200 dark:border-green-900/50 bg-green-50/30 dark:bg-green-900/10 font-bold text-green-700 dark:text-green-400" placeholder="Ej: 2000" />
+          </div>
+        </div>
+        <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              Sueldo Total Anual
+              <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500">€/Año</span>
+            </label>
+            <input type="number" step="0.01" name="annualTotalSalary" value={formData.annualTotalSalary} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-900/10 font-bold text-emerald-700 dark:text-emerald-400" placeholder="Ej: 30000" />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+              Sueldo Total Mensual
+              <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500">€/Mes (12 pagas)</span>
+            </label>
+            <input type="number" step="0.01" name="monthlyTotalSalary" value={formData.monthlyTotalSalary} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/30 dark:bg-emerald-900/10 font-bold text-emerald-700 dark:text-emerald-400" placeholder="Ej: 2500" />
+          </div>
                 </div>
             </div>
         );

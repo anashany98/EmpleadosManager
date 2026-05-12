@@ -1,5 +1,4 @@
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -173,7 +172,7 @@ async function main() {
                         phone: empData.phone,
                         companyId: company.id,
                         active: true,
-                        entryDate: entryDate,
+                        entryDate,
                         workingDayType: 'FULL_TIME',
                     }
                 });

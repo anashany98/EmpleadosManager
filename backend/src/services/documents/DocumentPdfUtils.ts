@@ -45,12 +45,46 @@ export const addQRCodeToPDF = async (doc: typeof PDFDocument, data: any, employe
 /**
  * Finalizes a PDFDocument and returns its contents as a Buffer.
  */
-export const buildPdfBuffer = (doc: any): Promise<Buffer> => {
-    return new Promise((resolve, reject) => {
+export const buildPdfBuffer = (doc: any): Promise<Buffer> => new Promise((resolve, reject) => {
         const chunks: Buffer[] = [];
         doc.on('data', (chunk: Buffer) => chunks.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(chunks)));
         doc.on('error', reject);
         doc.end();
     });
+
+export const writeTemplateText = (doc: any, content: string) => {
+    const lines = content.split(/\r?\n/);
+
+    lines.forEach((line) => {
+        const trimmed = line.trim();
+
+        if (!trimmed) {
+            doc.moveDown(0.7);
+            return;
+        }
+
+        if (trimmed.startsWith('# ')) {
+            doc.moveDown(0.4);
+            doc.font('Helvetica-Bold').fontSize(16).text(trimmed.slice(2), { align: 'center' });
+            doc.moveDown(0.8);
+            return;
+        }
+
+        if (trimmed.startsWith('## ')) {
+            doc.moveDown(0.3);
+            doc.font('Helvetica-Bold').fontSize(12).text(trimmed.slice(3), { underline: true });
+            doc.moveDown(0.4);
+            return;
+        }
+
+        if (trimmed.startsWith('- ') || trimmed.startsWith('• ')) {
+            doc.font('Helvetica').fontSize(10).text(`• ${trimmed.slice(2)}`, { indent: 18, align: 'justify' });
+            return;
+        }
+
+        doc.font('Helvetica').fontSize(10).text(trimmed, { align: 'justify' });
+    });
+
+    return doc;
 };

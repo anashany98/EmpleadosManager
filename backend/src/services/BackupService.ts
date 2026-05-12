@@ -12,6 +12,7 @@ const execFileAsync = promisify(execFile);
 const BACKUP_DIR = path.join(process.cwd(), 'backups');
 const SNAPSHOT_DIR = path.join(BACKUP_DIR, 'snapshots');
 const FULL_BACKUP_DIR = path.join(BACKUP_DIR, 'full');
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads');
 
 // Ensure directories exist
 [BACKUP_DIR, SNAPSHOT_DIR, FULL_BACKUP_DIR].forEach(dir => {
@@ -195,6 +196,11 @@ export const BackupService = {
 
             // Add Database dump (snapshot is already encrypted if enabled, store as-is)
             archive.file(snapshot.filePath, { name: snapshot.fileName });
+
+            // Add locally stored uploads/documents to the full backup.
+            if (fs.existsSync(UPLOADS_DIR)) {
+                archive.directory(UPLOADS_DIR, 'uploads');
+            }
 
             archive.finalize();
         });

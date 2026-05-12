@@ -1,7 +1,4 @@
 import { prisma } from '../lib/prisma';
-import { createLogger } from './LoggerService';
-
-const log = createLogger('AnalyticsService');
 
 export interface KPIMetric {
     current: number;
@@ -36,7 +33,9 @@ export class AnalyticsService {
         // Current period (last 30 days)
         const now = new Date();
         const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+        void thirtyDaysAgo;
+        const _sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+        void _sixtyDaysAgo;
 
         // Build where clause
         const companyFilter = companyId ? { companyId } : {};

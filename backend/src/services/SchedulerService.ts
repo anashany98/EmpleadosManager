@@ -1,7 +1,7 @@
 import { alertService } from './AlertService';
-import { inboxService } from './InboxService';
 import { backupScheduler } from './BackupScheduler';
 import { loggers } from './LoggerService';
+import { vacationRolloverScheduler } from './VacationRolloverScheduler';
 
 const log = loggers.scheduler;
 
@@ -21,6 +21,7 @@ export class SchedulerService {
 
         // Start backup scheduler
         backupScheduler.start();
+        vacationRolloverScheduler.start();
 
         log.info('All scheduler tasks started');
     }
@@ -32,6 +33,7 @@ export class SchedulerService {
         }
 
         backupScheduler.stop();
+        vacationRolloverScheduler.stop();
 
         log.info('All scheduler tasks stopped');
     }

@@ -12,6 +12,7 @@ import timeEntryRoutes from '../routes/timeEntryRoutes';
 import employeeDashboardRoutes from '../routes/employeeDashboardRoutes';
 import alertRoutes from '../routes/alertRoutes';
 import reportRoutes from '../routes/reportRoutes';
+import reportScheduleRoutes from '../routes/reportScheduleRoutes';
 import documentRoutes from '../routes/documentRoutes';
 import expenseRoutes from '../routes/expenseRoutes';
 import assetRoutes from '../routes/assetRoutes';
@@ -35,6 +36,7 @@ import cardRoutes from '../routes/cardRoutes';
 import calendarRoutes from '../routes/calendarRoutes';
 import analyticsRoutes from '../routes/analyticsRoutes';
 import performanceRoutes from '../routes/performanceRoutes';
+import lockRoutes from '../routes/lockRoutes';
 
 export function registerRoutes(app: Express): void {
     app.use('/api/kiosk', kioskRoutes);
@@ -67,6 +69,7 @@ export function registerRoutes(app: Express): void {
     app.use('/api/overtime', protect, checkPermission('employees', 'read'), overtimeRoutes);
     app.use('/api/alerts', protect, alertRoutes);
     app.use('/api/reports', protect, checkPermission('reports', 'read'), reportRoutes);
+    app.use('/api/report-schedules', protect, reportScheduleRoutes);
     app.use('/api/documents', protect, documentRoutes);
     app.use('/api/expenses', protect, expenseRoutes);
     app.use('/api/assets', protect, checkPermission('assets', 'read'), assetRoutes);
@@ -74,4 +77,5 @@ export function registerRoutes(app: Express): void {
     app.use('/api/projects', protect, checkPermission('projects', 'read'), projectRoutes);
     app.use('/api/employee-project-work', protect, checkPermission('projects', 'read'), employeeProjectWorkRoutes);
     app.use('/api/performance', protect, performanceRoutes);
+    app.use('/api/locks', protect, lockRoutes);
 }

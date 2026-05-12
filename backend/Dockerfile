@@ -83,10 +83,7 @@ COPY --from=builder --chown=appuser:appgroup /app/backend/node_modules ./backend
 COPY --from=builder --chown=appuser:appgroup /app/backend/package.json ./backend/package.json
 COPY --from=builder --chown=appuser:appgroup /app/backend/dist ./backend/dist
 COPY --from=builder --chown=appuser:appgroup /app/backend/src/templates ./backend/src/templates
-# Only copy production scripts (seed scripts), NOT debug/test scripts
-COPY --from=builder --chown=appuser:appgroup /app/backend/src/scripts/seed-admin.ts ./backend/src/scripts/seed-admin.ts
-COPY --from=builder --chown=appuser:appgroup /app/backend/src/scripts/seed-profiles.ts ./backend/src/scripts/seed-profiles.ts
-COPY --from=builder --chown=appuser:appgroup /app/backend/src/scripts/populate_data.ts ./backend/src/scripts/populate_data.ts
+# Seed scripts removed - should not be in production images
 COPY --from=builder --chown=appuser:appgroup /app/backend/instrument.js ./backend/instrument.js
 COPY --from=builder --chown=appuser:appgroup /app/shared ./shared
 COPY --from=builder --chown=appuser:appgroup /app/database ./database

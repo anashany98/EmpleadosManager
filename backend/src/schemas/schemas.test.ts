@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { loginSchema, passwordResetRequestSchema, passwordResetSchema, generateAccessSchema } from './authSchemas';
 import { uuidParamSchema, idParamSchema } from './commonSchemas';
 import { createEmployeeSchema, updateEmployeeSchema } from './employeeSchemas';
+import { vacationCreateSchema } from './vacationSchemas';
+import { expenseCreateSchema, expenseEmployeeParamSchema } from './expenseSchemas';
 
 describe('Auth Schemas', () => {
     describe('loginSchema', () => {
@@ -160,7 +162,7 @@ describe('Employee Schemas', () => {
                     dni: '12345678A',
                     firstName: 'John',
                     lastName: 'Doe',
-                    emergencyContacts: [{ name: 'Jane', phone: '123' }]
+                    emergencyContacts: [{ name: 'Jane', phone: '600123456' }]
                 }
             });
             expect(result.success).toBe(true);
@@ -175,6 +177,16 @@ describe('Employee Schemas', () => {
             expect(result.success).toBe(true);
         });
 
+        it('should validate private notes updates', () => {
+            const result = updateEmployeeSchema.safeParse({
+                body: { privateNotes: 'Observacion interna RRHH' }
+            });
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data.body.privateNotes).toBe('Observacion interna RRHH');
+            }
+        });
+
         it('should validate empty update', () => {
             const result = updateEmployeeSchema.safeParse({ body: {} });
             expect(result.success).toBe(true);
@@ -186,5 +198,91 @@ describe('Employee Schemas', () => {
             });
             expect(result.success).toBe(false);
         });
+    });
+});
+
+describe('Vacation Schemas', () => {
+    it('accepts vacation payloads without reason', () => {
+        const result = vacationCreateSchema.safeParse({
+            body: {
+                employeeId: 'emp-1',
+                startDate: '2026-05-01T00:00:00.000Z',
+                endDate: '2026-05-02T00:00:00.000Z',
+                type: 'VACATION',
+                reason: null
+            }
+        });
+
+        expect(result.success).toBe(true);
+    });
+});
+
+describe('Expense Schemas', () => {
+    it('accepts multipart form payloads and normalizes category aliases', () => {
+        const result = expenseCreateSchema.safeParse({
+            body: {
+                employeeId: 'emp-1',
+                category: 'DIETAS',
+                description: '',
+                amount: '12.50',
+                date: '2026-04-28',
+                paymentMethod: 'COMPANY_CARD'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        if (result.success) {
+            expect(result.data.body.category).toBe('MEALS');
+            expect(result.data.body.amount).toBe(12.5);
+            expect(result.data.body.paymentMethod).toBe('COMPANY_CARD');
+        }
+    });
+
+    it('accepts legacy expense category aliases', () => {
+        const cases = [
+            ['MEAL', 'MEALS'],
+            ['TRAVEL', 'TRANSPORT'],
+            ['TRANSPORTE', 'TRANSPORT'],
+            ['ALOJAMIENTO', 'ACCOMMODATION'],
+            ['MATERIAL', 'SUPPLIES'],
+            ['OTROS', 'OTHER']
+        ];
+
+        for (const [input, expected] of cases) {
+            const result = expenseCreateSchema.safeParse({
+                body: {
+                    employeeId: 'emp-1',
+                    category: input,
+                    amount: '1.00',
+                    date: '2026-04-28'
+                }
+            });
+
+            expect(result.success).toBe(true);
+            if (result.success) {
+                expect(result.data.body.category).toBe(expected);
+            }
+        }
+    });
+
+    it('rejects invalid expense amount and category', () => {
+        const result = expenseCreateSchema.safeParse({
+            body: {
+                employeeId: 'emp-1',
+                category: 'INVALID',
+                amount: '-1',
+                date: '2026-04-28'
+            }
+        });
+
+        expect(result.success).toBe(false);
+    });
+
+    it('validates employee expense route params', () => {
+        const result = expenseEmployeeParamSchema.safeParse({
+            params: { employeeId: 'emp-1' }
+        });
+
+        expect(result.success).toBe(true);
     });
 });

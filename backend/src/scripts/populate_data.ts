@@ -27,7 +27,15 @@ async function main() {
     // 2. Create Specific User: ANAS HANY LAHROUDY
     const anasDni = '49480953h';
     const anasEmail = 'anas.hany@nominasapp.com';
-    const anasPassword = await bcrypt.hash('password123', 10);
+    const anasPassword = process.env.SEED_ADMIN_PASSWORD;
+
+    if (!anasPassword || anasPassword.length < 8) {
+        console.error('❌ FATAL: SEED_ADMIN_PASSWORD env var is required and must be at least 8 characters');
+        console.error('   Usage: SEED_ADMIN_PASSWORD=YourSecurePassword npx ts-node scripts/populate_data.ts');
+        process.exit(1);
+    }
+    
+    const hashedAnasPassword = await bcrypt.hash(anasPassword, 10);
 
     let anasUser = await prisma.user.findUnique({ where: { dni: anasDni } });
     if (!anasUser) {
@@ -36,7 +44,7 @@ async function main() {
             data: {
                 email: anasEmail,
                 dni: anasDni,
-                password: anasPassword,
+                password: hashedAnasPassword,
                 role: 'ADMIN',
                 permissions: JSON.stringify({ all: true }) // Give full permissions
             }
@@ -115,15 +123,15 @@ async function main() {
         const employee = await prisma.employee.create({
             data: {
                 name: fullName,
-                firstName: firstName,
-                lastName: lastName,
-                dni: dni,
+                firstName,
+                lastName,
+                dni,
                 email: `${firstName.toLowerCase()}.${lastName.split(' ')[0].toLowerCase()}${Math.floor(Math.random() * 999)}@nominasapp.com`,
                 phone: '6' + Math.floor(Math.random() * 90000000).toString(),
                 address: `C/ Aleatoria ${Math.floor(Math.random() * 100)}, ${Math.floor(Math.random() * 10)}º`,
                 city: 'Madrid',
                 province: 'Madrid',
-                companyId: companyId,
+                companyId,
                 active: true,
                 department: depts[Math.floor(Math.random() * depts.length)],
                 jobTitle: jobs[Math.floor(Math.random() * jobs.length)],

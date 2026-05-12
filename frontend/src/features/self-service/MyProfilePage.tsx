@@ -185,16 +185,16 @@ export default function MyProfilePage() {
     const fullName = profile.name || `${profile.firstName || ''} ${profile.lastName || ''}`.trim();
 
     return (
-        <div className="mx-auto max-w-5xl space-y-6 p-6">
-            <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-                <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 px-8 py-8 text-white">
-                    <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 text-white">
-                                <User size={28} />
+        <div className="mx-auto max-w-5xl space-y-4 sm:space-y-6 p-4 sm:p-6">
+            <section className="overflow-hidden rounded-2xl sm:rounded-[28px] border border-slate-200 bg-white shadow-sm">
+                <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-blue-900 px-4 sm:px-8 py-6 sm:py-8 text-white">
+                    <div className="flex flex-col gap-4 sm:gap-6 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-center gap-3 sm:gap-4">
+                            <div className="flex h-12 w-12 sm:h-16 sm:w-16 items-center justify-center rounded-xl sm:rounded-2xl bg-white/10 text-white">
+                                <User size={24} />
                             </div>
                             <div>
-                                <h1 className="text-3xl font-black tracking-tight">{fullName || 'Mi perfil'}</h1>
+                                <h1 className="text-xl sm:text-3xl font-black tracking-tight">{fullName || 'Mi perfil'}</h1>
                                 <div className="mt-2 flex flex-wrap gap-3 text-sm text-blue-100">
                                     {profile.jobTitle && <span>{profile.jobTitle}</span>}
                                     {profile.department && <span>{profile.department}</span>}
@@ -209,15 +209,15 @@ export default function MyProfilePage() {
                     </div>
                 </div>
 
-                <div className="grid gap-4 px-8 py-6 md:grid-cols-3">
+                <div className="grid gap-4 px-4 sm:px-8 py-4 sm:py-6 md:grid-cols-3">
                     <InfoTile icon={<Mail size={16} />} label="Email" value={profile.email || 'No disponible'} />
                     <InfoTile icon={<Phone size={16} />} label="Telefono" value={profile.phone || 'Sin registrar'} />
                     <InfoTile icon={<Shield size={16} />} label="Alta" value={profile.entryDate ? new Date(profile.entryDate).toLocaleDateString() : 'No disponible'} />
                 </div>
             </section>
 
-            <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-                <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+            <form onSubmit={handleSubmit} className="grid gap-4 sm:gap-6 lg:grid-cols-[1.3fr_1fr]">
+                <section className="rounded-2xl sm:rounded-[28px] border border-slate-200 bg-white p-4 sm:p-6 shadow-sm">
                     <div className="mb-6">
                         <h2 className="text-xl font-bold text-slate-900">Contacto</h2>
                         <p className="text-sm text-slate-500">Mantén actualizados tus datos de contacto personales.</p>

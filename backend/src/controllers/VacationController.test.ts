@@ -7,6 +7,7 @@ import { prisma } from '../lib/prisma';
 vi.mock('../lib/prisma', () => ({
     prisma: {
         vacation: {
+            count: vi.fn(),
             findMany: vi.fn(),
             findFirst: vi.fn(),
             create: vi.fn(),
@@ -86,6 +87,7 @@ describe('VacationController', () => {
                 { id: 'v1', employeeId: 'e1', startDate: new Date(), endDate: new Date(), status: 'PENDING' },
                 { id: 'v2', employeeId: 'e2', startDate: new Date(), endDate: new Date(), status: 'APPROVED' }
             ];
+            (prisma.vacation.count as any).mockResolvedValue(2);
             (prisma.vacation.findMany as any).mockResolvedValue(mockVacations);
 
             await VacationController.getAll(req, res);
@@ -131,15 +133,19 @@ describe('VacationController', () => {
                 { id: 'v1', employeeId: empId, startDate: new Date(), status: 'PENDING' }
             ];
             (prisma.employee.findUnique as any).mockResolvedValue({ id: empId, companyId: 'company-1' });
+            (prisma.vacation.count as any).mockResolvedValue(1);
             (prisma.vacation.findMany as any).mockResolvedValue(mockVacations);
 
             await VacationController.getByEmployee(req, res);
 
-            expect(prisma.vacation.findMany).toHaveBeenCalledWith({
+            expect(prisma.vacation.findMany).toHaveBeenCalledWith(expect.objectContaining({
                 where: { employeeId: empId },
                 orderBy: { startDate: 'desc' }
-            });
-            expect(res.json).toHaveBeenCalledWith(mockVacations);
+            }));
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true,
+                data: mockVacations
+            }));
         });
 
         it('should allow manager to see company vacations within scope', async () => {
@@ -151,6 +157,7 @@ describe('VacationController', () => {
             const res = mockResponse();
 
             (prisma.employee.findUnique as any).mockResolvedValue({ id: subordinateId, companyId: 'company-1' });
+            (prisma.vacation.count as any).mockResolvedValue(0);
             (prisma.vacation.findMany as any).mockResolvedValue([]);
 
             await VacationController.getByEmployee(req, res);

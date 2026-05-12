@@ -39,29 +39,25 @@ jobs:
         if: matrix.component == 'backend'
         run: |
           cd backend
-          npm run lint || true
-        continue-on-error: true
+          npm run lint
 
-      - name: Run ESLint (frontend)
+      - name: Run ESLint
         if: matrix.component == 'frontend'
         run: |
           cd frontend
-          npm run lint || true
-        continue-on-error: true
+          npm run lint
 
       - name: TypeScript type check
         if: matrix.component == 'backend'
         run: |
           cd backend
           npx tsc --noEmit
-        continue-on-error: true
 
       - name: TypeScript type check (frontend)
         if: matrix.component == 'frontend'
         run: |
           cd frontend
           npx tsc --noEmit
-        continue-on-error: true
 
   # Job 2: Backend Tests with Coverage
   backend-tests:
@@ -124,7 +120,7 @@ jobs:
       - name: Run tests with coverage
         run: |
           cd backend
-          node --require ./instrument.js dist/backend/src/index.js & npm run test:coverage
+          npm run test:coverage
         env:
           JWT_SECRET: test-jwt-secret-for-ci
           ENCRYPTION_KEY: 12345678901234567890123456789012
@@ -168,7 +164,7 @@ jobs:
       - name: Run tests
         run: |
           cd frontend
-          npm run test -- --coverage --watchAll=false
+          npm run test:coverage -- --run
         env:
           VITE_API_URL: http://localhost:3000/api
 
@@ -207,7 +203,6 @@ jobs:
           docker build -f backend/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-backend:${{ github.sha }} -t ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-backend:latest .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-backend:${{ github.sha }}
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-backend:latest
-        continue-on-error: true
 
       - name: Build and push frontend image
         if: github.event_name != 'pull_request'
@@ -215,7 +210,6 @@ jobs:
           docker build -f frontend/Dockerfile -t ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-frontend:${{ github.sha }} -t ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-frontend:latest .
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-frontend:${{ github.sha }}
           docker push ${{ secrets.DOCKERHUB_USERNAME }}/rrhh-frontend:latest
-        continue-on-error: true
 
       - name: Build images (PR only - no push)
         if: github.event_name == 'pull_request'
@@ -271,5 +265,4 @@ jobs:
           curl -X POST ${{ secrets.COOLIFY_WEBHOOK_URL }}
         env:
           COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
-        continue-on-error: true
 

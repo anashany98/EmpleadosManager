@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../api/client';
 import { toast } from 'sonner';
 import { HardHat, Plus, Trash2, Clock, MapPin, Loader2, ArrowRight, Info } from 'lucide-react';
@@ -45,11 +45,7 @@ export default function EmployeeProjects({ employeeId }: { employeeId: string })
         return days * dailyHours;
     };
 
-    useEffect(() => {
-        fetchData();
-    }, [employeeId]);
-
-    const fetchData = async () => {
+    const fetchData = useCallback(async () => {
         setLoading(true);
         try {
             const [projRes, workRes] = await Promise.all([
@@ -58,12 +54,16 @@ export default function EmployeeProjects({ employeeId }: { employeeId: string })
             ]);
             setProjects(projRes.data || projRes);
             setWorkEntries(workRes.data || workRes);
-        } catch (error) {
+        } catch {
             toast.error('Error al cargar datos de obras');
         } finally {
             setLoading(false);
         }
-    };
+    }, [employeeId]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleAddWork = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -90,7 +90,7 @@ export default function EmployeeProjects({ employeeId }: { employeeId: string })
             toast.success('Periodo de obra registrado');
             setNotes('');
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Error al guardar registro');
         } finally {
             setSaving(false);
@@ -116,7 +116,7 @@ export default function EmployeeProjects({ employeeId }: { employeeId: string })
             setNewProjCode('');
             setNewProjDest('');
             toast.success('Obra creada correctamente');
-        } catch (error) {
+        } catch {
             toast.error('Error al crear obra');
         }
     };
@@ -127,7 +127,7 @@ export default function EmployeeProjects({ employeeId }: { employeeId: string })
             await api.delete(`/employee-project-work/${id}`);
             toast.success('Registro eliminado');
             fetchData();
-        } catch (error) {
+        } catch {
             toast.error('Error al eliminar');
         }
     };

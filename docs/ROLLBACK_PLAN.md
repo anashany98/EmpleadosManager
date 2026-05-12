@@ -3,6 +3,24 @@
 ## Propósito
 Este documento describe el procedimiento para revertir cambios en producción de manera segura y rápida.
 
+## Regla Obligatoria Antes de Migrar
+
+No ejecutes migraciones en producción sin backup verificable. Antes de `prisma migrate deploy`:
+
+```bash
+mkdir -p backups
+docker compose exec postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backups/pre-migration-$(date +%Y%m%d%H%M%S).sql
+npm run db:status
+```
+
+El backup debe existir, tener tamaño mayor que cero y poder restaurarse en staging. Si `npm run db:status` muestra drift o migraciones desconocidas, detén el despliegue y resuelve el historial en staging.
+
+## No Hacer
+
+- No ejecutar `prisma migrate reset --force` en producción.
+- No borrar filas de `_prisma_migrations` sin backup y aprobación explícita.
+- No desplegar una imagen nueva si el rollback de base de datos no está probado.
+
 ---
 
 ## 🚨 Cuándo Hacer Rollback

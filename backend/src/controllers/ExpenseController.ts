@@ -18,10 +18,10 @@ export const ExpenseController = {
         const file = req.file;
         if (!file) return res.status(400).json({ error: 'No se ha subido ningún archivo' });
 
+        let worker;
         try {
-            const worker = await createWorker('spa');
+            worker = await createWorker('spa');
             const { data: { text } } = await worker.recognize(file.buffer);
-            await worker.terminate();
 
             // Limpieza básica del texto OCR para mejorar la detección
             const cleanText = text.replace(/\s+/g, ' ').toLowerCase();
@@ -32,7 +32,7 @@ export const ExpenseController = {
             const amounts: number[] = [];
             let match;
             while ((match = amountRegex.exec(cleanText)) !== null) {
-                let val = match[1].replace(',', '.');
+                const val = match[1].replace(',', '.');
                 amounts.push(parseFloat(val));
             }
 
@@ -49,7 +49,7 @@ export const ExpenseController = {
 
             // 2. Buscar fechas Mejorado
             // Soporta dd/mm/yyyy, dd-mm-yyyy, y formatos con espacios o puntos
-            const dateRegex = /(\d{1,2})[\/\-\. ](\d{1,2})[\/\-\. ](\d{4}|\d{2})/;
+            const dateRegex = /(\d{1,2})[/. -](\d{1,2})[/. -](\d{4}|\d{2})/;
             const dateMatch = cleanText.match(dateRegex);
             let suggestedDate = null;
             if (dateMatch) {
@@ -73,6 +73,10 @@ export const ExpenseController = {
         } catch (error) {
             log.error({ error }, 'Error OCR Gastos');
             throw new AppError('Error al procesar el recibo mediante OCR', 500);
+        } finally {
+            if (worker) {
+                await worker.terminate();
+            }
         }
     },
 
@@ -296,8 +300,8 @@ export const ExpenseController = {
             }
 
             if (StorageService.provider === 'local') {
-                const fs = require('fs');
-                const path = require('path');
+                const fs = await import('fs');
+                const path = await import('path');
                 const filePath = path.join(process.cwd(), 'uploads', expense.receiptUrl);
                 if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
                 return res.download(filePath);

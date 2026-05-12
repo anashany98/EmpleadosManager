@@ -14,15 +14,13 @@ export class CostReportService {
         const companyId = filters.companyId || 'global';
         const cacheKey = CacheKeys.costs(companyId, year, month);
 
-        return CacheService.wrap(cacheKey, async () => {
-            return this.computeCompanyCostData(year, month, filters);
-        }, COST_CACHE_TTL);
+        return CacheService.wrap(cacheKey, async () => this.computeCompanyCostData(year, month, filters), COST_CACHE_TTL);
     }
 
     /**
      * Computes the actual cost data (called on cache miss).
      */
-    private static async computeCompanyCostData(year: number, month?: number, filters: any = {}) {
+    private static async computeCompanyCostData(year: number, month?: number, _filters: any = {}) {
         const whereBatch: any = { year };
         if (month) whereBatch.month = month;
 

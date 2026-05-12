@@ -57,7 +57,7 @@ EXPOSE 80
 
 # Health check - verify nginx is serving the frontend
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+    CMD curl -fsS http://127.0.0.1/ >/dev/null || exit 1
 
 # Metadata labels
 LABEL org.opencontainers.image.title="EmpleadosManager Frontend" \

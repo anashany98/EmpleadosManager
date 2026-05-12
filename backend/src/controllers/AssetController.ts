@@ -5,6 +5,7 @@ import { AppError } from '../utils/AppError';
 import { AuthenticatedRequest } from '../types/express';
 import { assertCompanyAccess, isGlobalAdmin } from '../utils/companyAccess';
 import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
+import { InventoryService } from '../services/InventoryService';
 
 export const AssetController = {
     getAll: async (req: Request, res: Response) => {
@@ -196,7 +197,8 @@ export const AssetController = {
                         select: {
                             companyId: true
                         }
-                    }
+                    },
+                    inventoryItem: true
                 }
             });
 
@@ -213,6 +215,16 @@ export const AssetController = {
                 assertCompanyAccess(user, companyId, 'No autorizado para eliminar activos de otra empresa');
             }
 
+            // If asset is linked to inventory, return it to stock before deletion
+            if (existing.inventoryItemId && existing.status === 'ASSIGNED') {
+                try {
+                    await InventoryService.returnAsset(id, user.id, 'Eliminación de activo');
+                } catch (returnError) {
+                    console.warn('Failed to return asset to inventory during deletion:', returnError);
+                    // Continue with deletion even if return fails
+                }
+            }
+
             await prisma.asset.delete({ where: { id } });
             return ApiResponse.success(res, null, 'Activo eliminado correctamente');
         } catch (error) {
@@ -220,6 +232,50 @@ export const AssetController = {
                 throw error;
             }
             throw new AppError('Error al eliminar activo', 500);
+        }
+    },
+
+    returnAsset: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const existing = await prisma.asset.findUnique({
+                where: { id },
+                include: {
+                    employee: {
+                        select: {
+                            companyId: true
+                        }
+                    },
+                    inventoryItem: true
+                }
+            });
+
+            if (!existing) {
+                throw new AppError('Activo no encontrado', 404);
+            }
+
+            if (!isGlobalAdmin(user)) {
+                const companyId = existing.employee?.companyId;
+                if (!companyId) {
+                    throw new AppError('Los activos sin empleado asignado solo pueden gestionarlos administradores globales', 403);
+                }
+
+                assertCompanyAccess(user, companyId, 'No autorizado para devolver activos de otra empresa');
+            }
+
+            if (existing.status !== 'ASSIGNED') {
+                throw new AppError('Solo se pueden devolver activos con estado ASIGNADO', 400);
+            }
+
+            const result = await InventoryService.returnAsset(id, user.id, 'Devolución normal');
+
+            return ApiResponse.success(res, result, 'Activo devuelto correctamente');
+        } catch (error) {
+            if (error instanceof AppError) {
+                throw error;
+            }
+            throw new AppError('Error al devolver activo', 500);
         }
     }
 };

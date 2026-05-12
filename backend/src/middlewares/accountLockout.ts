@@ -8,6 +8,35 @@ const log = createLogger('AccountLockout');
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MINUTES = 15;
 
+function getLoginIdentifier(body: any): string | null {
+    const raw = body?.identifier || body?.email || body?.dni;
+    if (typeof raw !== 'string') {
+        return null;
+    }
+
+    const trimmed = raw.trim();
+    return trimmed || null;
+}
+
+async function findUserByLoginIdentifier(identifier: string) {
+    const normalized = identifier.trim();
+    const lower = normalized.toLowerCase();
+    const upper = normalized.toUpperCase();
+
+    return prisma.user.findFirst({
+        where: {
+            OR: [
+                { email: normalized },
+                { email: lower },
+                { dni: normalized },
+                { dni: lower },
+                { dni: upper }
+            ]
+        },
+        select: { id: true, failedLoginAttempts: true, lockedUntil: true }
+    });
+}
+
 /**
  * Middleware that checks if an account is temporarily locked due to too many
  * failed login attempts. Must be placed BEFORE the login handler.
@@ -21,15 +50,12 @@ export async function checkAccountLockout(req: Request, res: Response, next: Nex
             return next();
         }
 
-        const { email } = req.body;
-        if (!email) {
+        const identifier = getLoginIdentifier(req.body);
+        if (!identifier) {
             return next();
         }
 
-        const user = await prisma.user.findUnique({
-            where: { email: email.toLowerCase() },
-            select: { id: true, failedLoginAttempts: true, lockedUntil: true }
-        });
+        const user = await findUserByLoginIdentifier(identifier);
 
         if (!user) {
             // Don't reveal that the user doesn't exist
@@ -39,7 +65,7 @@ export async function checkAccountLockout(req: Request, res: Response, next: Nex
         // Check if account is currently locked
         if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
             const remainingSeconds = Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 1000);
-            log.warn({ email, remainingSeconds }, 'Account locked, login rejected');
+            log.warn({ identifier, remainingSeconds }, 'Account locked, login rejected');
             return res.status(423).json({
                 status: 423,
                 message: `Cuenta bloqueada por seguridad. Intenta de nuevo en ${remainingSeconds} segundos.`
@@ -65,16 +91,13 @@ export async function checkAccountLockout(req: Request, res: Response, next: Nex
  * Records a failed login attempt and locks the account if the threshold is exceeded.
  * Should be called from the login handler when authentication fails.
  */
-export async function recordFailedLogin(email: string): Promise<void> {
+export async function recordFailedLogin(identifier: string): Promise<void> {
     try {
         if (!isAuthThrottlingEnabled()) {
             return;
         }
 
-        const user = await prisma.user.findUnique({
-            where: { email: email.toLowerCase() },
-            select: { id: true, failedLoginAttempts: true }
-        });
+        const user = await findUserByLoginIdentifier(identifier);
 
         if (!user) return;
 
@@ -86,7 +109,7 @@ export async function recordFailedLogin(email: string): Promise<void> {
                 where: { id: user.id },
                 data: { failedLoginAttempts: newAttemptCount, lockedUntil }
             });
-            log.warn({ email, attempts: newAttemptCount, lockedUntil }, 'Account locked due to failed attempts');
+            log.warn({ identifier, attempts: newAttemptCount, lockedUntil }, 'Account locked due to failed attempts');
         } else {
             await prisma.user.update({
                 where: { id: user.id },
@@ -94,7 +117,7 @@ export async function recordFailedLogin(email: string): Promise<void> {
             });
         }
     } catch (error) {
-        log.error({ error, email }, 'Error recording failed login');
+        log.error({ error, identifier }, 'Error recording failed login');
     }
 }
 
@@ -102,17 +125,22 @@ export async function recordFailedLogin(email: string): Promise<void> {
  * Resets the failed login counter after a successful login.
  * Should be called from the login handler when authentication succeeds.
  */
-export async function resetFailedLogin(email: string): Promise<void> {
+export async function resetFailedLogin(identifier: string): Promise<void> {
     try {
         if (!isAuthThrottlingEnabled()) {
             return;
         }
 
-        await prisma.user.updateMany({
-            where: { email: email.toLowerCase(), failedLoginAttempts: { gt: 0 } },
+        const user = await findUserByLoginIdentifier(identifier);
+        if (!user || !user.failedLoginAttempts) {
+            return;
+        }
+
+        await prisma.user.update({
+            where: { id: user.id },
             data: { failedLoginAttempts: 0, lockedUntil: null }
         });
     } catch (error) {
-        log.error({ error, email }, 'Error resetting failed login counter');
+        log.error({ error, identifier }, 'Error resetting failed login counter');
     }
 }

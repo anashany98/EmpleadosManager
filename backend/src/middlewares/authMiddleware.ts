@@ -136,8 +136,7 @@ export const requireGlobalAdmin = (req: Request, res: Response, next: NextFuncti
     next();
 };
 
-export const checkPermission = (module: PermissionModule, level: PermissionLevel) => {
-    return (req: Request, res: Response, next: NextFunction) => {
+export const checkPermission = (module: PermissionModule, level: PermissionLevel) => (req: Request, res: Response, next: NextFunction) => {
         const user = (req as AuthenticatedRequest).user;
 
         if (!user) {
@@ -150,7 +149,6 @@ export const checkPermission = (module: PermissionModule, level: PermissionLevel
 
         next();
     };
-};
 
 export const allowSelfOrRole = (roles: string[] = ['admin'], paramName = 'id') => {
     const normalizedRoles = roles.map((role) => normalizeRole(role));
@@ -177,8 +175,7 @@ export const allowSelfOrRole = (roles: string[] = ['admin'], paramName = 'id') =
 
 type PolicyTargetResolver = (req: AuthenticatedRequest) => Promise<AccessTarget | null | undefined> | AccessTarget | null | undefined;
 
-export const authorize = (policyKey: DomainPolicyKey, resolveTarget?: PolicyTargetResolver) => {
-    return async (req: Request, res: Response, next: NextFunction) => {
+export const authorize = (policyKey: DomainPolicyKey, resolveTarget?: PolicyTargetResolver) => async (req: Request, res: Response, next: NextFunction) => {
         const authReq = req as AuthenticatedRequest;
         const user = authReq.user;
 
@@ -194,4 +191,3 @@ export const authorize = (policyKey: DomainPolicyKey, resolveTarget?: PolicyTarg
 
         next();
     };
-};

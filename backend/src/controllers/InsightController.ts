@@ -162,7 +162,7 @@ export class InsightController {
                 if (!emp.entryDate) return false;
                 const entry = new Date(emp.entryDate);
                 const currentYear = now.getFullYear();
-                let anniversary = new Date(currentYear, entry.getMonth(), entry.getDate());
+                const anniversary = new Date(currentYear, entry.getMonth(), entry.getDate());
                 if (anniversary < now) {
                     anniversary.setFullYear(currentYear + 1);
                 }
@@ -321,7 +321,7 @@ export class InsightController {
                             date: thisYearAnniv,
                             originalDate: emp.entryDate,
                             type: 'ANNIVERSARY',
-                            years: years,
+                            years,
                             description: `${years} ${years === 1 ? 'año' : 'años'} en la empresa`
                         });
                     }

@@ -1,6 +1,7 @@
 import { Building2, MessageCircle, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { Employee } from '../types';
+import { getEmployeeDisplayName, getEmployeeInitials } from '../../../utils/employeeDisplay';
 
 interface EmployeesMobileListProps {
     employees: Employee[];
@@ -29,7 +30,10 @@ export function EmployeesMobileList({ employees, isLoading, searchTerm, activeFi
                     </p>
                 </div>
             ) : (
-                employees.map((employee) => (
+                employees.map((employee) => {
+                    const displayName = getEmployeeDisplayName(employee, 'Sin nombre');
+
+                    return (
                     <article
                         key={employee.id}
                         className="block bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl p-4 shadow-sm active:scale-[0.98] transition-all cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
@@ -42,15 +46,15 @@ export function EmployeesMobileList({ employees, isLoading, searchTerm, activeFi
                                 navigate(`/employees/${employee.id}`);
                             }
                         }}
-                        aria-label={`${employee.name || `${employee.firstName} ${employee.lastName}`}, ${employee.department || 'General'}, ${employee.active ? 'Activo' : 'Inactivo'}`}
+                        aria-label={`${displayName}, ${employee.department || 'General'}, ${employee.active ? 'Activo' : 'Inactivo'}`}
                     >
                         <div className="flex items-center gap-4 mb-3">
                             <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/40 dark:to-indigo-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-lg shadow-inner shrink-0">
-                                {(employee.name || employee.firstName || '?').charAt(0)}
+                                {getEmployeeInitials(employee, '?')}
                             </div>
                             <div className="min-w-0 flex-1">
                                 <h3 className="font-bold text-slate-900 dark:text-white truncate">
-                                    {employee.name || `${employee.firstName} ${employee.lastName}`}
+                                    {displayName}
                                 </h3>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 font-mono truncate">{employee.dni}</p>
                             </div>
@@ -78,7 +82,7 @@ export function EmployeesMobileList({ employees, isLoading, searchTerm, activeFi
                             <div className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded">{employee.subaccount465}</div>
                         </div>
                     </article>
-                ))
+                )})
             )}
         </div>
     );

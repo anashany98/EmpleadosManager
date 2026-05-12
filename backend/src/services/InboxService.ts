@@ -4,8 +4,6 @@ import { prisma } from '../lib/prisma';
 import { v4 as uuidv4 } from 'uuid';
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
-import jsQR from 'jsqr';
-import { PDFDocument } from 'pdf-lib';
 import * as chokidar from 'chokidar';
 import { queueService, QUEUES } from './QueueService';
 import { loggers } from './LoggerService';
@@ -44,8 +42,8 @@ export class InboxService {
                     ]
                 });
             }
-        } catch (error) {
-            log.error({ error }, 'Error seeding mappings');
+        } catch {
+            log.error('Error seeding mappings');
         }
     }
 
@@ -82,7 +80,7 @@ export class InboxService {
         // For now, ignoreInitial: true to avoid reprocessing old files every restart unless we want to retry failed ones.
         // Better: ignoreInitial: true, and have a separate 'retryPending' method if needed.
         this.watcher = chokidar.watch(this.inboxDir, {
-            ignored: /(^|[\/\\])\../, // ignore dotfiles
+            ignored: /(^|[/\\])\./, // ignore dotfiles
             persistent: true,
             ignoreInitial: true,
             awaitWriteFinish: {
@@ -111,8 +109,8 @@ export class InboxService {
                 if (fs.statSync(path.join(this.inboxDir, file)).isDirectory() || file.startsWith('.')) continue;
                 await this.processFile(path.join(this.inboxDir, file));
             }
-        } catch (error) {
-            log.error({ error }, 'Error syncing folder');
+        } catch (_) {
+            log.error({ error: _ }, 'Error syncing folder');
         }
     }
 
@@ -127,8 +125,8 @@ export class InboxService {
                 removeOnComplete: true,
                 removeOnFail: 100 // Keep last 100 failed jobs
             });
-        } catch (error) {
-            log.error({ filename, error }, 'Error enqueuing file');
+        } catch (_) {
+            log.error({ error: _, filename }, 'Error enqueuing file');
         } finally {
             this.processing.delete(filename);
         }
@@ -184,15 +182,15 @@ export class InboxService {
                                 }
                             }
                         }
-                        await client.messageFlagsAdd(uid.toString(), ['\\Seen']);
+                        await client.messageFlagsAdd(uid.toString(), ['Seen']);
                     }
                 }
             } finally {
                 lock.release();
             }
             await client.logout();
-        } catch (error) {
-            log.error({ error }, 'Error polling emails');
+        } catch (_) {
+            log.error({ error: _ }, 'Error polling emails');
         } finally {
             this.processing.delete('email-poll');
         }

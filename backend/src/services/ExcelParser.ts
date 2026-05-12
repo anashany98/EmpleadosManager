@@ -24,12 +24,13 @@ export class ExcelParser {
                 // Convert Date back to Excel serial number
                 // to maintain compatibility with xlsx sheet_to_json(raw:true)
                 return ((cell.value as Date).getTime() / 86400000) + 25569;
-            case ValueType.Formula:
+            case ValueType.Formula: {
                 const result = (cell.value as any).result;
                 if (result instanceof Date) {
                     return (result.getTime() / 86400000) + 25569;
                 }
                 return result;
+            }
             case ValueType.RichText:
                 return (cell.value as ExcelJS.CellRichTextValue).richText.map(r => r.text).join('');
             case ValueType.Hyperlink:

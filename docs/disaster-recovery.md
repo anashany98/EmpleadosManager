@@ -17,18 +17,56 @@
 ### Tipos de Backups
 
 1. **Snapshots (Cada hora)**
-   - Solo base de datos
-   - Retención: 24 snapshots
-   - Ubicación: `/backups/snapshots/`
+   - Base de datos PostgreSQL
+   - Retención: 24 snapshots (configurable via BACKUP_RETENTION_DAYS)
+   - Ubicación: `/backups/snapshots/` + S3 si BACKUP_S3_ENABLED=true
 
 2. **Full Backup (Diario)**
-   - Base de datos + archivos subidos
+   - Base de datos + archivos subidos (uploads)
    - Retención: 30 días
-   - Ubicación: `/backups/full/`
+   - Ubicación: `/backups/full/` + S3
 
-3. **Wal Archiving (Continuo)**
+3. **Uploads Backup**
+   - Scripts dedicados: `scripts/backup-uploads.sh`
+   - Incluye: documentos, archivos de empleados, contratos
+   - Puede ejecutarse manualmente o via cron
+
+4. **Wal Archiving (Continuo)**
    - Web Archive Loss para recuperación point-in-time
    - Configurado en PostgreSQL
+
+### Configuración de Backups
+
+| Variable | Descripción | Valor Default |
+|---------|-------------|---------------|
+| BACKUP_SCHEDULE | Cron para backups de DB | `0 2 * * *` (2 AM diario) |
+| BACKUP_RETENTION_DAYS | Retención de backups locales | 30 |
+| BACKUP_S3_ENABLED | Habilitar upload a S3 | false |
+| BACKUP_S3_BUCKET | Bucket S3 para backups | - |
+| AWS_ACCESS_KEY_ID | Credencial AWS | - |
+| AWS_SECRET_ACCESS_KEY | Secret AWS | - |
+| AWS_REGION | Region S3 | us-east-1 |
+| S3_ENDPOINT | Endpoint S3 (para MinIO/S3 compatible) | - |
+
+### Estrategias de Recuperación
+
+#### Recuperación Local
+```bash
+# Verificar backups
+./scripts/verify-backups.sh
+
+# Restaurar base de datos
+pg_restore -h postgres -U rrhh -d rrhh -v /backups/snapshots/latest.dump
+```
+
+#### Recuperación desde S3
+```bash
+# Descargar backup de S3
+aws s3 cp s3://backup-bucket/snapshots/latest.dump /tmp/
+
+# Restaurar
+pg_restore -h postgres -U rrhh -d rrhh -v /tmp/latest.dump
+```
 
 ---
 

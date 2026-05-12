@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { test as base } from '@playwright/test';
 
 const authenticatedTest = base.extend({
+   
   storageState: async ({ browser }, use) => {
     const context = await browser.newContext();
     const page = await context.newPage();

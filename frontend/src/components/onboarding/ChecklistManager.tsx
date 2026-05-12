@@ -4,6 +4,7 @@ import { api } from '../../api/client';
 import { toast } from 'sonner';
 import { Plus, Trash2, ListChecks, UserPlus, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getEmployeeDisplayName } from '../../utils/employeeDisplay';
 
 interface Template {
     id: string;
@@ -11,6 +12,14 @@ interface Template {
     description: string;
     items: string[];
     createdAt: string;
+}
+
+interface Employee {
+    id: string;
+    name?: string;
+    firstName?: string;
+    lastName?: string;
+    email?: string;
 }
 
 export default function ChecklistManager() {
@@ -28,7 +37,7 @@ export default function ChecklistManager() {
     const [assignModalOpen, setAssignModalOpen] = useState(false);
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
     const [employeeIdToAssign, setEmployeeIdToAssign] = useState('');
-    const [employees, setEmployees] = useState<any[]>([]); // simplified
+    const [employees, setEmployees] = useState<Employee[]>([]);
 
     useEffect(() => {
         fetchTemplates();
@@ -79,7 +88,7 @@ export default function ChecklistManager() {
             setNewDesc('');
             setNewItems([]);
             fetchTemplates();
-        } catch (error) {
+        } catch {
             toast.error('Error al crear plantilla');
         }
     };
@@ -95,7 +104,7 @@ export default function ChecklistManager() {
             setAssignModalOpen(false);
             setSelectedTemplate(null);
             setEmployeeIdToAssign('');
-        } catch (error) {
+        } catch {
             toast.error('Error al asignar');
         }
     };
@@ -218,7 +227,7 @@ export default function ChecklistManager() {
                                     >
                                         <option value="">Selecciona un empleado...</option>
                                         {employees.map(e => (
-                                            <option key={e.id} value={e.id}>{e.firstName} {e.lastName}</option>
+                                            <option key={e.id} value={e.id}>{getEmployeeDisplayName(e)}</option>
                                         ))}
                                     </select>
                                 </div>

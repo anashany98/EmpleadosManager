@@ -1,12 +1,10 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import jwt from 'jsonwebtoken';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AuthService } from '../services/AuthService';
 import crypto from 'crypto';
 import { issueCsrfToken } from '../middlewares/csrfMiddleware';
-import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { AuditService } from '../services/AuditService';
 import { signAccessToken } from '../utils/accessTokens';
@@ -20,22 +18,10 @@ if (!JWT_SECRET) {
 }
 const REFRESH_TOKEN_EXPIRES_IN = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
 
-const generateRefreshToken = () => {
-    return crypto.randomBytes(40).toString('hex');
-};
+const generateRefreshToken = () => crypto.randomBytes(40).toString('hex');
 
 const hashToken = (token: string) =>
     crypto.createHash('sha256').update(token).digest('hex');
-
-const generateTempPassword = () => {
-    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-    const lower = 'abcdefghijkmnopqrstuvwxyz';
-    const numbers = '23456789';
-    const symbols = '!@#$%*_-';
-    const pick = (chars: string) => chars[Math.floor(Math.random() * chars.length)];
-    const body = crypto.randomBytes(8).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8);
-    return `${pick(upper)}${pick(lower)}${pick(numbers)}${pick(symbols)}${body}`;
-};
 
 const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
@@ -64,11 +50,6 @@ const FRONTEND_URL = process.env.FRONTEND_URL;
 if (!FRONTEND_URL && process.env.NODE_ENV === 'production') {
     throw new Error('FATAL: FRONTEND_URL must be defined in production.');
 }
-const ensureCsrfCookie = (req: Request, res: Response) => {
-    const existing = (req as any).cookies?.[CSRF_COOKIE_NAME];
-    if (!existing) issueCsrfToken(res);
-};
-
 export const AuthController = {
     login: async (req: Request, res: Response) => {
         const { email, dni, password, identifier } = req.body;
@@ -88,7 +69,7 @@ export const AuthController = {
             const userAgent = req.headers['user-agent'];
             await AuditService.logLoginSuccess(result.user.id, ipAddress, userAgent);
 
-            res.cookie('access_token', result.accessToken, buildCookieOptions(15 * 60 * 1000));
+            res.cookie('access_token', result.accessToken, buildCookieOptions(60 * 60 * 1000)); // 1 hour
             res.cookie('refresh_token', result.refreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
             issueCsrfToken(res);
 

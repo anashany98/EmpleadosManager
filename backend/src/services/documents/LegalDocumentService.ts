@@ -3,7 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { prisma } from '../../lib/prisma';
 import { StorageService } from '../StorageService';
-import { getLogoPath, addQRCodeToPDF, buildPdfBuffer } from './DocumentPdfUtils';
+import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
+import { CompanyDocumentTemplateService } from './DocumentTemplateService';
+import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
 
 export const generateNDA = async (employeeId: string, authorName?: string): Promise<any> => {
     const employee = await prisma.employee.findUnique({ where: { id: employeeId }, include: { company: true } });
@@ -11,38 +13,32 @@ export const generateNDA = async (employeeId: string, authorName?: string): Prom
 
     const doc = new PDFDocument({ margin: 50 });
     const fileName = `NDA_${employee.dni}_${Date.now()}.pdf`;
-    await addQRCodeToPDF(doc, { t: 'NDA' }, employeeId);
 
     const logoPath = getLogoPath();
-    if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+    const template = await CompanyDocumentTemplateService.getTemplate('NDA', employee.companyId);
+    const context = await CompanyDocumentTemplateService.buildContext(employeeId, {
+        includeVacations: true,
+        authorName
+    });
+    const layout = parseLayoutTemplate(template?.content || '');
 
-    doc.y = 120;
-    doc.fontSize(16).font('Helvetica-Bold').text('ACUERDO DE CONFIDENCIALIDAD', { align: 'center' });
-    doc.moveDown(2);
+    if (layout) {
+        await renderLayoutTemplate(doc, layout, context as Record<string, unknown>, {
+            employeeId,
+            documentType: 'NDA'
+        });
+    } else {
+        await addQRCodeToPDF(doc, { t: 'NDA' }, employeeId);
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+        doc.y = logoPath ? 120 : 50;
+        const rendered = CompanyDocumentTemplateService.renderTemplate(template?.content || '', context);
+        writeTemplateText(doc, rendered);
+        doc.moveDown(4);
 
-    doc.fontSize(10).font('Helvetica').text('REUNIDOS', { align: 'center', underline: true });
-    doc.moveDown();
-    doc.text(`De una parte, ${employee.company?.name || 'LA EMPRESA'}, con CIF ${employee.company?.cif || '...'}.`);
-    doc.text(`De otra parte, D./Dña. ${employee.firstName} ${employee.lastName}, con DNI ${employee.dni} (en adelante, EL TRABAJADOR).`);
-    doc.moveDown(2);
-
-    doc.text('EXPONEN', { align: 'center', underline: true });
-    doc.moveDown();
-    doc.text('Que debido a la relación laboral, el Trabajador tendrá acceso a información confidencial de la Empresa (clientes, know-how, datos financieros, etc.).', { align: 'justify' });
-    doc.moveDown();
-
-    doc.text('CLÁUSULAS', { align: 'center', underline: true });
-    doc.moveDown();
-    doc.text('1. El Trabajador se compromete a guardar el más estricto secreto respecto a toda la información confidencial a la que tenga acceso.', { align: 'justify' });
-    doc.moveDown();
-    doc.text('2. La obligación de confidencialidad subsistirá incluso después de finalizar la relación laboral.', { align: 'justify' });
-    doc.moveDown();
-    doc.text('3. El incumplimiento de este deber podrá ser sancionado conforme al Estatuto de los Trabajadores.', { align: 'justify' });
-    doc.moveDown(4);
-
-    const startY = doc.y;
-    doc.text('Firma Empresa:', 50, startY);
-    doc.text('Firma Trabajador:', 350, startY);
+        const startY = doc.y;
+        doc.text('Firma Empresa:', 50, startY);
+        doc.text('Firma Trabajador:', 350, startY);
+    }
 
     const pdfBuffer = await buildPdfBuffer(doc);
     const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });
@@ -56,40 +52,31 @@ export const generateRGPD = async (employeeId: string, authorName?: string): Pro
 
     const doc = new PDFDocument({ margin: 50 });
     const fileName = `RGPD_${employee.dni}_${Date.now()}.pdf`;
-    await addQRCodeToPDF(doc, { t: 'RGPD' }, employeeId);
 
     const logoPath = getLogoPath();
-    if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+    const template = await CompanyDocumentTemplateService.getTemplate('RGPD', employee.companyId);
+    const context = await CompanyDocumentTemplateService.buildContext(employeeId, {
+        includeVacations: true,
+        authorName
+    });
+    const layout = parseLayoutTemplate(template?.content || '');
 
-    doc.y = 120;
-    doc.fontSize(16).font('Helvetica-Bold').text('INFORMACIÓN SOBRE PROTECCIÓN DE DATOS', { align: 'center' });
-    doc.moveDown(2);
+    if (layout) {
+        await renderLayoutTemplate(doc, layout, context as Record<string, unknown>, {
+            employeeId,
+            documentType: 'RGPD'
+        });
+    } else {
+        await addQRCodeToPDF(doc, { t: 'RGPD' }, employeeId);
+        if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+        doc.y = logoPath ? 120 : 50;
+        const rendered = CompanyDocumentTemplateService.renderTemplate(template?.content || '', context);
+        writeTemplateText(doc, rendered);
+        doc.moveDown(2);
 
-    doc.fontSize(10).font('Helvetica').text('Responsable del Tratamiento:', { underline: true });
-    doc.text(`${employee.company?.name || 'LA EMPRESA'} - CIF: ${employee.company?.cif || '...'}`);
-    doc.moveDown();
-
-    doc.text('Finalidad del Tratamiento:', { underline: true });
-    doc.text('Gestión de la relación laboral, nóminas, prevención de riesgos y cumplimiento de obligaciones legales.', { align: 'justify' });
-    doc.moveDown();
-
-    doc.text('Legitimación:', { underline: true });
-    doc.text('Ejecución del contrato de trabajo y cumplimiento de obligaciones legales.', { align: 'justify' });
-    doc.moveDown();
-
-    doc.text('Destinatarios:', { underline: true });
-    doc.text('Administraciones públicas (Seguridad Social, Hacienda), bancos para el pago de nóminas y entidades colaboradoras (Mutuas).', { align: 'justify' });
-    doc.moveDown();
-
-    doc.text('Derechos:', { underline: true });
-    doc.text('Puede ejercer sus derechos de acceso, rectificación, supresión y oposición dirigiéndose a la dirección de la empresa.', { align: 'justify' });
-    doc.moveDown(3);
-
-    doc.text('He leído y acepto el tratamiento de mis datos personales.', { align: 'center' });
-    doc.moveDown(2);
-
-    const startY = doc.y;
-    doc.text('Firma Trabajador:', 350, startY);
+        const startY = doc.y;
+        doc.text('Firma Trabajador:', 350, startY);
+    }
 
     const pdfBuffer = await buildPdfBuffer(doc);
     const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });
@@ -157,7 +144,7 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
             form.getTextField('día_2')?.setText(day);
             form.getTextField('de_3')?.setText(month); // Assuming de_3 follows de_2? Or maybe pattern differs.
             form.getTextField('de_4')?.setText(year);
-        } catch (e) { /* Ignore if fields don't exist */ }
+        } catch { /* Ignore if fields don't exist */ }
 
         form.flatten();
 
@@ -174,7 +161,7 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
             });
         });
 
-    } catch (e) { console.warn('Error filling some fields:', e); }
+    } catch (_) { console.warn('Error filling some fields:', _); }
 
     const pdfBytes = await pdfDoc.save();
 
@@ -203,7 +190,7 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
             name: 'Modelo 145 (Relleno)',
             category: 'CONTRACT',
             fileUrl: key,
-            employeeId: employeeId
+            employeeId
         }
     });
 

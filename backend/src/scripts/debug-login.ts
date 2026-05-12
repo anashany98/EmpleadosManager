@@ -1,4 +1,6 @@
-﻿
+// DEBUG ONLY SCRIPT - Never run in production!
+// This script is for debugging login issues locally.
+
 import { prisma } from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -12,8 +14,8 @@ if (!JWT_SECRET) {
 
 async function main() {
     console.log('--- START DEBUG LOGIN ---');
-    const loginId = 'admin@admin.com'; // Change if needed
-    const password = 'any';
+    const loginId = process.argv[2] || 'admin@admin.com';
+    const password = process.argv[3] || 'DEBUG_ONLY';
 
     console.log(`Attempting login for: ${loginId}`);
 
@@ -24,7 +26,7 @@ async function main() {
                 OR: [
                     { email: trimmedId },
                     { dni: trimmedId },
-                    { dni: { equals: trimmedId.toUpperCase() } } // Fix logic slightly to match controller structure
+                    { dni: { equals: trimmedId.toUpperCase() } }
                 ]
             }
         });
@@ -44,15 +46,13 @@ async function main() {
 
         if (!match) {
             console.log('Password mismatch (Expected 401)');
-            // continue just to test other parts?
         }
 
         console.log('Generating tokens...');
-        const accessToken = jwt.sign({ id: user.id }, JWT_SECRET || 'test-secret', { expiresIn: '15m' });
+        jwt.sign({ id: user.id }, JWT_SECRET || 'test-secret', { expiresIn: '15m' });
         const refreshToken = crypto.randomBytes(40).toString('hex');
 
         console.log('Creating refresh token in DB...');
-        // Simulating the exact call from controller
         await (prisma as any).refreshToken.create({
             data: {
                 token: refreshToken,
@@ -71,4 +71,3 @@ async function main() {
 }
 
 main().finally(() => prisma.$disconnect());
-

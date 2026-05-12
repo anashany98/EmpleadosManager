@@ -1,6 +1,6 @@
 import multer from 'multer';
 import path from 'path';
-import { validateFileSignature, isPdf, isExcel, isOfficeDoc } from '../utils/fileValidation';
+import { isPdf, isExcel, isOfficeDoc } from '../utils/fileValidation';
 import { AppError } from '../utils/AppError';
 
 export const createMulterOptions = (

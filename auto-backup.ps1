@@ -4,7 +4,7 @@ param (
 )
 
 $ErrorActionPreference = "Stop"
-$LogFile = "c:\Users\Usuari\Desktop\NominasApp\backup.log"
+$LogFile = Join-Path $PSScriptRoot "backup.log"
 $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
 
 function Log-Message {

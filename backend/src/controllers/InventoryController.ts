@@ -4,7 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AppError } from '../utils/AppError';
-import { InventoryService } from '../services/InventoryService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { DocumentTemplateService } from '../services/DocumentTemplateService';
@@ -34,37 +33,43 @@ export const InventoryController = {
             }
 
             return ApiResponse.success(res, items);
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error fetching inventory');
             return ApiResponse.error(res, 'Error al obtener el inventario', 500);
         }
     },
 
-    create: async (req: Request, res: Response) => {
-        try {
-            const { category, name, quantity, minQuantity, description, size } = req.body;
+  create: async (req: Request, res: Response) => {
+    try {
+      const { category, name, quantity, minQuantity, description, size, unitPrice, type, brand, sku, supplier, warehouseLocation } = req.body;
 
-            const existing = await prisma.inventoryItem.findFirst({
-                where: {
-                    name,
-                    size: size || null
-                }
-            });
+      const existing = await prisma.inventoryItem.findFirst({
+        where: {
+          name,
+          size: size || null
+        }
+      });
 
-            if (existing) {
-                return ApiResponse.error(res, 'Ya existe un producto con ese nombre y talla en el inventario', 400);
-            }
+      if (existing) {
+        return ApiResponse.error(res, 'Ya existe un producto con ese nombre y talla en el inventario', 400);
+      }
 
-            const item = await prisma.inventoryItem.create({
-                data: {
-                    category,
-                    name,
-                    quantity: Number(quantity) || 0,
-                    minQuantity: Number(minQuantity),
-                    description,
-                    size
-                }
-            });
+      const item = await prisma.inventoryItem.create({
+        data: {
+          category,
+          name,
+          quantity: Number(quantity) || 0,
+          minQuantity: Number(minQuantity),
+          description,
+          size,
+          unitPrice: unitPrice ? Number(unitPrice) : null,
+          type: type || null,
+          brand: brand || null,
+          sku: sku || null,
+          supplier: supplier || null,
+          warehouseLocation: warehouseLocation || null
+        }
+      });
 
             if (Number(quantity) > 0) {
                 await prisma.inventoryMovement.create({
@@ -79,35 +84,42 @@ export const InventoryController = {
             }
 
             return ApiResponse.success(res, item, 'Producto creado', 201);
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error creating inventory item');
-            return ApiResponse.error(res, error.message || 'Error al crear el producto', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al crear el producto', 500);
         }
     },
 
-    update: async (req: Request, res: Response) => {
-        try {
-            const { id } = req.params;
-            const { category, name, quantity, minQuantity, description, size } = req.body;
+  update: async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { category, name, quantity, minQuantity, description, size, unitPrice, type, brand, sku, supplier, warehouseLocation } = req.body;
 
-            const item = await prisma.inventoryItem.update({
-                where: { id },
-                data: {
-                    category,
-                    name,
-                    quantity: Number(quantity),
-                    minQuantity: Number(minQuantity),
-                    description,
-                    size
-                }
-            });
+      const data: any = {};
+      if (category !== undefined) data.category = category;
+      if (name !== undefined) data.name = name;
+      if (quantity !== undefined) data.quantity = Number(quantity);
+      if (minQuantity !== undefined) data.minQuantity = Number(minQuantity);
+      if (description !== undefined) data.description = description;
+      if (size !== undefined) data.size = size;
+      if (unitPrice !== undefined) data.unitPrice = unitPrice;
+      if (type !== undefined) data.type = type;
+      if (brand !== undefined) data.brand = brand;
+      if (sku !== undefined) data.sku = sku;
+      if (supplier !== undefined) data.supplier = supplier;
+      if (warehouseLocation !== undefined) data.warehouseLocation = warehouseLocation;
 
-            return ApiResponse.success(res, item);
-        } catch (error: any) {
-            log.error({ error }, 'Error updating inventory item');
-            return ApiResponse.error(res, error.message || 'Error al actualizar el producto', 500);
-        }
-    },
+      const item = await prisma.inventoryItem.update({
+        where: { id },
+        data
+      });
+
+      return ApiResponse.success(res, item);
+    } catch (error: any) {
+      log.error({ error }, 'Error updating inventory item');
+      return ApiResponse.error(res, error.message || 'Error al actualizar el producto', 500);
+    }
+  },
 
     delete: async (req: Request, res: Response) => {
         try {
@@ -116,7 +128,7 @@ export const InventoryController = {
                 where: { id }
             });
             return ApiResponse.success(res, null, 'Producto eliminado correctamente');
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error deleting inventory item');
             return ApiResponse.error(res, 'Error al eliminar el producto', 500);
         }
@@ -154,12 +166,12 @@ export const InventoryController = {
             });
 
             return ApiResponse.success(res, item, 'Stock actualizado');
-        } catch (error: any) {
-            if (error.statusCode === 404) {
-                return ApiResponse.error(res, error.message, 404);
+        } catch (error) {
+            if ((error as any).statusCode === 404) {
+                return ApiResponse.error(res, (error as Error).message, 404);
             }
             log.error({ error }, 'Error adding stock');
-            return ApiResponse.error(res, error.message || 'Error al reponer stock', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al reponer stock', 500);
         }
     },
 
@@ -210,12 +222,12 @@ export const InventoryController = {
             const updatedItem = await prisma.inventoryItem.findUnique({ where: { id } });
 
             return ApiResponse.success(res, { updatedItem }, 'Artículo distribuido correctamente');
-        } catch (error: any) {
-            if (error.message === 'Stock insuficiente') {
-                return ApiResponse.error(res, error.message, 400);
+        } catch (error) {
+            if ((error as Error).message === 'Stock insuficiente') {
+                return ApiResponse.error(res, (error as Error).message, 400);
             }
             log.error({ error }, 'Error distributing item');
-            return ApiResponse.error(res, error.message || 'Error al distribuir artículo', 500);
+            return ApiResponse.error(res, (error as Error).message || 'Error al distribuir artículo', 500);
         }
     },
 
@@ -230,7 +242,7 @@ export const InventoryController = {
                 }
             });
             return ApiResponse.success(res, movements);
-        } catch (error: any) {
+        } catch (error) {
             return ApiResponse.error(res, 'Error al obtener movimientos', 500);
         }
     },
@@ -289,7 +301,7 @@ export const InventoryController = {
                 return ApiResponse.error(res, 'El archivo generado no se encuentra en el servidor', 500);
             }
 
-        } catch (error: any) {
+        } catch (error) {
             log.error({ error }, 'Error generating receipt');
             return ApiResponse.error(res, 'Error al generar el acta de entrega', 500);
         }

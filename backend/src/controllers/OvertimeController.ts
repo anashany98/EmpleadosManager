@@ -58,7 +58,7 @@ export const RateController = {
                 create: { category, overtimeRate, holidayOvertimeRate }
             });
             res.json(rate);
-        } catch (error) {
+        } catch {
             res.status(500).json({ error: 'Error al actualizar tarifa' });
         }
     }
@@ -86,7 +86,7 @@ export const OvertimeController = {
                 return res.json({ data: entries, meta });
             }
             res.json(entries);
-        } catch (error) {
+        } catch {
             res.status(500).json({ error: 'Error al obtener horas extras' });
         }
     },
@@ -105,7 +105,7 @@ export const OvertimeController = {
                 }
             });
             res.status(201).json(entry);
-        } catch (error) {
+        } catch {
             res.status(500).json({ error: 'Error al registrar horas extras' });
         }
     },

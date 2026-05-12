@@ -7,6 +7,7 @@
 
 import { generateUniform, generateUniformInternal } from './UniformService';
 import { generateEPI, generateEPIInternal } from './EPIService';
+import { generateMaterialDelivery, generateMaterialDeliveryInternal } from './MaterialDeliveryService';
 import { generateNDA, generateRGPD, generateModel145 } from './LegalDocumentService';
 import { generateTechDevice, generateTechDeviceInternal } from './TechDeviceService';
 import { signDocument } from './DocumentSignService';
@@ -16,6 +17,8 @@ export const DocumentTemplateService = {
     generateUniformInternal,
     generateEPI,
     generateEPIInternal,
+    generateMaterialDelivery,
+    generateMaterialDeliveryInternal,
     generateNDA,
     generateRGPD,
     generateModel145,

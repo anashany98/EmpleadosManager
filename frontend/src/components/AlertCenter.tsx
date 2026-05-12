@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldAlert, X, Check, Clock, FileText, Info, Package, AlertCircle } from 'lucide-react';
+import { ShieldAlert, X, Check, Clock, FileText, Info, Package } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
 import { useNavigate } from 'react-router-dom';
@@ -75,7 +75,7 @@ export default function AlertCenter() {
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isOpen]);
+    }, []);
 
     const handleAction = (alert: Alert) => {
         markReadMutation.mutate(alert.id);

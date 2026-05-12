@@ -3,7 +3,6 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
 import { AuthenticatedRequest } from '../types/express';
-import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { CalendarService } from '../services/CalendarService';
 import { hasModuleAccess } from '../../../shared/authz';
@@ -85,14 +84,13 @@ export const CalendarController = {
             const user = await prisma.user.findFirst({ where: { employeeId: employeeId as string } });
             const isAdmin = user?.role === 'admin';
 
-            // @ts-ignore: Prisma client not regenerated
             const vehicles = await prisma.vehicle.findMany({
                 where: isAdmin ? {} : { employeeId: employeeId as string },
                 select: { id: true, plate: true, make: true, model: true, nextITVDate: true, insuranceExpiry: true }
             });
 
             // Generate ICS
-            let ics = [
+            const ics = [
                 'BEGIN:VCALENDAR',
                 'VERSION:2.0',
                 'PRODID:-//EmpleadosManager//NONSGML v1.0//EN',
@@ -119,10 +117,6 @@ export const CalendarController = {
             ];
 
             vacations.forEach(v => {
-                const start = v.startDate.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-                // For all-day events, DTEND is exclusive, so add 1 day if we were using VALUE=DATE.
-                // But here startDate is DateTime in DB.
-                // If we want all-day events (cleaner in GCal):
                 const startYMD = v.startDate.toISOString().replace(/-/g, '').split('T')[0];
                 const endObj = new Date(v.endDate);
                 endObj.setDate(endObj.getDate() + 1); // +1 day for exclusive end
@@ -130,15 +124,38 @@ export const CalendarController = {
 
                 const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
 
+                // Map vacation types to readable titles
+                const typeTitles: Record<string, string> = {
+                    'VACATION': 'Vacaciones',
+                    'SICK': 'Baja Médica',
+                    'SICK_LEAVE': 'Baja Médica',
+                    'BAJA_MEDICA': 'Baja Médica',
+                    'MATERNITY': 'Maternidad',
+                    'MATERNIDAD': 'Maternidad',
+                    'PATERNITY': 'Paternidad',
+                    'PATERNIDAD': 'Paternidad',
+                    'BIRTH': 'Nacimiento',
+                    'MEDICAL_HOURS': 'Horas Médicas',
+                    'LACTANCIA': 'Lactancia',
+                    'PERSONAL': 'Personal',
+                    'PERSONAL_DAY': 'Día Personal',
+                    'OTHER': 'Otro',
+                    'OTROS': 'Otro',
+                    'UNPAID': 'Sin Goce',
+                    'TELETRABAJO': 'Teletrabajo',
+                    'PERMISO_SINDICAL': 'Permiso Sindical'
+                };
+                
+                const summary = typeTitles[v.type || 'VACATION'] || v.type || 'Ausencia';
+                
                 ics.push('BEGIN:VEVENT');
                 ics.push(`UID:vacation-${v.id}@empleadosmanager`);
                 ics.push(`DTSTAMP:${now}`);
                 ics.push(`DTSTART;VALUE=DATE:${startYMD}`);
                 ics.push(`DTEND;VALUE=DATE:${endYMD}`);
-                ics.push(`SUMMARY:${v.type === 'VACATION' ? 'Vacaciones' : v.type || 'Ausencia'} - ${employee.firstName}`);
+                ics.push(`SUMMARY:${summary} - ${employee.firstName}`);
                 ics.push(`DESCRIPTION:${v.reason || 'Sin motivo'}`);
                 ics.push('STATUS:CONFIRMED');
-                ics.push('END:VEVENT');
                 ics.push('END:VEVENT');
             });
 
@@ -178,8 +195,8 @@ export const CalendarController = {
             res.set('Content-Disposition', 'attachment; filename="vacaciones.ics"');
             res.send(ics.join('\r\n'));
 
-        } catch (error) {
-            log.error({ error }, 'Error generating ICS');
+        } catch {
+            log.error('Error generating ICS');
             res.status(500).send('Internal Server Error');
         }
     },
@@ -208,6 +225,10 @@ export const CalendarController = {
             const startDate = new Date(start as string);
             const endDate = new Date(end as string);
 
+            if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+                return ApiResponse.error(res, 'Las fechas start y end son inválidas', 400);
+            }
+
             // Get user's company
             const userData = await prisma.user.findUnique({
                 where: { id: user.id },
@@ -224,8 +245,8 @@ export const CalendarController = {
             );
 
             return ApiResponse.success(res, events);
-        } catch (error) {
-            log.error('Error getting unified calendar events:', error);
+        } catch {
+            log.error('Error getting unified calendar events');
             return ApiResponse.error(res, 'Error al obtener eventos del calendario', 500);
         }
     },
@@ -255,8 +276,8 @@ export const CalendarController = {
             const birthdays = await CalendarService.getBirthdays(companyId, monthNum);
 
             return ApiResponse.success(res, birthdays);
-        } catch (error) {
-            log.error('Error getting birthdays:', error);
+        } catch {
+            log.error('Error getting birthdays');
             return ApiResponse.error(res, 'Error al obtener cumpleaños', 500);
         }
     },
@@ -299,8 +320,8 @@ export const CalendarController = {
             );
 
             return ApiResponse.success(res, event);
-        } catch (error) {
-            log.error('Error creating calendar event:', error);
+        } catch {
+            log.error('Error creating calendar event');
             return ApiResponse.error(res, 'Error al crear evento', 500);
         }
     },
@@ -337,8 +358,8 @@ export const CalendarController = {
             const event = await CalendarService.updateEvent(id, updateData);
 
             return ApiResponse.success(res, event);
-        } catch (error) {
-            log.error('Error updating calendar event:', error);
+        } catch {
+            log.error('Error updating calendar event');
             return ApiResponse.error(res, 'Error al actualizar evento', 500);
         }
     },
@@ -363,8 +384,8 @@ export const CalendarController = {
             await CalendarService.deleteEvent(id);
 
             return ApiResponse.success(res, { message: 'Evento eliminado correctamente' });
-        } catch (error) {
-            log.error('Error deleting calendar event:', error);
+        } catch {
+            log.error('Error deleting calendar event');
             return ApiResponse.error(res, 'Error al eliminar evento', 500);
         }
     },
@@ -387,8 +408,8 @@ export const CalendarController = {
             const events = await CalendarService.getAllEvents(user.companyId || null);
 
             return ApiResponse.success(res, events);
-        } catch (error) {
-            log.error('Error getting calendar events:', error);
+        } catch {
+            log.error('Error getting calendar events');
             return ApiResponse.error(res, 'Error al obtener eventos', 500);
         }
     },

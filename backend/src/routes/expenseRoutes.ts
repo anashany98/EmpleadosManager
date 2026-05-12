@@ -4,7 +4,7 @@ import { ExpenseController } from '../controllers/ExpenseController';
 import { createMulterOptions } from '../config/multer';
 import { authorize } from '../middlewares/authMiddleware';
 import { validateResource } from '../middlewares/validateResource';
-import { expenseCreateSchema, expenseUpdateSchema, expenseApprovalSchema, expenseIdParamSchema } from '../schemas/expenseSchemas';
+import { expenseCreateSchema, expenseApprovalSchema, expenseIdParamSchema, expenseEmployeeParamSchema } from '../schemas/expenseSchemas';
 import { prisma } from '../lib/prisma';
 
 const router = Router();
@@ -43,8 +43,8 @@ const resolveExpenseTarget = async (req: any) => {
 };
 
 router.get('/', authorize('expense.manage', (req: any) => ({ companyId: req.user?.companyId })), ExpenseController.getAll);
-router.get('/employee/:employeeId', validateResource(expenseIdParamSchema), authorize('expense.read', resolveExpenseEmployeeTarget), ExpenseController.getByEmployee);
-router.post('/upload', validateResource(expenseCreateSchema), upload.single('receipt'), authorize('expense.write', resolveExpenseEmployeeTarget), ExpenseController.upload);
+router.get('/employee/:employeeId', validateResource(expenseEmployeeParamSchema), authorize('expense.read', resolveExpenseEmployeeTarget), ExpenseController.getByEmployee);
+router.post('/upload', upload.single('receipt'), validateResource(expenseCreateSchema), authorize('expense.write', resolveExpenseEmployeeTarget), ExpenseController.upload);
 router.post('/ocr', upload.single('receipt'), ExpenseController.processOCR);
 router.put('/:id/status', validateResource(expenseIdParamSchema), validateResource(expenseApprovalSchema), authorize('expense.manage', resolveExpenseTarget), ExpenseController.updateStatus);
 router.get('/:id/receipt', validateResource(expenseIdParamSchema), authorize('expense.read', resolveExpenseTarget), ExpenseController.getReceipt);

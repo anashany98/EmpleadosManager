@@ -6,9 +6,8 @@ import { prisma } from './lib/prisma';
 import { createApp } from './app/createApp';
 import { startInfrastructure, stopInfrastructure, validateRuntimeConfiguration } from './app/infrastructure';
 import { loggers } from './services/LoggerService';
-import { errorMiddleware } from './middlewares/errorMiddleware';
 
-const app = createApp();
+const { app, server: httpServer } = createApp();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const HOST = '0.0.0.0';
 const log = loggers.api;
@@ -16,8 +15,6 @@ const log = loggers.api;
 validateRuntimeConfiguration();
 
 async function startServer() {
-    let server: any = null;
-
     try {
         log.info('Checking database connection...');
         await prisma.$connect();
@@ -27,25 +24,12 @@ async function startServer() {
         startInfrastructure();
 
         log.info('Attempting to start HTTP server on ' + HOST + ':' + PORT);
-        
-        // Start server
-        server = app.listen(PORT, HOST, () => {
-            log.info({ port: PORT, host: HOST }, 'Backend running');
-            if (process.env.SENTRY_DSN) {
-                log.info('Sentry monitoring enabled');
-            }
-            log.info('Health endpoints:');
-            log.info('  GET /api/health/liveness - Liveness probe');
-            log.info('  GET /api/health/readiness - Readiness probe');
-            log.info('  GET /api/health - Comprehensive health check');
-        });
 
-        // Handle server errors (including EADDRINUSE)
-        server.on('error', (error: any) => {
+        httpServer.on('error', (error: any) => {
             if (error.code === 'EADDRINUSE') {
-                log.fatal({ 
-                    port: PORT, 
-                    error: error.message 
+                log.fatal({
+                    port: PORT,
+                    error: error.message
                 }, 'Port conflict: port already in use');
                 log.warn('Solutions:');
                 log.warn('  1. Kill process using port ' + PORT + ': netstat -ano | findstr :' + PORT);
@@ -56,54 +40,83 @@ async function startServer() {
             } else {
                 log.fatal({ error }, 'Server failed to start due to unexpected error');
             }
-            
+
             process.exit(1);
         });
 
-        // Store server reference for graceful shutdown
-        (global as any).__SERVER__ = server;
+        httpServer.listen(PORT, HOST, () => {
+            log.info({ port: PORT, host: HOST }, 'Backend running');
+            if (process.env.SENTRY_DSN) {
+                log.info('Sentry monitoring enabled');
+            }
+            log.info('Health endpoints:');
+            log.info('  GET /api/health/liveness - Liveness probe');
+            log.info('  GET /api/health/readiness - Readiness probe');
+            log.info('  GET /api/health - Comprehensive health check');
+        });
+
+        (global as any).__SERVER__ = httpServer;
 
     } catch (error) {
-        // Database or infrastructure errors
         log.fatal({ error }, 'Failed to start server: ' + (error as Error).message);
         process.exit(1);
     }
 }
 
-const gracefulShutdown = () => {
-    log.info('Received termination signal, shutting down gracefully...');
-    
-    const server = (global as any).__SERVER__;
-    
-    // Stop accepting new connections
-    if (server) {
-        server.close(() => {
-            log.info('HTTP server closed');
+let shuttingDown = false;
+
+async function shutdown(signal: NodeJS.Signals): Promise<void> {
+    if (shuttingDown) {
+        return;
+    }
+    shuttingDown = true;
+
+    log.info({ signal }, 'Graceful shutdown started');
+
+    const server = (global as any).__SERVER__ || httpServer;
+    if (server?.listening) {
+        await new Promise<void>((resolve) => {
+            const timeout = setTimeout(() => {
+                log.warn('Forcing HTTP connections closed after shutdown timeout');
+                server.closeAllConnections?.();
+                resolve();
+            }, 10000);
+
+            server.close((error?: Error) => {
+                clearTimeout(timeout);
+                if (error) {
+                    log.error({ error }, 'Error closing HTTP server');
+                } else {
+                    log.info('HTTP server closed');
+                }
+                resolve();
+            });
         });
-        
-        // Force close after timeout
-        setTimeout(() => {
-            if (server && !server.closed) {
-                log.warn('Forcing server close after timeout');
-                server.destroy();
-            }
-        }, 10000);
     }
 
-    stopInfrastructure()
-        .catch((error) => log.error({ error }, 'Error stopping infrastructure'))
-        .finally(() => {
-            prisma.$disconnect()
-                .then(() => {
-                    log.info('Database disconnected');
-                    process.exit(0);
-                })
-                .catch((error) => {
-                    log.error({ error }, 'Error disconnecting database');
-                    process.exit(1);
-                });
-        });
-};
+    try {
+        await stopInfrastructure();
+    } catch (error) {
+        log.error({ error }, 'Error stopping infrastructure');
+    }
+
+    try {
+        await prisma.$disconnect();
+        log.info('Database disconnected');
+        process.exit(0);
+    } catch (error) {
+        log.error({ error }, 'Error disconnecting database');
+        process.exit(1);
+    }
+}
+
+process.on('SIGTERM', () => {
+    void shutdown('SIGTERM');
+});
+
+process.on('SIGINT', () => {
+    void shutdown('SIGINT');
+});
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error: any) => {
@@ -113,8 +126,10 @@ process.on('uncaughtException', (error: any) => {
 
 // Handle unhandled promise rejections
 process.on('unhandledRejection', (reason: any) => {
-    log.error({ reason }, 'Unhandled Rejection');
-    // Don't exit - let process managers restart
+    log.fatal({ reason }, 'Unhandled Rejection');
+    if (process.env.NODE_ENV === 'production') {
+        process.exit(1);
+    }
 });
 
 // Only start server if this file is executed directly (not imported as a module)

@@ -58,7 +58,7 @@ export const QUEUES = {
     OCR: 'ocr-queue',
 };
 
-class QueueService {
+export class QueueService {
     private queues: Record<string, Queue> = {};
     private workers: Record<string, Worker> = {};
     private queueEvents: Record<string, QueueEvents> = {};

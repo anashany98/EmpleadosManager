@@ -13,8 +13,8 @@ export class AlertController {
             const { user } = req as AuthenticatedRequest;
             const alerts = await alertService.getUnreadAlerts(user);
             res.json(alerts);
-        } catch (error: any) {
-            log.error({ error }, 'Error fetching alerts');
+        } catch (_) {
+            log.error({ error: _ }, 'Error fetching alerts');
             res.status(500).json({ error: 'Failed to fetch alerts' });
         }
     }
@@ -26,7 +26,7 @@ export class AlertController {
             const { id } = req.params;
             await alertService.markAsRead(id, user);
             res.json({ success: true });
-        } catch (error) {
+        } catch {
             res.status(500).json({ error: 'Failed to mark alert as read' });
         }
     }
@@ -38,7 +38,7 @@ export class AlertController {
             const { id } = req.params;
             await alertService.dismissAlert(id, user);
             res.json({ success: true });
-        } catch (error) {
+        } catch {
             res.status(500).json({ error: 'Failed to dismiss alert' });
         }
     }
@@ -49,8 +49,8 @@ export class AlertController {
             const { user } = req as AuthenticatedRequest;
             await alertService.markAllAsRead(user);
             res.json({ success: true });
-        } catch (error) {
-            log.error({ error }, 'Error marking all as read');
+        } catch {
+            log.error('Error marking all as read');
             res.status(500).json({ error: 'Failed to mark all as read' });
         }
     }
@@ -61,8 +61,8 @@ export class AlertController {
             const { user } = req as AuthenticatedRequest;
             await alertService.dismissAll(user);
             res.json({ success: true });
-        } catch (error) {
-            log.error({ error }, 'Error dismissing all');
+        } catch {
+            log.error('Error dismissing all');
             res.status(500).json({ error: 'Failed to dismiss all' });
         }
     }

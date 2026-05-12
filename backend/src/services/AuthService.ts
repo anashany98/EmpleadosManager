@@ -49,12 +49,13 @@ export class AuthService {
             data: {
                 token: hashedRefreshToken,
                 userId: user.id,
-                expiresAt: expiresAt
+                expiresAt
             }
         });
 
         // Remove password from user object
-        const { password: _, employee, ...userWithoutPassword } = user;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { password: _password, employee, ...userWithoutPassword } = user;
         const normalizedUser = normalizeActor({
             id: userWithoutPassword.id,
             email: userWithoutPassword.email,

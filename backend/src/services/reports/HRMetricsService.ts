@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { CacheService } from '../CacheService';
 import { CacheKeys } from '../../utils/cacheKeys';
+import { VACATION_TYPES_FOR_BALANCE } from '../VacationBalanceService';
 
 // Cache TTLs in seconds
 const KPI_CACHE_TTL = 300; // 5 minutes
@@ -15,9 +16,7 @@ export class HRMetricsService {
         const companyId = filters.companyId || 'global';
         const cacheKey = CacheKeys.kpis(companyId, year, month);
 
-        return CacheService.wrap(cacheKey, async () => {
-            return this.computeKPIMetrics(year, month, filters);
-        }, KPI_CACHE_TTL);
+        return CacheService.wrap(cacheKey, async () => this.computeKPIMetrics(year, month, filters), KPI_CACHE_TTL);
     }
 
     /**
@@ -61,7 +60,7 @@ export class HRMetricsService {
             where: {
                 startDate: { lte: endDate },
                 endDate: { gte: startDate },
-                type: { not: 'VACATION' }, // Regular vacations usually don't count as absenteeism
+                type: { notIn: VACATION_TYPES_FOR_BALANCE }, // Regular vacations don't count as absenteeism
                 employee: filters.companyId ? { companyId: filters.companyId } : {}
             }
         });
@@ -107,9 +106,7 @@ export class HRMetricsService {
         const companyId = filters.companyId || 'global';
         const cacheKey = CacheKeys.absenteeism(companyId, year, month);
 
-        return CacheService.wrap(cacheKey, async () => {
-            return this.computeAbsenteeismByDepartment(year, month, filters);
-        }, ABSENTEEISM_CACHE_TTL);
+        return CacheService.wrap(cacheKey, async () => this.computeAbsenteeismByDepartment(year, month, filters), ABSENTEEISM_CACHE_TTL);
     }
 
     /**
@@ -133,7 +130,7 @@ export class HRMetricsService {
                     where: {
                         startDate: { lte: endDate },
                         endDate: { gte: startDate },
-                        type: { not: 'VACATION' }
+                        type: { notIn: VACATION_TYPES_FOR_BALANCE }
                     }
                 }
             }

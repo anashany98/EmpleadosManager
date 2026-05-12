@@ -8,6 +8,7 @@ router.get('/attendance', ReportController.getAttendance);
 router.get('/attendance-summary', ReportController.getAttendanceSummary);
 router.get('/overtime', ReportController.getOvertime);
 router.get('/vacations', ReportController.getVacations);
+router.get('/vacations/usage-by-department', ReportController.getVacationUsageByDepartment);
 router.get('/costs', ReportController.getCosts);
 router.get('/absences-detailed', ReportController.getDetailedAbsences);
 router.get('/kpis', ReportController.getKPIs);

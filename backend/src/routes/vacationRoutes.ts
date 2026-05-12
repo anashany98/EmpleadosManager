@@ -52,7 +52,7 @@ router.get('/', authorize('vacation.manage', (req: any) => ({ companyId: req.use
 router.get('/my-vacations', VacationController.getMyVacations);
 router.get('/manage', authorize('vacation.manage', (req: any) => ({ companyId: req.user?.companyId })), VacationController.getManageableVacations);
 router.get('/employee/:employeeId', validateResource(vacationEmployeeParamSchema), authorize('vacation.read', resolveVacationEmployeeTarget), VacationController.getByEmployee);
-router.post('/', validateResource(vacationCreateSchema), upload.single('attachment'), authorize('vacation.write', resolveVacationEmployeeTarget), VacationController.create);
+router.post('/', upload.single('attachment'), validateResource(vacationCreateSchema), authorize('vacation.write', resolveVacationEmployeeTarget), VacationController.create);
 router.delete('/:id', validateResource(vacationIdParamSchema), authorize('vacation.write', resolveVacationTarget), VacationController.delete);
 router.put('/:id/status', validateResource(vacationIdParamSchema), validateResource(vacationStatusUpdateSchema), authorize('vacation.manage', resolveVacationTarget), VacationController.updateStatus);
 router.get('/:id/attachment', validateResource(vacationIdParamSchema), authorize('vacation.read', resolveVacationTarget), VacationController.downloadAttachment);

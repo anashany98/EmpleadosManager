@@ -26,9 +26,9 @@ export const AnalyticsController = {
             });
 
             return ApiResponse.success(res, kpis);
-        } catch (error) {
-            log.error({ error }, 'Error fetching KPIs');
-            next(error);
+        } catch (err) {
+            log.error({ error: err }, 'Error fetching KPIs');
+            next(err);
         }
     },
 
@@ -47,9 +47,9 @@ export const AnalyticsController = {
             );
 
             return ApiResponse.success(res, trend);
-        } catch (error) {
-            log.error({ error }, 'Error fetching headcount trend');
-            next(error);
+        } catch (err) {
+            log.error({ error: err }, 'Error fetching headcount trend');
+            next(err);
         }
     },
 
@@ -87,9 +87,9 @@ export const AnalyticsController = {
             );
 
             return ApiResponse.success(res, heatmap);
-        } catch (error) {
-            log.error({ error }, 'Error fetching absence heatmap');
-            next(error);
+        } catch (err) {
+            log.error({ error: err }, 'Error fetching absence heatmap');
+            next(err);
         }
     },
 
@@ -146,9 +146,9 @@ export const AnalyticsController = {
             });
 
             return ApiResponse.success(res, distribution);
-        } catch (error) {
-            log.error({ error }, 'Error fetching tenure distribution');
-            next(error);
+        } catch (err) {
+            log.error({ error: err }, 'Error fetching tenure distribution');
+            next(err);
         }
     },
 
@@ -190,9 +190,9 @@ export const AnalyticsController = {
                 tenureDistribution,
                 generatedAt: new Date().toISOString()
             });
-        } catch (error) {
-            log.error({ error }, 'Error fetching analytics summary');
-            next(error);
+        } catch (err) {
+            log.error({ error: err }, 'Error fetching analytics summary');
+            next(err);
         }
     }
 };

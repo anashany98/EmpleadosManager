@@ -44,7 +44,7 @@ export const DocumentController = {
             else if (cleanText.includes('curso') || cleanText.includes('formación') || cleanText.includes('diploma')) suggestedCategory = 'TRAINING';
 
             // 2. Extracción de fecha (DNI caducidad, fecha de contrato, etc.)
-            const dateRegex = /(\d{1,2})[\/\-\. ](\d{1,2})[\/\-\. ](\d{4}|\d{2})/;
+            const dateRegex = /(\d{1,2})[/.-](\d{1,2})[/.-](\d{4}|\d{2})/;
             const dateMatch = cleanText.match(dateRegex);
             let suggestedDate = null;
             if (dateMatch) {
@@ -95,8 +95,7 @@ export const DocumentController = {
             });
             savedKey = key;
 
-            const document = await prisma.$transaction(async (tx) => {
-                return await tx.document.create({
+            const document = await prisma.$transaction(async (tx) => await tx.document.create({
                     data: {
                         employeeId,
                         name: name || file.originalname,
@@ -104,8 +103,7 @@ export const DocumentController = {
                         fileUrl: key,
                         expiryDate: expiryDate ? new Date(expiryDate) : null
                     }
-                });
-            });
+                }));
 
             return ApiResponse.success(res, document, 'Documento subido correctamente', 201);
         } catch (error) {
@@ -185,8 +183,8 @@ export const DocumentController = {
             if (!document) throw new AppError('Documento no encontrado', 404);
 
             if (StorageService.provider === 'local') {
-                const fs = require('fs');
-                const path = require('path');
+                const fs = await import('fs');
+                const path = await import('path');
                 const filePath = path.join(process.cwd(), 'uploads', document.fileUrl);
                 if (!fs.existsSync(filePath)) {
                     log.warn({ filePath }, 'File missing');

@@ -1,5 +1,5 @@
 import { prisma } from '../lib/prisma';
-import { startOfMonth, endOfMonth, format, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { normalizeRole } from '../../../shared/authz';
 
 export interface CalendarEventInput {
@@ -17,6 +17,7 @@ export interface CalendarEventInput {
 
 export interface UnifiedCalendarEvent {
   id: string;
+  entityId: string;
   title: string;
   description?: string;
   location?: string;
@@ -25,8 +26,13 @@ export interface UnifiedCalendarEvent {
   allDay: boolean;
   type: 'vacation-own' | 'vacation-team' | 'birthday' | 'event' | 'holiday' | 'fichaje';
   color: string;
+  source: 'vacation' | 'calendar_event' | 'birthday' | 'holiday';
+  editable: boolean;
+  deletable: boolean;
+  calendarEventType?: string;
   employeeId?: string;
   employeeName?: string;
+  employeeDepartment?: string | null;
 }
 
 // Spanish holidays for 2026
@@ -74,7 +80,7 @@ export const CalendarService = {
         endDate: { gte: startDate },
         employee: companyId ? { companyId } : undefined,
       },
-      include: { employee: { select: { id: true, firstName: true, lastName: true } } },
+      include: { employee: { select: { id: true, firstName: true, lastName: true, department: true } } },
       orderBy: { startDate: 'asc' }
     });
 
@@ -82,6 +88,7 @@ export const CalendarService = {
       const isOwn = vacation.employeeId === currentEmployeeId;
       events.push({
         id: `vacation-${vacation.id}`,
+        entityId: vacation.id,
         title: isOwn 
           ? 'Vacaciones' 
           : `${vacation.employee.firstName} ${vacation.employee.lastName} - Vacaciones`,
@@ -91,8 +98,12 @@ export const CalendarService = {
         allDay: true,
         type: isOwn ? 'vacation-own' : 'vacation-team',
         color: isOwn ? '#22c55e' : '#86efac', // green-500 vs green-300
+        source: 'vacation',
+        editable: false,
+        deletable: false,
         employeeId: vacation.employeeId,
         employeeName: `${vacation.employee.firstName} ${vacation.employee.lastName}`,
+        employeeDepartment: vacation.employee.department,
       });
     });
 
@@ -104,7 +115,7 @@ export const CalendarService = {
           birthDate: { not: null },
           companyId: companyId || undefined,
         },
-        select: { id: true, firstName: true, lastName: true, birthDate: true }
+        select: { id: true, firstName: true, lastName: true, birthDate: true, department: true }
       });
 
       employees.forEach((emp) => {
@@ -121,14 +132,19 @@ export const CalendarService = {
           const age = currentYear - birthDate.getFullYear();
           events.push({
             id: `birthday-${emp.id}-${currentYear}`,
+            entityId: emp.id,
             title: `🎂 ${emp.firstName} ${emp.lastName} (${age})`,
             start: birthdayThisYear,
             end: birthdayThisYear,
             allDay: true,
             type: 'birthday',
             color: '#ec4899', // pink-500
+            source: 'birthday',
+            editable: false,
+            deletable: false,
             employeeId: emp.id,
             employeeName: `${emp.firstName} ${emp.lastName}`,
+            employeeDepartment: emp.department,
           });
         }
       });
@@ -138,7 +154,7 @@ export const CalendarService = {
     const calendarEvents = await prisma.calendarEvent.findMany({
       where: {
         OR: [
-          { companyId: companyId },
+          { companyId },
           { isPublic: true, companyId: null },
         ],
         startDate: { lte: endDate },
@@ -147,9 +163,16 @@ export const CalendarService = {
       orderBy: { startDate: 'asc' }
     });
 
+    const customHolidayDates = new Set(
+      calendarEvents
+        .filter((event) => event.type === 'HOLIDAY')
+        .map((event) => format(event.startDate, 'yyyy-MM-dd'))
+    );
+
     calendarEvents.forEach((event) => {
       events.push({
         id: `event-${event.id}`,
+        entityId: event.id,
         title: event.title,
         description: event.description || undefined,
         location: event.location || undefined,
@@ -158,26 +181,34 @@ export const CalendarService = {
         allDay: event.allDay,
         type: event.type === 'HOLIDAY' ? 'holiday' : 'event',
         color: event.color || (event.type === 'HOLIDAY' ? '#6b7280' : '#3b82f6'), // gray-500 or blue-500
+        source: 'calendar_event',
+        editable: true,
+        deletable: true,
+        calendarEventType: event.type,
       });
     });
 
-    // 4. Add Spanish holidays if no company-specific holidays
-    if (!companyId) {
-      SPAIN_HOLIDAYS_2026.forEach((holiday) => {
-        const holidayDate = parseISO(holiday.date);
-        if (holidayDate >= startDate && holidayDate <= endDate) {
-          events.push({
-            id: `holiday-${holiday.date}`,
-            title: `⚫ ${holiday.name}`,
-            start: holidayDate,
-            end: holidayDate,
-            allDay: true,
-            type: 'holiday',
-            color: '#6b7280', // gray-500
-          });
-        }
-      });
-    }
+    // 4. Add Spanish holidays, unless the company already has a holiday on that date
+    SPAIN_HOLIDAYS_2026.forEach((holiday) => {
+      const holidayDate = parseISO(holiday.date);
+      const holidayKey = format(holidayDate, 'yyyy-MM-dd');
+
+      if (holidayDate >= startDate && holidayDate <= endDate && !customHolidayDates.has(holidayKey)) {
+        events.push({
+          id: `holiday-${holiday.date}`,
+          entityId: holiday.date,
+          title: `⚫ ${holiday.name}`,
+          start: holidayDate,
+          end: holidayDate,
+          allDay: true,
+          type: 'holiday',
+          color: '#6b7280', // gray-500
+          source: 'holiday',
+          editable: false,
+          deletable: false,
+        });
+      }
+    });
 
     // Sort by start date
     events.sort((a, b) => a.start.getTime() - b.start.getTime());
@@ -216,14 +247,19 @@ export const CalendarService = {
         const age = currentYear - birthDate.getFullYear();
         birthdays.push({
           id: `birthday-${emp.id}-${currentYear}`,
+          entityId: emp.id,
           title: `🎂 ${emp.firstName} ${emp.lastName} cumple ${age}`,
           start: birthdayThisYear,
           end: birthdayThisYear,
           allDay: true,
           type: 'birthday',
           color: '#ec4899',
+          source: 'birthday',
+          editable: false,
+          deletable: false,
           employeeId: emp.id,
           employeeName: `${emp.firstName} ${emp.lastName}`,
+          employeeDepartment: null,
         });
       }
     });
@@ -246,7 +282,7 @@ export const CalendarService = {
         type: data.type,
         color: data.color,
         companyId: data.companyId,
-        createdBy: createdBy,
+        createdBy,
         isPublic: data.isPublic ?? true,
       },
     });
@@ -288,7 +324,7 @@ export const CalendarService = {
     return prisma.calendarEvent.findMany({
       where: {
         OR: [
-          { companyId: companyId },
+          { companyId },
           { companyId: null },
         ],
       },

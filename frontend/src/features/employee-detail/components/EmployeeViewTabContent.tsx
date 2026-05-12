@@ -5,16 +5,17 @@ import { EmployeeOperationsSection } from '../sections/EmployeeOperationsSection
 import { EmployeePayrollSection } from '../sections/EmployeePayrollSection';
 import { EmployeeSummarySection } from '../sections/EmployeeSummarySection';
 import { EmployeeVacationSection } from '../sections/EmployeeVacationSection';
-import type { EmployeeViewRecord } from '../types';
+import type { EmployeeVacationBalanceSummary, EmployeeViewRecord } from '../types';
 
 interface EmployeeViewTabContentProps {
     activeTab: string;
     employeeId: string;
     employeeView: EmployeeViewRecord;
+    onVacationBalanceChange: (vacationBalance: EmployeeVacationBalanceSummary) => void;
     privateNotes: string;
     saving: boolean;
     onPrivateNotesChange: (value: string) => void;
-    onPrivateNotesSave: () => void;
+    onPrivateNotesSave: () => Promise<void>;
     onDocumentGenerated: () => void;
 }
 
@@ -37,7 +38,7 @@ export function EmployeeViewTabContent(props: EmployeeViewTabContentProps) {
         return <EmployeePayrollSection employeeId={props.employeeId} />;
     }
     if (props.activeTab === 'vacaciones') {
-        return <EmployeeVacationSection employeeId={props.employeeId} />;
+        return <EmployeeVacationSection employeeId={props.employeeId} employeeView={props.employeeView} onVacationBalanceChange={props.onVacationBalanceChange} />;
     }
     if (['seguridad', 'privacidad', 'notas-rrhh'].includes(props.activeTab)) {
         return (

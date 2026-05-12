@@ -31,15 +31,15 @@ export const EmployeeTrainingController = {
             });
 
             return ApiResponse.success(res, trainings);
-        } catch (error) {
-            log.error({ error }, 'Error fetching trainings');
+        } catch {
+            log.error('Error fetching trainings');
             return ApiResponse.error(res, 'Error al obtener formaciones');
         }
     },
 
     create: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
-        const { courseName, date, hours, provider, certificateUrl } = req.body;
+        const { courseName, name, date, hours, certificateUrl, type } = req.body;
         const { user } = req as AuthenticatedRequest;
 
         if (!user.companyId && user.role !== 'admin') {
@@ -60,20 +60,20 @@ export const EmployeeTrainingController = {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
 
-            const training = await prisma.training.create({
-                data: {
-                    employeeId,
-                    type: 'COURSE',
-                    name: courseName,
-                    date: new Date(date),
-                    hours: hours ? parseInt(hours) : null,
-                    fileUrl: certificateUrl
-                }
+      const training = await prisma.training.create({
+        data: {
+          employeeId,
+          type: type || 'COURSE',
+          name: courseName || name,
+          date: new Date(date),
+          hours: hours ? parseInt(hours) : null,
+          fileUrl: certificateUrl
+        }
             });
 
             return ApiResponse.success(res, training, 'Formación creada');
-        } catch (error) {
-            log.error({ error }, 'Error creating training');
+        } catch {
+            log.error('Error creating training');
             return ApiResponse.error(res, 'Error al crear formación');
         }
     },
@@ -103,8 +103,8 @@ export const EmployeeTrainingController = {
             await prisma.training.delete({ where: { id } });
 
             return ApiResponse.success(res, null, 'Formación eliminada');
-        } catch (error) {
-            log.error({ error }, 'Error deleting training');
+        } catch {
+            log.error('Error deleting training');
             return ApiResponse.error(res, 'Error al eliminar formación');
         }
     }

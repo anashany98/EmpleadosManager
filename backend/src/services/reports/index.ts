@@ -11,9 +11,12 @@ import { HRMetricsService } from './HRMetricsService';
 export class ReportService {
     static getAttendanceData = AttendanceReportService.getAttendanceData;
     static getAttendanceDailySummary = AttendanceReportService.getAttendanceDailySummary;
+    static getAttendanceByEmployee = AttendanceReportService.getAttendanceByEmployee;
     static getOvertimeData = OvertimeReportService.getOvertimeData;
     static getVacationData = VacationReportService.getVacationData;
     static getDetailedAbsenceData = VacationReportService.getDetailedAbsenceData;
+    static getAbsencesByDepartment = VacationReportService.getAbsencesByDepartment;
+    static getUsageByDepartment = VacationReportService.getUsageByDepartment;
     static getCompanyCostData = CostReportService.getCompanyCostData;
     static getKPIMetrics = HRMetricsService.getKPIMetrics;
     static getAbsenteeismByDepartment = HRMetricsService.getAbsenteeismByDepartment;

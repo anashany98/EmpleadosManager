@@ -5,6 +5,7 @@ import { api } from '../../../api/client';
 import { createDefaultEmployeeFormData } from '../types';
 import type {
     CompanyOption,
+    EmployeeFieldOptions,
     EmployeeFormData,
     EmployeeOption,
     EmployeeViewRecord,
@@ -22,6 +23,13 @@ type GenerateAccessResponse = {
     data?: {
         hasEmail?: boolean;
         password?: string;
+    };
+};
+
+type PrivateNotesSaveResponse = {
+    message?: string;
+    data?: {
+        privateNotes?: string;
     };
 };
 
@@ -65,6 +73,13 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
     const [employeeView, setEmployeeView] = useState<EmployeeViewRecord | null>(null);
     const [companies, setCompanies] = useState<CompanyOption[]>([]);
     const [allEmployees, setAllEmployees] = useState<EmployeeOption[]>([]);
+    const [fieldOptions, setFieldOptions] = useState<EmployeeFieldOptions>({
+        departments: [],
+        categories: [],
+        jobTitles: [],
+        contractTypes: [],
+        agreementTypes: []
+    });
 
     const enterEditMode = () => {
         setActiveTab('personal');
@@ -92,6 +107,37 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
         }
     }, [employeeId]);
 
+    const handlePrivateNotesSave = useCallback(async () => {
+        if (!employeeId) {
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const response = await api.put<PrivateNotesSaveResponse>(`/employees/${employeeId}/private-notes`, {
+                note: formData.privateNotes
+            });
+            const savedNotes = extractResponseData<{ privateNotes?: string }>(response)?.privateNotes ?? formData.privateNotes;
+
+            setFormData((current) => ({
+                ...current,
+                privateNotes: savedNotes || ''
+            }));
+            setEmployeeView((current) => current ? {
+                ...current,
+                privateNotes: savedNotes || ''
+            } : current);
+
+            toast.success(response.message || 'Notas RRHH guardadas');
+        } catch (error: unknown) {
+            const apiError = error as ApiErrorLike;
+            toast.error(`Error al guardar las notas RRHH: ${apiError.response?.data?.error || getErrorMessage(error, 'Error desconocido')}`);
+            throw error;
+        } finally {
+            setSaving(false);
+        }
+    }, [employeeId, formData.privateNotes]);
+
     const fetchAllEmployees = useCallback(async () => {
         if (!isAdmin) return;
         try {
@@ -115,6 +161,25 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
         if (!isAdmin) return;
         try {
             setCompanies(extractArray<CompanyOption>(await api.get('/companies')));
+        } catch (error) {
+            console.error(error);
+        }
+    }, [isAdmin]);
+
+    const fetchFieldOptions = useCallback(async () => {
+        if (!isAdmin) return;
+        try {
+            const response = await api.get('/employees/options');
+            const data = extractResponseData<EmployeeFieldOptions>(response);
+            if (data) {
+                setFieldOptions({
+                    departments: data.departments || [],
+                    categories: data.categories || [],
+                    jobTitles: data.jobTitles || [],
+                    contractTypes: data.contractTypes || [],
+                    agreementTypes: data.agreementTypes || []
+                });
+            }
         } catch (error) {
             console.error(error);
         }
@@ -181,6 +246,7 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
         if (isAdmin) {
             void fetchCompanies();
             void fetchAllEmployees();
+            void fetchFieldOptions();
         }
 
         if (!isNew && employeeId) {
@@ -191,7 +257,7 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
         } else {
             setLoading(false);
         }
-    }, [employeeId, fetchAllEmployees, fetchAuditLogs, fetchCompanies, fetchEmployee, isAdmin, isNew]);
+    }, [employeeId, fetchAllEmployees, fetchAuditLogs, fetchCompanies, fetchEmployee, fetchFieldOptions, isAdmin, isNew]);
 
     const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value, type } = event.target;
@@ -274,14 +340,17 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
         employeeView,
         companies,
         allEmployees,
+        fieldOptions,
         setActiveTab,
         setShowFaceEnroll,
         setShowOnboardingWizard,
         setShowOffboardingWizard,
         setFormData,
+        setEmployeeView,
         setNewContact,
         handleChange,
         handleSubmit,
+        handlePrivateNotesSave,
         handleGenerateAccess,
         enterEditMode,
         exitEditMode

@@ -6,17 +6,29 @@ import { NotificationService } from '../services/NotificationService';
 import { AnomalyService } from '../services/AnomalyService';
 import { StorageService } from '../services/StorageService';
 import { EmailService } from '../services/EmailService';
+import { CacheService } from '../services/CacheService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { canAccessPolicy } from '../../../shared/authz';
 import {
     notifyVacationCreated,
     saveVacationAttachment,
-    validateVacationRequest
+    validateVacationRequest,
+    updateVacationStatus,
+    transformVacationWithUrl,
+    transformVacationListWithUrl
 } from '../services/VacationRequestService';
 import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
+import fs from 'fs';
+import path from 'path';
 
 const log = createLogger('VacationController');
+
+function invalidateVacationBalanceCache(employeeId: string, year: number): void {
+    const cacheKey = `vacation:balance:${employeeId}:${year}`;
+    CacheService.del(cacheKey);
+    log.info({ cacheKey }, 'Vacation balance cache invalidated');
+}
 
 export const VacationController = {
     // Obtener todas las vacaciones (Global)
@@ -29,6 +41,14 @@ export const VacationController = {
             const where: any = {};
             if (user.companyId) {
                 where.employee = { companyId: user.companyId };
+            }
+
+            const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
+            if (startDate) {
+                where.startDate = { ...where.startDate, gte: new Date(startDate) };
+            }
+            if (endDate) {
+                where.endDate = { ...where.endDate, lte: new Date(endDate) };
             }
 
             const pagination = getPaginationParams(req);
@@ -44,15 +64,17 @@ export const VacationController = {
                 })
             ]);
 
+            const vacationsWithUrl = await transformVacationListWithUrl(vacations);
+
             if (pagination.isPaginationRequested) {
                 return ApiResponse.success(res, {
-                    data: vacations,
+                    data: vacationsWithUrl,
                     meta: buildPaginationMeta(total, pagination)
                 });
             }
 
-            return ApiResponse.success(res, vacations);
-        } catch (error) {
+            return ApiResponse.success(res, vacationsWithUrl);
+        } catch {
             throw new AppError('Error al obtener vacaciones', 500);
         }
     },
@@ -90,15 +112,17 @@ export const VacationController = {
                 })
             ]);
 
+            const vacationsWithUrl = await transformVacationListWithUrl(vacations);
+
             if (pagination.isPaginationRequested) {
                 return ApiResponse.success(res, {
-                    data: vacations,
+                    data: vacationsWithUrl,
                     meta: buildPaginationMeta(total, pagination)
                 });
             }
 
-            return ApiResponse.success(res, vacations);
-        } catch (error) {
+            return ApiResponse.success(res, vacationsWithUrl);
+        } catch {
             return ApiResponse.error(res, 'Error al obtener vacaciones', 500);
         }
     },
@@ -106,7 +130,8 @@ export const VacationController = {
     // Crear vacaciones
     create: async (req: Request, res: Response) => {
         try {
-            let { employeeId, startDate, endDate, type, reason } = req.body;
+            const { employeeId: bodyEmployeeId, startDate, endDate, type, reason } = req.body as { employeeId?: string; startDate: string; endDate: string; type?: string; reason?: string };
+            let employeeId = bodyEmployeeId || (req as AuthenticatedRequest).user?.employeeId;
             const { user } = req as AuthenticatedRequest;
 
             log.info({ body: req.body, employeeId, startDate, endDate, type, userId: user?.id }, 'VacationController.create called');
@@ -134,6 +159,7 @@ export const VacationController = {
 
             const start = new Date(startDate);
             const end = new Date(endDate);
+            const vacationStatus = (req.body as any).status || 'PENDING';
 
             const vacation = await prisma.$transaction(async (tx) => {
                 const { requestedDays } = await validateVacationRequest(employeeId, start, end, type, tx);
@@ -148,21 +174,22 @@ export const VacationController = {
                         days: requestedDays,
                         reason: reason || null,
                         fileUrl,
-                        status: 'PENDING'
+                        status: vacationStatus
                     },
                     include: { employee: true }
                 });
             });
 
             AnomalyService.detectVacation(vacation as any).catch(err => log.error({ err }, 'Anomaly detection failed'));
-            const FRONTEND_URL = process.env.FRONTEND_URL;
-            if (!FRONTEND_URL) {
-                throw new AppError('FRONTEND_URL no configurado', 500);
-            }
-            await notifyVacationCreated(vacation, FRONTEND_URL);
 
-            return ApiResponse.success(res, vacation, 'Solicitud de vacaciones creada', 201);
-        } catch (error) {
+            const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+            notifyVacationCreated(vacation, FRONTEND_URL).catch(err => log.error({ err }, 'Vacation notification failed'));
+
+            invalidateVacationBalanceCache(vacation.employeeId, new Date(vacation.startDate).getFullYear());
+
+            const vacationWithUrl = await transformVacationWithUrl(vacation);
+            return ApiResponse.success(res, vacationWithUrl, 'Solicitud de vacaciones creada', 201);
+        } catch (error: any) {
             if (error instanceof AppError) {
                 return ApiResponse.error(res, error.message, error.statusCode || 400);
             }
@@ -185,20 +212,28 @@ export const VacationController = {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
 
+            const employeeId = vacation.employeeId;
+            const year = new Date(vacation.startDate).getFullYear();
             await prisma.vacation.delete({ where: { id } });
 
+            invalidateVacationBalanceCache(employeeId, year);
+
             return ApiResponse.success(res, null, 'Vacaciones eliminadas');
-        } catch (error) {
+        } catch {
             return ApiResponse.error(res, 'Error al eliminar', 500);
         }
     },
 
     updateStatus: async (req: Request, res: Response) => {
         const { id } = req.params;
-        const { status } = req.body; // PENDING, APPROVED, REJECTED
+        const { status, rejectionReason, managerComment } = req.body as { status: string; rejectionReason?: string; managerComment?: string };
 
         if (!['PENDING', 'APPROVED', 'REJECTED'].includes(status)) {
             throw new AppError('Estado no válido', 400);
+        }
+
+        if (status === 'REJECTED' && !rejectionReason) {
+            throw new AppError('El motivo de rechazo es requerido', 400);
         }
 
         try {
@@ -213,11 +248,8 @@ export const VacationController = {
                 throw new AppError('No autorizado', 403);
             }
 
-            const vacation = await prisma.vacation.update({
-                where: { id },
-                data: { status },
-                include: { employee: true }
-            });
+            const approvedBy = (status === 'APPROVED' || status === 'REJECTED') ? user.id : undefined;
+            const vacation = await updateVacationStatus(id, status, rejectionReason, managerComment, approvedBy);
 
             // NOTIFY EMPLOYEE
             if (vacation.employee?.email) {
@@ -253,8 +285,11 @@ export const VacationController = {
                     log.error({ err }, 'Error sending vacation status email');
                 });
             }
-            return ApiResponse.success(res, vacation, 'Estado de vacaciones actualizado');
-        } catch (error) {
+
+            invalidateVacationBalanceCache(vacation.employeeId, new Date(vacation.startDate).getFullYear());
+            const vacationWithUrl = await transformVacationWithUrl(vacation);
+            return ApiResponse.success(res, vacationWithUrl, 'Estado de vacaciones actualizado');
+        } catch {
             throw new AppError('Error al actualizar el estado de las vacaciones', 500);
         }
     },
@@ -271,8 +306,9 @@ export const VacationController = {
                 include: { employee: true }
             });
 
-            return ApiResponse.success(res, vacations);
-        } catch (error) {
+            const vacationsWithUrl = await transformVacationListWithUrl(vacations);
+            return ApiResponse.success(res, vacationsWithUrl);
+        } catch (error: any) {
             log.error({ error }, 'Error getting my vacations');
             return ApiResponse.error(res, 'Error al obtener mis vacaciones', 500);
         }
@@ -297,8 +333,9 @@ export const VacationController = {
                 orderBy: { startDate: 'asc' }
             });
 
-            return ApiResponse.success(res, manageableVacations);
-        } catch (error) {
+            const vacationsWithUrl = await transformVacationListWithUrl(manageableVacations);
+            return ApiResponse.success(res, vacationsWithUrl);
+        } catch (error: any) {
             log.error({ error }, 'Error getting pending vacations');
             return ApiResponse.error(res, 'Error al obtener solicitudes pendientes', 500);
         }
@@ -321,8 +358,6 @@ export const VacationController = {
             }
 
             if (StorageService.provider === 'local') {
-                const fs = require('fs');
-                const path = require('path');
                 const filePath = path.join(process.cwd(), 'uploads', vacation.fileUrl);
                 if (!fs.existsSync(filePath)) {
                     throw new AppError('El archivo físico no existe', 404);
@@ -333,7 +368,7 @@ export const VacationController = {
             const signedUrl = await StorageService.getSignedDownloadUrl(vacation.fileUrl);
             if (!signedUrl) throw new AppError('No se pudo generar URL de descarga', 500);
             return res.redirect(signedUrl);
-        } catch (error) {
+        } catch (error: any) {
             if (error instanceof AppError) throw error;
             log.error({ error }, 'Download error');
             throw new AppError('Error al descargar el archivo', 500);

@@ -62,7 +62,7 @@ export const HolidayService = {
         let count = 0;
 
         // Normalize to local date by adding 12h to handle potential timezone shifts of input midnights
-        let current = new Date(start);
+        const current = new Date(start);
         current.setTime(current.getTime() + 12 * 60 * 60 * 1000);
         current.setHours(0, 0, 0, 0);
 

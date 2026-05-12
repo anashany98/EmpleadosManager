@@ -1,6 +1,8 @@
 ﻿import { PrismaClient } from '@prisma/client';
 import { createLogger } from './LoggerService';
 import { queueService, connection as redisConnection } from './QueueService';
+import fs from 'fs';
+import path from 'path';
 
 const log = createLogger('HealthChecker');
 
@@ -43,7 +45,7 @@ export class HealthChecker {
 
     private getVersion(): string {
         try {
-            const pkg = require('../../package.json');
+            const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf-8'));
             return pkg.version || 'unknown';
         } catch {
             return 'unknown';
@@ -104,7 +106,7 @@ export class HealthChecker {
             await this.prisma.$queryRaw`SELECT 1`;
             // Could add Redis ping here if needed
             return { status: 'ok' };
-        } catch (error) {
+        } catch {
             return { status: 'error', message: 'Database not ready' };
         }
     }
@@ -163,30 +165,90 @@ export class HealthChecker {
 
     private async checkDiskSpace(): Promise<ServiceHealth & { freeGB: number; totalGB: number; usedGB: number }> {
         try {
-            // Use Node's fs to check disk space of /app (where backups are stored)
-            const diskUsage = process.cpuUsage ? process.cpuUsage() : null;
-            const stats = await import('fs').then(fs => fs.promises.stat('/app/backend'));
+            const { exec } = await import('child_process');
             
-            // Better: use exec to get actual disk space (df)
-            // For now, return placeholder with basic info
-            const totalGB = 10; // Placeholder - would need to parse df output
-            const freeGB = 5;
-            const usedGB = totalGB - freeGB;
-
-            const status = freeGB < 1 ? 'degraded' : 'ok';
-            let message: string | undefined;
-            if (status === 'degraded') {
-                message = `Low disk space: ${freeGB.toFixed(1)}GB remaining`;
-            }
-
-            return {
-                status,
-                freeGB,
-                totalGB,
-                usedGB,
-                message,
-            };
-        } catch (error) {
+            return new Promise((resolve) => {
+                // Use df command to get disk space (works on Linux/Docker containers)
+                exec('df -BG --output=size,used,avail / | tail -1', { timeout: 5000 }, (error, stdout) => {
+                    if (error || !stdout) {
+                        // Fallback for non-Linux or if df fails
+                        exec('df -k .', { timeout: 5000 }, (err, out) => {
+                            if (err || !out) {
+                                resolve({
+                                    status: 'error' as const,
+                                    freeGB: 0,
+                                    totalGB: 0,
+                                    usedGB: 0,
+                                    message: 'Unable to check disk space',
+                                });
+                                return;
+                            }
+                            
+                            const lines = out.trim().split('\n');
+                            if (lines.length >= 2) {
+                                const parts = lines[1].split(/\s+/);
+                                if (parts.length >= 4) {
+                                    const totalKB = parseInt(parts[1], 10);
+                                    const usedKB = parseInt(parts[2], 10);
+                                    const freeKB = parseInt(parts[3], 10);
+                                    
+                                    const totalGB = Math.round(totalKB / 1024 / 1024);
+                                    const usedGBVal = Math.round(usedKB / 1024 / 1024);
+                                    const freeGBVal = Math.round(freeKB / 1024 / 1024);
+                                    
+                                    const status = freeGBVal < 1 ? 'degraded' : 'ok';
+                                    const message = freeGBVal < 1 ? `Low disk space: ${freeGBVal}GB remaining` : undefined;
+                                    
+                                    resolve({
+                                        status,
+                                        freeGB: freeGBVal,
+                                        totalGB,
+                                        usedGB: usedGBVal,
+                                        message,
+                                    });
+                                    return;
+                                }
+                            }
+                            
+                            resolve({
+                                status: 'error' as const,
+                                freeGB: 0,
+                                totalGB: 0,
+                                usedGB: 0,
+                                message: 'Unable to parse disk space output',
+                            });
+                        });
+                        return;
+                    }
+                    
+                    const parts = stdout.trim().split(/\s+/);
+                    if (parts.length >= 3) {
+                        const totalGB = parseInt(parts[0].replace('G', ''), 10) || 0;
+                        const usedGBVal = parseInt(parts[1].replace('G', ''), 10) || 0;
+                        const freeGBVal = parseInt(parts[2].replace('G', ''), 10) || 0;
+                        
+                        const status = freeGBVal < 1 ? 'degraded' : 'ok';
+                        const message = freeGBVal < 1 ? `Low disk space: ${freeGBVal}GB remaining` : undefined;
+                        
+                        resolve({
+                            status,
+                            freeGB: freeGBVal,
+                            totalGB,
+                            usedGB: usedGBVal,
+                            message,
+                        });
+                    } else {
+                        resolve({
+                            status: 'error' as const,
+                            freeGB: 0,
+                            totalGB: 0,
+                            usedGB: 0,
+                            message: 'Unexpected df output format',
+                        });
+                    }
+                });
+            });
+        } catch {
             return {
                 status: 'error',
                 freeGB: 0,
@@ -199,7 +261,7 @@ export class HealthChecker {
 
     private checkMemory(): ServiceHealth & { usedMB: number; totalMB: number; freeMB: number } {
         try {
-            const usage = process.memoryUsage();
+            process.memoryUsage();
             const totalMB = Math.round(process.memoryUsage().heapTotal / (1024 * 1024));
             const usedMB = Math.round(process.memoryUsage().heapUsed / (1024 * 1024));
             // Approximate free memory (system level) - requires OS call,Node doesn't provide directly
@@ -221,7 +283,7 @@ export class HealthChecker {
                 freeMB,
                 message,
             };
-        } catch (error) {
+        } catch {
             return {
                 status: 'error',
                 usedMB: 0,

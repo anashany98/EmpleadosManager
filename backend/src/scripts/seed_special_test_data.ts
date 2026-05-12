@@ -23,21 +23,29 @@ async function main() {
         }
 
         // 2. Create Admin
-        const adminEmail = 'admin@empresa.com';
-        const adminPassword = await bcrypt.hash('admin123', 10);
+        const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@empresa.com';
+        const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+        
+        if (!adminPassword || adminPassword.length < 8) {
+            console.error('❌ FATAL: SEED_ADMIN_PASSWORD env var is required and must be at least 8 characters');
+            console.error('   Usage: SEED_ADMIN_PASSWORD=YourSecurePassword npx ts-node scripts/seed_special_test_data.ts');
+            process.exit(1);
+        }
+        
+        const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
         const adminDni = '11111111A';
 
-        const adminUser = await prisma.user.upsert({
+        await prisma.user.upsert({
             where: { email: adminEmail },
-            update: { password: adminPassword, role: 'admin' },
+            update: { password: hashedAdminPassword, role: 'admin' },
             create: {
                 email: adminEmail,
                 dni: adminDni,
-                password: adminPassword,
+                password: hashedAdminPassword,
                 role: 'admin'
             }
         });
-        console.log('✅ Admin created/updated: admin@empresa.com / admin123');
+        console.log('✅ Admin created/updated: admin@empresa.com');
 
         // 3. Create 5 Detailed Employees
         const employeesData = [
@@ -182,12 +190,21 @@ async function main() {
                     create: employeeData
                 });
 
+                const employeePassword = process.env.SEED_EMPLOYEE_PASSWORD || process.env.DEFAULT_USER_PASSWORD;
+                
+                if (!employeePassword || employeePassword.length < 6) {
+                    console.error('❌ FATAL: SEED_EMPLOYEE_PASSWORD env var is required and must be at least 6 characters');
+                    console.error('   Usage: SEED_EMPLOYEE_PASSWORD=YourPassword npx ts-node scripts/seed_special_test_data.ts');
+                    process.exit(1);
+                }
+                
+                const hashedEmployeePassword = await bcrypt.hash(employeePassword, 10);
+
                 // Create user for each employee
-                const password = await bcrypt.hash('password123', 10);
                 await prisma.user.upsert({
                     where: { email: data.email },
                     update: {
-                        password: password,
+                        password: hashedEmployeePassword,
                         role: 'employee',
                         employeeId: employee.id,
                         dni: data.dni
@@ -195,12 +212,12 @@ async function main() {
                     create: {
                         email: data.email,
                         dni: data.dni,
-                        password: password,
+                        password: hashedEmployeePassword,
                         role: 'employee',
                         employeeId: employee.id
                     }
                 });
-                console.log(`✅ User created/updated for ${data.firstName} (password123)`);
+                console.log(`✅ User created/updated for ${data.firstName}`);
             } catch (err: any) {
                 console.error(`❌ Error processing employee ${data.firstName}:`, err.message);
                 if (err.code) console.error(`Prisma Error Code: ${err.code}`);
@@ -209,7 +226,8 @@ async function main() {
         }
 
         console.log('\n🎉 Database seeded successfully!');
-        console.log('Admin login: admin@empresa.com / admin123');
+        console.log('Admin login:', adminEmail);
+        console.log('Employee password: ****** (set via SEED_EMPLOYEE_PASSWORD env var)');
     } catch (globalErr: any) {
         console.error('❌ Global Error:', globalErr.message);
     }

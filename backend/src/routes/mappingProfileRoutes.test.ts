@@ -3,7 +3,6 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import mappingProfileRoutes from './mappingProfileRoutes';
 import { errorMiddleware } from '../middlewares/errorMiddleware';
-import { prisma } from '../lib/prisma';
 
 const {
     mockGetProfiles,

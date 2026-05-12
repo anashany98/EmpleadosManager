@@ -1,28 +1,535 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-    FileText,
-    Download,
-    Calendar,
-    Clock,
-    TrendingUp,
-    Filter,
-    ChevronRight,
-    Building2,
     AlertTriangle,
+    Building2,
+    Calendar,
+    ChevronRight,
+    Clock,
+    Download,
+    FileText,
+    Filter,
     LineChart,
+    TrendingUp,
     Users
 } from 'lucide-react';
-import { api, API_URL } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
+import { api, API_URL } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
+import ReportScheduleModal from '../components/reports/ReportScheduleModal';
 
 type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS' | 'GENDER_GAP';
+type ReportTone = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
+
+interface CompanyOption {
+    id: string;
+    name: string;
+}
+
+interface DepartmentOptionsResponse {
+    departments?: string[];
+}
+
+interface SummaryCardData {
+    label: string;
+    value: string;
+    helper: string;
+    tone: ReportTone;
+}
+
+interface ReportDefinition {
+    id: ReportType;
+    name: string;
+    description: string;
+    tone: ReportTone;
+    endpoint: string;
+    icon: typeof Clock;
+}
+
+const euroFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
+const numberFormatter = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+const reportsCatalog: ReportDefinition[] = [
+    {
+        id: 'ATTENDANCE',
+        name: 'Asistencia y jornadas',
+        description: 'Resumen diario con horas trabajadas, segmentos y jornadas incompletas.',
+        tone: 'blue',
+        endpoint: '/reports/attendance-summary',
+        icon: Clock
+    },
+    {
+        id: 'OVERTIME',
+        name: 'Horas extra y coste',
+        description: 'Horas adicionales, tarifas aplicadas y coste generado por periodo.',
+        tone: 'emerald',
+        endpoint: '/reports/overtime',
+        icon: TrendingUp
+    },
+    {
+        id: 'VACATIONS',
+        name: 'Vacaciones y saldos',
+        description: 'Cuota anual, consumo, peticiones registradas y riesgo de agotamiento.',
+        tone: 'amber',
+        endpoint: '/reports/vacations',
+        icon: Calendar
+    },
+    {
+        id: 'COSTS',
+        name: 'Coste empresa',
+        description: 'Bruto, seguridad social, IRPF y coste total por persona o departamento.',
+        tone: 'violet',
+        endpoint: '/reports/costs',
+        icon: Building2
+    },
+    {
+        id: 'ABSENCES_DETAILED',
+        name: 'Bajas y ausencias',
+        description: 'Casos detallados con duración, motivo y seguimiento por empleado.',
+        tone: 'rose',
+        endpoint: '/reports/absences-detailed',
+        icon: AlertTriangle
+    },
+    {
+        id: 'KPIS',
+        name: 'KPIs de organización',
+        description: 'Rotación, absentismo y foco departamental para dirección y RRHH.',
+        tone: 'blue',
+        endpoint: '/reports/kpis',
+        icon: LineChart
+    },
+    {
+        id: 'GENDER_GAP',
+        name: 'Igualdad y diversidad',
+        description: 'Plantilla, medias salariales y brecha estimada por departamento.',
+        tone: 'rose',
+        endpoint: '/reports/gender-gap',
+        icon: Users
+    }
+];
+
+function extractResponseData<T>(response: unknown): T {
+    if (response && typeof response === 'object' && 'data' in (response as Record<string, unknown>)) {
+        return (response as { data: T }).data;
+    }
+
+    return response as T;
+}
+
+function formatCurrency(value: number) {
+    return euroFormatter.format(value || 0);
+}
+
+function formatNumber(value: number, suffix = '') {
+    return `${numberFormatter.format(value || 0)}${suffix}`;
+}
+
+function formatPercent(value: number) {
+    return `${numberFormatter.format(value || 0)}%`;
+}
+
+function formatDate(value?: string | null) {
+    if (!value) return '-';
+    return new Date(value).toLocaleDateString('es-ES');
+}
+
+function formatTime(value?: string | null) {
+    if (!value) return '-';
+    return new Date(value).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+}
+
+function getReportDefinition(type: ReportType) {
+    return reportsCatalog.find((report) => report.id === type) || reportsCatalog[0];
+}
+
+function buildRequestParams(activeTab: ReportType, filters: Record<string, string>) {
+    const params: Record<string, string> = {};
+
+    if (filters.companyId) params.companyId = filters.companyId;
+    if (filters.department && activeTab !== 'GENDER_GAP') params.department = filters.department;
+
+    if (activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED') {
+        params.start = filters.start;
+        params.end = filters.end;
+    } else if (activeTab === 'VACATIONS') {
+        params.year = filters.year;
+    } else if (activeTab === 'COSTS' || activeTab === 'KPIS') {
+        params.year = filters.year;
+        if (filters.month) params.month = filters.month;
+    } else if (activeTab === 'GENDER_GAP') {
+        params.year = filters.year;
+    }
+
+    return params;
+}
+
+function toQueryString(params: Record<string, string>) {
+    return new URLSearchParams(
+        Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+    ).toString();
+}
+
+function getAttendanceWindow(segments: Array<{ start: string; end: string | null; type: string }> = []) {
+    if (segments.length === 0) {
+        return {
+            firstSegment: '-',
+            lastSegment: '-',
+            segmentsText: '-'
+        };
+    }
+
+    const firstSegment = formatTime(segments[0].start);
+    const lastClosedSegment = [...segments].reverse().find((segment) => segment.end);
+
+    return {
+        firstSegment,
+        lastSegment: lastClosedSegment ? formatTime(lastClosedSegment.end) : 'Abierto',
+        segmentsText: segments
+            .map((segment) => `${formatTime(segment.start)} - ${segment.end ? formatTime(segment.end) : 'Abierto'} (${segment.type})`)
+            .join(' | ')
+    };
+}
+
+function getNormalizedRows(activeTab: ReportType, data: any) {
+    if (activeTab === 'KPIS') {
+        return (data?.deptStats || []).map((item: any) => ({
+            department: item.department || 'Sin asignar',
+            employees: item.employees || 0,
+            absenceDays: item.absenceDays || 0,
+            potentialDays: item.potentialDays || 0,
+            rate: item.rate || 0
+        }));
+    }
+
+    if (activeTab === 'GENDER_GAP') {
+        return (data?.rows || []).map((item: any) => ({
+            department: item.department || 'Sin asignar',
+            maleCount: item.maleCount || 0,
+            femaleCount: item.femaleCount || 0,
+            maleAvg: item.maleAvg || 0,
+            femaleAvg: item.femaleAvg || 0,
+            gap: item.gap || 0
+        }));
+    }
+
+    const rows = Array.isArray(data) ? data : [];
+
+    if (activeTab === 'ATTENDANCE') {
+        return rows.map((item: any) => {
+            const attendanceWindow = getAttendanceWindow(item.segments || []);
+            return {
+                employee: item.employeeName || 'N/A',
+                dni: item.employeeDni || '-',
+                department: item.department || 'Sin asignar',
+                date: item.date,
+                totalHours: item.totalHours || 0,
+                status: item.status || 'INCOMPLETE',
+                firstSegment: attendanceWindow.firstSegment,
+                lastSegment: attendanceWindow.lastSegment,
+                segmentsText: attendanceWindow.segmentsText
+            };
+        });
+    }
+
+    if (activeTab === 'OVERTIME') {
+        return rows.map((item: any) => ({
+            employee: item.employee?.name || 'N/A',
+            dni: item.employee?.dni || '-',
+            department: item.employee?.department || 'Sin asignar',
+            date: item.date,
+            hours: item.hours || 0,
+            rate: item.rate || 0,
+            totalCost: item.totalCost || 0,
+            type: item.type || 'STANDARD'
+        }));
+    }
+
+    if (activeTab === 'VACATIONS') {
+        return rows.map((item: any) => ({
+            employee: item.name,
+            department: item.department || 'Sin asignar',
+            totalQuota: item.totalQuota || 0,
+            annualQuotaDays: item.annualQuotaDays || 0,
+            carriedOverDays: item.carriedOverDays || 0,
+            importedUsedDays: item.importedUsedDays || 0,
+            approvedUsedDays: item.approvedUsedDays || 0,
+            pendingDays: item.pendingDays || 0,
+            usedDays: item.usedDays || 0,
+            remainingDays: item.remainingDays || 0,
+            projectedRemainingDays: item.projectedRemainingDays || item.remainingDays || 0,
+            usageRate: item.totalQuota ? ((item.usedDays || 0) / item.totalQuota) * 100 : 0,
+            requests: item.requests || item.vacations?.length || 0
+        }));
+    }
+
+    if (activeTab === 'COSTS') {
+        return rows.map((item: any) => ({
+            employee: item.name,
+            dni: item.dni || '-',
+            department: item.department || 'Sin asignar',
+            bruto: item.bruto || 0,
+            ssEmpresa: item.ssEmpresa || 0,
+            irpf: item.irpf || 0,
+            neto: item.neto || 0,
+            totalCost: item.totalCost || 0
+        }));
+    }
+
+    return rows.map((item: any) => ({
+        employee: item.employee?.name || 'N/A',
+        dni: item.employee?.dni || '-',
+        department: item.employee?.department || 'Sin asignar',
+        startDate: item.startDate,
+        endDate: item.endDate,
+        days: item.days || 0,
+        type: item.type || '-',
+        reason: item.reason || '-'
+    }));
+}
+
+function buildSummaryCards(activeTab: ReportType, rows: any[], data: any): SummaryCardData[] {
+    if (activeTab === 'ATTENDANCE') {
+        const totalHours = rows.reduce((sum, row) => sum + (row.totalHours || 0), 0);
+        return [
+            { label: 'Jornadas', value: formatNumber(rows.length), helper: 'Días consolidados en el rango', tone: 'blue' },
+            { label: 'Personas', value: formatNumber(new Set(rows.map((row) => row.employee)).size), helper: 'Empleados con marcajes', tone: 'blue' },
+            { label: 'Horas', value: formatNumber(totalHours, ' h'), helper: 'Horas trabajadas acumuladas', tone: 'emerald' },
+            { label: 'Incompletas', value: formatNumber(rows.filter((row) => row.status === 'INCOMPLETE').length), helper: 'Jornadas para revisar', tone: 'rose' }
+        ];
+    }
+
+    if (activeTab === 'OVERTIME') {
+        const totalHours = rows.reduce((sum, row) => sum + (row.hours || 0), 0);
+        const totalCost = rows.reduce((sum, row) => sum + (row.totalCost || 0), 0);
+        const averageRate = rows.length > 0 ? rows.reduce((sum, row) => sum + (row.rate || 0), 0) / rows.length : 0;
+        return [
+            { label: 'Registros', value: formatNumber(rows.length), helper: 'Apuntes de extra liquidados', tone: 'emerald' },
+            { label: 'Horas', value: formatNumber(totalHours, ' h'), helper: 'Volumen total de extra', tone: 'emerald' },
+            { label: 'Coste', value: formatCurrency(totalCost), helper: 'Impacto económico estimado', tone: 'violet' },
+            { label: 'Tarifa media', value: formatCurrency(averageRate), helper: 'Precio medio por hora', tone: 'blue' }
+        ];
+    }
+
+    if (activeTab === 'VACATIONS') {
+        const totalQuota = rows.reduce((sum, row) => sum + (row.totalQuota || 0), 0);
+        const carryOverDays = rows.reduce((sum, row) => sum + (row.carriedOverDays || 0), 0);
+        const usedDays = rows.reduce((sum, row) => sum + (row.usedDays || 0), 0);
+        const projectedRemainingDays = rows.reduce((sum, row) => sum + (row.projectedRemainingDays || 0), 0);
+        return [
+            { label: 'Plantilla', value: formatNumber(rows.length), helper: 'Empleados con saldo calculado', tone: 'amber' },
+            { label: 'Cupo total', value: formatNumber(totalQuota, ' días'), helper: 'Anuales más arrastradas', tone: 'blue' },
+            { label: 'Arrastradas', value: formatNumber(carryOverDays, ' días'), helper: 'Saldo heredado del año previo', tone: 'amber' },
+            { label: 'Consumidos', value: formatNumber(usedDays, ' días'), helper: 'Importadas y aprobadas', tone: 'rose' },
+            { label: 'Saldo proj.', value: formatNumber(projectedRemainingDays, ' días'), helper: 'Después de pendientes', tone: 'emerald' }
+        ];
+    }
+
+    if (activeTab === 'COSTS') {
+        const totalCost = rows.reduce((sum, row) => sum + (row.totalCost || 0), 0);
+        const totalBruto = rows.reduce((sum, row) => sum + (row.bruto || 0), 0);
+        const totalSS = rows.reduce((sum, row) => sum + (row.ssEmpresa || 0), 0);
+        return [
+            { label: 'Personas', value: formatNumber(rows.length), helper: 'Nóminas agregadas', tone: 'violet' },
+            { label: 'Coste total', value: formatCurrency(totalCost), helper: 'Coste empresa consolidado', tone: 'violet' },
+            { label: 'Bruto', value: formatCurrency(totalBruto), helper: 'Retribución bruta agregada', tone: 'blue' },
+            { label: 'SS empresa', value: formatCurrency(totalSS), helper: 'Carga social patronal', tone: 'amber' }
+        ];
+    }
+
+    if (activeTab === 'ABSENCES_DETAILED') {
+        const totalDays = rows.reduce((sum, row) => sum + (row.days || 0), 0);
+        const maxDays = Math.max(...rows.map((row) => row.days || 0), 0);
+        return [
+            { label: 'Casos', value: formatNumber(rows.length), helper: 'Ausencias registradas', tone: 'rose' },
+            { label: 'Personas', value: formatNumber(new Set(rows.map((row) => row.employee)).size), helper: 'Empleados afectados', tone: 'blue' },
+            { label: 'Días', value: formatNumber(totalDays, ' días'), helper: 'Impacto acumulado', tone: 'amber' },
+            { label: 'Mayor caso', value: formatNumber(maxDays, ' días'), helper: 'Ausencia más larga', tone: 'rose' }
+        ];
+    }
+
+    if (activeTab === 'KPIS') {
+        const summary = data?.summary || {};
+        return [
+            { label: 'Plantilla', value: formatNumber(summary.headcount || 0), helper: 'Personas activas en el periodo', tone: 'blue' },
+            { label: 'Altas / Bajas', value: `${summary.hires || 0} / ${summary.exits || 0}`, helper: 'Movimientos del periodo', tone: 'violet' },
+            { label: 'Rotación', value: formatPercent(summary.turnoverRate || 0), helper: 'Presión de reemplazo', tone: 'amber' },
+            { label: 'Absentismo', value: formatPercent(summary.absenteeismRate || 0), helper: 'Tasa consolidada', tone: 'rose' }
+        ];
+    }
+
+    const summary = data?.summary || {};
+    return [
+        { label: 'Brecha', value: formatPercent(summary.gapPercentage || 0), helper: 'Gap salarial medio estimado', tone: 'rose' },
+        { label: 'Hombres', value: formatNumber(summary.maleCount || 0), helper: 'Plantilla masculina', tone: 'blue' },
+        { label: 'Mujeres', value: formatNumber(summary.femaleCount || 0), helper: 'Plantilla femenina', tone: 'rose' },
+        { label: 'Media femenina', value: formatCurrency(summary.femaleAvgBruto || 0), helper: 'Bruto medio de mujeres', tone: 'emerald' }
+    ];
+}
+
+function buildInsight(activeTab: ReportType, rows: any[], data: any) {
+    if (activeTab === 'ATTENDANCE') {
+        const incomplete = rows.filter((row) => row.status === 'INCOMPLETE').length;
+        if (incomplete === 0) return 'No se detectan jornadas incompletas en el periodo consultado.';
+        return `${incomplete} jornada(s) requieren revisión. Prioriza las personas con segmentos abiertos o sin cierre.`;
+    }
+
+    if (activeTab === 'OVERTIME') {
+        const topEmployee = [...rows].sort((left, right) => (right.totalCost || 0) - (left.totalCost || 0))[0];
+        return topEmployee
+            ? `${topEmployee.employee} concentra el mayor coste de extra con ${formatCurrency(topEmployee.totalCost || 0)}.`
+            : 'No hay horas extra registradas en el periodo.';
+    }
+
+    if (activeTab === 'VACATIONS') {
+        const lowBalance = rows.filter((row) => (row.projectedRemainingDays || 0) <= 5).length;
+        return lowBalance > 0
+            ? `${lowBalance} empleado(s) tienen 5 días o menos de saldo disponible. Conviene revisar cobertura y planificación.`
+            : 'La plantilla mantiene un saldo razonable de vacaciones disponible.';
+    }
+
+    if (activeTab === 'COSTS') {
+        const topDepartment = rows.reduce((best, row) => (!best || row.totalCost > best.totalCost ? row : best), null as any);
+        return topDepartment
+            ? `${topDepartment.employee} representa el coste individual más alto con ${formatCurrency(topDepartment.totalCost || 0)}.`
+            : 'Todavía no hay costes consolidados para el periodo filtrado.';
+    }
+
+    if (activeTab === 'ABSENCES_DETAILED') {
+        const byType = rows.reduce<Record<string, number>>((accumulator, row) => {
+            accumulator[row.type] = (accumulator[row.type] || 0) + (row.days || 0);
+            return accumulator;
+        }, {});
+        const dominantType = Object.entries(byType).sort((left, right) => right[1] - left[1])[0];
+        return dominantType
+            ? `La tipología dominante es ${dominantType[0]} con ${formatNumber(dominantType[1], ' días')} acumulados.`
+            : 'No se registran ausencias en el rango actual.';
+    }
+
+    if (activeTab === 'KPIS') {
+        const topDepartment = [...rows].sort((left, right) => (right.rate || 0) - (left.rate || 0))[0];
+        return topDepartment
+            ? `${topDepartment.department} presenta la mayor tasa de absentismo con ${formatPercent(topDepartment.rate || 0)}.`
+            : 'No hay suficiente información departamental para calcular absentismo.';
+    }
+
+    const highestGapDepartment = [...rows].sort((left, right) => (right.gap || 0) - (left.gap || 0))[0];
+    return highestGapDepartment
+        ? `${highestGapDepartment.department} muestra la mayor brecha departamental con ${formatPercent(highestGapDepartment.gap || 0)}.`
+        : 'Todavía no hay masa crítica suficiente para calcular la brecha departamental.';
+}
+
+function buildPdfTable(activeTab: ReportType, rows: any[], data: any) {
+    if (activeTab === 'ATTENDANCE') {
+        return {
+            headers: ['Empleado', 'Fecha', 'Depto', 'Horas', 'Estado'],
+            body: rows.map((row) => [row.employee, formatDate(row.date), row.department, formatNumber(row.totalHours, ' h'), row.status === 'COMPLETE' ? 'Completa' : 'Incompleta'])
+        };
+    }
+
+    if (activeTab === 'OVERTIME') {
+        return {
+            headers: ['Empleado', 'Fecha', 'Horas', 'Tarifa', 'Coste'],
+            body: rows.map((row) => [row.employee, formatDate(row.date), formatNumber(row.hours, ' h'), formatCurrency(row.rate), formatCurrency(row.totalCost)])
+        };
+    }
+
+    if (activeTab === 'VACATIONS') {
+        return {
+            headers: ['Empleado', 'Depto', 'Cupo', 'Arrastre', 'Consumido', 'Pend.', 'Saldo proj.'],
+            body: rows.map((row) => [
+                row.employee,
+                row.department,
+                formatNumber(row.totalQuota),
+                formatNumber(row.carriedOverDays),
+                formatNumber(row.usedDays),
+                formatNumber(row.pendingDays),
+                formatNumber(row.projectedRemainingDays)
+            ])
+        };
+    }
+
+    if (activeTab === 'COSTS') {
+        return {
+            headers: ['Empleado', 'Bruto', 'SS Empresa', 'IRPF', 'Coste total'],
+            body: rows.map((row) => [row.employee, formatCurrency(row.bruto), formatCurrency(row.ssEmpresa), formatCurrency(row.irpf), formatCurrency(row.totalCost)])
+        };
+    }
+
+    if (activeTab === 'KPIS') {
+        return {
+            headers: ['Departamento', 'Empleados', 'Días ausencia', 'Tasa'],
+            body: rows.map((row) => [row.department, row.employees, formatNumber(row.absenceDays), formatPercent(row.rate)])
+        };
+    }
+
+    if (activeTab === 'GENDER_GAP') {
+        const summary = data?.summary || {};
+        return {
+            headers: ['Departamento', 'Hombres', 'Mujeres', 'Gap'],
+            body: [
+                ['GLOBAL', summary.maleCount || 0, summary.femaleCount || 0, formatPercent(summary.gapPercentage || 0)],
+                ...rows.map((row) => [row.department, row.maleCount, row.femaleCount, formatPercent(row.gap)])
+            ]
+        };
+    }
+
+    return {
+        headers: ['Empleado', 'Inicio', 'Fin', 'Días', 'Tipo'],
+        body: rows.map((row) => [row.employee, formatDate(row.startDate), formatDate(row.endDate), formatNumber(row.days), row.type])
+    };
+}
+
+function getToneClasses(tone: ReportTone) {
+    if (tone === 'emerald') {
+        return {
+            border: 'border-emerald-200 dark:border-emerald-500/20',
+            soft: 'bg-emerald-50 dark:bg-emerald-500/10',
+            text: 'text-emerald-600 dark:text-emerald-300'
+        };
+    }
+
+    if (tone === 'amber') {
+        return {
+            border: 'border-amber-200 dark:border-amber-500/20',
+            soft: 'bg-amber-50 dark:bg-amber-500/10',
+            text: 'text-amber-600 dark:text-amber-300'
+        };
+    }
+
+    if (tone === 'rose') {
+        return {
+            border: 'border-rose-200 dark:border-rose-500/20',
+            soft: 'bg-rose-50 dark:bg-rose-500/10',
+            text: 'text-rose-600 dark:text-rose-300'
+        };
+    }
+
+    if (tone === 'violet') {
+        return {
+            border: 'border-violet-200 dark:border-violet-500/20',
+            soft: 'bg-violet-50 dark:bg-violet-500/10',
+            text: 'text-violet-600 dark:text-violet-300'
+        };
+    }
+
+    return {
+        border: 'border-blue-200 dark:border-blue-500/20',
+        soft: 'bg-blue-50 dark:bg-blue-500/10',
+        text: 'text-blue-600 dark:text-blue-300'
+    };
+}
 
 export default function Reports() {
+    const { user } = useAuth();
+    const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
+
     const [activeTab, setActiveTab] = useState<ReportType>('ATTENDANCE');
     const [loading, setLoading] = useState(false);
     const [data, setData] = useState<any>(null);
-    const [companies, setCompanies] = useState<any[]>([]);
+    const [companies, setCompanies] = useState<CompanyOption[]>([]);
+    const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
     const [filters, setFilters] = useState({
         companyId: '',
         department: '',
@@ -32,76 +539,56 @@ export default function Reports() {
         year: new Date().getFullYear().toString()
     });
 
-    const categories = [
-        { id: 'ATTENDANCE', name: 'Asistencia y Fichajes', icon: <Clock size={20} />, description: 'Registros de entrada, salida y horas totales.' },
-        { id: 'OVERTIME', name: 'Horas Extra y Costes', icon: <TrendingUp size={20} />, description: 'Análisis de horas adicionales y su impacto económico.' },
-        { id: 'VACATIONS', name: 'Saldos de Vacaciones', icon: <Calendar size={20} />, description: 'Resumen de días consumidos y saldos por empleado.' },
-        { id: 'COSTS', name: 'Coste Empresa (BI)', icon: <Building2 size={20} />, description: 'Desglose de Bruto + SS Empresa para análisis financiero.' },
-        { id: 'ABSENCES_DETAILED', name: 'Detalle de Bajas (Audit)', icon: <AlertTriangle size={20} />, description: 'Listado cronológico de todas las bajas y suspensiones.' },
-        { id: 'KPIS', name: 'KPIs de Organización', icon: <LineChart size={20} />, description: 'Tasas de absentismo y rotación por departamento.' },
-        { id: 'GENDER_GAP', name: 'Igualdad y Diversidad', icon: <Users size={20} />, description: 'Análisis de brecha salarial y paridad por departamentos.' }
-    ];
+    const [scheduleModal, setScheduleModal] = useState<{ isOpen: boolean; reportType: string; reportName: string }>({
+        isOpen: false,
+        reportType: '',
+        reportName: ''
+    });
+
+    const activeReport = getReportDefinition(activeTab);
+    const ActiveReportIcon = activeReport.icon;
+    const normalizedRows = useMemo(() => getNormalizedRows(activeTab, data), [activeTab, data]);
+    const summaryCards = useMemo(() => buildSummaryCards(activeTab, normalizedRows, data), [activeTab, normalizedRows, data]);
+    const reportInsight = useMemo(() => buildInsight(activeTab, normalizedRows, data), [activeTab, normalizedRows, data]);
 
     useEffect(() => {
-        fetchCompanies();
+        void fetchCompanies();
+        void fetchDepartmentOptions();
     }, []);
 
     useEffect(() => {
-        fetchData();
+        void fetchData();
     }, [activeTab, filters.companyId, filters.department, filters.start, filters.end, filters.year, filters.month]);
 
     const fetchCompanies = async () => {
         try {
-            const res = await api.get('/companies');
-            // const baseUrl = 'http://192.168.1.38:3000';
-            setCompanies(res.data || res || []);
-        } catch (err) {
-            console.error(err);
+            const response = await api.get('/companies');
+            setCompanies(extractResponseData<CompanyOption[]>(response) || []);
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
+    const fetchDepartmentOptions = async () => {
+        try {
+            const response = await api.get('/employees/options');
+            const options = extractResponseData<DepartmentOptionsResponse>(response);
+            setDepartmentOptions(options?.departments || []);
+        } catch (error) {
+            console.error(error);
+            setDepartmentOptions([]);
         }
     };
 
     const fetchData = async () => {
         setLoading(true);
         try {
-            let endpoint = '';
-            let params: any = {
-                companyId: filters.companyId,
-                department: filters.department
-            };
-
-            if (activeTab === 'ATTENDANCE') {
-                endpoint = '/reports/attendance';
-                params.start = filters.start;
-                params.end = filters.end;
-            } else if (activeTab === 'OVERTIME') {
-                endpoint = '/reports/overtime';
-                params.start = filters.start;
-                params.end = filters.end;
-            } else if (activeTab === 'VACATIONS') {
-                endpoint = '/reports/vacations';
-                params.year = filters.year;
-            } else if (activeTab === 'COSTS') {
-                endpoint = '/reports/costs';
-                params.year = filters.year;
-                params.month = filters.month;
-            } else if (activeTab === 'ABSENCES_DETAILED') {
-                endpoint = '/reports/absences-detailed';
-                params.start = filters.start;
-                params.end = filters.end;
-            } else if (activeTab === 'KPIS') {
-                endpoint = '/reports/kpis';
-                params.year = filters.year;
-                params.month = filters.month;
-            } else if (activeTab === 'GENDER_GAP') {
-                endpoint = '/reports/gender-gap';
-                params.year = filters.year;
-            }
-
-            const queryString = new URLSearchParams(params).toString();
-            const res = await api.get(`${endpoint}?${queryString}`);
-            setData(res.data || res);
-        } catch (err) {
-            toast.error('Error al cargar datos del reporte');
+            const params = buildRequestParams(activeTab, filters);
+            const queryString = toQueryString(params);
+            const response = await api.get(`${activeReport.endpoint}?${queryString}`);
+            setData(extractResponseData<any>(response));
+        } catch (error) {
+            toast.error('Error al cargar el reporte');
         } finally {
             setLoading(false);
         }
@@ -109,408 +596,217 @@ export default function Reports() {
 
     const handleExportExcel = async () => {
         try {
-            toast.info('Generando Excel...');
-            let endpoint = '';
-            if (activeTab === 'ATTENDANCE') endpoint = '/reports/attendance';
-            else if (activeTab === 'OVERTIME') endpoint = '/reports/overtime';
-            else if (activeTab === 'VACATIONS') endpoint = '/reports/vacations';
-            else if (activeTab === 'COSTS') endpoint = '/reports/costs';
-            else if (activeTab === 'KPIS') endpoint = '/reports/kpis';
-            else if (activeTab === 'GENDER_GAP') endpoint = '/reports/gender-gap';
-            else endpoint = '/reports/absences-detailed';
-
-            const params = { ...filters, format: 'xlsx' };
-            const queryString = new URLSearchParams(params as any).toString();
-
-            window.open(`${API_URL}${endpoint}?${queryString}`, '_blank');
-        } catch (err) {
+            toast.info('Preparando Excel...');
+            const queryString = toQueryString({
+                ...buildRequestParams(activeTab, filters),
+                format: 'xlsx'
+            });
+            window.open(`${API_URL}${activeReport.endpoint}?${queryString}`, '_blank');
+        } catch (error) {
             toast.error('Error al exportar Excel');
         }
     };
 
     const handleExportPDF = async () => {
-        const [{ default: jsPDF }, autoTableModule] = await Promise.all([
-            import('jspdf'),
-            import('jspdf-autotable')
-        ]);
-        const autoTable = (autoTableModule as any).default || autoTableModule;
-        const doc = new jsPDF();
-        const title = categories.find(c => c.id === activeTab)?.name || 'Reporte';
+        try {
+            const report = reportsCatalog.find(r => r.id === activeTab);
+            if (!report) return;
 
-        doc.setFontSize(18);
-        doc.text(title, 14, 20);
-        doc.setFontSize(10);
-        doc.text(`Generado el: ${new Date().toLocaleString()}`, 14, 28);
-        doc.text(`Filtros: ${filters.companyId ? 'Empresa seleccionada' : 'Todas'} | ${filters.department || 'Todos'}`, 14, 34);
+            const pdfTable = buildPdfTable(activeTab, normalizedRows, data);
 
-        let tableData: any[] = [];
-        let headers: string[] = [];
+            const doc = new jsPDF();
+            doc.setFontSize(18);
+            doc.text(report.name, 14, 20);
+            doc.setFontSize(10);
+            doc.text(`Generado el: ${new Date().toLocaleString('es-ES')}`, 14, 28);
+            doc.text(`Periodo: ${getPeriodLabel(activeTab, filters)}`, 14, 34);
+            doc.text(`Empresa: ${filters.companyId ? 'Filtrada' : 'Todas'} | Departamento: ${filters.department || 'Todos'}`, 14, 40);
 
-        if (activeTab === 'ATTENDANCE') {
-            headers = ['Empleado', 'Fecha', 'Entrada', 'Salida', 'Horas'];
-            tableData = (data || []).map((item: any) => [
-                item.employee.name,
-                new Date(item.date).toLocaleDateString(),
-                item.checkIn ? new Date(item.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-',
-                item.checkOut ? new Date(item.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-',
-                item.totalHours.toFixed(2)
-            ]);
-        } else if (activeTab === 'OVERTIME') {
-            headers = ['Empleado', 'Fecha', 'Horas', 'Precio/H', 'Total'];
-            tableData = (data || []).map((item: any) => [
-                item.employee.name,
-                new Date(item.date).toLocaleDateString(),
-                item.hours,
-                `${item.rate.toFixed(2)}€`,
-                `${item.totalCost.toFixed(2)}€`
-            ]);
-        } else if (activeTab === 'VACATIONS') {
-            headers = ['Empleado', 'Depto', 'Cuota', 'Gastados', 'Quedan'];
-            tableData = (data || []).map((item: any) => [
-                item.name, item.department || '-', item.totalQuota, item.usedDays, item.remainingDays
-            ]);
-        } else if (activeTab === 'COSTS') {
-            headers = ['Empleado', 'Bruto', 'SS Empresa', 'Neto', 'COSTE TOTAL'];
-            tableData = (data || []).map((item: any) => [
-                item.name, `${item.bruto.toFixed(2)}€`, `${item.ssEmpresa.toFixed(2)}€`, `${item.neto.toFixed(2)}€`, `${item.totalCost.toFixed(2)}€`
-            ]);
-        } else if (activeTab === 'KPIS') {
-            tableData = (data?.deptStats || []).map((item: any) => [
-                item.department, item.employees, item.absenceDays, `${item.rate}%`
-            ]);
-        } else if (activeTab === 'GENDER_GAP') {
-            headers = ['Concepto', 'Masculino', 'Femenino', 'Brecha %'];
-            tableData = [
-                ['Plantilla', data?.summary?.maleCount, data?.summary?.femaleCount, `${data?.summary?.gapPercentage}%`],
-                ['Sueldo Medio', `${data?.summary?.maleAvgBruto?.toFixed(2)}€`, `${data?.summary?.femaleAvgBruto?.toFixed(2)}€`, '-']
-            ];
-        } else {
-            headers = ['Empleado', 'Inicio', 'Fin', 'Días', 'Tipo'];
-            tableData = (data || []).map((item: any) => [
-                item.employee.name, new Date(item.startDate).toLocaleDateString(), new Date(item.endDate).toLocaleDateString(), item.days, item.type
-            ]);
+            autoTable(doc, {
+                startY: 48,
+                head: [pdfTable.headers],
+                body: pdfTable.body,
+                theme: 'grid',
+                headStyles: { fillColor: [15, 23, 42] },
+                styles: { fontSize: 9, cellPadding: 2.5 }
+            });
+
+            doc.save(`Reporte_${activeTab}_${new Date().getTime()}.pdf`);
+        } catch (error) {
+            console.error('Error generating PDF:', error);
+            toast.error('Error al generar PDF');
         }
-
-        autoTable(doc, {
-            startY: 40,
-            head: [headers],
-            body: tableData,
-            theme: 'grid',
-            headStyles: { fillColor: [30, 41, 59] }
-        });
-
-        doc.save(`Reporte_${activeTab}_${new Date().getTime()}.pdf`);
     };
 
+    const openScheduleModal = (reportType: string, reportName: string) => {
+        setScheduleModal({ isOpen: true, reportType, reportName });
+    };
+
+    const toneClasses = getToneClasses(activeReport.tone);
+    const showCompanyFilter = isGlobalAdmin || companies.length > 1;
+
     return (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
-                        <FileText className="text-blue-500" size={32} />
-                        Reportes de Gestión
-                    </h1>
-                    <p className="text-slate-500 dark:text-slate-400 mt-1">Genera y exporta informes detallados para Administración y RRHH.</p>
-                </div>
-            </div>
+    <div className="space-y-4 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-4 sm:gap-8 items-start">
+        <div className="space-y-3 sm:space-y-4">
+          {reportsCatalog.map((report) => {
+            const ReportIcon = report.icon;
+            const reportTone = getToneClasses(report.tone);
+            const isActive = activeTab === report.id;
 
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                <div className="space-y-3">
-                    {categories.map((cat) => (
-                        <button
-                            key={cat.id}
-                            onClick={() => setActiveTab(cat.id as ReportType)}
-                            className={`w-full text-left p-4 rounded-2xl border transition-all duration-300 group
-                                ${activeTab === cat.id
-                                    ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/20'
-                                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:border-blue-300'}`}
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-xl ${activeTab === cat.id ? 'bg-white/20' : 'bg-slate-50 dark:bg-slate-800'}`}>
-                                    {cat.icon}
+            return (
+              <div
+                key={report.id}
+                onClick={() => setActiveTab(report.id)}
+                className={`w-full text-left p-3 sm:p-4 rounded-2xl sm:rounded-3xl border transition-all duration-300 group touch-active cursor-pointer ${
+                  isActive
+                    ? `${reportTone.soft} ${reportTone.border} shadow-lg`
+                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
+              >
+                                <div className="flex items-start gap-4">
+                                    <div className={`mt-0.5 p-3 rounded-2xl ${isActive ? reportTone.soft : 'bg-slate-50 dark:bg-slate-800'} ${reportTone.text}`}>
+                                        <ReportIcon size={20} />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <h3 className={`font-black text-sm ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-100'}`}>{report.name}</h3>
+                                            <ChevronRight size={16} className={`${isActive ? 'opacity-100 text-slate-500' : 'opacity-0 group-hover:opacity-100 text-slate-400'} transition-opacity`} />
+                                        </div>
+                                        <p className={`text-xs mt-2 leading-5 ${isActive ? 'text-slate-600 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{report.description}</p>
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); openScheduleModal(report.id, report.name); }}
+                                            className="flex items-center gap-2 px-3 py-1.5 text-xs border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors mt-2"
+                                        >
+                                            <Calendar size={14} />
+                                            Programar
+                                        </button>
+                                    </div>
                                 </div>
-                                <div className="flex-1">
-                                    <h3 className="font-bold text-sm tracking-tight">{cat.name}</h3>
-                                    <p className={`text-[10px] mt-1 leading-tight ${activeTab === cat.id ? 'text-blue-100' : 'text-slate-400'}`}>
-                                        {cat.description}
-                                    </p>
-                                </div>
-                                <ChevronRight size={16} className={`${activeTab === cat.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 transition-opacity'}`} />
                             </div>
-                        </button>
-                    ))}
+                        );
+                    })}
 
-                    <div className="mt-8 p-6 rounded-2xl bg-gradient-to-br from-indigo-700 to-blue-800 text-white relative overflow-hidden">
-                        <div className="absolute top-0 right-0 p-4 opacity-10">
-                            <TrendingUp size={80} />
+                    <div className={`rounded-2xl sm:rounded-3xl border p-4 sm:p-5 ${toneClasses.soft} ${toneClasses.border}`}>
+                        <div className={`inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] ${toneClasses.text}`}>
+                            <LineChart size={14} />
+                            Insight actual
                         </div>
-                        <h4 className="font-bold text-sm uppercase tracking-widest text-blue-100 mb-2">BI Insights</h4>
-                        <p className="text-xs text-blue-50 leading-relaxed">
-                            Los reportes de <strong>KPIs</strong> permiten identificar fugas de talento y departamentos con alto absentismo.
-                        </p>
+                        <p className="text-sm text-slate-700 dark:text-slate-200 leading-7 mt-3">{reportInsight}</p>
                     </div>
                 </div>
 
-                <div className="lg:col-span-3 space-y-6">
-                    <div className="bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-wrap items-center gap-4">
-                        <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800">
-                            <Building2 size={16} className="text-slate-400" />
-                            <select
+        <div className="space-y-4 sm:space-y-6">
+          <div className="bg-white dark:bg-slate-900 p-3 sm:p-6 rounded-2xl sm:rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-wrap items-center gap-3 sm:gap-4">
+                        {showCompanyFilter ? (
+                            <FilterSelect
+                                icon={Building2}
                                 value={filters.companyId}
-                                onChange={(e) => setFilters({ ...filters, companyId: e.target.value })}
-                                className="bg-transparent text-sm font-medium outline-none text-slate-700 dark:text-slate-200"
-                            >
-                                <option value="">Todas las Empresas</option>
-                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
-                        </div>
+                                onChange={(value) => setFilters({ ...filters, companyId: value })}
+                                options={[{ value: '', label: 'Todas las empresas' }, ...companies.map((company) => ({ value: company.id, label: company.name }))]}
+                            />
+                        ) : null}
 
-                        <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800">
-                            <Filter size={16} className="text-slate-400" />
-                            <select
-                                value={filters.department}
-                                onChange={(e) => setFilters({ ...filters, department: e.target.value })}
-                                className="bg-transparent text-sm font-medium outline-none text-slate-700 dark:text-slate-200"
-                            >
-                                <option value="">Todos los Deptos.</option>
-                                <option value="IT">IT</option>
-                                <option value="Ventas">Ventas</option>
-                                <option value="Logística">Logística</option>
-                                <option value="Recursos Humanos">Recursos Humanos</option>
-                                <option value="Operaciones">Operaciones</option>
-                                <option value="Finanzas">Finanzas</option>
-                            </select>
-                        </div>
+                        <FilterSelect
+                            icon={Filter}
+                            value={filters.department}
+                            onChange={(value) => setFilters({ ...filters, department: value })}
+                            options={[{ value: '', label: 'Todos los departamentos' }, ...departmentOptions.map((department) => ({ value: department, label: department }))]}
+                        />
 
-                        {activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED' ? (
-                            <div className="flex items-center gap-2">
+                        {(activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED') ? (
+                            <div className="flex flex-wrap items-center gap-2">
                                 <input
                                     type="date"
                                     value={filters.start}
-                                    onChange={(e) => setFilters({ ...filters, start: e.target.value })}
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 text-sm font-medium outline-none"
+                                    onChange={(event) => setFilters({ ...filters, start: event.target.value })}
+                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
                                 />
-                                <span className="text-slate-400 text-xs font-bold">AL</span>
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">a</span>
                                 <input
                                     type="date"
                                     value={filters.end}
-                                    onChange={(e) => setFilters({ ...filters, end: e.target.value })}
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 text-sm font-medium outline-none"
+                                    onChange={(event) => setFilters({ ...filters, end: event.target.value })}
+                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
                                 />
-                            </div>
-                        ) : activeTab === 'COSTS' || activeTab === 'KPIS' || activeTab === 'GENDER_GAP' ? (
-                            <div className="flex items-center gap-3">
-                                <input
-                                    type="number"
-                                    value={filters.year}
-                                    onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 text-sm font-medium w-20 outline-none"
-                                />
-                                {activeTab !== 'GENDER_GAP' && (
-                                    <select
-                                        value={filters.month}
-                                        onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800 text-sm font-medium outline-none"
-                                    >
-                                        <option value="">Todo el año</option>
-                                        {Array.from({ length: 12 }).map((_, i) => (
-                                            <option key={i + 1} value={i + 1}>{new Date(0, i).toLocaleString('es', { month: 'long' })}</option>
-                                        ))}
-                                    </select>
-                                )}
                             </div>
                         ) : (
-                            <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-800">
-                                <Calendar size={16} className="text-slate-400" />
+                            <div className="flex flex-wrap items-center gap-3">
                                 <input
                                     type="number"
                                     value={filters.year}
-                                    onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-                                    className="bg-transparent text-sm font-medium outline-none text-slate-700 dark:text-slate-200 w-16"
+                                    onChange={(event) => setFilters({ ...filters, year: event.target.value })}
+                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium w-24 outline-none"
                                 />
+                                {activeTab !== 'VACATIONS' && activeTab !== 'GENDER_GAP' ? (
+                                    <select
+                                        value={filters.month}
+                                        onChange={(event) => setFilters({ ...filters, month: event.target.value })}
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
+                                    >
+                                        <option value="">Todo el año</option>
+                                        {Array.from({ length: 12 }).map((_, index) => (
+                                            <option key={index + 1} value={String(index + 1)}>{new Date(0, index).toLocaleString('es-ES', { month: 'long' })}</option>
+                                        ))}
+                                    </select>
+                                ) : null}
                             </div>
                         )}
 
-                        <div className="flex-1 flex justify-end gap-2">
-                            <button onClick={handleExportExcel} className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400 rounded-xl font-bold text-xs hover:bg-emerald-100 transition-colors">
-                                <Download size={14} /> EXCEL
+                        <div className="ml-auto flex flex-wrap items-center gap-2">
+                            <button onClick={() => void handleExportExcel()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 font-bold text-xs hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors">
+                                <Download size={14} /> Excel
                             </button>
-                            <button onClick={handleExportPDF} className="flex items-center gap-2 px-4 py-2 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400 rounded-xl font-bold text-xs hover:bg-rose-100 transition-colors">
+                            <button onClick={() => void handleExportPDF()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300 font-bold text-xs hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors">
                                 <FileText size={14} /> PDF
                             </button>
                         </div>
                     </div>
 
-                    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 overflow-hidden shadow-sm min-h-[500px]">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+                        {summaryCards.map((card) => (
+                            <SummaryCard key={card.label} data={card} />
+                        ))}
+                    </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden min-h-[400px] sm:min-h-[520px]">
+            <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-slate-100 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4 bg-slate-50/70 dark:bg-slate-950/40">
+                            <div>
+                                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black uppercase tracking-[0.2em] ${toneClasses.soft} ${toneClasses.text}`}>
+                                    <ActiveReportIcon size={14} />
+                                    {activeReport.name}
+                                </div>
+                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 max-w-3xl">{activeReport.description}</p>
+                            </div>
+                            <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                                {normalizedRows.length} registro(s) visibles · {getPeriodLabel(activeTab, filters)}
+                            </div>
+                        </div>
+
                         {loading ? (
-                            <div className="flex flex-col items-center justify-center h-[500px] gap-4">
+                            <div className="flex flex-col items-center justify-center h-[460px] gap-4">
                                 <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                                <p className="text-sm font-medium text-slate-500">Analizando métricas...</p>
+                                <p className="text-sm font-medium text-slate-500">Calculando métricas y preparando resumen...</p>
+                            </div>
+                        ) : normalizedRows.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center h-[460px] gap-4 px-6 text-center">
+                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${toneClasses.soft} ${toneClasses.text}`}>
+                                    <ActiveReportIcon size={28} />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-900 dark:text-white">Sin datos para este periodo</h3>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-lg">Ajusta las fechas, la empresa o el departamento para obtener un conjunto de datos relevante.</p>
+                                </div>
                             </div>
                         ) : (
                             <AnimatePresence mode="wait">
-                                <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="overflow-x-auto">
-                                    <table className="w-full text-left text-sm">
+              <motion.div key={activeTab} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="table-responsive">
+                <table className="w-full text-left text-sm min-w-[980px]">
                                         <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
-                                            {activeTab === 'ATTENDANCE' && (
-                                                <tr>
-                                                    <th className="px-6 py-4 font-bold">Empleado</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Fecha</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Entrada</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Salida</th>
-                                                    <th className="px-6 py-4 font-bold text-right">Horas</th>
-                                                </tr>
-                                            )}
-                                            {activeTab === 'OVERTIME' && (
-                                                <tr>
-                                                    <th className="px-6 py-4 font-bold">Empleado</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Fecha</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Horas</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Tasa (€/h)</th>
-                                                    <th className="px-6 py-4 font-bold text-right">Coste Total</th>
-                                                </tr>
-                                            )}
-                                            {activeTab === 'VACATIONS' && (
-                                                <tr>
-                                                    <th className="px-6 py-4 font-bold">Empleado</th>
-                                                    <th className="px-6 py-4 font-bold">Depto.</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Anual</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Gastados</th>
-                                                    <th className="px-6 py-4 font-bold text-right">Sobrante</th>
-                                                </tr>
-                                            )}
-                                            {activeTab === 'COSTS' && (
-                                                <tr>
-                                                    <th className="px-6 py-4 font-bold">Empleado</th>
-                                                    <th className="px-6 py-4 font-bold text-right">Sueldo Bruto</th>
-                                                    <th className="px-6 py-4 font-bold text-right">SS Empresa</th>
-                                                    <th className="px-6 py-4 font-bold text-right">IRPF</th>
-                                                    <th className="px-6 py-4 font-bold text-right">COSTE TOTAL</th>
-                                                </tr>
-                                            )}
-                                            {activeTab === 'ABSENCES_DETAILED' && (
-                                                <tr>
-                                                    <th className="px-6 py-4 font-bold">Empleado</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Desde</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Hasta</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Días</th>
-                                                    <th className="px-6 py-4 font-bold text-right">Tipo</th>
-                                                </tr>
-                                            )}
-                                            {activeTab === 'KPIS' && (
-                                                <tr>
-                                                    <th className="px-6 py-4 font-bold">Departamento</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Empleados</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Días Ausencia</th>
-                                                    <th className="px-6 py-4 font-bold text-right">Tasa %</th>
-                                                </tr>
-                                            )}
-                                            {activeTab === 'GENDER_GAP' && (
-                                                <tr>
-                                                    <th className="px-6 py-4 font-bold">Concepto / Dimensión</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Masculino</th>
-                                                    <th className="px-6 py-4 font-bold text-center">Femenino</th>
-                                                    <th className="px-6 py-4 font-bold text-right">Brecha / Gap %</th>
-                                                </tr>
-                                            )}
+                                            <ReportTableHead activeTab={activeTab} />
                                         </thead>
                                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                            {activeTab === 'KPIS' && data?.summary && (
-                                                <tr className="bg-indigo-50/20 dark:bg-indigo-900/5">
-                                                    <td colSpan={4} className="p-6">
-                                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                                            <KPICard title="Plantilla" value={data.summary.headcount} subtitle="Promedio" />
-                                                            <KPICard title="Altas/Bajas" value={`${data.summary.hires}/${data.summary.exits}`} subtitle="Movimiento" color="text-blue-500" />
-                                                            <KPICard title="Rotación" value={`${data.summary.turnoverRate}%`} subtitle="Tasa mensual" color="text-amber-500" />
-                                                            <KPICard title="Absentismo" value={`${data.summary.absenteeismRate}%`} subtitle="Global" color="text-indigo-600" />
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            {activeTab === 'GENDER_GAP' && data?.summary && (
-                                                <tr className="bg-blue-50/20 dark:bg-blue-900/5">
-                                                    <td colSpan={4} className="p-6">
-                                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                                            <KPICard title="Brecha Salarial" value={`${data.summary.gapPercentage}%`} subtitle="Diferencia global" color="text-rose-600" />
-                                                            <KPICard title="Sueldo Medio H" value={`${data.summary.maleAvgBruto.toFixed(2)}€`} subtitle="Hombres" />
-                                                            <KPICard title="Sueldo Medio M" value={`${data.summary.femaleAvgBruto.toFixed(2)}€`} subtitle="Mujeres" />
-                                                            <KPICard title="Paridad (M/H)" value={`${data.summary.femaleCount}/${data.summary.maleCount}`} subtitle="Distribución" color="text-indigo-500" />
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                            {(!data || (Array.isArray(data) ? data.length === 0 : (activeTab === 'GENDER_GAP' ? data.rows?.length === 0 : data.deptStats?.length === 0))) ? (
-                                                <tr><td colSpan={6} className="px-6 py-20 text-center text-slate-400">Sin datos para este periodo.</td></tr>
-                                            ) : (Array.isArray(data) ? data : (activeTab === 'GENDER_GAP' ? data.rows : data.deptStats)).map((item: any, idx: number) => (
-                                                <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                                                    {activeTab === 'GENDER_GAP' && (
-                                                        <>
-                                                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white uppercase tracking-tighter text-xs">{item.department || 'GLOBAL'}</td>
-                                                            <td className="px-6 py-4 text-center font-mono">{(item.maleAvg || 0).toFixed(2)}€ <span className="text-[10px] text-slate-400 opacity-50 block font-sans">(n={item.maleCount})</span></td>
-                                                            <td className="px-6 py-4 text-center font-mono">{(item.femaleAvg || 0).toFixed(2)}€ <span className="text-[10px] text-slate-400 opacity-50 block font-sans">(n={item.femaleCount})</span></td>
-                                                            <td className={`px-6 py-4 text-right font-black ${item.gap > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{(item.gap || 0).toFixed(2)}%</td>
-                                                        </>
-                                                    )}
-                                                    {activeTab === 'ATTENDANCE' && (
-                                                        <>
-                                                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white flex items-center gap-3">
-                                                                <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-[10px] font-bold">
-                                                                    {item.employee?.name?.charAt(0) || '?'}
-                                                                </div>
-                                                                {item.employee?.name || 'N/A'}
-                                                            </td>
-                                                            <td className="px-6 py-4 text-center text-slate-500">{item.date ? new Date(item.date).toLocaleDateString() : '-'}</td>
-                                                            <td className="px-6 py-4 text-center font-mono text-emerald-600">{item.checkIn ? new Date(item.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                                                            <td className="px-6 py-4 text-center font-mono text-rose-600">{item.checkOut ? new Date(item.checkOut).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '-'}</td>
-                                                            <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">{(item.totalHours || 0).toFixed(2)}h</td>
-                                                        </>
-                                                    )}
-                                                    {activeTab === 'OVERTIME' && (
-                                                        <>
-                                                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{item.employee?.name || 'N/A'}</td>
-                                                            <td className="px-6 py-4 text-center">{item.date ? new Date(item.date).toLocaleDateString() : '-'}</td>
-                                                            <td className="px-6 py-4 text-center">{(item.hours || 0).toFixed(1)}h</td>
-                                                            <td className="px-6 py-4 text-center">{(item.rate || 0).toFixed(2)}€/h</td>
-                                                            <td className="px-6 py-4 text-right font-bold text-indigo-600">{(item.totalCost || 0).toFixed(2)}€</td>
-                                                        </>
-                                                    )}
-                                                    {activeTab === 'VACATIONS' && (
-                                                        <>
-                                                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{item.name}</td>
-                                                            <td className="px-6 py-4 text-left text-slate-500 text-xs">{item.department || '-'}</td>
-                                                            <td className="px-6 py-4 text-center font-bold">{item.totalQuota}</td>
-                                                            <td className="px-6 py-4 text-center text-rose-500">{item.usedDays}</td>
-                                                            <td className="px-6 py-4 text-right font-bold text-emerald-600">{item.remainingDays}</td>
-                                                        </>
-                                                    )}
-                                                    {activeTab === 'COSTS' && (
-                                                        <>
-                                                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{item.name}</td>
-                                                            <td className="px-6 py-4 text-right font-mono">{(item.bruto || 0).toFixed(2)}€</td>
-                                                            <td className="px-6 py-4 text-right font-mono">{(item.ssEmpresa || 0).toFixed(2)}€</td>
-                                                            <td className="px-6 py-4 text-right font-mono text-amber-600">{(item.irpf || 0).toFixed(2)}€</td>
-                                                            <td className="px-6 py-4 text-right font-bold text-indigo-600">{(item.totalCost || 0).toFixed(2)}€</td>
-                                                        </>
-                                                    )}
-                                                    {activeTab === 'KPIS' && (
-                                                        <>
-                                                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{item.department}</td>
-                                                            <td className="px-6 py-4 text-center">{item.employees}</td>
-                                                            <td className="px-6 py-4 text-center text-rose-500">{item.absenceDays}</td>
-                                                            <td className="px-6 py-4 text-right font-black text-indigo-600">{item.rate}%</td>
-                                                        </>
-                                                    )}
-                                                    {activeTab === 'ABSENCES_DETAILED' && (
-                                                        <>
-                                                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{item.employee?.name || 'N/A'}</td>
-                                                            <td className="px-6 py-4 text-center">{new Date(item.startDate).toLocaleDateString()}</td>
-                                                            <td className="px-6 py-4 text-center">{new Date(item.endDate).toLocaleDateString()}</td>
-                                                            <td className="px-6 py-4 text-center font-bold text-indigo-500">{item.days}</td>
-                                                            <td className="px-6 py-4 text-right"><span className="px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded text-[10px] font-bold uppercase">{item.type}</span></td>
-                                                        </>
-                                                    )}
-                                                </tr>
-                                            ))}
+                                            <ReportTableBody activeTab={activeTab} rows={normalizedRows} />
                                         </tbody>
                                     </table>
                                 </motion.div>
@@ -520,15 +816,269 @@ export default function Reports() {
                 </div>
             </div>
         </div>
+
     );
 }
 
-function KPICard({ title, value, subtitle, color = "text-slate-800 dark:text-white" }: any) {
+function getPeriodLabel(activeTab: ReportType, filters: Record<string, string>) {
+    if (activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED') {
+        return `${filters.start} · ${filters.end}`;
+    }
+
+    if (activeTab === 'VACATIONS') {
+        return `Año ${filters.year}`;
+    }
+
+    if (activeTab === 'GENDER_GAP') {
+        return `Año ${filters.year}`;
+    }
+
+    return filters.month ? `${filters.month}/${filters.year}` : `Año ${filters.year}`;
+}
+
+function HeroBadge({ label, value }: { label: string; value: string }) {
     return (
-        <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{title}</p>
-            <h4 className={`text-xl font-black mt-1 ${color}`}>{value}</h4>
-            <p className="text-[10px] text-slate-400 mt-1">{subtitle}</p>
+        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-sm">
+            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-300 font-black">{label}</div>
+            <div className="text-sm font-bold text-white mt-1 leading-5">{value}</div>
         </div>
+    );
+}
+
+function FilterSelect({
+    icon: Icon,
+    value,
+    onChange,
+    options
+}: {
+    icon: typeof Filter;
+    value: string;
+    onChange: (value: string) => void;
+    options: Array<{ value: string; label: string }>;
+}) {
+    return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+            <Icon size={16} className="text-slate-400" />
+            <select
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                className="bg-transparent text-sm font-medium outline-none text-slate-700 dark:text-slate-200"
+            >
+                {options.map((option) => (
+                    <option key={`${option.value}-${option.label}`} value={option.value}>{option.label}</option>
+                ))}
+            </select>
+        </div>
+    );
+}
+
+function SummaryCard({ data }: { data: SummaryCardData }) {
+  const toneClasses = getToneClasses(data.tone);
+  return (
+    <div className={`rounded-2xl sm:rounded-3xl border bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm ${toneClasses.border}`}>
+      <div className={`inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] ${toneClasses.soft} ${toneClasses.text}`}>
+        {data.label}
+      </div>
+      <div className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white mt-3 sm:mt-4 tracking-tight">{data.value}</div>
+      <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1.5 sm:mt-2 leading-4 sm:leading-5">{data.helper}</p>
+    </div>
+  );
+}
+
+function ReportTableHead({ activeTab }: { activeTab: ReportType }) {
+    if (activeTab === 'ATTENDANCE') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Empleado</th>
+                <th className="px-6 py-4 font-bold">Depto.</th>
+                <th className="px-6 py-4 font-bold text-center">Fecha</th>
+                <th className="px-6 py-4 font-bold text-center">Primer fichaje</th>
+                <th className="px-6 py-4 font-bold text-center">Último fichaje</th>
+                <th className="px-6 py-4 font-bold text-right">Horas</th>
+                <th className="px-6 py-4 font-bold text-center">Estado</th>
+                <th className="px-6 py-4 font-bold">Segmentos</th>
+            </tr>
+        );
+    }
+
+    if (activeTab === 'OVERTIME') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Empleado</th>
+                <th className="px-6 py-4 font-bold">Depto.</th>
+                <th className="px-6 py-4 font-bold text-center">Fecha</th>
+                <th className="px-6 py-4 font-bold text-center">Tipo</th>
+                <th className="px-6 py-4 font-bold text-right">Horas</th>
+                <th className="px-6 py-4 font-bold text-right">Tarifa</th>
+                <th className="px-6 py-4 font-bold text-right">Coste</th>
+            </tr>
+        );
+    }
+
+    if (activeTab === 'VACATIONS') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Empleado</th>
+                <th className="px-6 py-4 font-bold">Departamento</th>
+                <th className="px-6 py-4 font-bold text-right">Anuales</th>
+                <th className="px-6 py-4 font-bold text-right">Arrastre</th>
+                <th className="px-6 py-4 font-bold text-right">Consumido</th>
+                <th className="px-6 py-4 font-bold text-right">Pend.</th>
+                <th className="px-6 py-4 font-bold text-right">Saldo</th>
+                <th className="px-6 py-4 font-bold text-right">Saldo proj.</th>
+                <th className="px-6 py-4 font-bold text-right">Uso %</th>
+                <th className="px-6 py-4 font-bold text-center">Solicitudes</th>
+            </tr>
+        );
+    }
+
+    if (activeTab === 'COSTS') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Empleado</th>
+                <th className="px-6 py-4 font-bold">Departamento</th>
+                <th className="px-6 py-4 font-bold text-right">Bruto</th>
+                <th className="px-6 py-4 font-bold text-right">SS Empresa</th>
+                <th className="px-6 py-4 font-bold text-right">IRPF</th>
+                <th className="px-6 py-4 font-bold text-right">Neto</th>
+                <th className="px-6 py-4 font-bold text-right">Coste total</th>
+            </tr>
+        );
+    }
+
+    if (activeTab === 'ABSENCES_DETAILED') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Empleado</th>
+                <th className="px-6 py-4 font-bold">Depto.</th>
+                <th className="px-6 py-4 font-bold text-center">Inicio</th>
+                <th className="px-6 py-4 font-bold text-center">Fin</th>
+                <th className="px-6 py-4 font-bold text-right">Días</th>
+                <th className="px-6 py-4 font-bold text-center">Tipo</th>
+                <th className="px-6 py-4 font-bold">Motivo</th>
+            </tr>
+        );
+    }
+
+    if (activeTab === 'KPIS') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Departamento</th>
+                <th className="px-6 py-4 font-bold text-center">Empleados</th>
+                <th className="px-6 py-4 font-bold text-right">Días ausencia</th>
+                <th className="px-6 py-4 font-bold text-right">Días potenciales</th>
+                <th className="px-6 py-4 font-bold text-right">Tasa</th>
+            </tr>
+        );
+    }
+
+    return (
+        <tr>
+            <th className="px-6 py-4 font-bold">Departamento</th>
+            <th className="px-6 py-4 font-bold text-center">Hombres</th>
+            <th className="px-6 py-4 font-bold text-center">Mujeres</th>
+            <th className="px-6 py-4 font-bold text-right">Media H</th>
+            <th className="px-6 py-4 font-bold text-right">Media M</th>
+            <th className="px-6 py-4 font-bold text-right">Gap</th>
+        </tr>
+    );
+}
+
+function ReportTableBody({ activeTab, rows }: { activeTab: ReportType; rows: any[] }) {
+    return (
+        <>
+            {rows.map((row, index) => (
+                <tr key={`${activeTab}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors align-top">
+                    {activeTab === 'ATTENDANCE' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
+                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
+                            <td className="px-6 py-4 text-center text-slate-500">{formatDate(row.date)}</td>
+                            <td className="px-6 py-4 text-center font-mono text-emerald-600">{row.firstSegment}</td>
+                            <td className="px-6 py-4 text-center font-mono text-rose-600">{row.lastSegment}</td>
+                            <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">{formatNumber(row.totalHours, ' h')}</td>
+                            <td className="px-6 py-4 text-center">
+                                <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide ${row.status === 'COMPLETE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'}`}>
+                                    {row.status === 'COMPLETE' ? 'Completa' : 'Incompleta'}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-xs leading-6 text-slate-500 max-w-[440px]">{row.segmentsText}</td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'OVERTIME' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
+                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
+                            <td className="px-6 py-4 text-center">{formatDate(row.date)}</td>
+                            <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase">{row.type}</span></td>
+                            <td className="px-6 py-4 text-right font-semibold">{formatNumber(row.hours, ' h')}</td>
+                            <td className="px-6 py-4 text-right">{formatCurrency(row.rate)}</td>
+                            <td className="px-6 py-4 text-right font-black text-emerald-600 dark:text-emerald-300">{formatCurrency(row.totalCost)}</td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'VACATIONS' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
+                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
+                            <td className="px-6 py-4 text-right font-semibold">{formatNumber(row.annualQuotaDays)}</td>
+                            <td className="px-6 py-4 text-right text-amber-600 font-semibold">{formatNumber(row.carriedOverDays)}</td>
+                            <td className="px-6 py-4 text-right text-rose-500 font-semibold">{formatNumber(row.usedDays)}</td>
+                            <td className="px-6 py-4 text-right text-amber-500 font-semibold">{formatNumber(row.pendingDays)}</td>
+                            <td className="px-6 py-4 text-right text-emerald-600 font-semibold">{formatNumber(row.remainingDays)}</td>
+                            <td className="px-6 py-4 text-right text-emerald-700 font-black">{formatNumber(row.projectedRemainingDays)}</td>
+                            <td className="px-6 py-4 text-right">{formatPercent(row.usageRate)}</td>
+                            <td className="px-6 py-4 text-center">{row.requests}</td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'COSTS' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
+                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
+                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.bruto)}</td>
+                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.ssEmpresa)}</td>
+                            <td className="px-6 py-4 text-right font-mono text-amber-600">{formatCurrency(row.irpf)}</td>
+                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.neto)}</td>
+                            <td className="px-6 py-4 text-right font-black text-violet-600 dark:text-violet-300">{formatCurrency(row.totalCost)}</td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'ABSENCES_DETAILED' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
+                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
+                            <td className="px-6 py-4 text-center">{formatDate(row.startDate)}</td>
+                            <td className="px-6 py-4 text-center">{formatDate(row.endDate)}</td>
+                            <td className="px-6 py-4 text-right font-bold text-rose-500">{formatNumber(row.days)}</td>
+                            <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase">{row.type}</span></td>
+                            <td className="px-6 py-4 text-slate-500 max-w-[360px]">{row.reason}</td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'KPIS' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.department}</td>
+                            <td className="px-6 py-4 text-center">{row.employees}</td>
+                            <td className="px-6 py-4 text-right text-rose-500 font-semibold">{formatNumber(row.absenceDays)}</td>
+                            <td className="px-6 py-4 text-right text-slate-500">{formatNumber(row.potentialDays)}</td>
+                            <td className="px-6 py-4 text-right font-black text-indigo-600 dark:text-indigo-300">{formatPercent(row.rate)}</td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'GENDER_GAP' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white uppercase tracking-tight text-xs">{row.department}</td>
+                            <td className="px-6 py-4 text-center">{row.maleCount}</td>
+                            <td className="px-6 py-4 text-center">{row.femaleCount}</td>
+                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.maleAvg)}</td>
+                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.femaleAvg)}</td>
+                            <td className={`px-6 py-4 text-right font-black ${row.gap > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{formatPercent(row.gap)}</td>
+                        </>
+                    ) : null}
+                </tr>
+            ))}
+        </>
     );
 }

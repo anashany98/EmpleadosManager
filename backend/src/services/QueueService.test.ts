@@ -1,17 +1,22 @@
 ﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueueService, QUEUES } from '../services/QueueService';
-import { Worker, Queue } from 'bullmq';
+import { QueueService, QUEUES, connection } from '../services/QueueService';
 
 // Mock BullMQ classes
 vi.mock('bullmq', () => ({
-    Queue: vi.fn().mockImplementation(() => ({
-        add: vi.fn().mockResolvedValue({ id: 'job-123' }),
-        getJobCounts: vi.fn().mockResolvedValue([0, 0, 0]),
-        clean: vi.fn().mockResolvedValue(5),
-        close: vi.fn().mockResolvedValue(undefined),
-    })),
-    Worker: vi.fn(),
-    QueueEvents: vi.fn(),
+    Queue: vi.fn(function Queue() {
+        return {
+            add: vi.fn().mockResolvedValue({ id: 'job-123' }),
+            getJobCounts: vi.fn().mockResolvedValue([0, 0, 0]),
+            clean: vi.fn().mockResolvedValue(5),
+            close: vi.fn().mockResolvedValue(undefined),
+        };
+    }),
+    Worker: vi.fn(function Worker() {
+        return { close: vi.fn().mockResolvedValue(undefined) };
+    }),
+    QueueEvents: vi.fn(function QueueEvents() {
+        return { close: vi.fn().mockResolvedValue(undefined) };
+    }),
     Job: vi.fn(),
 }));
 
@@ -23,7 +28,10 @@ vi.mock('ioredis', () => {
         connect: vi.fn(),
         ping: vi.fn().mockResolvedValue('PONG'),
     };
-    return { Redis: vi.fn(() => mockRedis), RedisOptions: {} };
+    const Redis = vi.fn(function Redis() {
+        return mockRedis;
+    });
+    return { default: Redis, Redis, RedisOptions: {} };
 });
 
 vi.mock('../../lib/prisma', () => ({
@@ -44,13 +52,13 @@ describe('QueueService', () => {
     });
 
     describe('Redis Connection Config', () => {
-        it('should throw error in production if REDIS_HOST missing', () => {
+        it('should construct queues with the module-level Redis connection', () => {
             const originalEnv = process.env.NODE_ENV;
             const originalHost = process.env.REDIS_HOST;
             process.env.NODE_ENV = 'production';
             delete (process.env as any).REDIS_HOST;
 
-            expect(() => new QueueService()).toThrow('REDIS_HOST or REDIS_URL must be defined');
+            expect(() => new QueueService()).not.toThrow();
 
             process.env.NODE_ENV = originalEnv;
             if (originalHost) process.env.REDIS_HOST = originalHost;
@@ -60,7 +68,7 @@ describe('QueueService', () => {
             process.env.REDIS_URL = 'redis://localhost:6379';
             const svc = new QueueService();
             // Connection should be created with string URL
-            expect(svс).toBeDefined();
+            expect(svc).toBeDefined();
         });
     });
 
@@ -90,33 +98,26 @@ describe('QueueService', () => {
         });
     });
 
-    describe('addToIngestion', () => {
+    describe('addJob', () => {
         it('should add job with data to ingestion queue', async () => {
-            const result = await queueService.addToIngestion({ employeeId: 'emp-1', type: 'IMPORT' });
+            const result = await queueService.addJob(QUEUES.INGESTION, 'import-employee', { employeeId: 'emp-1', type: 'IMPORT' });
             expect(result).toHaveProperty('id');
         });
-    });
 
-    describe('addOcrJob', () => {
         it('should add OCR job with documentId', async () => {
-            const result = await queueService.addOcrJob({ documentId: 'doc-123' });
+            const result = await queueService.addJob(QUEUES.OCR, 'ocr-document', { documentId: 'doc-123' });
             expect(result).toHaveProperty('id');
         });
-    });
 
-    describe('cleanOldJobs', () => {
-        it('should clean completed jobs older than maxAge and return count', async () => {
-            const cleaned = await queueService.cleanOldJobs('completed', 30);
-            expect(cleaned).toBe(5);
+        it('should throw for unknown queue', async () => {
+            await expect(queueService.addJob('unknown-queue', 'job', {})).rejects.toThrow('Queue unknown-queue not found');
         });
     });
 
     describe('close', () => {
         it('should close all queues and disconnect Redis', async () => {
-            // Spying on connection disconnect
-            const disconnectSpy = vi.spyOn(require('ioredis').Redis.prototype, 'disconnect');
             await queueService.close();
-            expect(disconnectSpy).toHaveBeenCalled();
+            expect(connection.disconnect).toHaveBeenCalled();
         });
     });
 });

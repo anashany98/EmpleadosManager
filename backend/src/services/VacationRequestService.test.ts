@@ -6,9 +6,13 @@ import { StorageService } from './StorageService';
 vi.mock('../lib/prisma', () => ({
     prisma: {
         vacation: {
-            findFirst: vi.fn()
+            findFirst: vi.fn(),
+            findMany: vi.fn()
         },
         employee: {
+            findUnique: vi.fn()
+        },
+        employeeVacationBalance: {
             findUnique: vi.fn()
         }
     }
@@ -41,13 +45,21 @@ vi.mock('./EmailService', () => ({
 describe('VacationRequestService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        (prisma.employeeVacationBalance.findUnique as any).mockResolvedValue({
+            employeeId: 'emp-1',
+            year: 2027,
+            annualQuotaDays: 30,
+            carriedOverDays: 0,
+            importedUsedDays: 0
+        });
+        (prisma.vacation.findMany as any).mockResolvedValue([]);
     });
 
     it('rejects overlapping requests', async () => {
         (prisma.vacation.findFirst as any).mockResolvedValue({ id: 'vacation-1' });
 
         await expect(
-            validateVacationRequest('emp-1', new Date('2026-03-10'), new Date('2026-03-12'), 'VACATION')
+            validateVacationRequest('emp-1', new Date('2027-03-10'), new Date('2027-03-12'), 'VACATION')
         ).rejects.toMatchObject({ message: expect.stringContaining('solapa') });
     });
 
@@ -55,19 +67,61 @@ describe('VacationRequestService', () => {
         (prisma.vacation.findFirst as any).mockResolvedValue(null);
         (prisma.employee.findUnique as any).mockResolvedValue({
             id: 'emp-1',
-            vacationDaysTotal: 5,
-            vacations: [
-                {
-                    type: 'VACATION',
-                    startDate: '2026-01-10',
-                    endDate: '2026-01-16',
-                    status: 'APPROVED'
-                }
-            ]
+            entryDate: new Date('2025-01-01'),
+            createdAt: new Date('2025-01-01')
         });
+        (prisma.employeeVacationBalance.findUnique as any).mockResolvedValue({
+            employeeId: 'emp-1',
+            year: 2027,
+            annualQuotaDays: 5,
+            carriedOverDays: 0,
+            importedUsedDays: 0
+        });
+        (prisma.vacation.findMany as any).mockResolvedValue([
+            {
+                type: 'VACATION',
+                startDate: '2027-01-10',
+                endDate: '2027-01-16',
+                status: 'APPROVED'
+            }
+        ]);
 
         await expect(
-            validateVacationRequest('emp-1', new Date('2026-03-10'), new Date('2026-03-12'), 'VACATION')
+            validateVacationRequest('emp-1', new Date('2027-03-10'), new Date('2027-03-12'), 'VACATION')
+        ).rejects.toMatchObject({ message: expect.stringContaining('Excede cupo') });
+    });
+
+    it('accounts for carried days and imported used days when validating vacations', async () => {
+        (prisma.vacation.findFirst as any).mockResolvedValue(null);
+        (prisma.employee.findUnique as any).mockResolvedValue({
+            id: 'emp-1',
+            entryDate: new Date('2020-01-01'),
+            createdAt: new Date('2020-01-01')
+        });
+        (prisma.employeeVacationBalance.findUnique as any).mockResolvedValue({
+            employeeId: 'emp-1',
+            year: 2027,
+            annualQuotaDays: 30,
+            carriedOverDays: 4,
+            importedUsedDays: 26
+        });
+        (prisma.vacation.findMany as any).mockResolvedValue([
+            {
+                type: 'VACATION',
+                startDate: '2027-02-03',
+                endDate: '2027-02-05',
+                status: 'APPROVED'
+            },
+            {
+                type: 'VACATION',
+                startDate: '2027-04-10',
+                endDate: '2027-04-11',
+                status: 'PENDING'
+            }
+        ]);
+
+        await expect(
+            validateVacationRequest('emp-1', new Date('2027-06-01'), new Date('2027-06-05'), 'VACATION')
         ).rejects.toMatchObject({ message: expect.stringContaining('Excede cupo') });
     });
 
@@ -86,5 +140,20 @@ describe('VacationRequestService', () => {
         }));
         expect(key).toBe('stored/file.pdf');
     });
-});
 
+    it('rejects adjacent date conflicts with existing approved vacations', async () => {
+        // First call (overlap check): no overlap
+        (prisma.vacation.findFirst as any).mockResolvedValueOnce(null);
+        // Second call (adjacent check): finds adjacent vacation
+        (prisma.vacation.findFirst as any).mockResolvedValueOnce({
+            id: 'vacation-adjacent',
+            startDate: new Date('2027-12-10'),
+            endDate: new Date('2027-12-12'),
+            status: 'APPROVED'
+        });
+
+        await expect(
+            validateVacationRequest('emp-1', new Date('2027-12-13'), new Date('2027-12-15'), 'VACATION')
+        ).rejects.toMatchObject({ message: expect.stringContaining('Conflicto de fechas adyacentes') });
+    });
+});

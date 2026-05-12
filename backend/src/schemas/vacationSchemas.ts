@@ -9,9 +9,13 @@ export const vacationCreateSchema = z.object({
         endDate: z.string().refine(val => !isNaN(Date.parse(val)), {
             message: 'Fecha de fin inválida'
         }),
-        type: z.enum(['VACATION', 'SICK', 'BIRTH', 'MEDICAL_HOURS', 'PERSONAL', 'OTHER', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID']).optional(),
-        notes: z.string().max(1000).optional(),
-        reason: z.string().max(1000).optional(),
+        type: z.enum([
+            'VACATION', 'SICK', 'BIRTH', 'MEDICAL_HOURS', 'PERSONAL', 'OTHER', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID',
+            'MATERNIDAD', 'PATERNIDAD', 'LACTANCIA', 'TELETRABAJO', 'PERMISO_SINDICAL', 'BAJA_MEDICA', 'OTROS'
+        ]).optional(),
+        status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
+        notes: z.string().max(1000).optional().nullable(),
+        reason: z.string().max(1000).optional().nullable(),
     }).refine(data => new Date(data.startDate) <= new Date(data.endDate), {
         message: 'La fecha de inicio debe ser anterior a la fecha de fin',
         path: ['endDate']
@@ -26,9 +30,12 @@ export const vacationUpdateSchema = z.object({
         endDate: z.string().refine(val => !isNaN(Date.parse(val)), {
             message: 'Fecha de fin inválida'
         }).optional(),
-        type: z.enum(['VACATION', 'SICK', 'BIRTH', 'MEDICAL_HOURS', 'PERSONAL', 'OTHER', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID']).optional(),
-        notes: z.string().max(1000).optional(),
-        reason: z.string().max(1000).optional(),
+        type: z.enum([
+            'VACATION', 'SICK', 'BIRTH', 'MEDICAL_HOURS', 'PERSONAL', 'OTHER', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID',
+            'MATERNIDAD', 'PATERNIDAD', 'LACTANCIA', 'TELETRABAJO', 'PERMISO_SINDICAL', 'BAJA_MEDICA', 'OTROS'
+        ]).optional(),
+        notes: z.string().max(1000).optional().nullable(),
+        reason: z.string().max(1000).optional().nullable(),
     }).refine(data => {
         if (data.startDate && data.endDate) {
             return new Date(data.startDate) <= new Date(data.endDate);

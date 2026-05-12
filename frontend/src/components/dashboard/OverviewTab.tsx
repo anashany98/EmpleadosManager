@@ -10,6 +10,7 @@ import MyPayslipsWidget from './MyPayslipsWidget';
 import { AlertsWidget } from './AlertsWidget';
 import { PendingRequestsWidget } from './PendingRequestsWidget';
 import { useAuth } from '../../contexts/AuthContext';
+import { getEmployeeDisplayName } from '../../utils/employeeDisplay';
 
 interface OverviewTabProps {
     selectedCompany: string;
@@ -99,23 +100,32 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
     return (
         <div className="flex flex-col md:grid md:grid-cols-12 md:grid-rows-12 gap-4 pb-4 flex-1 min-h-0 animate-in fade-in duration-500">
             {/* Stats Row */}
-            {!isEmployee && stats.map((stat, idx) => (
-                <motion.div
+            {!isEmployee && stats.map((stat, idx) => {
+                const statLink = stat.title === 'Empleados' ? '/employees' :
+                                 stat.title === 'Ausentes' ? '/employees?filter=absent' :
+                                 stat.title === 'Alertas' ? '/audit' : '#';
+                return (
+                <Link
                     key={idx}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.05 }}
-                    className="col-span-12 md:col-span-3 row-span-2 bg-white dark:bg-slate-900 rounded-[1.5rem] border border-slate-100 dark:border-slate-800 p-4 flex items-center justify-between shadow-sm hover:shadow-md transition-shadow"
+                    to={statLink}
+                    className="col-span-12 md:col-span-3 row-span-2 bg-white dark:bg-slate-900 rounded-[1.5rem] border border-slate-100 dark:border-slate-800 p-4 flex items-center justify-between shadow-sm hover:shadow-md hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer transition-all"
                 >
-                    <div className="flex-1">
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{stat.title}</p>
-                        <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{stat.value}</span>
-                    </div>
-                    <div className={`w-10 h-10 rounded-full ${stat.color} flex items-center justify-center shadow-lg shadow-blue-500/20`}>
-                        {stat.icon}
-                    </div>
-                </motion.div>
-            ))}
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                        className="flex items-center justify-between w-full"
+                    >
+                        <div className="flex-1">
+                            <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">{stat.title}</p>
+                            <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{stat.value}</span>
+                        </div>
+                        <div className={`w-10 h-10 rounded-full ${stat.color} flex items-center justify-center shadow-lg shadow-blue-500/20`}>
+                            {stat.icon}
+                        </div>
+                    </motion.div>
+                </Link>
+            );})}
 
             {/* AI Insight Card */}
             {!isEmployee && (
@@ -377,7 +387,7 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                                         {item.type === 'BIRTHDAY' ? <Cake size={14} /> : <Sparkles size={14} />}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{item.firstName} {item.lastName}</p>
+                                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{getEmployeeDisplayName(item)}</p>
                                         <p className={`text-[10px] font-medium ${item.type === 'BIRTHDAY' ? 'text-pink-500' : 'text-blue-500'}`}>
                                             {item.description} • {new Date(item.date).toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}
                                         </p>

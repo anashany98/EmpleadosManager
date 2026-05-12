@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+﻿import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { History, Search, Filter, User, Tag, Clock, ChevronLeft, ChevronRight, Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { getEmployeeDisplayName } from '../utils/employeeDisplay';
 
 interface AuditLog {
     id: string;
@@ -37,7 +38,7 @@ export default function AuditLogPage() {
     const fetchLogs = async () => {
         setLoading(true);
         try {
-            const res = await api.get(`/audit?page=${page}&limit=20`);
+            const res = await api.get(`/audit?page=${page}&limit=20&showSystem=false`);
             const data = res.data?.data || res.data || [];
             setLogs(Array.isArray(data) ? data : []);
             setTotalPages(res.data?.pagination?.pages || 1);
@@ -73,13 +74,13 @@ export default function AuditLogPage() {
                 <div>
                     <div className="flex items-center gap-2 mb-1">
                         <Activity className="text-blue-500 w-4 h-4" />
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">Seguridad & Trazabilidad</span>
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">Trazabilidad laboral</span>
                     </div>
                     <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-4">
-                        Auditoría del Sistema
+                        Historial de cambios
                     </h1>
                     <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium">
-                        Historial completo de cambios y actividad en la plataforma
+                        Cambios de empleados y operaciones internas, sin accesos ni eventos de login.
                     </p>
                 </div>
 
@@ -135,7 +136,7 @@ export default function AuditLogPage() {
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="border-b border-slate-100 dark:border-slate-900 bg-slate-50/50 dark:bg-slate-900/50">
-                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Acción</th>
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">AcciÃ³n</th>
                                         <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Entidad</th>
                                         <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Detalles</th>
                                         <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 text-right">Fecha & Hora</th>
@@ -171,10 +172,10 @@ export default function AuditLogPage() {
                                                         <div className="flex items-center gap-2 text-[10px] text-slate-400 font-medium">
                                                             <User size={10} />
                                                             ID: {log.entityId}
-                                                            {log.user && <span>· por {log.user.firstName} {log.user.lastName}</span>}
+                                                            {log.user && <span>· por {getEmployeeDisplayName(log.user, 'Sistema')}</span>}
                                                             {log.targetEmployee && (
                                                                 <span className="text-blue-500 font-bold italic ml-1">
-                                                                    · Afecta a: {log.targetEmployee.firstName} {log.targetEmployee.lastName}
+                                                                    · Afecta a: {getEmployeeDisplayName(log.targetEmployee)}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -202,7 +203,7 @@ export default function AuditLogPage() {
 
                 <div className="p-8 border-t border-slate-100 dark:border-slate-900 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center relative z-10">
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                        Página {page} de {totalPages}
+                        PÃ¡gina {page} de {totalPages}
                     </p>
                     <div className="flex gap-2">
                         <button

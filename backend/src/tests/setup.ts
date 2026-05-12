@@ -1,12 +1,13 @@
-﻿import { vi } from 'vitest';
-
-// Set environment variables for testing
+﻿// Set environment variables for testing
 process.env.JWT_SECRET = 'test-jwt-secret';
 process.env.ENCRYPTION_KEY = '12345678901234567890123456789012'; // 32 chars
 process.env.COOKIE_SECURE = 'false';
 process.env.COOKIE_SAMESITE = 'lax';
 process.env.RETURN_TOKENS = 'true';
 process.env.NODE_ENV = 'test';
+process.env.FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+process.env.REDIS_PASSWORD = process.env.REDIS_PASSWORD || 'redis_local_pw_2026';
+process.env.BACKUP_ENCRYPTION_KEY = process.env.BACKUP_ENCRYPTION_KEY || 'test-backup-encryption-key-2026-32';
 
 // Database configuration for tests
 // Use local postgres if available, otherwise tests requiring DB will be skipped

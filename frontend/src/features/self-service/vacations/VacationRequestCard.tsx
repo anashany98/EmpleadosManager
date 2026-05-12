@@ -1,22 +1,41 @@
-import { Check, ExternalLink, X } from 'lucide-react';
+import { Check, ExternalLink, Trash2, X } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { API_URL } from '../../../api/client';
 import { ABSENCE_TYPES, CalendarIconSmall, formatVacationRange, type VacationRequest } from './types';
 
 interface VacationRequestCardProps {
     request: VacationRequest;
     canManage: boolean;
-    onApprove?: () => void;
-    onReject?: () => void;
+    onApprove?: (comment?: string) => void;
+    onReject?: (comment?: string) => void;
+    onDelete?: () => void;
 }
 
 export function VacationRequestCard({
     request,
     canManage,
     onApprove,
-    onReject
+    onReject,
+    onDelete
 }: VacationRequestCardProps) {
+    const [comment, setComment] = useState('');
     const config = ABSENCE_TYPES[request.type] || ABSENCE_TYPES.VACATION;
     const Icon = config.icon;
+
+    const handleApprove = () => {
+        if (onApprove) {
+            toast.success('Solicitud aprobada');
+            onApprove(comment);
+        }
+    };
+
+    const handleReject = () => {
+        if (onReject) {
+            toast.success('Solicitud rechazada');
+            onReject(comment);
+        }
+    };
 
     return (
         <div className="bg-white dark:bg-slate-900 p-4 md:p-6 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-4 md:items-center">
@@ -41,7 +60,7 @@ export function VacationRequestCard({
                     {request.reason && <span className="italic truncate max-w-[200px]">{request.reason}</span>}
                     {request.fileUrl && (
                         <a
-                            href={`${API_URL}/vacations/${request.id}/attachment`}
+                            href={request.fileUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-bold"
@@ -50,19 +69,52 @@ export function VacationRequestCard({
                             Ver adjunto
                         </a>
                     )}
+                    {request.status === 'REJECTED' && request.rejectionReason && (
+                        <span className="text-rose-600 text-sm italic mt-1">Motivo: {request.rejectionReason}</span>
+                    )}
+                    {request.status === 'APPROVED' && request.managerComment && (
+                        <span className="text-emerald-600 text-sm italic mt-1">Comentario: {request.managerComment}</span>
+                    )}
+                    {request.approvedAt && (
+                        <span className="text-xs text-slate-400 mt-1">
+                            {request.status === 'APPROVED' ? 'Aprobado' : 'Procesado'}: {new Date(request.approvedAt).toLocaleDateString()}
+                        </span>
+                    )}
                 </div>
+
+                {canManage && request.status === 'PENDING' && (
+                    <div className="mt-3">
+                        <input
+                            type="text"
+                            placeholder="Comentario (opcional)"
+                            value={comment}
+                            onChange={(e) => setComment(e.target.value)}
+                            className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                    </div>
+                )}
             </div>
 
-            {canManage && request.status === 'PENDING' && (
+            {(onDelete || (canManage && request.status === 'PENDING')) && (
                 <div className="flex items-center gap-2 mt-2 md:mt-0">
-                    <button onClick={onReject} className="px-4 py-2 bg-rose-50 text-rose-600 rounded-xl font-bold hover:bg-rose-100 transition-colors flex items-center gap-2">
-                        <X size={16} />
-                        Rechazar
-                    </button>
-                    <button onClick={onApprove} className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-bold hover:bg-emerald-100 transition-colors flex items-center gap-2">
-                        <Check size={16} />
-                        Aprobar
-                    </button>
+                    {onDelete && (
+                        <button onClick={onDelete} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors flex items-center gap-2 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
+                            <Trash2 size={16} />
+                            Eliminar
+                        </button>
+                    )}
+                    {canManage && request.status === 'PENDING' && (
+                        <>
+                            <button onClick={handleReject} className="px-4 py-2 bg-rose-50 text-rose-600 rounded-xl font-bold hover:bg-rose-100 transition-colors flex items-center gap-2">
+                                <X size={16} />
+                                Rechazar
+                            </button>
+                            <button onClick={handleApprove} className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl font-bold hover:bg-emerald-100 transition-colors flex items-center gap-2">
+                                <Check size={16} />
+                                Aprobar
+                            </button>
+                        </>
+                    )}
                 </div>
             )}
         </div>

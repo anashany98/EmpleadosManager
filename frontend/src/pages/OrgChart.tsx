@@ -54,20 +54,38 @@ export default function OrgChart() {
         setPosition({ x: 0, y: 0 });
     };
 
-    const handleMouseDown = (e: React.MouseEvent) => {
-        if (e.button !== 0) return;
-        setIsDragging(true);
-    };
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    setIsDragging(true);
+  };
 
-    const handleMouseMove = (e: React.MouseEvent) => {
-        if (!isDragging) return;
-        setPosition(prev => ({
-            x: prev.x + e.movementX,
-            y: prev.y + e.movementY
-        }));
-    };
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPosition(prev => ({
+      x: prev.x + e.movementX,
+      y: prev.y + e.movementY
+    }));
+  };
 
-    const handleMouseUp = () => setIsDragging(false);
+  const handleMouseUp = () => setIsDragging(false);
+
+  const touchRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchRef.current || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - touchRef.current.x;
+    const dy = e.touches[0].clientY - touchRef.current.y;
+    touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    setPosition(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+  };
+
+  const handleTouchEnd = () => { touchRef.current = null; };
 
     const toggleSandbox = () => {
         if (isSandbox) {
@@ -133,14 +151,14 @@ export default function OrgChart() {
     const treeSource = isSandbox ? sandboxedEmployees : employees;
     const tree = buildTree(treeSource, null);
 
-    if (loading) return (
-        <div className="flex flex-col items-center justify-center p-20 space-y-6">
-            <div className="relative">
-                <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full animate-pulse" />
-                <Network size={80} className="text-blue-600 relative animate-bounce" />
-            </div>
-            <div className="flex flex-col items-center gap-2">
-                <p className="text-slate-900 dark:text-white font-black uppercase tracking-widest text-lg">Maquetando Estructura</p>
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center p-8 sm:p-20 space-y-6">
+      <div className="relative">
+        <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full animate-pulse" />
+        <Network size={80} className="text-blue-600 relative animate-bounce" />
+      </div>
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-slate-900 dark:text-white font-black uppercase tracking-widest text-base sm:text-lg">Maquetando Estructura</p>
                 <div className="w-48 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <motion.div
                         initial={{ x: '-100%' }}
@@ -164,23 +182,23 @@ export default function OrgChart() {
                                 {isSandbox ? 'Modo Sandbox Activo' : 'Estructura Corporativa'}
                             </span>
                         </div>
-                        <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-4">
+                        <h1 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-4">
                             Organigrama
                         </h1>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    {isSandbox && (
-                        <div className="flex items-center gap-2 mr-2 p-1.5 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-2xl">
-                            <button
-                                onClick={saveSandboxChanges}
-                                disabled={isSaving}
-                                className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all active:scale-95"
-                            >
-                                {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
-                                Guardar Reorganización
-                            </button>
+      <div className="flex flex-wrap items-center gap-3">
+        {isSandbox && (
+          <div className="flex items-center gap-2 mr-2 p-1.5 bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/20 rounded-2xl">
+            <button
+              onClick={saveSandboxChanges}
+              disabled={isSaving}
+              className="px-3 sm:px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all active:scale-95"
+            >
+              {isSaving ? <RefreshCw size={14} className="animate-spin" /> : <Save size={14} />}
+              <span className="hidden sm:inline">Guardar Reorganización</span><span className="sm:hidden">Guardar</span>
+            </button>
                             <button
                                 onClick={toggleSandbox}
                                 disabled={isSaving}
@@ -192,46 +210,50 @@ export default function OrgChart() {
                         </div>
                     )}
 
-                    <button
-                        onClick={toggleSandbox}
-                        className={`
-                            px-4 py-3 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg
-                            ${isSandbox
-                                ? 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'
-                                : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:scale-105 active:scale-95'}
-                        `}
-                    >
-                        <FlaskConical size={16} />
-                        {isSandbox ? 'Salir de Sandbox' : 'Sandbox Reorganización'}
-                    </button>
+        <button
+          onClick={toggleSandbox}
+          className={`
+            px-3 sm:px-4 py-3 rounded-2xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg touch-active
+            ${isSandbox
+            ? 'bg-white dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700'
+            : 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:scale-105 active:scale-95'}
+          `}
+        >
+          <FlaskConical size={16} />
+          {isSandbox ? 'Salir' : 'Sandbox'}
+        </button>
 
-                    <div className="flex items-center gap-3 p-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-[24px] border border-white/20 dark:border-slate-800/50 shadow-xl">
-                        <button onClick={() => handleZoom(0.1)} className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-all"><ZoomIn size={18} /></button>
-                        <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800" />
-                        <button onClick={() => handleZoom(-0.1)} className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-all"><ZoomOut size={18} /></button>
-                        <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800" />
-                        <button onClick={resetView} className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-all"><Maximize2 size={18} /></button>
-                        <div className="px-3 text-xs font-black text-blue-600 tabular-nums">{Math.round(zoom * 100)}%</div>
+        <div className="flex items-center gap-1 sm:gap-3 p-1.5 sm:p-2 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-[24px] border border-white/20 dark:border-slate-800/50 shadow-xl">
+          <button onClick={() => handleZoom(0.1)} className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-all touch-active"><ZoomIn size={18} /></button>
+          <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800" />
+          <button onClick={() => handleZoom(-0.1)} className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-all touch-active"><ZoomOut size={18} /></button>
+          <div className="w-[1px] h-4 bg-slate-200 dark:bg-slate-800" />
+          <button onClick={resetView} className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-all touch-active"><Maximize2 size={18} /></button>
+          <div className="px-2 sm:px-3 text-xs font-black text-blue-600 tabular-nums">{Math.round(zoom * 100)}%</div>
                     </div>
                 </div>
             </div>
 
-            <div
-                ref={containerRef}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                className={`
-                    flex-1 relative bg-white dark:bg-slate-950 rounded-[40px] border border-slate-100 dark:border-slate-900 shadow-2xl overflow-hidden cursor-grab active:cursor-grabbing
-                    ${isDragging ? 'select-none' : ''}
-                    ${isSandbox ? 'ring-2 ring-amber-500/20 ring-inset' : ''}
-                `}
+    <div
+      ref={containerRef}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className={`
+        flex-1 relative bg-white dark:bg-slate-950 rounded-2xl sm:rounded-[40px] border border-slate-100 dark:border-slate-900 shadow-2xl overflow-auto cursor-grab active:cursor-grabbing
+        ${isDragging ? 'select-none' : ''}
+        ${isSandbox ? 'ring-2 ring-amber-500/20 ring-inset' : ''}
+      `}
             >
                 {isSandbox && (
-                    <div className="absolute top-6 left-1/2 -translate-x-1/2 z-20 px-6 py-2 bg-amber-500 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-3 border border-amber-400">
-                        < FlaskConical size={14} className="animate-bounce" />
-                        Modo Simulación: Arrastra responsables para reorganizar
+        <div className="absolute top-4 sm:top-6 left-1/2 -translate-x-1/2 z-20 px-4 sm:px-6 py-2 bg-amber-500 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl flex items-center gap-2 sm:gap-3 border border-amber-400">
+          <FlaskConical size={14} className="animate-bounce" />
+          <span className="hidden sm:inline">Modo Simulación: Arrastra responsables para reorganizar</span>
+          <span className="sm:hidden">Modo Simulación</span>
                     </div>
                 )}
 
@@ -253,7 +275,7 @@ export default function OrgChart() {
                         }}
                         className="origin-center"
                     >
-                        <div className="flex justify-center min-w-max p-40">
+                        <div className="flex justify-center min-w-max p-4 sm:p-10 md:p-20 lg:p-40">
                             {tree.length === 0 ? (
                                 <div className="flex flex-col items-center gap-6 grayscale opacity-50">
                                     <div className="w-24 h-24 rounded-[32px] bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
@@ -265,7 +287,7 @@ export default function OrgChart() {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="flex gap-24">
+                                <div className="flex gap-6 md:gap-12 lg:gap-24">
                                     {tree.map(node => (
                                         <TreeNode
                                             key={node.id}
@@ -283,7 +305,7 @@ export default function OrgChart() {
                 </div>
 
                 {/* Legend & Help Overlay */}
-                <div className="absolute bottom-6 left-6 flex flex-col md:flex-row items-start md:items-center gap-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-4 rounded-3xl border border-white/20 dark:border-slate-800 shadow-lg">
+                <div className="absolute bottom-4 sm:bottom-6 left-4 sm:left-6 flex flex-col md:flex-row items-start md:items-center gap-3 sm:gap-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md p-3 sm:p-4 rounded-2xl sm:rounded-3xl border border-white/20 dark:border-slate-800 shadow-lg">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-blue-600" />
@@ -319,7 +341,7 @@ function TreeNode({ node, isSandbox, allEmployees, onReassign, isChanged }: { no
                 className="relative z-10"
             >
                 <div className={`
-                    relative p-6 rounded-[32px] border-2 transition-all duration-500 min-w-[280px] group
+                    relative p-4 sm:p-6 rounded-2xl sm:rounded-[32px] border-2 transition-all duration-500 min-w-[220px] sm:min-w-[280px] group
                     ${isChanged ? 'border-amber-500 ring-4 ring-amber-500/20' : ''}
                     ${hasChildren && isOpen
                         ? 'bg-gradient-to-br from-blue-600 to-indigo-700 border-blue-400 shadow-2xl shadow-blue-500/30'
@@ -329,7 +351,7 @@ function TreeNode({ node, isSandbox, allEmployees, onReassign, isChanged }: { no
                     <div className="flex items-center gap-5">
                         <div className="relative">
                             <div className={`
-                                w-16 h-16 rounded-[22px] flex items-center justify-center font-black text-2xl shadow-lg transition-transform group-hover:scale-105 duration-500
+                                w-12 h-12 sm:w-16 sm:h-16 rounded-2xl sm:rounded-[22px] flex items-center justify-center font-black text-xl sm:text-2xl shadow-lg transition-transform group-hover:scale-105 duration-500
                                 ${hasChildren && isOpen ? 'bg-white text-blue-600' : 'bg-gradient-to-br from-blue-500 to-blue-700 text-white'}
                             `}>
                                 {(node.firstName || node.name || '?')[0]?.toUpperCase()}
@@ -345,7 +367,7 @@ function TreeNode({ node, isSandbox, allEmployees, onReassign, isChanged }: { no
                         </div>
 
                         <div className="flex-1 min-w-0">
-                            <Link to={`/employees/${node.id}`} className={`text-lg font-black tracking-tight truncate block hover:underline ${hasChildren && isOpen ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                            <Link to={`/employees/${node.id}`} className={`text-base sm:text-lg font-black tracking-tight truncate block hover:underline ${hasChildren && isOpen ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
                                 {node.firstName ? `${node.firstName} ${node.lastName || ''}`.trim() : node.name}
                             </Link>
                             <div className={`text-[10px] uppercase font-black tracking-[0.1em] truncate mt-0.5 ${hasChildren && isOpen ? 'text-blue-100/70' : 'text-slate-400'}`}>
@@ -431,9 +453,9 @@ function TreeNode({ node, isSandbox, allEmployees, onReassign, isChanged }: { no
                         exit={{ opacity: 0, height: 0 }}
                         className="flex flex-col items-center overflow-visible"
                     >
-                        <div className={`w-1 h-12 bg-gradient-to-b ${isChanged ? 'from-amber-500 to-amber-500/20' : 'from-blue-500 to-blue-500/20 dark:from-blue-600 dark:to-blue-900/10'}`} />
+                        <div className={`w-1 h-8 sm:h-12 bg-gradient-to-b ${isChanged ? 'from-amber-500 to-amber-500/20' : 'from-blue-500 to-blue-500/20 dark:from-blue-600 dark:to-blue-900/10'}`} />
 
-                        <div className="relative flex gap-12 pt-0">
+                        <div className="relative flex gap-4 sm:gap-8 md:gap-12 pt-0">
                             {node.children.length > 1 && (
                                 <div className={`absolute top-0 h-1 bg-gradient-to-r from-transparent via-${isChanged ? 'amber' : 'blue'}-500/30 to-transparent rounded-full`}
                                     style={{

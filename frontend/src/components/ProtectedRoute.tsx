@@ -8,9 +8,10 @@ interface ProtectedRouteProps {
     children: React.ReactNode;
     roles?: string[];
     feature?: AppFeatureKey;
+    anyFeature?: AppFeatureKey[];
 }
 
-export default function ProtectedRoute({ children, roles, feature }: ProtectedRouteProps) {
+export default function ProtectedRoute({ children, roles, feature, anyFeature }: ProtectedRouteProps) {
     const { user, loading, canAccessFeature } = useAuth();
     const location = useLocation();
 
@@ -26,10 +27,14 @@ export default function ProtectedRoute({ children, roles, feature }: ProtectedRo
     }
 
     if (!user) {
+        sessionStorage.setItem('redirectTo', location.pathname);
         return <Navigate to="/login" state={{ from: location }} replace />;
     }
 
-    if (feature && !canAccessFeature(feature)) {
+    const isFeatureDenied = feature ? !canAccessFeature(feature) : false;
+    const isAnyFeatureDenied = anyFeature?.length ? !anyFeature.some((item) => canAccessFeature(item)) : false;
+
+    if (isFeatureDenied || isAnyFeatureDenied) {
         // Show access denied page instead of silently redirecting
         // This helps debug permission issues and provides better UX
         return (
@@ -41,7 +46,7 @@ export default function ProtectedRoute({ children, roles, feature }: ProtectedRo
                     <h2 className="text-xl font-bold text-slate-900 mb-2">Acceso Denegado</h2>
                     <p className="text-slate-500 mb-6">No tienes permisos para acceder a esta sección. Contacta con tu administrador si crees que esto es un error.</p>
                     <p className="text-xs text-slate-400 mb-4">
-                        Rol: {user.role} | Feature: {feature}
+                        Rol: {user.role} | Feature: {feature || anyFeature?.join(', ')}
                     </p>
                     <button
                         onClick={() => window.location.href = '/'}

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CreditCard, DollarSign, FileText, Filter, Plus, Receipt } from 'lucide-react';
+import { CreditCard, DollarSign, FileText, Filter, Plus, Receipt, ChevronLeft, ChevronRight } from 'lucide-react';
 import { toast } from 'sonner';
 import { API_URL, api } from '../../../api/client';
 import { useAuth } from '../../../contexts/AuthContext';
+import { SearchInput } from '../../../components/ui/SearchInput';
 import ExpenseModal from '../../../components/expenses/ExpenseModal';
 import { ExpenseStatusBadge } from './ExpenseStatusBadge';
+import { normalizeExpenseListResponse } from './utils';
 import type { Expense } from './types';
 
 export function MyExpensesView() {
@@ -13,6 +15,9 @@ export function MyExpensesView() {
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [filterStatus, setFilterStatus] = useState<string>('ALL');
+    const [searchTerm, setSearchTerm] = useState('');
+    const [page, setPage] = useState(1);
+    const LIMIT = 20;
 
     const fetchExpenses = useCallback(async () => {
         if (!user?.employeeId) {
@@ -24,7 +29,7 @@ export function MyExpensesView() {
         setLoading(true);
         try {
             const response = await api.get(`/expenses/employee/${user.employeeId}`);
-            setExpenses(response.data || []);
+            setExpenses(normalizeExpenseListResponse(response));
         } catch (error) {
             console.error(error);
             toast.error('Error al cargar gastos');
@@ -38,8 +43,24 @@ export function MyExpensesView() {
     }, [fetchExpenses]);
 
     const filteredExpenses = useMemo(() => {
-        return expenses.filter((expense) => filterStatus === 'ALL' || expense.status === filterStatus);
-    }, [expenses, filterStatus]);
+        return expenses.filter((expense) => {
+            const matchesStatus = filterStatus === 'ALL' || expense.status === filterStatus;
+            const lowerSearch = searchTerm.toLowerCase();
+            const matchesSearch = !searchTerm ||
+                expense.description.toLowerCase().includes(lowerSearch) ||
+                expense.category.toLowerCase().includes(lowerSearch);
+            return matchesStatus && matchesSearch;
+        });
+    }, [expenses, filterStatus, searchTerm]);
+
+    const totalPages = Math.ceil(filteredExpenses.length / LIMIT);
+    const paginatedExpenses = filteredExpenses.slice((page - 1) * LIMIT, page * LIMIT);
+
+    useEffect(() => {
+        if (page > totalPages && totalPages > 0) {
+            setPage(1);
+        }
+    }, [totalPages, page]);
 
     if (!user?.employeeId) {
         return (
@@ -67,7 +88,7 @@ export function MyExpensesView() {
             </div>
 
             <div className="bg-white dark:bg-slate-950 rounded-[32px] border border-slate-100 dark:border-slate-900 shadow-xl overflow-hidden min-h-[500px]">
-                <div className="p-6 border-b border-slate-100 dark:border-slate-900 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+                <div className="p-6 border-b border-slate-100 dark:border-slate-900 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50/50 dark:bg-slate-900/50">
                     <div className="relative">
                         <Filter className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                         <select
@@ -81,6 +102,12 @@ export function MyExpensesView() {
                             <option value="REJECTED">Rechazados</option>
                         </select>
                     </div>
+                    <SearchInput
+                        value={searchTerm}
+                        onChange={setSearchTerm}
+                        placeholder="Buscar por concepto o categoría..."
+                        className="w-full sm:w-64"
+                    />
                 </div>
 
                 {loading ? (
@@ -113,7 +140,7 @@ export function MyExpensesView() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-900">
-                                {filteredExpenses.map((expense) => (
+                                {paginatedExpenses.map((expense) => (
                                     <tr key={expense.id} className="group hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
                                         <td className="px-6 py-4 font-mono text-sm font-medium text-slate-500">
                                             {new Date(expense.date).toLocaleDateString()}
@@ -155,6 +182,30 @@ export function MyExpensesView() {
                                 ))}
                             </tbody>
                         </table>
+
+                        {filteredExpenses.length > LIMIT && (
+                            <div className="p-4 border-t border-slate-100 dark:border-slate-900 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
+                                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
+                                    Página {page} de {totalPages}
+                                </p>
+                                <div className="flex gap-2">
+                                    <button
+                                        disabled={page === 1}
+                                        onClick={() => setPage(p => p - 1)}
+                                        className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 disabled:opacity-50 hover:border-blue-500 transition-colors shadow-sm"
+                                    >
+                                        <ChevronLeft size={20} />
+                                    </button>
+                                    <button
+                                        disabled={page === totalPages}
+                                        onClick={() => setPage(p => p + 1)}
+                                        className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 disabled:opacity-50 hover:border-blue-500 transition-colors shadow-sm"
+                                    >
+                                        <ChevronRight size={20} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

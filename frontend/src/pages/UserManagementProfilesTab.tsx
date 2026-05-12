@@ -1,48 +1,25 @@
-import { useState } from 'react';
-import { api } from '../api/client';
+import { type FormEvent, useMemo, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Copy, Edit, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import type { PermissionMap } from '@shared/authz';
 import { toast } from 'sonner';
-import { Search, Edit, Trash2, Plus, Loader2 } from 'lucide-react';
-import type { PermissionMap, PermissionModule, PermissionLevel } from '@shared/authz';
-import { PERMISSION_MODULES } from '@shared/authz';
-import { motion, AnimatePresence } from 'framer-motion';
+import { api } from '../api/client';
 import { useConfirm } from '../context/ConfirmContext';
-
-const MODULE_LABELS: Record<PermissionModule, string> = {
-    dashboard: 'Dashboard',
-    employees: 'Empleados',
-    companies: 'Empresas',
-    calendar: 'Calendario',
-    vacations: 'Vacaciones',
-    timesheet: 'Fichaje',
-    expenses: 'Gastos',
-    documents: 'Documentos',
-    payroll: 'Nominas',
-    assets: 'Activos',
-    projects: 'Proyectos',
-    reports: 'Reportes',
-    analytics: 'Analytics',
-    performance: 'Rendimiento',
-    audit: 'Auditoria',
-    inbox: 'Inbox',
-    users: 'Usuarios',
-    settings: 'Configuracion',
-    kiosk: 'Kiosco',
-    cards: 'Tarjetas',
-    fleet: 'Flota',
-    notifications: 'Notificaciones',
-    onboarding: 'Onboarding',
-    offboarding: 'Offboarding'
-};
+import { useClickOutside } from '../hooks/useClickOutside';
+import UserManagementPermissionEditor from './UserManagementPermissionEditor';
+import { countEnabledPermissions, getEnabledModules, MODULE_LABELS, parseApiError } from './userManagementShared';
 
 interface PermissionProfile {
     id: string;
     name: string;
     permissions: PermissionMap;
+    createdAt?: string;
+    updatedAt?: string;
 }
 
 interface ProfilesTabProps {
     profiles: PermissionProfile[];
-    onRefresh: () => void;
+    onRefresh: () => Promise<void> | void;
 }
 
 export default function UserManagementProfilesTab({ profiles, onRefresh }: ProfilesTabProps) {
@@ -55,9 +32,19 @@ export default function UserManagementProfilesTab({ profiles, onRefresh }: Profi
     const [profileName, setProfileName] = useState('');
     const [profilePermissions, setProfilePermissions] = useState<PermissionMap>({});
 
-    const filteredProfiles = profiles.filter(p => 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const filteredProfiles = useMemo(() => {
+        const query = searchQuery.trim().toLowerCase();
+        if (!query) {
+            return profiles;
+        }
+
+        return profiles.filter((profile) => profile.name.toLowerCase().includes(query));
+    }, [profiles, searchQuery]);
+
+    const modalRef = useClickOutside<HTMLDivElement>(() => setIsModalOpen(false));
+    const emptyMessage = searchQuery
+        ? 'No se encontraron perfiles con ese nombre.'
+        : 'Todavía no hay perfiles de permisos creados.';
 
     const handleOpenModal = (profile: PermissionProfile | null = null) => {
         if (profile) {
@@ -69,14 +56,19 @@ export default function UserManagementProfilesTab({ profiles, onRefresh }: Profi
             setProfileName('');
             setProfilePermissions({});
         }
+
         setIsModalOpen(true);
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
         setSubmitting(true);
+
         try {
-            const payload = { name: profileName, permissions: profilePermissions };
+            const payload = {
+                name: profileName.trim(),
+                permissions: profilePermissions
+            };
 
             if (editingProfile) {
                 await api.put(`/permission-profiles/${editingProfile.id}`, payload);
@@ -85,10 +77,11 @@ export default function UserManagementProfilesTab({ profiles, onRefresh }: Profi
                 await api.post('/permission-profiles', payload);
                 toast.success('Perfil creado');
             }
+
             setIsModalOpen(false);
-            onRefresh();
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Error al guardar');
+            await Promise.resolve(onRefresh());
+        } catch (error) {
+            toast.error(parseApiError(error, 'Error al guardar el perfil.'));
         } finally {
             setSubmitting(false);
         }
@@ -99,148 +92,230 @@ export default function UserManagementProfilesTab({ profiles, onRefresh }: Profi
             title: 'Eliminar perfil',
             message: `¿Estás seguro de eliminar el perfil "${profile.name}"?`
         });
-        if (!confirmed) return;
+
+        if (!confirmed) {
+            return;
+        }
+
         try {
             await api.delete(`/permission-profiles/${profile.id}`);
             toast.success('Perfil eliminado');
-            onRefresh();
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Error al eliminar');
+            await Promise.resolve(onRefresh());
+        } catch (error) {
+            toast.error(parseApiError(error, 'Error al eliminar el perfil.'));
         }
-    };
-
-    const togglePermission = (module: PermissionModule, level: PermissionLevel) => {
-        setProfilePermissions(prev => ({
-            ...prev,
-            [module]: level
-        }));
     };
 
     return (
         <>
-            <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3">
-                <Search className="text-slate-400" size={18} />
-                <input
-                    type="text"
-                    placeholder="Buscar perfil..."
-                    className="bg-transparent border-none outline-none text-slate-700 dark:text-slate-200 w-full"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                />
+            <div className="border-b border-slate-200 p-4 dark:border-slate-800">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="flex flex-1 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-900/60">
+                        <Search className="text-slate-400" size={18} />
+                        <input
+                            type="text"
+                            placeholder="Buscar perfil..."
+                            className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400 dark:text-slate-200"
+                            value={searchQuery}
+                            onChange={(event) => setSearchQuery(event.target.value)}
+                        />
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => handleOpenModal()}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 sm:w-auto"
+                    >
+                        <Plus size={18} />
+                        Nuevo perfil
+                    </button>
+                </div>
             </div>
 
-            <div className="overflow-x-auto">
-                <table className="w-full">
-                    <thead className="bg-slate-50 dark:bg-slate-800/50">
-                        <tr>
-                            <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase">Nombre</th>
-                            <th className="text-left p-4 text-xs font-bold text-slate-500 uppercase">Módulos</th>
-                            <th className="text-right p-4 text-xs font-bold text-slate-500 uppercase">Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                        {filteredProfiles.map(profile => (
-                            <tr key={profile.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                                <td className="p-4">
-                                    <div className="font-medium text-slate-900 dark:text-white">{profile.name}</div>
-                                </td>
-                                <td className="p-4">
-                                    <div className="flex flex-wrap gap-1">
-                                        {Object.entries(profile.permissions || {}).map(([mod, level]) => (
-                                            level !== 'none' && (
-                                                <span key={mod} className="px-2 py-0.5 bg-slate-100 dark:bg-slate-700 rounded text-xs text-slate-600 dark:text-slate-400">
-                                                    {MODULE_LABELS[mod as PermissionModule]}
+            {filteredProfiles.length === 0 ? (
+                <div className="p-6 text-center sm:p-8">
+                    <p className="text-sm font-medium text-slate-600 dark:text-slate-300">{emptyMessage}</p>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                        {searchQuery ? 'Prueba con otra búsqueda.' : 'Crea un perfil reutilizable para usuarios RRHH, managers o empleados.'}
+                    </p>
+                </div>
+            ) : (
+                <>
+                    <div className="hidden md:block table-responsive">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 dark:bg-slate-800/50">
+                                <tr>
+                                    <th className="p-4 text-xs font-bold uppercase text-slate-500">Perfil</th>
+                                    <th className="p-4 text-xs font-bold uppercase text-slate-500">Permisos</th>
+                                    <th className="p-4 text-xs font-bold uppercase text-slate-500">Actualizado</th>
+                                    <th className="p-4 text-right text-xs font-bold uppercase text-slate-500">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                                {filteredProfiles.map((profile) => {
+                                    const enabledModules = getEnabledModules(profile.permissions);
+
+                                    return (
+                                        <tr key={profile.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                                            <td className="p-4">
+                                                <div className="font-medium text-slate-900 dark:text-white">{profile.name}</div>
+                                                <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">{countEnabledPermissions(profile.permissions)} módulos habilitados</div>
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex flex-wrap gap-1">
+                                                    {enabledModules.length > 0 ? (
+                                                        enabledModules.slice(0, 6).map((module) => (
+                                                            <span key={module} className="rounded px-2 py-0.5 text-xs text-slate-600 bg-slate-100 dark:bg-slate-700 dark:text-slate-300">
+                                                                {MODULE_LABELS[module]}
+                                                            </span>
+                                                        ))
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400 dark:text-slate-500">Sin permisos activos</span>
+                                                    )}
+                                                    {enabledModules.length > 6 && (
+                                                        <span className="rounded px-2 py-0.5 text-xs text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-300">
+                                                            +{enabledModules.length - 6} más
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-sm text-slate-500 dark:text-slate-400">
+                                                {new Date(profile.updatedAt || profile.createdAt || Date.now()).toLocaleDateString('es-ES')}
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <div className="flex items-center justify-end gap-1">
+                                                    <button type="button" onClick={() => handleOpenModal(profile)} className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-700">
+                                                        <Edit size={16} className="text-slate-500" />
+                                                    </button>
+                                                    <button type="button" onClick={() => void handleDelete(profile)} className="rounded-lg p-2 hover:bg-red-50 dark:hover:bg-red-900/20">
+                                                        <Trash2 size={16} className="text-red-500" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="space-y-3 p-4 md:hidden">
+                        {filteredProfiles.map((profile) => {
+                            const enabledModules = getEnabledModules(profile.permissions);
+
+                            return (
+                                <article key={profile.id} className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="font-semibold text-slate-900 dark:text-white">{profile.name}</p>
+                                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{countEnabledPermissions(profile.permissions)} módulos habilitados</p>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <button type="button" onClick={() => handleOpenModal(profile)} className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800">
+                                                <Edit size={16} />
+                                            </button>
+                                            <button type="button" onClick={() => void handleDelete(profile)} className="rounded-lg border border-red-200 p-2 text-red-500 transition hover:bg-red-50 dark:border-red-900/50 dark:hover:bg-red-900/20">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                                        {enabledModules.length > 0 ? (
+                                            enabledModules.slice(0, 5).map((module) => (
+                                                <span key={module} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                                                    {MODULE_LABELS[module]}
                                                 </span>
-                                            )
-                                        ))}
+                                            ))
+                                        ) : (
+                                            <span className="text-sm text-slate-500 dark:text-slate-400">Sin permisos activos</span>
+                                        )}
+                                        {enabledModules.length > 5 && (
+                                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">
+                                                +{enabledModules.length - 5} más
+                                            </span>
+                                        )}
                                     </div>
-                                </td>
-                                <td className="p-4 text-right">
-                                    <div className="flex items-center justify-end gap-1">
-                                        <button
-                                            onClick={() => handleOpenModal(profile)}
-                                            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
-                                        >
-                                            <Edit size={16} className="text-slate-500" />
-                                        </button>
-                                        <button
-                                            onClick={() => handleDelete(profile)}
-                                            className="p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
-                                        >
-                                            <Trash2 size={16} className="text-red-500" />
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
+                                </article>
+                            );
+                        })}
+                    </div>
+                </>
+            )}
 
             <AnimatePresence>
                 {isModalOpen && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="fixed inset-0 z-50 flex items-end bg-black/50 p-0 sm:items-center sm:justify-center sm:p-4">
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+                            ref={modalRef}
+                            initial={{ opacity: 0, y: 24 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 24 }}
+                            className="safe-bottom w-full max-w-5xl overflow-y-auto rounded-t-3xl bg-white shadow-xl dark:bg-slate-900 sm:max-h-[90vh] sm:rounded-2xl"
                         >
-                            <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                                    {editingProfile ? 'Editar perfil' : 'Nuevo perfil'}
-                                </h2>
-                                <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">
-                                    ×
+                            <div className="flex items-center justify-between border-b border-slate-200 p-4 dark:border-slate-800 sm:p-6">
+                                <div>
+                                    <h2 className="text-lg font-bold text-slate-900 dark:text-white sm:text-xl">
+                                        {editingProfile ? 'Editar perfil' : 'Nuevo perfil'}
+                                    </h2>
+                                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                        Crea plantillas reutilizables con permisos exactos por módulo.
+                                    </p>
+                                </div>
+                                <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+                                    <X size={20} />
                                 </button>
                             </div>
 
-                            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nombre del perfil</label>
-                                    <input
-                                        type="text"
-                                        required
-                                        value={profileName}
-                                        onChange={(e) => setProfileName(e.target.value)}
-                                        className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800"
-                                        placeholder="ej: Gerente, Empleado Básico..."
-                                    />
-                                </div>
+                            <form onSubmit={handleSubmit} className="space-y-6 p-4 sm:p-6">
+                                <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_240px]">
+                                    <div>
+                                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Nombre del perfil</label>
+                                        <input
+                                            type="text"
+                                            required
+                                            value={profileName}
+                                            onChange={(event) => setProfileName(event.target.value)}
+                                            className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                                            placeholder="Ej: RRHH lectura, Manager operaciones..."
+                                        />
+                                    </div>
 
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Permisos</label>
-                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-60 overflow-y-auto">
-                                        {PERMISSION_MODULES.filter(m => m !== 'dashboard').map(module => (
-                                            <label key={module} className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={profilePermissions[module] === 'write'}
-                                                    onChange={(e) => togglePermission(module, e.target.checked ? 'write' : 'none')}
-                                                    className="rounded"
-                                                />
-                                                <span className="text-sm text-slate-600 dark:text-slate-400">
-                                                    {MODULE_LABELS[module]}
-                                                </span>
-                                            </label>
-                                        ))}
+                                    <div className="rounded-2xl border border-slate-200 p-4 dark:border-slate-800">
+                                        <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+                                            <Copy size={16} className="text-blue-500" />
+                                            Resumen
+                                        </div>
+                                        <p className="mt-3 text-3xl font-black text-blue-600 dark:text-blue-300">{countEnabledPermissions(profilePermissions)}</p>
+                                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">módulos con acceso activo</p>
                                     </div>
                                 </div>
 
-                                <div className="flex justify-end gap-3 pt-4">
+                                <div className="space-y-2">
+                                    <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Matriz de permisos</h3>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">Cada módulo puede quedar sin acceso, solo lectura o lectura y escritura.</p>
+                                    <UserManagementPermissionEditor
+                                        permissions={profilePermissions}
+                                        onChange={(module, level) => setProfilePermissions((current) => ({ ...current, [module]: level }))}
+                                    />
+                                </div>
+
+                                <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
                                     <button
                                         type="button"
                                         onClick={() => setIsModalOpen(false)}
-                                        className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700"
+                                        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 sm:w-auto"
                                     >
                                         Cancelar
                                     </button>
                                     <button
                                         type="submit"
                                         disabled={submitting}
-                                        className="px-4 py-2 rounded-xl bg-blue-600 text-white font-medium disabled:opacity-50"
+                                        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50 sm:w-auto"
                                     >
-                                        {submitting ? <Loader2 className="animate-spin" size={18} /> : 'Guardar'}
+                                        {submitting && <Loader2 className="animate-spin" size={18} />}
+                                        Guardar perfil
                                     </button>
                                 </div>
                             </form>

@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
     ROLE_VALUES,
-    PERMISSION_LEVELS,
     PERMISSION_MODULES,
     isRole,
     normalizeRole,
@@ -146,9 +145,10 @@ describe('Authz - Permission Maps', () => {
             };
             const perms = getEffectivePermissions(actor);
             expect(perms.employees).toBe('write');
+            expect(perms.dashboard).toBeUndefined();
         });
 
-        it('should not lower existing permissions', () => {
+        it('should keep full permissions for global admin', () => {
             const actor = {
                 role: 'admin',
                 permissions: { employees: 'read' }
@@ -174,7 +174,7 @@ describe('Authz - Actor Normalization', () => {
             expect(normalized.id).toBe('123');
             expect(normalized.email).toBe('test@example.com');
             expect(normalized.role).toBe('admin');
-            expect(normalized.permissions.employees).toBe('write');
+            expect(normalized.permissions.employees).toBe('read');
         });
 
         it('should return null for null/undefined actor', () => {
@@ -234,6 +234,14 @@ describe('Authz - Module Access', () => {
             const actorWithoutEmployee = { role: 'employee' };
             expect(canAccessFeature('myDocuments', actorWithEmployee)).toBe(true);
             expect(canAccessFeature('myDocuments', actorWithoutEmployee)).toBe(false);
+        });
+
+        it('should expose fleet as its own feature access gate', () => {
+            const fleetActor = { role: 'manager', permissions: { fleet: 'read' } };
+            const assetActor = { role: 'manager', permissions: { assets: 'read' } };
+
+            expect(canAccessFeature('fleet', fleetActor)).toBe(true);
+            expect(canAccessFeature('fleet', assetActor)).toBe(false);
         });
     });
 });

@@ -19,9 +19,7 @@ export class AttendanceReportService {
             const endStr = end.toISOString().split('T')[0];
             const cacheKey = CacheKeys.attendance(companyId, startStr, endStr);
 
-            return CacheService.wrap(cacheKey, async () => {
-                return this.computeAttendanceData(start, end, filters, pagination);
-            }, ATTENDANCE_CACHE_TTL);
+            return CacheService.wrap(cacheKey, async () => this.computeAttendanceData(start, end, filters, pagination), ATTENDANCE_CACHE_TTL);
         }
 
         // No cache for non-paginated queries (full dataset)
@@ -42,7 +40,7 @@ export class AttendanceReportService {
         if (filters.companyId) where.employee = { companyId: filters.companyId };
         if (filters.department) where.employee = { ...where.employee, department: filters.department };
 
-        const prismaPagination = pagination ? getPrismaPagination(pagination) : {};
+        const _ = pagination ? getPrismaPagination(pagination) : {};
 
         const [total, entries] = await Promise.all([
             prisma.timeEntry.count({ where }),
@@ -62,11 +60,78 @@ export class AttendanceReportService {
                     }
                 },
                 orderBy: [{ timestamp: 'asc' }],
-                ...prismaPagination
+                ..._
             })
         ]);
 
         return { data: entries, total };
+    }
+
+    /**
+     * Gets attendance report grouped by employee with summary statistics.
+     * Useful for generating attendance reports per employee.
+     */
+    static async getAttendanceByEmployee(start: Date, end: Date, filters: { companyId?: string; department?: string } = {}, pagination?: PaginationParams) {
+        const where: any = {
+            timestamp: { gte: start, lte: end }
+        };
+
+        if (filters.companyId) where.employee = { companyId: filters.companyId };
+        if (filters.department) where.employee = { ...where.employee, department: filters.department };
+
+        if (pagination) getPrismaPagination(pagination);
+
+        const employees = await prisma.employee.findMany({
+            where: {
+                timeEntries: { some: where },
+                ...(filters.companyId ? { companyId: filters.companyId } : {}),
+                ...(filters.department ? { department: filters.department } : {})
+            },
+            select: { id: true, name: true, firstName: true, lastName: true, dni: true, department: true }
+        });
+
+        const report = await Promise.all(employees.map(async (emp) => {
+            const entries = await prisma.timeEntry.findMany({
+                where: {
+                    employeeId: emp.id,
+                    timestamp: { gte: start, lte: end }
+                },
+                orderBy: { timestamp: 'asc' }
+            });
+
+            // Calculate total hours and days worked
+            let totalMs = 0;
+            let lastIn: Date | null = null;
+            const daysWorked = new Set<string>();
+
+            entries.forEach((e) => {
+                const day = e.timestamp.toISOString().split('T')[0];
+                daysWorked.add(day);
+
+                if (e.type === 'IN' || e.type === 'BREAK_END' || e.type === 'LUNCH_END') {
+                    lastIn = e.timestamp;
+                } else if (e.type === 'OUT' || e.type === 'BREAK_START' || e.type === 'LUNCH_START') {
+                    if (lastIn) {
+                        totalMs += e.timestamp.getTime() - lastIn.getTime();
+                        lastIn = null;
+                    }
+                }
+            });
+
+            return {
+                employeeId: emp.id,
+                employeeName: emp.firstName && emp.lastName ? `${emp.firstName} ${emp.lastName}` : (emp.name || 'Empleado'),
+                employeeDni: emp.dni || null,
+                department: emp.department || null,
+                totalHours: Number((totalMs / (1000 * 60 * 60)).toFixed(2)),
+                daysWorked: daysWorked.size,
+                totalEntries: entries.length,
+                firstEntry: entries.length > 0 ? entries[0].timestamp : null,
+                lastEntry: entries.length > 0 ? entries[entries.length - 1].timestamp : null
+            };
+        }));
+
+        return { data: report, total: report.length };
     }
 
     /**
@@ -86,7 +151,7 @@ export class AttendanceReportService {
             where,
             include: {
                 employee: {
-                    select: { id: true, name: true, firstName: true, lastName: true }
+                    select: { id: true, name: true, firstName: true, lastName: true, dni: true, department: true }
                 }
             },
             orderBy: [{ employeeId: 'asc' }, { timestamp: 'asc' }],
@@ -156,6 +221,8 @@ export class AttendanceReportService {
                 summaries.push({
                     employeeId: empId,
                     employeeName: empInfo.firstName && empInfo.lastName ? `${empInfo.firstName} ${empInfo.lastName}` : (empInfo.name || 'Empleado'),
+                    employeeDni: empInfo.dni || null,
+                    department: empInfo.department || null,
                     date: day,
                     totalHours: Number((totalMs / (1000 * 60 * 60)).toFixed(2)),
                     status: hasIncomplete ? 'INCOMPLETE' : 'COMPLETE',

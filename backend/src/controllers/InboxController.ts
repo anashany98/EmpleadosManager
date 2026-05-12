@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import * as fs from 'fs';
+import * as path from 'path';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { inboxService } from '../services/InboxService';
@@ -56,8 +58,6 @@ export const InboxController = {
             }
 
             // Move file from temp to inbox
-            const fs = require('fs');
-            const path = require('path');
             const inboxPath = path.join(__dirname, '../../data/inbox'); // Ensure this matches InboxService watched folder
 
             if (!fs.existsSync(inboxPath)) {
@@ -105,8 +105,6 @@ export const InboxController = {
             if (!doc || !doc.fileUrl) return ApiResponse.error(res, 'Documento no encontrado', 404);
 
             if (StorageService.provider === 'local') {
-                const fs = require('fs');
-                const path = require('path');
                 const filePath = path.join(process.cwd(), 'uploads', doc.fileUrl);
                 if (!fs.existsSync(filePath)) return ApiResponse.error(res, 'Archivo no encontrado', 404);
                 return res.sendFile(filePath);

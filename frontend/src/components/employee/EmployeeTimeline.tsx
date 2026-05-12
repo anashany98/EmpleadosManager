@@ -11,7 +11,7 @@ import { es } from 'date-fns/locale';
 interface TimelineEvent {
     id: string;
     date: string;
-    type: 'ENTRY' | 'EXIT' | 'CONTRACT' | 'PAYROLL' | 'MEDICAL' | 'VACATION' | 'TRAINING' | 'EXPENSE' | 'INCIDENT' | 'AUDIT';
+    type: 'ENTRY' | 'EXIT' | 'CONTRACT' | 'PAYROLL' | 'MEDICAL' | 'VACATION' | 'TRAINING' | 'EXPENSE' | 'INCIDENT';
     title: string;
     description?: string;
     amount?: number;
@@ -33,7 +33,7 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
                 const res = await api.get(`/employees/${employeeId}/timeline`);
                 setEvents(res.data?.data || res.data || []);
             } catch (error) {
-                console.error("Error fetching timeline", error);
+                console.error('Error fetching timeline', error);
             } finally {
                 setIsLoading(false);
             }
@@ -51,7 +51,7 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
             case 'VACATION': return <Calendar size={18} className="text-orange-500" />;
             case 'TRAINING': return <GraduationCap size={18} className="text-purple-500" />;
             case 'EXPENSE': return <CreditCardIcon size={18} className="text-amber-500" />;
-            case 'INCIDENT': case 'AUDIT': return <ShieldAlert size={18} className="text-slate-500" />;
+            case 'INCIDENT': return <ShieldAlert size={18} className="text-slate-500" />;
             default: return <Circle size={18} className="text-slate-400" />;
         }
     };
@@ -63,7 +63,7 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
             case 'CONTRACT': return 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-900/30';
             case 'PAYROLL': return 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-900/30';
             case 'MEDICAL': return 'bg-rose-50 dark:bg-rose-900/20 border-rose-100 dark:border-rose-900/30';
-            case 'AUDIT': case 'INCIDENT': return 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700';
+            case 'INCIDENT': return 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700';
             default: return 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700';
         }
     };
@@ -88,7 +88,7 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
         return (
             <div className="flex flex-col items-center justify-center p-12 text-slate-400">
                 <History size={48} className="mb-4 opacity-20" />
-                <p>No hay historial disponible</p>
+                <p>No hay historial laboral disponible</p>
             </div>
         );
     }

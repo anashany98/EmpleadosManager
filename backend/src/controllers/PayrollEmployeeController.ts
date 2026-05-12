@@ -62,7 +62,7 @@ export const PayrollEmployeeController = {
             }
 
             const companyData = payroll.employee.company;
-            const pdfBuffer = await PayrollPdfService.generate(res, {
+            await PayrollPdfService.generate(res, {
                 id: payroll.id,
                 month: payroll.batch.month,
                 year: payroll.batch.year,

@@ -12,8 +12,8 @@ export class ObjectiveController {
                 employeeId: req.body.employeeId || user?.employeeId
             });
             res.status(201).json(objective);
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error creating objective' });
         }
     }
 
@@ -25,8 +25,8 @@ export class ObjectiveController {
                 cascadeToSubordinates: req.body.cascadeToSubordinates || false
             });
             res.status(201).json(objective);
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error creating cascade objective' });
         }
     }
 
@@ -38,18 +38,18 @@ export class ObjectiveController {
             if (!objective) {
                 return res.status(404).json({ error: 'Objetivo no encontrado' });
             }
-            
+
             // Authorization check
             const isOwner = user?.employeeId === objective.employeeId;
             const isAdmin = user?.role === 'admin';
-            
+
             if (!isOwner && !isAdmin) {
                 return res.status(403).json({ error: 'No tienes permiso para ver este objetivo' });
             }
-            
+
             res.json(objective);
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error getting objective' });
         }
     }
 
@@ -58,14 +58,14 @@ export class ObjectiveController {
         try {
             const user = (req as AuthenticatedRequest).user;
             const filters: any = {};
-            
+
             // Non-admin users can only see their own objectives
             if (user?.role !== 'admin') {
                 filters.employeeId = user?.employeeId;
             } else if (req.query.employeeId) {
                 filters.employeeId = req.query.employeeId as string;
             }
-            
+
             if (req.query.status) filters.status = req.query.status as string;
             if (req.query.category) filters.category = req.query.category as string;
             if (req.query.dueDateFrom) filters.dueDateFrom = new Date(req.query.dueDateFrom as string);
@@ -73,8 +73,8 @@ export class ObjectiveController {
 
             const objectives = await ObjectiveService.listObjectives(filters);
             res.json(objectives);
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error listing objectives' });
         }
     }
 
@@ -83,20 +83,20 @@ export class ObjectiveController {
         try {
             const user = (req as AuthenticatedRequest).user;
             const objective = await ObjectiveService.getObjectiveById(req.params.id);
-            
+
             if (!objective) {
                 return res.status(404).json({ error: 'Objetivo no encontrado' });
             }
-            
+
             // Only owner or admin can update
             if (user?.employeeId !== objective.employeeId && user?.role !== 'admin') {
                 return res.status(403).json({ error: 'No tienes permiso para modificar este objetivo' });
             }
-            
+
             const result = await ObjectiveService.updateObjective(req.params.id, req.body);
             res.json(result);
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error updating objective' });
         }
     }
 
@@ -105,16 +105,16 @@ export class ObjectiveController {
         try {
             const user = (req as AuthenticatedRequest).user;
             const objective = await ObjectiveService.getObjectiveById(req.params.id);
-            
+
             if (!objective) {
                 return res.status(404).json({ error: 'Objetivo no encontrado' });
             }
-            
+
             // Only owner or admin can update progress
             if (user?.employeeId !== objective.employeeId && user?.role !== 'admin') {
                 return res.status(403).json({ error: 'No tienes permiso para modificar este objetivo' });
             }
-            
+
             const { progress, actualValue } = req.body;
             const result = await ObjectiveService.updateProgress(
                 req.params.id,
@@ -122,8 +122,8 @@ export class ObjectiveController {
                 actualValue
             );
             res.json(result);
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error updating progress' });
         }
     }
 
@@ -132,8 +132,8 @@ export class ObjectiveController {
         try {
             await ObjectiveService.deleteObjective(req.params.id);
             res.status(204).send();
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error deleting objective' });
         }
     }
 
@@ -142,14 +142,14 @@ export class ObjectiveController {
         try {
             const user = (req as AuthenticatedRequest).user;
             // Non-admin users can only see their own stats
-            const employeeId = user?.role === 'admin' 
+            const employeeId = user?.role === 'admin'
                 ? (req.query.employeeId as string | undefined)
                 : user?.employeeId;
-                
+
             const stats = await ObjectiveService.getObjectiveStats(employeeId);
             res.json(stats);
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error getting stats' });
         }
     }
 
@@ -158,8 +158,8 @@ export class ObjectiveController {
         try {
             const objectives = await ObjectiveService.getOverdueObjectives();
             res.json(objectives);
-        } catch (error: any) {
-            res.status(400).json({ error: error.message });
+        } catch {
+            res.status(400).json({ error: 'Error getting overdue objectives' });
         }
     }
 }
