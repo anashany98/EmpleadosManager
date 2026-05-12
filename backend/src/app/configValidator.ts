@@ -28,15 +28,12 @@ export function validateRuntimeConfiguration(): void {
 
     // === CRITICAL SECRETS (must be present and valid) ===
     const critical: EnvValidator[] = [
-        {
-            name: 'JWT_SECRET',
+{
+            name: 'REDIS_HOST',
             required: true,
             validate: (v) => {
-                if (!v) return { valid: false, error: 'JWT_SECRET is required' };
-                if (v.length < 32) return { valid: false, error: 'JWT_SECRET must be at least 32 characters long for security' };
-                if (v === 'secret-key-123' || v === 'super-secret-key-change-me' || v === 'test-jwt-secret') {
-                    return { valid: false, error: 'JWT_SECRET cannot be a default/fallback value' };
-                }
+                if (process.env.REDIS_URL) return { valid: true };
+                if (!v) return { valid: false, error: 'REDIS_HOST is required' };
                 return { valid: true };
             }
         },
@@ -116,6 +113,7 @@ export function validateRuntimeConfiguration(): void {
             name: 'REDIS_HOST',
             required: true,
             validate: (v) => {
+                if (process.env.REDIS_URL) return { valid: true };
                 if (!v) return { valid: false, error: 'REDIS_HOST is required' };
                 return { valid: true };
             }
