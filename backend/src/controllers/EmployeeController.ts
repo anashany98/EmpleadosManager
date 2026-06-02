@@ -362,57 +362,72 @@ export const EmployeeController = {
             return ApiResponse.error(res, 'Selecciona al menos un empleado', 400);
         }
 
+        // Limit batch size to prevent abuse
+        if (employeeIds.length > 100) {
+            return ApiResponse.error(res, 'Máximo 100 empleados por operación', 400);
+        }
+
         try {
+            // First, verify all employees belong to user's company (security check)
+            if (user.companyId) {
+                const targets = await prisma.employee.findMany({
+                    where: { id: { in: employeeIds }, companyId: user.companyId },
+                    select: { id: true }
+                });
+                if (targets.length !== employeeIds.length) {
+                    throw new AppError('Permiso denegado: algunos empleados no pertenecen a tu empresa', 403);
+                }
+            } else if (user.role !== 'admin') {
+                throw new AppError('Usuario sin empresa', 403);
+            }
+
             const results = await prisma.$transaction(async (tx) => {
-                let updatedCount = 0;
+                let updateData: any = {};
+                let logAction = '';
+                let logInfo = '';
 
-                for (const empId of employeeIds) {
-                    // Security Check per Item
-                    if (user.companyId) {
-                        const target = await tx.employee.findUnique({ where: { id: empId }, select: { companyId: true } });
-                        if (!target || target.companyId !== user.companyId) {
-                            throw new Error(`Permiso denegado para empleado ${empId} (Empresa Incorrecta)`);
+                switch (action) {
+                    case 'activate':
+                        updateData = { active: true, exitDate: null };
+                        logAction = 'BULK_ACTIVATE';
+                        logInfo = 'Activación masiva';
+                        break;
+                    case 'deactivate':
+                        updateData = { active: false, exitDate: new Date() };
+                        logAction = 'BULK_DEACTIVATE';
+                        logInfo = 'Baja masiva';
+                        break;
+                    case 'delete':
+                        updateData = { active: false, exitDate: new Date() };
+                        logAction = 'BULK_DELETE';
+                        logInfo = 'Eliminación masiva (Soft)';
+                        break;
+                    case 'change_dept':
+                        if (!data?.department || typeof data.department !== 'string') {
+                            throw new Error('Departamento no especificado o formato inválido');
                         }
-                    } else if (user.role !== 'admin') {
-                        throw new AppError('Usuario sin empresa', 403);
-                    }
+                        // Sanitize department name
+                        const dept = data.department.trim().substring(0, 100);
+                        if (dept.length === 0) {
+                            throw new Error('Departamento no puede estar vacío');
+                        }
+                        updateData = { department: dept };
+                        logAction = 'BULK_CHANGE_DEPT';
+                        logInfo = `Cambio masivo a ${dept}`;
+                        break;
+                    default:
+                        throw new Error('Acción no válida');
+                }
 
-                    let updateData: any = {};
-                    let logAction = '';
-                    let logInfo = '';
+                // Batch update all employees at once
+                await tx.employee.updateMany({
+                    where: { id: { in: employeeIds } },
+                    data: updateData
+                });
 
-                    switch (action) {
-                        case 'activate':
-                            updateData = { active: true, exitDate: null };
-                            logAction = 'BULK_ACTIVATE';
-                            logInfo = 'Activación masiva';
-                            break;
-                        case 'deactivate':
-                            updateData = { active: false, exitDate: new Date() };
-                            logAction = 'BULK_DEACTIVATE';
-                            logInfo = 'Baja masiva';
-                            break;
-                        case 'delete':
-                            updateData = { active: false, exitDate: new Date() };
-                            logAction = 'BULK_DELETE';
-                            logInfo = 'Eliminación masiva (Soft)';
-                            break;
-                        case 'change_dept':
-                            if (!data.department) throw new Error('Departamento no especificado');
-                            updateData = { department: data.department };
-                            logAction = 'BULK_CHANGE_DEPT';
-                            logInfo = `Cambio masivo a ${data.department}`;
-                            break;
-                        default:
-                            throw new Error('Acción no válida');
-                    }
-
-                    await tx.employee.update({
-                        where: { id: empId },
-                        data: updateData
-                    });
-
-await tx.auditLog.create({
+                // Create audit log entries for each employee
+                for (const empId of employeeIds) {
+                    await tx.auditLog.create({
                         data: {
                             action: logAction,
                             entity: 'EMPLOYEE',
@@ -422,10 +437,9 @@ await tx.auditLog.create({
                             metadata: JSON.stringify({ info: logInfo, ...updateData })
                         }
                     });
-
-                    updatedCount++;
                 }
-                return updatedCount;
+
+                return employeeIds.length;
             });
 
             return ApiResponse.success(res, { count: results }, `${results} empleados actualizados correctamente`);
@@ -672,7 +686,13 @@ await tx.auditLog.create({
                 whereClause.companyId = user.companyId;
             }
 
-            const [employees, companies, assets, vacations, medicalReviews, trainings, documents, payrollRows] = await Promise.all([
+            // Pagination to prevent OOM on large datasets
+            const page = Math.max(1, parseInt(req.query.page as string) || 1);
+            const limit = Math.min(100, Math.max(1, parseInt(req.query.limit as string) || 50));
+            const skip = (page - 1) * limit;
+
+            const [total, employees, companies, assets, vacations, medicalReviews, trainings, documents, payrollRows] = await Promise.all([
+                prisma.employee.count({ where: whereClause }),
                 prisma.employee.findMany({
                     where: whereClause,
                     include: {
@@ -685,7 +705,10 @@ await tx.auditLog.create({
                         payrollRows: {
                             include: { batch: true }
                         }
-                    }
+                    },
+                    skip,
+                    take: limit,
+                    orderBy: { name: 'asc' }
                 }),
                 isGlobalAdmin ? prisma.company.findMany() : Promise.resolve([]),
                 prisma.asset.findMany({ where: { employeeId: { not: null } } }),
@@ -699,6 +722,12 @@ await tx.auditLog.create({
             const reportData = {
                 generatedAt: new Date().toISOString(),
                 generatedBy: user.email,
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit)
+                },
                 employees: employees.map(emp => ({
                     id: emp.id,
                     name: `${emp.firstName} ${emp.lastName}`,
@@ -708,7 +737,7 @@ await tx.auditLog.create({
                     active: emp.active
                 })),
                 summary: {
-                    totalEmployees: employees.length,
+                    totalEmployees: total,
                     activeEmployees: employees.filter(e => e.active).length,
                     totalCompanies: isGlobalAdmin ? companies.length : 1,
                     totalAssets: assets.length,
