@@ -218,6 +218,64 @@
       retries: 3
       start_period: 5m
 
+  # Off-site backup to OneDrive (Microsoft 365) via rclone sidecar.
+  # The "backup" container writes pg_dumps to the backup_data volume daily;
+  # this sidecar mirrors that volume to OneDrive every 24h, satisfying the
+  # 3-2-1 backup rule (3 copies, 2 media, 1 off-site).
+  #
+  # One-time setup: run scripts/setup-onedrive.sh to create the rclone.conf
+  # (interactive OAuth in browser). Until that is done, this container waits
+  # patiently (no restart storm) and stays unhealthy.
+  #
+  # To disable OneDrive entirely, comment out this whole service block.
+  rclone-onedrive:
+    image: rclone/rclone:1
+    container_name: manager_rclone_onedrive
+    environment:
+      - ONEDRIVE_REMOTE=${ONEDRIVE_REMOTE:-onedrive}
+      - ONEDRIVE_PATH=${ONEDRIVE_PATH:-rrhh-backups}
+    command: >
+      sh -c "
+      echo '[rclone] Esperando a /config/rclone/rclone.conf...';
+      while [ ! -f /config/rclone/rclone.conf ]; do
+        sleep 60;
+      done;
+      echo '[rclone] rclone.conf detectado, arrancando sync loop (cada 24h)';
+      while true; do
+        echo \"[rclone] sync started at $$(date -Iseconds)\";
+        rclone sync /data \"\$$ONEDRIVE_REMOTE:\$$ONEDRIVE_PATH\"
+          --log-level INFO
+          --log-file /logs/rclone.log
+          --use-json-log
+          --stats 5m
+          --transfers 4
+          --checkers 8
+          --delete-during
+          --retries 3
+          --low-level-retries 10
+          && touch /logs/last-sync;
+        echo \"[rclone] sync finished at $$(date -Iseconds), next in 24h\";
+        sleep 86400;
+      done"
+    volumes:
+      - rclone_config:/config/rclone:ro
+      - backup_data:/data:ro
+      - rclone_logs:/logs
+    networks:
+      - manager_network
+    depends_on:
+      backup:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # Falla si el ultimo sync exitoso tiene >25h de antiguedad (24h + buffer).
+      # El marker /logs/last-sync solo se toca cuando rclone sync termina con exito.
+      test: ["CMD-SHELL", "test -f /logs/last-sync && find /logs/last-sync -mmin -1500 | grep -q ."]
+      interval: 1h
+      timeout: 5s
+      retries: 2
+      start_period: 1h
+
 networks:
   manager_network:
     driver: bridge
@@ -233,6 +291,13 @@ volumes:
   postgres_data:
   backend_uploads:
   redis_data:
+  rclone_config:
+    # Persistent rclone config (created by scripts/setup-onedrive.sh).
+    driver: local
+  rclone_logs:
+    # rclone sidecar logs + last-sync marker file. Not persistent: rotated
+    # on container recreate. For long-term audit, use a log shipper.
+    driver: local
 
 
 
