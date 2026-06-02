@@ -188,8 +188,8 @@
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
       - BACKUP_KEEP_DAYS=${BACKUP_RETENTION_DAYS:-30}
-      - BACKUP_KEEP_WEEKS=4
-      - BACKUP_KEEP_MONTHS=6
+      - BACKUP_KEEP_WEEKS=${BACKUP_KEEP_WEEKS:-4}
+      - BACKUP_KEEP_MONTHS=${BACKUP_KEEP_MONTHS:-6}
       - HEALTHCHECK_PORT=8080
       # S3 Backup Configuration
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
@@ -207,6 +207,16 @@
     networks:
       - manager_network
     restart: unless-stopped
+    healthcheck:
+      # prodrigestivill/postgres-backup-local exposes an HTTP health endpoint
+      # on HEALTHCHECK_PORT (8080). It returns the timestamp of the last
+      # successful backup. If more than 36h have passed since the last
+      # successful backup, Docker will mark the service as unhealthy.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 5m
 
 networks:
   manager_network:
