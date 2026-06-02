@@ -55,8 +55,8 @@ describe('document generator request builder', () => {
                 employeeId: 'emp-1',
                 authorName: 'Responsable',
                 items: [
-                    { id: 'item-1', name: 'Camisa', size: 'M' },
-                    { id: 'item-2', name: 'Pantalon', size: '' }
+                    { id: 'item-1', name: 'Camisa', size: 'M', quantity: 1 },
+                    { id: 'item-2', name: 'Pantalon', size: '', quantity: 1 }
                 ]
             }
         });

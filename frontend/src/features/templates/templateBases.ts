@@ -205,6 +205,8 @@ export const AVAILABLE_VARIABLES = [
     'entrega.listado',
     'entrega.dispositivo',
     'entrega.numeroSerie',
+    'entrega.talla',
+    'entrega.cantidad',
     'firma.ciudad',
     'firma.fecha',
     'firma.autorizante',
