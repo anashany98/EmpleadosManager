@@ -3,22 +3,22 @@ import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('FileSecurity');
 
-// Known malicious file signatures (magic bytes)
+// Known malicious file signatures (magic bytes).
+// These checks look at the FILE HEADER ONLY. Text-based content patterns
+// (eval, <script, etc.) are handled by checkSuspiciousContent() which scans
+// the file body, not just the header. Keeping the two layers separate avoids
+// false positives like a CSV whose first cell is "eval(...)".
 const MALICIOUS_SIGNATURES: Array<{ name: string; signature: number[]; offset: number }> = [
     // Windows executables (PE headers)
     { name: 'PE_EXE', signature: [0x4D, 0x5A], offset: 0 }, // MZ
     // Linux executables (ELF)
     { name: 'ELF', signature: [0x7F, 0x45, 0x4C, 0x46], offset: 0 }, // .ELF
-    // Shell scripts
+    // Shell scripts (shebang)
     { name: 'SHELL_SCRIPT', signature: [0x23, 0x21], offset: 0 }, // #!
     // Batch files
     { name: 'BATCH', signature: [0x40, 0x65, 0x63, 0x68, 0x6F], offset: 0 }, // @echo
     // PHP
     { name: 'PHP', signature: [0x3C, 0x3F, 0x70, 0x68, 0x70], offset: 0 }, // <?php
-    // JavaScript with eval
-    { name: 'JS_EVAL', signature: [0x65, 0x76, 0x61, 0x6C, 0x28], offset: 0 }, // eval(
-    // HTML script injection
-    { name: 'HTML_SCRIPT', signature: [0x3C, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74], offset: 0 }, // <script
 ];
 
 // Valid magic bytes for allowed file types
@@ -76,22 +76,32 @@ export function checkForMaliciousSignatures(buffer: Buffer): string | null {
 }
 
 /**
- * Validate file magic bytes match expected MIME type
+ * Validate file magic bytes match expected MIME type.
+ * Returns false for any MIME type not in the allowlist (fail-closed).
+ * The multer fileFilter is the primary MIME gate; this is defense-in-depth
+ * that prevents an attacker who bypasses multer from getting an unknown
+ * MIME type through magic byte validation silently.
  */
 export function validateMagicBytes(buffer: Buffer, mimeType: string): boolean {
     const expectedSignatures = VALID_MAGIC_BYTES[mimeType];
-    
+
     if (!expectedSignatures) {
-        // Unknown MIME type - allow but log warning
-        log.warn({ mimeType }, 'Unknown MIME type, skipping magic byte validation');
-        return true;
+        // Unknown MIME type: REJECT. The multer fileFilter should have already
+        // blocked it; if we see it here, treat as suspicious.
+        log.warn({ mimeType }, 'Unknown MIME type, rejecting (not in magic-byte allowlist)');
+        return false;
     }
-    
+
     for (const expected of expectedSignatures) {
+        // CSV has an empty signature array — any content is acceptable for that MIME.
+        if (expected.signature.length === 0) {
+            return true;
+        }
+
         if (buffer.length < expected.offset + expected.signature.length) {
             continue;
         }
-        
+
         let match = true;
         for (let i = 0; i < expected.signature.length; i++) {
             if (buffer[expected.offset + i] !== expected.signature[i]) {
@@ -99,12 +109,12 @@ export function validateMagicBytes(buffer: Buffer, mimeType: string): boolean {
                 break;
             }
         }
-        
+
         if (match) {
             return true;
         }
     }
-    
+
     return false;
 }
 
@@ -189,72 +199,96 @@ export async function scanFileSecurity(
 }
 
 /**
- * ClamAV integration placeholder
- * Requires CLAMAV_HOST and CLAMAV_PORT environment variables
+ * ClamAV integration.
+ * Requires CLAMAV_HOST and CLAMAV_PORT environment variables to be set.
+ *
+ * Behavior:
+ *  - If ClamAV is NOT configured (env vars missing), the scan is SKIPPED.
+ *    In production this emits a loud warning. In dev/test it is silent.
+ *  - If ClamAV IS configured but the scan fails (timeout, connection error,
+ *    unexpected error), the scan is treated as DIRTY (fail-closed). The file
+ *    is rejected. Rationale: if an attacker can knock ClamAV offline, we
+ *    must not silently let uploads through unscanned.
  */
-export async function scanWithClamAV(buffer: Buffer): Promise<{ clean: boolean; virus?: string }> {
+export async function scanWithClamAV(
+    buffer: Buffer
+): Promise<{ clean: boolean; virus?: string; scanned: boolean; skipped?: boolean }> {
     const clamavHost = process.env.CLAMAV_HOST;
     const clamavPort = process.env.CLAMAV_PORT;
-    
+    const isProduction = process.env.NODE_ENV === 'production';
+
     if (!clamavHost || !clamavPort) {
-        // ClamAV not configured - skip scan
-        log.debug('ClamAV not configured, skipping virus scan');
-        return { clean: true };
+        if (isProduction) {
+            log.warn('ClamAV not configured in production. Set CLAMAV_HOST/CLAMAV_PORT to enable virus scanning.');
+        } else {
+            log.debug('ClamAV not configured, skipping virus scan');
+        }
+        return { clean: true, scanned: false, skipped: true };
     }
-    
+
+    // ClamAV is configured. Any error below is fail-closed: the file is rejected.
+    let client: any = null;
+    let timeout: any = null;
+    const cleanup = () => {
+        if (timeout) { clearTimeout(timeout); timeout = null; }
+        if (client) { try { client.destroy(); } catch { /* noop */ } client = null; }
+    };
+
     try {
-        // Dynamic import to avoid issues when clamav is not installed
         const net = await import('net');
-        
-        return new Promise((resolve) => {
-            const client = net.createConnection(Number(clamavPort), clamavHost);
-            const timeout = setTimeout(() => {
-                client.destroy();
-                log.error('ClamAV scan timeout');
-                resolve({ clean: true }); // Fail open
+
+        return await new Promise<{ clean: boolean; virus?: string; scanned: boolean }>((resolve) => {
+            client = net.createConnection(Number(clamavPort), clamavHost);
+            timeout = setTimeout(() => {
+                log.error('ClamAV scan timeout (fail-closed)');
+                cleanup();
+                resolve({ clean: false, virus: 'CLAMAV_TIMEOUT', scanned: false });
             }, 30000);
-            
+
             client.on('connect', () => {
                 // Send INSTREAM command
                 client.write(`zINSTREAM\0`);
-                
-                // Send file size
+
+                // Send file size (uint32 big-endian)
                 const sizeBuf = Buffer.alloc(4);
                 sizeBuf.writeUInt32BE(buffer.length, 0);
                 client.write(sizeBuf);
-                
+
                 // Send file data
                 client.write(buffer);
-                
+
                 // Send zero-length chunk to indicate end
                 const zeroBuf = Buffer.alloc(4);
                 zeroBuf.writeUInt32BE(0, 0);
                 client.write(zeroBuf);
             });
-            
-            client.on('data', (data) => {
-                clearTimeout(timeout);
+
+            client.on('data', (data: Buffer) => {
                 const response = data.toString();
-                
                 if (response.includes('OK')) {
-                    resolve({ clean: true });
+                    cleanup();
+                    resolve({ clean: true, scanned: true });
                 } else {
-                    // Extract virus name from response
                     const match = response.match(/stream: (.+?) FOUND/);
                     const virus = match ? match[1] : 'UNKNOWN';
-                    resolve({ clean: false, virus });
+                    cleanup();
+                    resolve({ clean: false, virus, scanned: true });
                 }
-                client.destroy();
             });
-            
-            client.on('error', (err) => {
-                clearTimeout(timeout);
-                log.error({ error: err }, 'ClamAV connection error');
-                resolve({ clean: true }); // Fail open
+
+            client.on('error', (err: Error) => {
+                log.error({ error: err }, 'ClamAV connection error (fail-closed)');
+                cleanup();
+                resolve({ clean: false, virus: 'CLAMAV_UNAVAILABLE', scanned: false });
+            });
+
+            client.on('close', () => {
+                if (timeout) { clearTimeout(timeout); timeout = null; }
             });
         });
     } catch (error) {
-        log.error({ error }, 'ClamAV scan failed');
-        return { clean: true }; // Fail open
+        log.error({ error }, 'ClamAV scan failed (fail-closed)');
+        cleanup();
+        return { clean: false, virus: 'CLAMAV_UNAVAILABLE', scanned: false };
     }
 }
