@@ -123,3 +123,13 @@ Desktop.ini
 *DEPLOY_*PRIVATE*.md
 *SECRETS*.md
 *_SECRETS.md
+
+# Duplicate / large binary documentation (not for git)
+manual/
+docs/USER_MANUAL.pdf
+docs/screenshots/
+
+# Generated/internal tooling artifacts
+flows.html
+flows.json
+.sisyphus/
