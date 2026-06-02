@@ -1,6 +1,7 @@
 
 import nodemailer, { Transporter } from 'nodemailer';
 import { prisma } from '../lib/prisma';
+import { EncryptionService } from './EncryptionService';
 
 interface SmtpConfig {
     host: string;
@@ -34,7 +35,14 @@ export class EmailService {
             };
 
             const configMap = configs.reduce((acc, curr) => {
-                acc[curr.key] = normalize(curr.value);
+                let val = normalize(curr.value);
+                // Decrypt secrets stored via EncryptionService (gcm:iv:tag:ct format).
+                // Legacy plain-text values are tolerated for one-time migration.
+                if (curr.key === 'SMTP_PASS' && typeof val === 'string' && val.startsWith('gcm:')) {
+                    const decrypted = EncryptionService.decrypt(val);
+                    val = decrypted ?? '';
+                }
+                acc[curr.key] = val as string;
                 return acc;
             }, {} as Record<string, string>);
 
