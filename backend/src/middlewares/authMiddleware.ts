@@ -64,14 +64,15 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
             return next(new AppError('Tu cuenta ha sido desactivada. Contacta al administrador.', 401));
         }
 
-        if (typeof decoded.sessionVersion === 'number' && user.sessionVersion !== decoded.sessionVersion) {
+        if (typeof decoded.sessionVersion !== 'number' || user.sessionVersion !== decoded.sessionVersion) {
             return next(new AppError('Tu sesión ha sido invalidada. Por favor, inicia sesión de nuevo.', 401));
         }
 
         let parsedPermissions: Record<string, PermissionLevel | 'admin'> = {};
         try {
             parsedPermissions = user.permissions ? JSON.parse(user.permissions as string) : {};
-        } catch {
+        } catch (parseError) {
+            console.warn(`[AUTH] Invalid permissions JSON for user ${user.id}:`, parseError);
             parsedPermissions = {};
         }
 

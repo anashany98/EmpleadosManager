@@ -1,10 +1,14 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
+if (!process.env.DATABASE_URL) {
+    console.warn('DATABASE_URL not set, using SQLite fallback');
+}
+
 const prisma = new PrismaClient({
     datasources: {
         db: {
-            url: 'file:./database/prisma/dev.db',
+            url: process.env.DATABASE_URL || 'file:./database/prisma/dev.db',
         },
     },
 });

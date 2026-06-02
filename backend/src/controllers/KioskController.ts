@@ -135,8 +135,8 @@ function parseClockTimestamp(value: string | undefined): Date {
         throw new AppError('Future kiosk timestamps are not allowed', 400);
     }
 
-    if (now - date.getTime() > 7 * 24 * 60 * 60 * 1000) {
-        throw new AppError('Stale kiosk timestamps are not allowed', 400);
+    if (now - date.getTime() > 60 * 60 * 1000) {
+        throw new AppError('Kiosk timestamps older than 1 hour are not allowed', 400);
     }
 
     return date;
@@ -147,7 +147,7 @@ async function findProcessedClockEntry(clientRequestId?: string) {
 
     if (clientRequestId) {
         const processed = processedClockRequests.get(clientRequestId);
-        if (processed && processed.expiresAt > Date.now()) {
+        if (processed && processed.entryId && processed.expiresAt > Date.now()) {
             const existingEntry = await prisma.timeEntry.findUnique({
                 where: { id: processed.entryId }
             });
@@ -184,7 +184,12 @@ export const KioskController = {
     },
 
     identifyEmployee: async (req: Request, res: Response) => {
-        const { descriptor } = req.body;
+        const { secret, descriptor } = req.body;
+        const configuredSecret = process.env.KIOSK_DEVICE_SECRET || process.env.KIOSK_SECRET;
+        if (configuredSecret && secret !== configuredSecret) {
+            throw new AppError('Kiosk Unauthorized', 401);
+        }
+
         const employees = await getFaceDescriptors();
 
         let bestMatch: CachedDescriptor | null = null;

@@ -40,29 +40,33 @@ export function sanitizeEmployeeListItem(employee: EmployeeRecord) {
     const {
         socialSecurityNumber,
         iban,
-    annualGrossSalary,
-    monthlyGrossSalary,
-    annualTotalSalary,
-    monthlyTotalSalary,
+        annualGrossSalary,
+        monthlyGrossSalary,
+        annualTotalSalary,
+        monthlyTotalSalary,
         privateNotes,
         payrollRows,
         faceDescriptor,
         kioskPin,
         users,
+        companyShortPhone,
+        subaccount465,
         ...safeEmployee
     } = employee;
 
     void socialSecurityNumber;
     void iban;
-  void annualGrossSalary;
-  void monthlyGrossSalary;
-  void annualTotalSalary;
-  void monthlyTotalSalary;
+    void annualGrossSalary;
+    void monthlyGrossSalary;
+    void annualTotalSalary;
+    void monthlyTotalSalary;
     void privateNotes;
     void payrollRows;
     void faceDescriptor;
     void kioskPin;
     void users;
+    void companyShortPhone;
+    void subaccount465;
 
     return safeEmployee;
 }

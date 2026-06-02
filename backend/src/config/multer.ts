@@ -36,7 +36,7 @@ export const createMulterOptions = (
         storage,
         fileFilter,
         limits: {
-            fileSize: 10 * 1024 * 1024,
+            fileSize: 5 * 1024 * 1024, // 5MB max (reduced from 10MB for memory safety)
         },
     };
 };
@@ -67,7 +67,7 @@ export const createSecureMulterOptions = (
         storage,
         fileFilter,
         limits: {
-            fileSize: 10 * 1024 * 1024,
+            fileSize: 5 * 1024 * 1024, // 5MB max (reduced from 10MB for memory safety)
         },
     };
 };

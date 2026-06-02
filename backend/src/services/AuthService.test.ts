@@ -21,9 +21,85 @@ vi.mock('bcryptjs', () => ({
     }
 }));
 
+
+
 describe('AuthService.login', () => {
+    const mockUser = {
+        id: 'user-1',
+        email: 'test@empresa.com',
+        dni: '12345678A',
+        password: 'hashed-password',
+        role: 'employee',
+        permissions: '{"dashboard":"read"}',
+        employeeId: 'emp-1',
+        isActive: true,
+        sessionVersion: 0,
+        lockedUntil: null,
+        failedLoginAttempts: 0,
+        employee: { companyId: 'company-1' },
+    };
+
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    it('should login successfully with email and correct password', async () => {
+        vi.mocked(prisma.user.findFirst).mockResolvedValue(mockUser as any);
+        vi.mocked(bcrypt.compare).mockResolvedValue(true as any);
+        vi.mocked(prisma.refreshToken.create).mockResolvedValue({} as any);
+
+        const result = await AuthService.login('test@empresa.com', 'correct-password');
+
+        expect(result.accessToken).toBeTruthy();
+        expect(result.user.email).toBe('test@empresa.com');
+        expect(result.user.role).toBe('employee');
+    });
+
+    it('should throw 401 with incorrect password', async () => {
+        vi.mocked(prisma.user.findFirst).mockResolvedValue(mockUser as any);
+        vi.mocked(bcrypt.compare).mockResolvedValue(false as any);
+
+        await expect(
+            AuthService.login('test@empresa.com', 'wrong-password')
+        ).rejects.toThrow('Credenciales incorrectas');
+    });
+
+    it('should throw 401 when user not found', async () => {
+        vi.mocked(prisma.user.findFirst).mockResolvedValue(null);
+
+        await expect(
+            AuthService.login('unknown@empresa.com', 'password')
+        ).rejects.toThrow('Credenciales incorrectas');
+    });
+
+    it('should throw 403 when user is inactive', async () => {
+        const inactiveUser = { ...mockUser, isActive: false };
+        vi.mocked(prisma.user.findFirst).mockResolvedValue(inactiveUser as any);
+        vi.mocked(bcrypt.compare).mockResolvedValue(true as any);
+
+        await expect(
+            AuthService.login('test@empresa.com', 'correct-password')
+        ).rejects.toThrow('Usuario deshabilitado');
+    });
+
+    it('should throw 423 when account is locked', async () => {
+        const futureDate = new Date(Date.now() + 3600000);
+        const lockedUser = { ...mockUser, lockedUntil: futureDate };
+        vi.mocked(prisma.user.findFirst).mockResolvedValue(lockedUser as any);
+
+        await expect(
+            AuthService.login('test@empresa.com', 'correct-password')
+        ).rejects.toThrow('Cuenta bloqueada');
+    });
+
+    it('should login with DNI (case insensitive)', async () => {
+        vi.mocked(prisma.user.findFirst).mockResolvedValue(mockUser as any);
+        vi.mocked(bcrypt.compare).mockResolvedValue(true as any);
+        vi.mocked(prisma.refreshToken.create).mockResolvedValue({} as any);
+
+        const result = await AuthService.login('12345678a', 'correct-password');
+
+        expect(result.accessToken).toBeTruthy();
     });
 
     it('returns the company scope for company admins and keeps sessionVersion in the access token', async () => {

@@ -8,11 +8,12 @@ const COOKIE_SECURE = process.env.COOKIE_SECURE === 'true';
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 const COOKIE_SAMESITE = (process.env.COOKIE_SAMESITE || 'lax') as 'lax' | 'strict' | 'none';
 const CSRF_MAX_AGE_MS = parseInt(process.env.CSRF_MAX_AGE_MS || '') || 7 * 24 * 60 * 60 * 1000;
+const isProduction = process.env.NODE_ENV === 'production';
 
 const buildCsrfCookieOptions = (maxAge: number) => ({
     httpOnly: false,
-    secure: COOKIE_SAMESITE === 'none' ? true : COOKIE_SECURE,
-    sameSite: COOKIE_SAMESITE,
+    secure: isProduction ? true : (COOKIE_SAMESITE === 'none' ? true : COOKIE_SECURE),
+    sameSite: isProduction ? 'strict' : COOKIE_SAMESITE,
     domain: COOKIE_DOMAIN || undefined,
     path: '/',
     maxAge

@@ -13,9 +13,9 @@ import { AuditService } from '../services/AuditService';
 
 const log = createLogger('PasswordController');
 
-const FRONTEND_URL = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173');
-if (!FRONTEND_URL && process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL: FRONTEND_URL must be defined in production.');
+const FRONTEND_URL = process.env.FRONTEND_URL;
+if (!FRONTEND_URL) {
+    throw new Error('FATAL: FRONTEND_URL must be defined.');
 }
 
 const PASSWORD_RESET_EXPIRES_MS = 15 * 60 * 1000;
@@ -94,21 +94,21 @@ export const PasswordController = {
             const employee = await prisma.employee.findFirst({
                 where: {
                     OR: [
-                        { dni: trimmedId },
-                        { dni: trimmedId.toUpperCase() },
-                        { email: trimmedId },
-                        { email: trimmedId.toLowerCase() }
+                        { dni: { equals: trimmedId, mode: 'insensitive' } },
+                        { email: { equals: trimmedId, mode: 'insensitive' } }
                     ]
                 }
             });
 
             if (!employee) {
-                log.debug({ identifier: trimmedId }, 'Password reset requested but no employee found');
+                await new Promise(r => setTimeout(r, 500 + Math.random() * 500));
+                log.debug('Password reset requested but no employee found');
                 return ApiResponse.success(res, null, 'Si los datos coinciden, recibiras un correo con las instrucciones.');
             }
 
             if (!employee.email) {
-                log.debug({ identifier: trimmedId }, 'Password reset: employee has no email');
+                await new Promise(r => setTimeout(r, 500 + Math.random() * 500));
+                log.debug('Password reset: employee has no email');
                 return ApiResponse.success(res, null, 'Si los datos coinciden, recibiras un correo con las instrucciones.');
             }
 

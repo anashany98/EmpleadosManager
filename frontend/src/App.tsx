@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
 import KioskPage from './pages/Kiosk/KioskPage';
 import RequestReset from './pages/RequestReset';
@@ -211,7 +212,9 @@ function App() {
       <AuthProvider>
         <ConfirmProvider>
           <NotificationProvider>
-            <AppContent />
+            <ErrorBoundary>
+              <AppContent />
+            </ErrorBoundary>
           </NotificationProvider>
         </ConfirmProvider>
       </AuthProvider>

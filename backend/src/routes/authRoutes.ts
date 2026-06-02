@@ -58,11 +58,19 @@ const passwordLimiter = rateLimit({
     message: 'Demasiadas solicitudes. Intenta de nuevo en 15 minutos.'
 });
 
+const passwordResetLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: 'Demasiadas solicitudes de restablecimiento. Inténtalo de nuevo en 15 minutos.'
+});
+
 // Login: IP-based rate limit → account lockout check → schema validation → login handler
 router.post('/login', loginGlobalLimiter, loginLimiter, checkAccountLockout, validateResource(loginSchema), AuthController.login);
 router.post('/refresh', refreshLimiter, AuthController.refresh);
 router.post('/logout', AuthController.logout);
-router.post('/request-password-reset', passwordLimiter, validateResource(passwordResetRequestSchema), PasswordController.requestReset);
+router.post('/request-password-reset', passwordResetLimiter, validateResource(passwordResetRequestSchema), PasswordController.requestReset);
 router.post('/reset-password', passwordLimiter, validateResource(passwordResetSchema), PasswordController.reset);
 router.post('/generate-access', protect, restrictTo('admin'), validateResource(generateAccessSchema), PasswordController.generateAccess);
 router.get('/me', protect, SessionController.getMe);

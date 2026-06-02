@@ -38,6 +38,15 @@ export function validateRuntimeConfiguration(): void {
             }
         },
         {
+            name: 'JWT_SECRET',
+            required: true,
+            validate: (v) => {
+                if (!v) return { valid: false, error: 'JWT_SECRET is required' };
+                if (v.length < 32) return { valid: false, error: 'JWT_SECRET must be at least 32 characters long' };
+                return { valid: true };
+            }
+        },
+        {
             name: 'ENCRYPTION_KEY',
             required: true,
             // EncryptionService.validateKey() will handle this, but we add extra checks
