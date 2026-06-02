@@ -4,7 +4,7 @@
 #########################
 # Stage 1: Dependencies (dev + prod for building)
 #########################
-FROM node:22-bullseye AS deps
+FROM node:22.12-bullseye AS deps
 
 WORKDIR /app/backend
 
@@ -18,7 +18,7 @@ RUN npm install && npm cache clean --force
 #########################
 # Stage 2: Builder
 #########################
-FROM node:22-bullseye AS builder
+FROM node:22.12-bullseye AS builder
 
 WORKDIR /app
 
@@ -59,7 +59,7 @@ RUN cd backend && npm run build
 #########################
 # Stage 3: Runner (production only)
 #########################
-FROM node:22-bullseye AS runner
+FROM node:22.12-bullseye-slim AS runner
 
 # Match the runtime OS with the Prisma client generated in the build stage.
 RUN apt-get update && apt-get install -y --no-install-recommends \

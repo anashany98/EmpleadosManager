@@ -4,7 +4,7 @@
 #########################
 # Stage 1: Build
 #########################
-FROM node:22-bullseye AS builder
+FROM node:22.12-bullseye AS builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ RUN npm run build
 #########################
 # Stage 2: Production Runner (Nginx)
 #########################
-FROM nginx:alpine AS runner
+FROM nginx:1.25-alpine AS runner
 
 # Install curl for health checks
 RUN apk add --no-cache curl
