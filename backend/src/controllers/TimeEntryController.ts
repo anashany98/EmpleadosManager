@@ -64,7 +64,7 @@ export const TimeEntryController = {
     clock: async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthenticatedRequest;
-            const { type, latitude, longitude, location, device, timestamp, clientRequestId } = req.body;
+            const { type, latitude, longitude, location, device, timestamp, clientRequestId, accuracy } = req.body;
 
             if (!user.employeeId) {
                 return ApiResponse.error(res, 'Usuario no vinculado a un empleado', 400);
@@ -78,18 +78,18 @@ export const TimeEntryController = {
             const lat = latitude !== null && latitude !== undefined ? Number(latitude) : null;
             const lon = longitude !== null && longitude !== undefined ? Number(longitude) : null;
             const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
-            const accuracy = accuracy !== null && accuracy !== undefined ? Number(accuracy) : null;
+            const parsedAccuracy = accuracy !== null && accuracy !== undefined ? Number(accuracy) : null;
 
             // Log received coordinates for audit trail
             if (hasCoords) {
-                log.info({ employeeId: user.employeeId, type, lat, lon, accuracy, device }, 'Clock with GPS coordinates');
+                log.info({ employeeId: user.employeeId, type, lat, lon, accuracy: parsedAccuracy, device }, 'Clock with GPS coordinates');
             }
 
             // Geofencing Check - with accuracy validation
             if (hasCoords && (type === 'IN' || type === 'OUT')) {
                 // Reject if GPS accuracy is too poor (> 100m)
-                if (accuracy !== null && accuracy > 100) {
-                    log.warn({ employeeId: user.employeeId, accuracy }, 'Clock rejected: poor GPS accuracy');
+                if (parsedAccuracy !== null && parsedAccuracy > 100) {
+                    log.warn({ employeeId: user.employeeId, accuracy: parsedAccuracy }, 'Clock rejected: poor GPS accuracy');
                     return ApiResponse.error(res, 'Precisión GPS insuficiente. Acércate a la oficina o desactiva el modo ahorro de batería.', 400);
                 }
 
@@ -115,7 +115,7 @@ export const TimeEntryController = {
                                     type: 'GEOFENCE',
                                     severity: 'WARNING',
                                     title: 'Fichaje fuera de zona',
-                                    message: `Fichaje ${type} realizado a ${Math.round(distance)}m de la oficina (Radio: ${radius}m). Coordenadas: ${lat},${lon}. Precisión: ${accuracy || 'N/A'}m. Dispositivo: ${device || 'N/A'}`,
+                                    message: `Fichaje ${type} realizado a ${Math.round(distance)}m de la oficina (Radio: ${radius}m). Coordenadas: ${lat},${lon}. Precisión: ${parsedAccuracy || 'N/A'}m. Dispositivo: ${device || 'N/A'}`,
                                     isRead: false
                                 }
                             });
