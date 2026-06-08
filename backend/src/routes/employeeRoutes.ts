@@ -10,7 +10,7 @@ import { prisma } from '../lib/prisma';
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit for imports
+    limits: { fileSize: 25 * 1024 * 1024 } // 25MB limit for employee Excel imports
 });
 
 const router = Router();

@@ -86,3 +86,50 @@ backend/src/scripts/reproduce_pdf.ts
 backend/src/scripts/reproduce_pdf_overflow.ts
 backend/src/scripts/verify_pdf_content.ts
 backend/test_script_output.pdf
+
+# Build artifacts and test output
+backend/test-backups-*/
+backend/*.txt
+backend/prisma_gen_log.txt
+backend/list_emps.js
+backend/download_models.js
+backend/file_list.txt
+backend/build_output.txt
+Beamng/
+backend/test*.pdf
+backend/output.pdf
+backend/test2.pdf
+backend/test3.pdf
+
+# Backup files and sensitive documentation (Phase 0 hygiene)
+*.bak
+*.[Bb][Aa][Kk]
+*.orig
+*.rej
+*~
+*.swp
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Sensitive documentation - NEVER commit
+*CREDENTIALS*.md
+*_CREDENTIALS.md
+*credentials*.md
+*PRIVADO*.md
+*_PRIVADO.md
+*privado*.md
+*DEPLOY_*PRIVATE*.md
+*SECRETS*.md
+*_SECRETS.md
+
+# Duplicate / large binary documentation (not for git)
+manual/
+docs/USER_MANUAL.pdf
+docs/screenshots/
+
+# Generated/internal tooling artifacts
+flows.html
+flows.json
+.sisyphus/

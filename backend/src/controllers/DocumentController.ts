@@ -3,12 +3,40 @@ import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { validateUpload } from '../config/multer';
+import { AuthenticatedRequest } from '../types/express';
+import { scanFileSecurity, scanWithClamAV } from '../utils/fileSecurity';
 
-import { createWorker } from 'tesseract.js';
+import { createWorker, Worker } from 'tesseract.js';
 import { StorageService } from '../services/StorageService';
 import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('DocumentController');
+
+// Singleton OCR worker to prevent memory leaks
+let ocrWorker: Worker | null = null;
+let ocrWorkerLock = false;
+
+async function getOcrWorker(): Promise<Worker> {
+    if (ocrWorker) {
+        return ocrWorker;
+    }
+    
+    // Prevent multiple concurrent worker creation
+    if (ocrWorkerLock) {
+        // Wait a bit and retry
+        await new Promise(r => setTimeout(r, 100));
+        if (ocrWorker) return ocrWorker;
+    }
+    
+    ocrWorkerLock = true;
+    try {
+        ocrWorker = await createWorker('spa');
+        log.info('OCR worker initialized');
+        return ocrWorker;
+    } finally {
+        ocrWorkerLock = false;
+    }
+}
 
 async function assertEmployeeExists(employeeId: string): Promise<void> {
     const employee = await prisma.employee.findUnique({
@@ -27,11 +55,22 @@ export const DocumentController = {
         const file = req.file;
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
 
+        // Validate file size for OCR (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            throw new AppError('Archivo demasiado grande para OCR (máximo 10MB)', 400);
+        }
+        
+        // Security scan before OCR processing
+        const securityResult = await scanFileSecurity(file.buffer, file.originalname, file.mimetype);
+        if (!securityResult.safe) {
+            log.error({ filename: file.originalname, issues: securityResult.issues }, 'File security scan failed in OCR');
+            throw new AppError(`Archivo rechazado por seguridad: ${securityResult.issues.join(', ')}`, 400);
+        }
+
         try {
             validateUpload(file);
-            const worker = await createWorker('spa');
+            const worker = await getOcrWorker();
             const { data: { text } } = await worker.recognize(file.buffer);
-            await worker.terminate();
 
             const cleanText = text.replace(/\s+/g, ' ').toLowerCase();
 
@@ -71,6 +110,7 @@ export const DocumentController = {
     upload: async (req: Request, res: Response) => {
         const { employeeId, name, category, expiryDate } = req.body;
         const file = req.file;
+        const { user } = req as AuthenticatedRequest;
 
         if (!file) throw new AppError('No se ha subido ningún archivo', 400);
         if (!employeeId) throw new AppError('employeeId requerido', 400);
@@ -80,7 +120,34 @@ export const DocumentController = {
         let savedKey: string | null = null;
 
         try {
-            await assertEmployeeExists(employeeId);
+            // Verify employee exists AND user has access (company scoping)
+            const employee = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { id: true, companyId: true }
+            });
+            
+            if (!employee) {
+                throw new AppError('Empleado no encontrado', 404);
+            }
+            
+            // Company access check
+            if (user?.companyId && employee.companyId !== user.companyId) {
+                throw new AppError('No tienes permiso para subir documentos a este empleado', 403);
+            }
+            
+            // Security scan: Magic bytes + malicious signatures + suspicious content
+            const securityResult = await scanFileSecurity(file.buffer, file.originalname, file.mimetype);
+            if (!securityResult.safe) {
+                log.error({ filename: file.originalname, issues: securityResult.issues }, 'File security scan failed');
+                throw new AppError(`Archivo rechazado por seguridad: ${securityResult.issues.join(', ')}`, 400);
+            }
+            
+            // ClamAV virus scan (if configured)
+            const virusResult = await scanWithClamAV(file.buffer);
+            if (!virusResult.clean) {
+                log.error({ filename: file.originalname, virus: virusResult.virus }, 'Virus detected');
+                throw new AppError(`Virus detectado: ${virusResult.virus}`, 400);
+            }
 
             const safeEmployeeId = employeeId.replace(/[^a-zA-Z0-9-]/g, '');
             if (safeEmployeeId !== employeeId) {

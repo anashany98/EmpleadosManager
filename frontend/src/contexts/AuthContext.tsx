@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
 import { api } from '../api/client';
 import { canAccessFeature as canSharedAccessFeature, normalizeActor } from '@shared/authz';
 import type { AppFeatureKey, PermissionMap, Role } from '@shared/authz';
@@ -31,6 +31,7 @@ const AUTH_PAGES = new Set(['/login', '/request-reset', '/reset-password']);
 export function AuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+    const authAttemptedRef = useRef(false);
 
     const isAdmin = useMemo(() => user?.role === 'admin', [user?.role]);
     const isManager = useMemo(() => user?.role === 'manager' || user?.role === 'hr' || user?.role === 'admin', [user?.role]);
@@ -86,6 +87,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, [normalizeUser, setSessionHint]);
 
     const bootstrapAuth = useCallback(async (): Promise<void> => {
+        if (authAttemptedRef.current) return;
+        authAttemptedRef.current = true;
         const path = window.location.pathname;
         const isAuthPage = AUTH_PAGES.has(path);
         if (isAuthPage && !hasSessionHint()) {

@@ -47,8 +47,8 @@ const clearCookieOptions = {
 const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME || 'csrf_token';
 
 const FRONTEND_URL = process.env.FRONTEND_URL;
-if (!FRONTEND_URL && process.env.NODE_ENV === 'production') {
-    throw new Error('FATAL: FRONTEND_URL must be defined in production.');
+if (!FRONTEND_URL) {
+    throw new Error('FATAL: FRONTEND_URL must be defined.');
 }
 export const AuthController = {
     login: async (req: Request, res: Response) => {
@@ -69,7 +69,7 @@ export const AuthController = {
             const userAgent = req.headers['user-agent'];
             await AuditService.logLoginSuccess(result.user.id, ipAddress, userAgent);
 
-            res.cookie('access_token', result.accessToken, buildCookieOptions(60 * 60 * 1000)); // 1 hour
+            res.cookie('access_token', result.accessToken, buildCookieOptions(15 * 60 * 1000)); // 15 minutes
             res.cookie('refresh_token', result.refreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
             issueCsrfToken(res);
 
@@ -103,26 +103,12 @@ export const AuthController = {
                 throw new AppError('Refresh Token no proporcionado', 400);
             }
 
-            // Find token in DB
+            // Find token in DB (always hashed)
             const hashed = hashToken(refreshToken);
-            let storedToken = await prisma.refreshToken.findUnique({
+            const storedToken = await prisma.refreshToken.findUnique({
                 where: { token: hashed },
                 include: { user: true }
             });
-
-            // Legacy fallback: token stored in plain text
-            if (!storedToken) {
-                storedToken = await prisma.refreshToken.findUnique({
-                    where: { token: refreshToken },
-                    include: { user: true }
-                });
-                if (storedToken) {
-                    await prisma.refreshToken.update({
-                        where: { id: storedToken.id },
-                        data: { token: hashed }
-                    });
-                }
-            }
 
             if (!storedToken || storedToken.revoked || new Date() > new Date(storedToken.expiresAt)) {
                 // Should we revoke the family if reused? For now just deny.
@@ -148,20 +134,20 @@ export const AuthController = {
             const newRefreshToken = generateRefreshToken();
             const newExpiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRES_IN);
 
-            // Revoke old
-            await prisma.refreshToken.update({
-                where: { id: storedToken.id },
-                data: { revoked: true }
-            });
-
-            // Create new
-            await prisma.refreshToken.create({
-                data: {
-                    token: hashToken(newRefreshToken),
-                    userId: user.id,
-                    expiresAt: newExpiresAt
-                }
-            });
+            // Revoke old AND create new atomically
+            await prisma.$transaction([
+                prisma.refreshToken.update({
+                    where: { id: storedToken.id },
+                    data: { revoked: true }
+                }),
+                prisma.refreshToken.create({
+                    data: {
+                        token: hashToken(newRefreshToken),
+                        userId: user.id,
+                        expiresAt: newExpiresAt
+                    }
+                })
+            ]);
 
             res.cookie('access_token', newAccessToken, buildCookieOptions(15 * 60 * 1000));
             res.cookie('refresh_token', newRefreshToken, buildCookieOptions(REFRESH_TOKEN_EXPIRES_IN));
@@ -187,16 +173,7 @@ export const AuthController = {
             if (refreshToken) {
                 try {
                     const hashed = hashToken(refreshToken);
-                    let found = await prisma.refreshToken.findUnique({ where: { token: hashed } });
-                    if (!found) {
-                        found = await prisma.refreshToken.findUnique({ where: { token: refreshToken } });
-                        if (found) {
-                            await prisma.refreshToken.update({
-                                where: { id: found.id },
-                                data: { token: hashed }
-                            });
-                        }
-                    }
+                    const found = await prisma.refreshToken.findUnique({ where: { token: hashed } });
                     if (found) {
                         await prisma.refreshToken.update({
                             where: { id: found.id },

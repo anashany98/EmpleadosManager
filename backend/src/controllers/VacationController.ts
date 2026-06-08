@@ -25,9 +25,14 @@ import path from 'path';
 const log = createLogger('VacationController');
 
 function invalidateVacationBalanceCache(employeeId: string, year: number): void {
-    const cacheKey = `vacation:balance:${employeeId}:${year}`;
-    CacheService.del(cacheKey);
-    log.info({ cacheKey }, 'Vacation balance cache invalidated');
+    // Invalidate current year and adjacent years (for carried-over balances)
+    const yearsToInvalidate = [year - 1, year, year + 1];
+    
+    for (const y of yearsToInvalidate) {
+        const cacheKey = `vacation:balance:${employeeId}:${y}`;
+        CacheService.del(cacheKey);
+        log.info({ cacheKey }, 'Vacation balance cache invalidated');
+    }
 }
 
 export const VacationController = {

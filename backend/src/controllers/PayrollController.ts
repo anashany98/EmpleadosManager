@@ -13,6 +13,7 @@ import { createLogger } from '../services/LoggerService';
 import { AppError } from '../utils/AppError';
 import { canReadPayroll } from '../policies/payrollAccess';
 import { withRetry } from '../utils/dbRetry';
+import { validateBatchStatusTransition } from '../utils/payrollValidation';
 
 const log = createLogger('PayrollController');
 
@@ -97,26 +98,19 @@ export const PayrollController = {
 
             if (batch.sourceFileUrl) {
                 buffer = await StorageService.getBuffer(batch.sourceFileUrl);
-            } else if (filename) {
-                // Legacy fallback: local temp file (pre-S3)
-                const fs = await import('fs');
-                const filePath = `uploads/${filename}`;
-                try {
-                    await fs.promises.access(filePath);
-                    buffer = await fs.promises.readFile(filePath);
-                } catch {
-                    buffer = null;
-                }
             }
 
             if (!buffer) {
-                return ApiResponse.error(res, 'El archivo original ha caducado o no existe', 404);
+                return ApiResponse.error(res, 'El archivo original ha caducado o no existe. Por favor, sube el archivo nuevamente.', 404);
             }
 
             const rawData = await ExcelParser.parseBuffer(buffer);
 
             // Transformar
             const rowsData = MappingService.applyMapping(rawData, mappingRules, id);
+
+            // Validate status transition
+            validateBatchStatusTransition(batch.status, 'MAPPED');
 
             // Guardar en BD (Transactions) - wrapped with retry for transient failures
             await withRetry(() => prisma.$transaction([
@@ -378,13 +372,29 @@ export const PayrollController = {
                 });
             }
 
-            // 2. Create Row
+            // 2. Financial validation
+            const brutoNum = parseFloat(bruto);
+            const netoNum = parseFloat(neto);
+            
+            if (isNaN(brutoNum) || isNaN(netoNum)) {
+                return ApiResponse.error(res, 'Los importes deben ser números válidos', 400);
+            }
+            
+            if (brutoNum < 0 || netoNum < 0) {
+                return ApiResponse.error(res, 'Los importes no pueden ser negativos', 400);
+            }
+            
+            if (netoNum > brutoNum) {
+                return ApiResponse.error(res, 'El importe neto no puede ser mayor que el bruto', 400);
+            }
+
+            // 3. Create Row
             const row = await prisma.payrollRow.create({
                 data: {
                     batchId: batch.id,
                     employeeId,
-                    bruto: parseFloat(bruto),
-                    neto: parseFloat(neto),
+                    bruto: brutoNum,
+                    neto: netoNum,
                     status: 'VALID',
                     rawEmployeeName: 'Manual Entry'
                 }

@@ -9,7 +9,6 @@ export default function RequestReset() {
     const [identifier, setIdentifier] = useState('');
     const [loading, setLoading] = useState(false);
     const [success, setSuccess] = useState(false);
-    const [debugLink, setDebugLink] = useState('');
     const [fieldError, setFieldError] = useState<string | null>(null);
 
     const validateIdentifier = (value: string): string | null => {
@@ -28,7 +27,6 @@ export default function RequestReset() {
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        setDebugLink('');
 
         const error = validateIdentifier(identifier);
         setFieldError(error);
@@ -42,12 +40,7 @@ export default function RequestReset() {
             if (res.success) {
                 setSuccess(true);
                 toast.success('Solicitud enviada correctamente');
-                // DEBUG ONLY: In production this must NEVER display or log - demo link exposure is a security risk
-                if (res.data?.debugLink) {
-                     
-                    console.warn('DEBUG: password reset link captured (should not appear in production):', res.data.debugLink);
-                    setDebugLink(res.data.debugLink);
-                }
+
             }
         } catch (error: any) {
             toast.error(error.message || 'Error al procesar la solicitud');

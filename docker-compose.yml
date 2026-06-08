@@ -1,7 +1,7 @@
 ﻿services:
   # Base de Datos PostgreSQL
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.4-alpine
     container_name: manager_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -35,7 +35,7 @@
 
   # Redis (Queue & Cache) con persistencia
   redis:
-    image: redis:7-alpine
+    image: redis:7.2-alpine
     container_name: manager_redis
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
@@ -53,7 +53,7 @@
           memory: 512M
     command: >
       sh -c 'if [ -z "$$REDIS_PASSWORD" ]; then echo "REDIS_PASSWORD is required"; exit 1; fi;
-      exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --save 900 1 --save 300 10 --save 60 10000'
+      exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --save 900 1 --save 300 10 --save 60 10000'
     healthcheck:
       test: ["CMD-SHELL", "redis-cli -a \"$${REDIS_PASSWORD}\" ping | grep PONG"]
       interval: 10s
@@ -138,12 +138,18 @@
         limits:
           cpus: '0.5'
           memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
 
 
   # Nginx Reverse Proxy with SSL support
   nginx-proxy:
-    image: nginx:alpine
+    image: nginx:1.25-alpine
     container_name: manager_nginx
     ports:
       - "80:80"
@@ -166,10 +172,11 @@
           cpus: '0.25'
           memory: 128M
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1/ >/dev/null || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 10s
 # Backup Service - Automated PostgreSQL backups with S3 upload
   backup:
     image: prodrigestivill/postgres-backup-local:15
@@ -181,8 +188,8 @@
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
       - SCHEDULE=${BACKUP_SCHEDULE:-0 2 * * *}
       - BACKUP_KEEP_DAYS=${BACKUP_RETENTION_DAYS:-30}
-      - BACKUP_KEEP_WEEKS=4
-      - BACKUP_KEEP_MONTHS=6
+      - BACKUP_KEEP_WEEKS=${BACKUP_KEEP_WEEKS:-4}
+      - BACKUP_KEEP_MONTHS=${BACKUP_KEEP_MONTHS:-6}
       - HEALTHCHECK_PORT=8080
       # S3 Backup Configuration
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
@@ -200,11 +207,82 @@
     networks:
       - manager_network
     restart: unless-stopped
+    healthcheck:
+      # prodrigestivill/postgres-backup-local exposes an HTTP health endpoint
+      # on HEALTHCHECK_PORT (8080). It returns the timestamp of the last
+      # successful backup. If more than 36h have passed since the last
+      # successful backup, Docker will mark the service as unhealthy.
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/ >/dev/null || exit 1"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 5m
+
+  # Off-site backup to OneDrive (Microsoft 365) via rclone sidecar.
+  # The "backup" container writes pg_dumps to the backup_data volume daily;
+  # this sidecar mirrors that volume to OneDrive every 24h, satisfying the
+  # 3-2-1 backup rule (3 copies, 2 media, 1 off-site).
+  #
+  # One-time setup: run scripts/setup-onedrive.sh to create the rclone.conf
+  # (interactive OAuth in browser). Until that is done, this container waits
+  # patiently (no restart storm) and stays unhealthy.
+  #
+  # To disable OneDrive entirely, comment out this whole service block.
+  rclone-onedrive:
+    image: rclone/rclone:1
+    container_name: manager_rclone_onedrive
+    environment:
+      - ONEDRIVE_REMOTE=${ONEDRIVE_REMOTE:-onedrive}
+      - ONEDRIVE_PATH=${ONEDRIVE_PATH:-rrhh-backups}
+    command: >
+      sh -c "
+      echo '[rclone] Esperando a /config/rclone/rclone.conf...';
+      while [ ! -f /config/rclone/rclone.conf ]; do
+        sleep 60;
+      done;
+      echo '[rclone] rclone.conf detectado, arrancando sync loop (cada 24h)';
+      while true; do
+        echo \"[rclone] sync started at $$(date -Iseconds)\";
+        rclone sync /data \"\$$ONEDRIVE_REMOTE:\$$ONEDRIVE_PATH\"
+          --log-level INFO
+          --log-file /logs/rclone.log
+          --use-json-log
+          --stats 5m
+          --transfers 4
+          --checkers 8
+          --delete-during
+          --retries 3
+          --low-level-retries 10
+          && touch /logs/last-sync;
+        echo \"[rclone] sync finished at $$(date -Iseconds), next in 24h\";
+        sleep 86400;
+      done"
+    volumes:
+      - rclone_config:/config/rclone:ro
+      - backup_data:/data:ro
+      - rclone_logs:/logs
+    networks:
+      - manager_network
+    depends_on:
+      backup:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      # Falla si el ultimo sync exitoso tiene >25h de antiguedad (24h + buffer).
+      # El marker /logs/last-sync solo se toca cuando rclone sync termina con exito.
+      test: ["CMD-SHELL", "test -f /logs/last-sync && find /logs/last-sync -mmin -1500 | grep -q ."]
+      interval: 1h
+      timeout: 5s
+      retries: 2
+      start_period: 1h
 
 networks:
   manager_network:
     driver: bridge
   coolify:
+    # Optional: only needed when deploying via Coolify.
+    # Create manually with: docker network create coolify
+    # Remove this block if not using Coolify.
     external: true
 
 volumes:
@@ -213,6 +291,13 @@ volumes:
   postgres_data:
   backend_uploads:
   redis_data:
+  rclone_config:
+    # Persistent rclone config (created by scripts/setup-onedrive.sh).
+    driver: local
+  rclone_logs:
+    # rclone sidecar logs + last-sync marker file. Not persistent: rotated
+    # on container recreate. For long-term audit, use a log shipper.
+    driver: local
 
 
 

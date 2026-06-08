@@ -6,7 +6,7 @@ import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from '
 import { CompanyDocumentTemplateService } from './DocumentTemplateService';
 import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
 
-export const generateUniform = async (employeeId: string, items?: Array<{ id?: string; name: string; size?: string }>, authorName?: string): Promise<any> => {
+export const generateUniform = async (employeeId: string, items?: Array<{ id?: string; name: string; size?: string; quantity?: number }>, authorName?: string): Promise<any> => {
     const doc = await generateUniformInternal(employeeId, items, authorName);
 
     // --- INVENTORY AUTOMATION ---
@@ -52,7 +52,7 @@ export const generateUniform = async (employeeId: string, items?: Array<{ id?: s
     return doc;
 };
 
-export const generateUniformInternal = async (employeeId: string, customItems?: Array<{ id?: string; name: string; size?: string }>, authorName?: string): Promise<any> => {
+export const generateUniformInternal = async (employeeId: string, customItems?: Array<{ id?: string; name: string; size?: string; quantity?: number }>, authorName?: string): Promise<any> => {
     const employee = await prisma.employee.findUnique({
         where: { id: employeeId },
         include: { company: true }
@@ -64,14 +64,27 @@ export const generateUniformInternal = async (employeeId: string, customItems?: 
 
     const logoPath = getLogoPath();
     const items = (customItems && customItems.length > 0) ? customItems : [];
+    const firstItem = items.length > 0 ? items[0] : null;
+    const firstItemQty = firstItem?.quantity ?? 0;
     const listado = items.length > 0
-        ? items.map((item) => `- ${item.size ? `${item.name} (Talla: ${item.size})` : item.name}`).join('\n')
+        ? items.map((item) => {
+            const sizeStr = item.size ? ` (Talla: ${item.size})` : '';
+            const qtyStr = item.quantity && item.quantity > 1 ? ` [Cantidad: ${item.quantity}]` : '';
+            return `- ${item.name}${sizeStr}${qtyStr}`;
+        }).join('\n')
         : '- Sin articulos especificados';
     const template = await CompanyDocumentTemplateService.getTemplate('UNIFORM', employee.companyId);
     const context = await CompanyDocumentTemplateService.buildContext(employeeId, {
         authorName,
         extraContext: {
-            entrega: { listado, dispositivo: '', numeroSerie: '' }
+            entrega: {
+                listado,
+                dispositivo: '',
+                numeroSerie: '',
+                talla: firstItem?.size || '',
+                cantidad: firstItemQty > 1 ? String(firstItemQty) : '',
+                items: items
+            }
         }
     });
     const layout = parseLayoutTemplate(template?.content || '');

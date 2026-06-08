@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import path from 'path';
 import { Server } from 'socket.io';
 import { errorMiddleware } from '../middlewares/errorMiddleware';
+import { requestIdMiddleware } from '../middlewares/requestId';
 import { csrfProtection } from '../middlewares/csrfMiddleware';
 import { registerRoutes } from './registerRoutes';
 import { initializeHealthChecker, healthController } from './health.controller';
@@ -49,12 +50,19 @@ function isAllowedOrigin(origin: string): boolean {
 
 function configureSecurity(app: Express): void {
     app.disable('x-powered-by');
+    // Trust proxy: nginx reverse proxy (1 hop)
+    // If behind a load balancer, increase to 2
     app.set('trust proxy', 1);
 
     const frontendUrl = process.env.FRONTEND_URL || process.env.CORS_ORIGIN?.split(',')[0] || '';
 
     app.use(helmet({
+        crossOriginEmbedderPolicy: false,
+        crossOriginOpenerPolicy: { policy: 'same-origin' },
         crossOriginResourcePolicy: { policy: 'same-site' },
+        permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+        dnsPrefetchControl: { allow: false },
+        xssFilter: true,
         hsts: isProduction ? {
             maxAge: 31536000,
             includeSubDomains: true,
@@ -65,10 +73,10 @@ function configureSecurity(app: Express): void {
             directives: {
                 defaultSrc: ["'self'"],
                 scriptSrc: isProduction
-                    ? ["'self'", "'strict-dynamic'", `'nonce-{NONCE_PLACEHOLDER}'`]
+                    ? ["'self'", "'strict-dynamic'"]
                     : ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
                 styleSrc: isProduction
-                    ? ["'self'", "'nonce-{NONCE_PLACEHOLDER}'"]
+                    ? ["'self'", "'unsafe-inline'"]
                     : ["'self'", "'unsafe-inline'"],
                 imgSrc: ["'self'", 'data:', 'blob:', 'https:'],
                 fontSrc: ["'self'", 'data:'],
@@ -134,6 +142,7 @@ function configureSecurity(app: Express): void {
 }
 
 function configureBaseMiddleware(app: Express): void {
+    app.use(requestIdMiddleware);
     app.use(cookieParser());
     app.use(express.json({ limit: '1mb' }));
     app.use(express.urlencoded({ extended: true }));
@@ -160,7 +169,7 @@ export function createApp(): { app: Express; server: ReturnType<Express['listen'
 
     const io = new Server(httpServer, {
         cors: {
-            origin: isProduction ? allowedOrigins : '*',
+            origin: allowedOrigins,
             credentials: true
         }
     });
@@ -186,4 +195,3 @@ export function createApp(): { app: Express; server: ReturnType<Express['listen'
 
     return { app, server: httpServer, io };
 }
-

@@ -14,7 +14,7 @@ const parseTimestamp = (value: any) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return null;
     const now = Date.now();
-    const maxPastMs = 24 * 60 * 60 * 1000;
+    const maxPastMs = 60 * 60 * 1000; // 1 hour (reduced from 24h to prevent manipulation)
     const maxFutureMs = 5 * 60 * 1000;
     if (date.getTime() > now + maxFutureMs) return null;
     if (now - date.getTime() > maxPastMs) return null;
@@ -78,9 +78,21 @@ export const TimeEntryController = {
             const lat = latitude !== null && latitude !== undefined ? Number(latitude) : null;
             const lon = longitude !== null && longitude !== undefined ? Number(longitude) : null;
             const hasCoords = Number.isFinite(lat) && Number.isFinite(lon);
+            const accuracy = accuracy !== null && accuracy !== undefined ? Number(accuracy) : null;
 
-            // Geofencing Check
+            // Log received coordinates for audit trail
+            if (hasCoords) {
+                log.info({ employeeId: user.employeeId, type, lat, lon, accuracy, device }, 'Clock with GPS coordinates');
+            }
+
+            // Geofencing Check - with accuracy validation
             if (hasCoords && (type === 'IN' || type === 'OUT')) {
+                // Reject if GPS accuracy is too poor (> 100m)
+                if (accuracy !== null && accuracy > 100) {
+                    log.warn({ employeeId: user.employeeId, accuracy }, 'Clock rejected: poor GPS accuracy');
+                    return ApiResponse.error(res, 'Precisión GPS insuficiente. Acércate a la oficina o desactiva el modo ahorro de batería.', 400);
+                }
+
                 const employee = await prisma.employee.findUnique({
                     where: { id: user.employeeId },
                     include: { company: true }
@@ -103,7 +115,7 @@ export const TimeEntryController = {
                                     type: 'GEOFENCE',
                                     severity: 'WARNING',
                                     title: 'Fichaje fuera de zona',
-                                    message: `Fichaje ${type} realizado a ${Math.round(distance)}m de la oficina (Radio: ${radius}m). Ubicación: ${location || 'Desconocida'}`,
+                                    message: `Fichaje ${type} realizado a ${Math.round(distance)}m de la oficina (Radio: ${radius}m). Coordenadas: ${lat},${lon}. Precisión: ${accuracy || 'N/A'}m. Dispositivo: ${device || 'N/A'}`,
                                     isRead: false
                                 }
                             });

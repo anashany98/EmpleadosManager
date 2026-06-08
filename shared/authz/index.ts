@@ -183,7 +183,7 @@ export type AppFeatureKey = keyof typeof APP_FEATURES;
 
 export const DOMAIN_POLICIES = {
     'employee.read.list': {
-        grants: [{ scope: 'global', roles: COMPANY_STAFF_ROLES, module: 'employees', level: 'read' }]
+        grants: [{ scope: 'company', roles: COMPANY_STAFF_ROLES, module: 'employees', level: 'read' }]
     },
     'employee.read.detail': {
         grants: [

@@ -2,11 +2,13 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { EmailService } from '../services/EmailService';
+import { EncryptionService } from '../services/EncryptionService';
 import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('SmtpController');
 
 const SMTP_KEYS = ['SMTP_HOST', 'SMTP_PORT', 'SMTP_SECURE', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'];
+const ENCRYPTED_KEYS = new Set(['SMTP_PASS']);
 
 export const SmtpController = {
     getSmtpConfig: async (req: Request, res: Response) => {
@@ -47,10 +49,20 @@ export const SmtpController = {
                 SMTP_PASS: pass,
                 SMTP_FROM: from
             })) {
+                let valueToStore = String(value ?? '');
+                if (ENCRYPTED_KEYS.has(key) && valueToStore.length > 0) {
+                    // Defense in depth: encrypt secrets at rest in the DB.
+                    // EncryptionService throws if ENCRYPTION_KEY is missing/misconfigured.
+                    const encrypted = EncryptionService.encrypt(valueToStore);
+                    if (!encrypted) {
+                        throw new Error(`Failed to encrypt ${key}`);
+                    }
+                    valueToStore = encrypted;
+                }
                 await prisma.configuration.upsert({
                     where: { key },
-                    update: { value: String(value) },
-                    create: { key, value: String(value) }
+                    update: { value: valueToStore },
+                    create: { key, value: valueToStore }
                 });
             }
 

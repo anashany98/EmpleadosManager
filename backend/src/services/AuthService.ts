@@ -14,9 +14,7 @@ export class AuthService {
             where: {
                 OR: [
                     { email: trimmedId },
-                    { dni: trimmedId },
-                    { dni: trimmedId.toLowerCase() },
-                    { dni: trimmedId.toUpperCase() }
+                    { dni: { equals: trimmedId, mode: 'insensitive' } }
                 ]
             },
             include: {
@@ -27,6 +25,10 @@ export class AuthService {
                 }
             }
         });
+
+        if (user && user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+            throw new AppError('Cuenta bloqueada temporalmente. Inténtalo más tarde.', 423);
+        }
 
         if (!user || !(await bcrypt.compare(password, user.password))) {
             throw new AppError('Credenciales incorrectas', 401);
@@ -67,12 +69,16 @@ export class AuthService {
             companyId: employee?.companyId
         });
 
+        if (!normalizedUser) {
+            throw new AppError('Error de configuración de usuario. Contacte al administrador.', 500);
+        }
+
         return {
             user: {
                 ...userWithoutPassword,
-                role: normalizedUser?.role || 'employee',
-                permissions: normalizedUser?.permissions || {},
-                companyId: normalizedUser?.companyId
+                role: normalizedUser.role,
+                permissions: normalizedUser.permissions,
+                companyId: normalizedUser.companyId
             },
             accessToken,
             refreshToken,

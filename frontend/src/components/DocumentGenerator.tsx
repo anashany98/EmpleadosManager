@@ -39,6 +39,7 @@ interface InventoryItem {
     id: string;
     name: string;
     quantity?: number;
+    size?: string;
     unit?: string;
     category?: string;
     serialNumber?: string;
@@ -386,7 +387,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                                 <p className={`font-bold text-sm ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-200'}`}>
                                                     {item.name}
                                                 </p>
-                                                <p className="text-[10px] text-slate-400">Stock: {item.quantity ?? 0} {item.unit || ''}</p>
+                                                <p className="text-[10px] text-slate-400">Stock: {item.quantity ?? 0}{item.size ? ` | Talla: ${item.size}` : ''} {item.unit || ''}</p>
                                             </div>
                                             {isSelected && <Check size={16} className="text-blue-500" />}
                                         </button>
@@ -484,7 +485,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                                 <p className={`font-bold text-sm ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-200'}`}>
                                                     {item.name}
                                                 </p>
-                                                <p className="text-[10px] text-slate-400">Stock: {item.quantity ?? 0} {item.unit || ''}</p>
+                                                <p className="text-[10px] text-slate-400">Stock: {item.quantity ?? 0}{item.size ? ` | Talla: ${item.size}` : ''} {item.unit || ''}</p>
                                             </div>
                                             {isSelected && <Check size={16} className="text-blue-500" />}
                                         </button>

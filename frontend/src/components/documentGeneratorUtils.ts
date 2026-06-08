@@ -163,7 +163,8 @@ const buildStockAssignmentItems = (selectedItems: InventorySelection[]) => {
     return selectedItems.map((item) => ({
         id: item.id,
         name: item.name,
-        size: item.size || ''
+        size: item.size || '',
+        quantity: normalizeQuantity(item.quantity)
     }));
 };
 

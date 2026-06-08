@@ -138,23 +138,79 @@ export async function notifyVacationCreated(vacation: any, frontendUrl: string) 
 }
 
 export async function updateVacationStatus(vacationId: string, status: string, rejectionReason?: string, managerComment?: string, approvedBy?: string) {
-    const data: Prisma.VacationUpdateInput = { status };
-    if (status === 'REJECTED' && rejectionReason) {
-        data.rejectionReason = rejectionReason;
-    }
-    if (status === 'APPROVED' && managerComment) {
-        data.managerComment = managerComment;
-    }
-    if (approvedBy) {
-        data.approvedBy = approvedBy;
-        data.approvedAt = new Date();
-    }
-    const vacation = await prisma.vacation.update({
-        where: { id: vacationId },
-        data,
-        include: { employee: true }
+    // Validate status transition
+    const allowedTransitions: Record<string, string[]> = {
+        'PENDING': ['APPROVED', 'REJECTED'],
+        'APPROVED': ['PENDING'], // Can revert to pending
+        'REJECTED': ['PENDING']  // Can revert to pending
+    };
+
+    // Use transaction with optimistic locking
+    const result = await prisma.$transaction(async (tx) => {
+        // Read current vacation with lock simulation (check status)
+        const current = await tx.vacation.findUnique({
+            where: { id: vacationId },
+            select: { status: true, id: true, employeeId: true, startDate: true, endDate: true }
+        });
+
+        if (!current) {
+            throw new AppError('Vacación no encontrada', 404);
+        }
+
+        // Validate transition
+        const allowed = allowedTransitions[current.status];
+        if (!allowed || !allowed.includes(status)) {
+            throw new AppError(`No se puede cambiar de estado "${current.status}" a "${status}"`, 400);
+        }
+
+        // Check for overlapping vacations when approving
+        if (status === 'APPROVED') {
+            const overlapping = await tx.vacation.findFirst({
+                where: {
+                    employeeId: current.employeeId,
+                    id: { not: vacationId },
+                    status: { in: ['APPROVED', 'EXISTING'] },
+                    OR: [{ startDate: { lte: current.endDate }, endDate: { gte: current.startDate } }]
+                }
+            });
+
+            if (overlapping) {
+                throw new AppError(`Conflicto de fechas: ya existe una vacación aprobada que se solapa (${overlapping.startDate.toLocaleDateString()} - ${overlapping.endDate.toLocaleDateString()})`, 400);
+            }
+        }
+
+        // Update with status check to prevent race condition
+        const data: Prisma.VacationUpdateInput = { status };
+        if (status === 'REJECTED' && rejectionReason) {
+            data.rejectionReason = rejectionReason;
+        }
+        if (status === 'APPROVED' && managerComment) {
+            data.managerComment = managerComment;
+        }
+        if (approvedBy) {
+            data.approvedBy = approvedBy;
+            data.approvedAt = new Date();
+        }
+
+        const vacation = await tx.vacation.updateMany({
+            where: { 
+                id: vacationId,
+                status: current.status // Optimistic lock: only update if status hasn't changed
+            },
+            data
+        });
+
+        if (vacation.count === 0) {
+            throw new AppError('Conflicto de concurrencia: el estado de la vacación cambió. Recarga la página.', 409);
+        }
+
+        return tx.vacation.findUnique({
+            where: { id: vacationId },
+            include: { employee: true }
+        });
     });
-    return vacation;
+
+    return result;
 }
 
 export async function transformVacationWithUrl(vacation: any): Promise<any> {

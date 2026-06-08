@@ -1,5 +1,5 @@
 import { alertService } from './AlertService';
-import { backupScheduler } from './BackupScheduler';
+// import { backupScheduler } from './BackupScheduler';  // DISABLED: prodrigestivill container handles automated backups
 import { loggers } from './LoggerService';
 import { vacationRolloverScheduler } from './VacationRolloverScheduler';
 
@@ -19,8 +19,13 @@ export class SchedulerService {
             this.runAlerts();
         }, 6 * 60 * 60 * 1000);
 
-        // Start backup scheduler
-        backupScheduler.start();
+        // DISABLED: automated backup is now handled by the prodrigestivill
+        // container in docker-compose.yml (service "backup"). That container
+        // is independent of the backend process and persists backups to the
+        // backup_data volume + S3.
+        // The on-demand HTTP endpoint POST /api/config/backup still works
+        // for manual snapshots via BackupService.
+        // backupScheduler.start();
         vacationRolloverScheduler.start();
 
         log.info('All scheduler tasks started');
@@ -32,7 +37,7 @@ export class SchedulerService {
             this.alertInterval = null;
         }
 
-        backupScheduler.stop();
+        // backupScheduler.stop();
         vacationRolloverScheduler.stop();
 
         log.info('All scheduler tasks stopped');

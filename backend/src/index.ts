@@ -134,7 +134,15 @@ process.on('unhandledRejection', (reason: any) => {
 
 // Only start server if this file is executed directly (not imported as a module)
 // This allows tests to import app without starting the server
-if (require.main === module) {
+const path = require('path');
+const isDirectlyExecuted = process.argv[1] && (
+    process.argv[1].endsWith('index.ts') ||
+    process.argv[1].endsWith('index.js') ||
+    process.argv[1].endsWith('src' + path.sep + 'index.ts') ||
+    process.argv[1].endsWith('src' + path.sep + 'index.js')
+);
+
+if (isDirectlyExecuted) {
     void startServer();
 }
 

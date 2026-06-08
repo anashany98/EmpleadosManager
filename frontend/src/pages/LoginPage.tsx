@@ -19,7 +19,7 @@ export default function LoginPage() {
 
     const validateEmail = (value: string): string | null => {
         if (!value) return "El email es requerido";
-        if (!/^[^s@]+@[^s@]+.[^s@]+$/.test(value) && !/^d{8}[A-Z]$/.test(value)) {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && !/^\d{8}[A-Z]$/.test(value)) {
             return "Email o DNI inválido";
         }
         return null;
@@ -99,7 +99,7 @@ export default function LoginPage() {
                         <p className="text-slate-500 mt-2 font-medium">Panel de Gestión Corporativa</p>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="space-y-5">
+                    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
                         {error && (
                             <div className="bg-rose-50 border border-rose-200 text-rose-600 p-4 rounded-2xl flex items-center gap-3 text-sm font-medium">
                                 <div className="bg-rose-100 p-1.5 rounded-lg shrink-0">
@@ -118,7 +118,6 @@ export default function LoginPage() {
                                 <input
                                     id="email"
                                     type="text"
-                                    required
                                     placeholder="admin@empresa.com o 12345678Z"
                                     className={`w-full bg-slate-50 border ${fieldErrors.email ? "border-rose-400" : "border-slate-200"} rounded-2xl py-3.5 pl-12 pr-4 text-slate-700 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none transition-all placeholder:text-slate-400`}
                                     value={email}
@@ -140,7 +139,7 @@ export default function LoginPage() {
                                 <input
                                     id="password"
                                     type={showPassword ? "text" : "password"}
-                                    required
+                                    autoComplete="current-password"
                                     placeholder="••••••••"
                                     className={`w-full bg-slate-50 border ${fieldErrors.password ? "border-rose-400" : "border-slate-200"} rounded-2xl py-3.5 pl-12 pr-10 text-slate-700 focus:ring-2 focus:ring-orange-400 focus:border-orange-400 outline-none transition-all placeholder:text-slate-400`}
                                     value={password}

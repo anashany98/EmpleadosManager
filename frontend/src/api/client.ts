@@ -156,7 +156,15 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
                 processQueue(new Error('Refresh failed'), null);
                 const path = window.location.pathname;
                 const isAuthPage = path.startsWith('/login') || path.startsWith('/request-reset') || path.startsWith('/reset-password');
-                if (!isAuthPage) window.location.href = '/login';
+                if (!isAuthPage) {
+                    const redirectCount = parseInt(sessionStorage.getItem('loginRedirectCount') || '0');
+                    if (redirectCount >= 3) {
+                        sessionStorage.removeItem('loginRedirectCount');
+                        throw new Error('Demasiados intentos de redirección. Por favor, recarga la página.');
+                    }
+                    sessionStorage.setItem('loginRedirectCount', String(redirectCount + 1));
+                    window.location.href = '/login';
+                }
                 throw new Error('Session expired');
             }
 
