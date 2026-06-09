@@ -46,32 +46,36 @@ export class ExcelParser {
      * Reads a sheet into an array of JSON objects, similar to XLSX.utils.sheet_to_json.
      * @param buffer The Excel file buffer
      * @param options.defval Default value for empty cells (omit to exclude empty keys)
+     * @returns Object with `headers` (array of header names in column order) and
+     *   `rows` (array of plain objects keyed by header name). Headers and rows
+     *   are extracted in a single workbook pass to keep peak memory bounded.
      */
-    static async readSheetAsJson(buffer: Buffer, options?: { defval?: any }): Promise<any[]> {
+    static async readSheetAsJson(buffer: Buffer, options?: { defval?: any }): Promise<{ headers: string[]; rows: Record<string, any>[] }> {
         const workbook = new ExcelJS.Workbook();
         await workbook.xlsx.load(buffer as any);
         const worksheet = workbook.worksheets[0];
-        if (!worksheet) return [];
+        if (!worksheet) return { headers: [], rows: [] };
 
-        // Read headers from first row
+        // Read headers from first row, preserving column order
         const headerRow = worksheet.getRow(1);
-        const headers: { col: number; name: string }[] = [];
+        const headerEntries: { col: number; name: string }[] = [];
         headerRow.eachCell((cell, colNumber) => {
             const name = cell.value != null ? String(cell.value) : '';
             if (name) {
-                headers.push({ col: colNumber, name });
+                headerEntries.push({ col: colNumber, name });
             }
         });
+        const headers = headerEntries.map((entry) => entry.name);
 
         const defval = options?.defval;
-        const data: any[] = [];
+        const data: Record<string, any>[] = [];
 
         worksheet.eachRow((row, rowNumber) => {
             if (rowNumber === 1) return;
 
-            const obj: any = {};
+            const obj: Record<string, any> = {};
 
-            for (const { col, name } of headers) {
+            for (const { col, name } of headerEntries) {
                 const cell = row.getCell(col);
                 const value = ExcelParser.getCellRawValue(cell);
                 if (value !== undefined) {
@@ -84,7 +88,7 @@ export class ExcelParser {
             data.push(obj);
         });
 
-        return data;
+        return { headers, rows: data };
     }
 
     /**
@@ -92,7 +96,8 @@ export class ExcelParser {
      * con las cabeceras como keys.
      */
     static async parseBuffer(buffer: Buffer): Promise<any[]> {
-        return ExcelParser.readSheetAsJson(buffer, { defval: "" });
+        const { rows } = await ExcelParser.readSheetAsJson(buffer, { defval: "" });
+        return rows;
     }
 
     /**

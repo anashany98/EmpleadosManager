@@ -144,7 +144,7 @@ export const OvertimeController = {
         }
 
         try {
-            const data = await ExcelParser.readSheetAsJson(req.file.buffer);
+            const { rows: data } = await ExcelParser.readSheetAsJson(req.file.buffer);
 
             let importedCount = 0;
             const errors: string[] = [];

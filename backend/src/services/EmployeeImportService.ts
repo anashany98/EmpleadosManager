@@ -7,6 +7,7 @@ import { withRetry } from '../utils/dbRetry';
 import { ExcelParser } from './ExcelParser';
 import { createLogger } from './LoggerService';
 import { upsertEmployeeVacationBalance } from './VacationBalanceService';
+import { AppError } from '../utils/AppError';
 
 const log = createLogger('EmployeeImportService');
 
@@ -670,13 +671,31 @@ function parseCsvBuffer(buffer: Buffer): ParsedImportFile {
     };
 }
 
+// Maximum number of data rows allowed in an imported Excel file.
+// Set high enough for legitimate bulk imports but low enough to keep
+// exceljs memory usage bounded. 5000 rows of employee data is well
+// above any realistic single-tenant batch.
+const MAX_IMPORT_ROWS = 5000;
+
 async function parseInputFile(buffer: Buffer): Promise<ParsedImportFile> {
     const isExcel = buffer[0] === 0x50 && buffer[1] === 0x4b;
 
     if (isExcel) {
-        const headers = (await ExcelParser.getHeaders(buffer)).map((header, index) => cleanText(header) || `Columna ${index + 1}`);
-        const rawRows = await ExcelParser.readSheetAsJson(buffer, { defval: '' });
-        const rows = rawRows
+        // Load the workbook ONCE and extract headers + rows in a single
+        // pass. Previous implementation called getHeaders() and
+        // readSheetAsJson() back-to-back, parsing the entire xlsx twice
+        // and doubling peak heap usage (observed OOM in production).
+        const parsed = await ExcelParser.readSheetAsJson(buffer, { defval: '' });
+        const headers = parsed.headers.map((header, index) => cleanText(header) || `Columna ${index + 1}`);
+
+        if (parsed.rows.length > MAX_IMPORT_ROWS) {
+            throw new AppError(
+                `El archivo contiene ${parsed.rows.length} filas, pero el máximo permitido es ${MAX_IMPORT_ROWS}. Divide el archivo en lotes más pequeños.`,
+                400
+            );
+        }
+
+        const rows = parsed.rows
             .map((row) => {
                 const normalizedRow: Record<string, any> = {};
                 headers.forEach((header) => {
