@@ -5,7 +5,13 @@ export const API_URL = BASE_URL.endsWith('/api') || BASE_URL.endsWith('/api/')
     ? BASE_URL.replace(/\/$/, '')
     : `${BASE_URL.replace(/\/$/, '')}/api`;
 
-const REQUEST_TIMEOUT = 30000;
+const DEFAULT_REQUEST_TIMEOUT = 30000;
+// File uploads (Excel/CSV) need a longer timeout because the backend
+// has to stream the body, validate the magic bytes, parse the
+// workbook, and run the preview/import pass before responding. 5
+// minutes is well above the worst-case observed time for a 25MB
+// file with ~5000 rows on the deployed Coolify instance.
+const UPLOAD_REQUEST_TIMEOUT = 5 * 60 * 1000;
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [1000, 2000, 4000];
 const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
@@ -36,6 +42,13 @@ export class ApiError extends Error {
 export interface RequestOptions {
     params?: Record<string, string | number | boolean | undefined | null>;
     responseType?: 'blob' | 'json';
+    /**
+     * Request timeout in milliseconds. If omitted, the default is
+     * applied automatically:
+     * - 30s for regular JSON requests
+     * - 5 minutes for FormData uploads (Excel/CSV)
+     */
+    timeoutMs?: number;
 }
 
 const buildUrlWithParams = (url: string, params?: Record<string, string | number | boolean | undefined | null>): string => {
@@ -95,12 +108,13 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
     const isFormData = options.body instanceof FormData;
     const headers = getHeaders(isFormData, method);
     const body = isFormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined);
+    const effectiveTimeout = options.timeoutMs ?? (isFormData ? UPLOAD_REQUEST_TIMEOUT : DEFAULT_REQUEST_TIMEOUT);
 
     let attempt = 0;
-    
+
     while (attempt <= MAX_RETRIES) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+        const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
         try {
             const config: RequestInit = {

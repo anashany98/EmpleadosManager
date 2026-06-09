@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Eye, FileSearch, Loader2, Sparkles, UploadCloud, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../../api/client';
@@ -48,41 +48,60 @@ export function EmployeeImportWizard({
     const [showAllFields, setShowAllFields] = useState(false);
     const [loadingPreview, setLoadingPreview] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [previewError, setPreviewError] = useState<string | null>(null);
 
     const busy = loadingPreview || submitting;
+
+    // M2: ref to ignore stale loadPreview responses if a newer request
+    // started before the previous one finished. Without this, the
+    // second click on "Revisar" can race the first request and the
+    // slower response wins, reverting the UI to stale data.
+    const previewRequestIdRef = useRef(0);
 
     useEffect(() => {
         onBusyChange?.(busy);
     }, [busy, onBusyChange]);
 
     useEffect(() => {
-        if (!isOpen) {
+        // M1: reset when closing OR when the file changes (so a new
+        // file does not inherit the previous file's preview/mapping).
+        if (!isOpen || !file) {
             setStep('detect');
             setPreview(null);
             setMapping({});
             setShowAllFields(false);
             setLoadingPreview(false);
             setSubmitting(false);
+            setPreviewError(null);
         }
-    }, [isOpen]);
+    }, [isOpen, file]);
 
     const loadPreview = useCallback(async (targetMapping?: Record<string, string>, nextStep: ImportStep = 'map') => {
         if (!file) return;
 
+        const requestId = ++previewRequestIdRef.current;
         setLoadingPreview(true);
+        setPreviewError(null);
         try {
             const response = await api.post('/employees/import/preview', buildFormData(file, targetMapping));
-            const payload = response.data || response;
+            // Discard stale responses from earlier in-flight requests.
+            if (requestId !== previewRequestIdRef.current) return;
+
+            const payload = (response as any).data || response;
             const nextPreview = payload.data || payload;
 
             setPreview(nextPreview);
             setMapping(nextPreview.currentMapping || {});
             setStep(nextStep);
         } catch (error) {
+            if (requestId !== previewRequestIdRef.current) return;
             const message = error instanceof Error ? error.message : 'No se pudo analizar el archivo';
+            setPreviewError(message);
             toast.error(message);
         } finally {
-            setLoadingPreview(false);
+            if (requestId === previewRequestIdRef.current) {
+                setLoadingPreview(false);
+            }
         }
     }, [file]);
 
@@ -90,6 +109,19 @@ export function EmployeeImportWizard({
         if (!isOpen || !file) return;
         void loadPreview(undefined, 'map');
     }, [file, isOpen, loadPreview]);
+
+    // M4: re-preview automatically when the mapping changes (debounced).
+    // This gives the user immediate feedback as they tweak the column
+    // assignments without forcing them to click "Revisar" each time.
+    const mappingKey = useMemo(() => JSON.stringify(mapping), [mapping]);
+    useEffect(() => {
+        if (!isOpen || !file || !preview || step !== 'map') return;
+        const timer = setTimeout(() => {
+            void loadPreview(mapping, 'map');
+        }, 500);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [mappingKey, isOpen, file, step]);
 
     const suggestionMap = useMemo(() => {
         const entries = preview?.suggestions || [];
@@ -120,10 +152,21 @@ export function EmployeeImportWizard({
     const previewColumns = useMemo(() => {
         if (!preview) return [] as EmployeeImportField[];
         const populatedFields = mappedFieldList.filter((field) => preview.previewRows.some((row) => row.mapped[field.key]));
-        return populatedFields.length > 0 ? populatedFields : mappedFieldList;
+        // M3: when nothing is populated yet (e.g. a re-preview with a
+        // brand-new mapping has not finished), fall back to the mapped
+        // field list so the user still sees something useful.
+        if (populatedFields.length > 0) return populatedFields;
+        if (mappedFieldList.length > 0) return mappedFieldList;
+        // Final fallback: show the required fields as a hint.
+        return preview.availableFields.filter((field) => field.required);
     }, [mappedFieldList, preview]);
 
-    const canReview = !!mapping.dni && (!!mapping.fullName || !!mapping.firstName);
+    // M5: stricter review guard. DNI + firstName is enough to create
+    // an employee, but if the user mapped firstName without lastName
+    // (or used a single fullName column) we should surface a soft
+    // warning so the import matches the real-world naming convention.
+    const hasNameMapping = !!(mapping.fullName || mapping.firstName);
+    const canReview = !!mapping.dni && hasNameMapping;
 
     const handleMappingChange = (fieldKey: string, header: string) => {
         setMapping((current) => {
@@ -143,6 +186,17 @@ export function EmployeeImportWizard({
         if (!canReview) {
             toast.error('Asigna al menos el DNI y una columna de nombre antes de continuar.');
             return;
+        }
+
+        // M5: soft warning when the user mapped firstName but not
+        // lastName (or vice versa). The import would still succeed
+        // but the resulting employee name field would be the
+        // concatenation of both, which is rarely what the user
+        // actually wants.
+        if (mapping.firstName && !mapping.lastName && !mapping.fullName) {
+            toast('Tip: solo has mapeado "Nombre". Si tu Excel tiene apellidos en otra columna, mapéalos a "Apellidos" para mejorar la calidad del dato.', { icon: '💡' });
+        } else if (mapping.lastName && !mapping.firstName && !mapping.fullName) {
+            toast('Tip: solo has mapeado "Apellidos". Si tu Excel tiene nombre en otra columna, mapéalo a "Nombre".', { icon: '💡' });
         }
 
         await loadPreview(mapping, 'review');
@@ -221,17 +275,36 @@ export function EmployeeImportWizard({
 
                 <div className="flex-1 overflow-auto bg-slate-50 dark:bg-slate-950">
                     {!preview || loadingPreview && step === 'detect' ? (
-                        <div className="h-full min-h-[420px] flex flex-col items-center justify-center gap-4 px-6 text-center">
-                            <div className="w-20 h-20 rounded-full bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-300">
-                                <Loader2 size={34} className="animate-spin" />
+                        previewError && !loadingPreview ? (
+                            <div className="h-full min-h-[420px] flex flex-col items-center justify-center gap-4 px-6 text-center">
+                                <div className="w-20 h-20 rounded-full bg-rose-50 dark:bg-rose-500/10 flex items-center justify-center text-rose-600 dark:text-rose-300">
+                                    <AlertTriangle size={34} />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">No se pudo analizar el archivo</h3>
+                                    <p className="text-sm text-rose-700 dark:text-rose-300 mt-1 max-w-md">{previewError}</p>
+                                    <button
+                                        type="button"
+                                        onClick={() => void loadPreview(undefined, 'map')}
+                                        className="mt-4 px-4 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                                    >
+                                        Reintentar
+                                    </button>
+                                </div>
                             </div>
-                            <div>
-                                <h3 className="text-xl font-bold text-slate-900 dark:text-white">Analizando columnas y formatos</h3>
-                                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                                    Detecto automaticamente los campos, reviso la estructura del archivo y preparo una vista previa antes de importar.
-                                </p>
+                        ) : (
+                            <div className="h-full min-h-[420px] flex flex-col items-center justify-center gap-4 px-6 text-center">
+                                <div className="w-20 h-20 rounded-full bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center text-blue-600 dark:text-blue-300">
+                                    <Loader2 size={34} className="animate-spin" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">Analizando columnas y formatos</h3>
+                                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                                        Detecto automaticamente los campos, reviso la estructura del archivo y preparo una vista previa antes de importar.
+                                    </p>
+                                </div>
                             </div>
-                        </div>
+                        )
                     ) : null}
 
                     {preview && step === 'map' ? (

@@ -685,7 +685,7 @@ function parseCsvBuffer(buffer: Buffer): ParsedImportFile {
 
     if (parsedRows.length - 1 > MAX_IMPORT_ROWS) {
         throw new AppError(
-            `El archivo contiene aproximadamente ${parsedRows.length - 1} filas, pero el m+íximo permitido es ${MAX_IMPORT_ROWS}. Divide el archivo en lotes m+ís peque+¦os.`,
+            `El archivo contiene aproximadamente ${parsedRows.length - 1} filas, pero el m+ï¿½ximo permitido es ${MAX_IMPORT_ROWS}. Divide el archivo en lotes m+ï¿½s peque+ï¿½os.`,
             400
         );
     }
@@ -1711,7 +1711,7 @@ export const EmployeeImportService = {
                     subaccount465: getMappedString(row, currentMapping, 'subaccount465') || null,
                     socialSecurityNumber: socialSecurityNumber ? EncryptionService.encrypt(socialSecurityNumber) : null,
                     iban: iban ? EncryptionService.encrypt(iban) : null,
-                    gender: normalizeGender(getMappedRawValue(row, currentMapping, 'gender')),
+                    gender: normalizeGender(getMappedRawValue(row, currentMapping, 'gender')) ?? undefined,
                     dniExpiration: parseDate(getMappedRawValue(row, currentMapping, 'dniExpiration')),
                     birthDate: parseDate(getMappedRawValue(row, currentMapping, 'birthDate')),
                     entryDate: parseDate(getMappedRawValue(row, currentMapping, 'entryDate')),
