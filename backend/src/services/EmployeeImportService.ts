@@ -12,6 +12,14 @@ import { AppError } from '../utils/AppError';
 
 const log = createLogger('EmployeeImportService');
 
+// Maximum number of data rows allowed in an imported Excel/CSV file.
+// Set high enough for legitimate bulk imports but low enough to keep
+// parser memory usage bounded. 5000 rows of employee data is well
+// above any realistic single-tenant batch. Declared at the top of
+// the file so that every parser/validator below can reference it
+// without relying on JavaScript hoisting rules.
+const MAX_IMPORT_ROWS = 5000;
+
 type EmployeeImportFieldKey =
     | 'dni'
     | 'fullName'
@@ -675,6 +683,13 @@ function parseCsvBuffer(buffer: Buffer): ParsedImportFile {
         throw new Error('Archivo CSV vacio o no valido.');
     }
 
+    if (parsedRows.length - 1 > MAX_IMPORT_ROWS) {
+        throw new AppError(
+            `El archivo contiene aproximadamente ${parsedRows.length - 1} filas, pero el m+íximo permitido es ${MAX_IMPORT_ROWS}. Divide el archivo en lotes m+ís peque+¦os.`,
+            400
+        );
+    }
+
     const headers = parsedRows[0].map((header, index) => cleanText(header) || `Columna ${index + 1}`);
     const rows = parsedRows.slice(1)
         .map((values) => {
@@ -684,7 +699,8 @@ function parseCsvBuffer(buffer: Buffer): ParsedImportFile {
             });
             return row;
         })
-        .filter((row) => hasMeaningfulRowData(row));
+        .filter((row) => hasMeaningfulRowData(row))
+        .filter((row) => !looksLikeHeaderRow(row, headers));
 
     return {
         source: 'csv',
@@ -696,12 +712,6 @@ function parseCsvBuffer(buffer: Buffer): ParsedImportFile {
         }
     };
 }
-
-// Maximum number of data rows allowed in an imported Excel file.
-// Set high enough for legitimate bulk imports but low enough to keep
-// parser memory usage bounded. 5000 rows of employee data is well
-// above any realistic single-tenant batch.
-const MAX_IMPORT_ROWS = 5000;
 
 // xlsx (SheetJS) parser options tuned for LOW MEMORY.
 // We disable every feature that bloats the workbook representation
@@ -843,10 +853,14 @@ function isLikelyDni(value: string): boolean {
     return /^[XYZ]?\d{5,8}[A-Z]$/i.test(value.trim());
 }
 
-function parseBool(value: any): boolean {
+function parseBool(value: any): boolean | null {
+    if (value === null || value === undefined || value === '') return null;
     if (typeof value === 'boolean') return value;
     const normalized = normalizeString(cleanText(value));
-    return ['si', 's', 'yes', 'true', '1', 'x'].includes(normalized);
+    if (!normalized) return null;
+    if (['si', 's', 'yes', 'true', '1', 'x'].includes(normalized)) return true;
+    if (['no', 'n', 'false', '0'].includes(normalized)) return false;
+    return null; // valor no reconocido: NO asumimos false
 }
 
 function parseMoney(value: any): number | null {
@@ -865,7 +879,17 @@ function parseMoney(value: any): number | null {
             normalized = normalized.replace(/,/g, '');
         }
     } else if (normalized.includes(',')) {
-        normalized = normalized.replace(/\./g, '').replace(',', '.');
+        // Heuristica: si NO hay punto y la parte tras la ultima coma tiene
+        // exactamente 3 digitos, probablemente es separador de miles ingles
+        // (1,500 -> 1500). Si la parte tiene 1-2 digitos, asumimos decimal
+        // espanol (1,5 -> 1.5).
+        const lastComma = normalized.lastIndexOf(',');
+        const afterComma = normalized.slice(lastComma + 1);
+        if (afterComma.length === 3 && /^\d{3}$/.test(afterComma)) {
+            normalized = normalized.replace(/,/g, '');
+        } else {
+            normalized = normalized.replace(/\./g, '').replace(',', '.');
+        }
     }
 
     normalized = normalized.replace(/[^0-9.-]/g, '');
@@ -900,8 +924,18 @@ function parseDate(value: any): Date | null {
     if (!raw) return null;
 
     // Reject obvious non-dates early: long numeric strings, IDs, etc.
-    // are sometimes left in date-mapped cells by mistake.
-    if (/^\d{6,}$/.test(raw)) return null;
+    // are sometimes left in date-mapped cells by mistake. Exception:
+    // YYYYMMDD (8 digits exact) is a valid compact date format.
+    if (/^\d{6,}$/.test(raw)) {
+        if (/^\d{8}$/.test(raw)) {
+            const compactParsed = parseDateString(raw, 'yyyyMMdd', new Date());
+            if (isValid(compactParsed)) {
+                const year = compactParsed.getFullYear();
+                if (year >= 1900 && year <= 2100) return compactParsed;
+            }
+        }
+        return null;
+    }
 
     const formats = ['dd/MM/yyyy', 'd/M/yyyy', 'dd-MM-yyyy', 'd-M-yyyy', 'yyyy-MM-dd', 'dd.MM.yyyy', 'd.M.yyyy'];
     for (const format of formats) {
@@ -1522,10 +1556,27 @@ function buildPreviewWarnings(
     return warnings;
 }
 
-function isExampleRow(dni: string, fullName: string): boolean {
+function isExampleRow(dni: string, fullName: string, privateNotes: string = ''): boolean {
     const normalizedDni = normalizeString(dni);
     const normalizedName = normalizeString(fullName);
-    return normalizedDni.includes('ejemplo') || normalizedName.includes('ejemplo');
+    const normalizedNotes = normalizeString(privateNotes);
+
+    // Heuristicas explicitas:
+    // 1. Palabras clave "ejemplo" en cualquier campo visible.
+    // 2. DNIs placeholder de la plantilla oficial del backend
+    //    (controller EmployeeImportController.downloadTemplate).
+    // 3. DNIs con muchos ceros seguidos (placeholder comun en plantillas).
+    // 4. DNIs que coinciden con un DNI dummy conocido.
+    const placeholderDnis = new Set([
+        '12345678A', '87654321B', 'X0000000A', '00000000A',
+        '11111111A', '99999999A', 'X1234567A'
+    ]);
+    if (placeholderDnis.has(dni.toUpperCase())) return true;
+    if (/\d{6,}/.test(dni.replace(/\D/g, '')) && /^[A-Z]?0{4,}/i.test(dni)) return true;
+
+    return normalizedDni.includes('ejemplo')
+        || normalizedName.includes('ejemplo')
+        || normalizedNotes.includes('ejemplo');
 }
 
 export const EmployeeImportService = {
@@ -1586,6 +1637,13 @@ export const EmployeeImportService = {
 
         let importedCount = 0;
         const errors: string[] = [];
+        // Track DNIs already processed in THIS import. Excel files with
+        // accidental duplicates would otherwise create the first
+        // employee and fail the second with a P2002 unique violation,
+        // surfacing as a confusing per-row error. Detecting the dup up
+        // front gives a clear message and keeps the imported count
+        // honest.
+        const processedDnis = new Set<string>();
 
         for (let index = 0; index < parsed.rows.length; index += 1) {
             const row = parsed.rows[index];
@@ -1598,13 +1656,20 @@ export const EmployeeImportService = {
             const firstNameInput = getMappedString(row, currentMapping, 'firstName');
             const lastNameInput = getMappedString(row, currentMapping, 'lastName');
             const fullName = cleanText(fullNameInput || [firstNameInput, lastNameInput].filter(Boolean).join(' '));
+            const privateNotes = getMappedString(row, currentMapping, 'privateNotes');
 
-            if (isExampleRow(dni, fullName)) continue;
+            if (isExampleRow(dni, fullName, privateNotes)) continue;
 
             if (!dni) {
                 errors.push(`Fila ${rowNumber}: falta DNI / NIE.`);
                 continue;
             }
+
+            if (processedDnis.has(dni)) {
+                errors.push(`Fila ${rowNumber} (${dni}): DNI duplicado dentro del archivo, se omite.`);
+                continue;
+            }
+            processedDnis.add(dni);
 
             if (!fullName) {
                 errors.push(`Fila ${rowNumber}: falta nombre del empleado.`);
@@ -1662,7 +1727,7 @@ export const EmployeeImportService = {
                     lowReason: getMappedString(row, currentMapping, 'lowReason') || null,
                     monthlyGrossSalary,
                     annualGrossSalary,
-                    drivingLicense: parseBool(getMappedRawValue(row, currentMapping, 'drivingLicense')),
+                    drivingLicense: parseBool(getMappedRawValue(row, currentMapping, 'drivingLicense')) ?? undefined,
                     drivingLicenseType: getMappedString(row, currentMapping, 'drivingLicenseType') || null,
                     drivingLicenseExpiration: parseDate(getMappedRawValue(row, currentMapping, 'drivingLicenseExpiration')),
                     companyId: resolvedCompany.companyId,
