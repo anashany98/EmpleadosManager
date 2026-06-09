@@ -256,9 +256,15 @@ export const VacationController = {
             const approvedBy = (status === 'APPROVED' || status === 'REJECTED') ? user.id : undefined;
             const vacation = await updateVacationStatus(id, status, rejectionReason, managerComment, approvedBy);
 
+            if (!vacation) {
+                throw new AppError('Solicitud no encontrada tras la actualización', 404);
+            }
+
             // NOTIFY EMPLOYEE
-            if (vacation.employee?.email) {
-                const targetUser = await prisma.user.findFirst({ where: { email: vacation.employee.email } });
+            const vacationEmployee = vacation.employee;
+            if (vacationEmployee?.email) {
+                const employee = vacationEmployee;
+                const targetUser = await prisma.user.findFirst({ where: { email: employee.email! } });
                 const statusText = status === 'APPROVED' ? 'APROBADA' : 'RECHAZADA';
                 const typeText = status === 'APPROVED' ? 'SUCCESS' : 'ERROR';
 
@@ -277,7 +283,7 @@ export const VacationController = {
                 const html = `
                     <div style="font-family: sans-serif; padding: 20px;">
                         <h2>Estado de Vacaciones: ${statusText}</h2>
-                        <p>Hola ${vacation.employee.name},</p>
+                        <p>Hola ${employee.name},</p>
                         <p>Tu solicitud de vacaciones del <b>${vacation.startDate.toLocaleDateString()}</b> al <b>${vacation.endDate.toLocaleDateString()}</b> ha sido <b>${statusText.toLowerCase()}</b>.</p>
                         <p>Días totales: ${vacation.days}</p>
                         ${vacation.status === 'REJECTED' ? '<p>Si tienes alguna duda, contacta con tu responsable.</p>' : ''}
@@ -286,7 +292,7 @@ export const VacationController = {
                     </div>
                 `;
 
-                EmailService.sendMail(vacation.employee.email, subject, html).catch(err => {
+                EmailService.sendMail(employee.email!, subject, html).catch(err => {
                     log.error({ err }, 'Error sending vacation status email');
                 });
             }
