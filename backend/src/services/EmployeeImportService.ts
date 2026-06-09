@@ -485,6 +485,31 @@ function hasMeaningfulRowData(row: Record<string, any>): boolean {
     return Object.values(row).some((value) => cleanText(value) !== '');
 }
 
+// Detect a "data row" that is actually a duplicate of the header row.
+// Some Excel templates (including the official EmpleadosManager
+// plantilla) include a literal copy of the header names as the first
+// data row to remind users of the column meanings. Without this guard
+// we would try to create an employee whose DNI equals the literal
+// string "DNI", whose name equals "Nombres y Apellidos Completos", etc.
+function looksLikeHeaderRow(row: Record<string, any>, headers: string[]): boolean {
+    if (!row || headers.length === 0) return false;
+    // If every non-empty cell value matches its corresponding header
+    // name, the row is just a header echo. Compare with the cleaned
+    // text to ignore case/whitespace differences.
+    const normalizedHeaders = headers.map((header) => cleanText(header).toLowerCase());
+    const values = Object.values(row).map((value) => cleanText(value).toLowerCase());
+    if (values.length === 0) return false;
+    let matches = 0;
+    for (const value of values) {
+        if (!value) continue;
+        if (normalizedHeaders.includes(value)) matches += 1;
+    }
+    // Treat as a header echo if at least 60% of non-empty cells are
+    // exact (cleaned, case-insensitive) matches of header names.
+    const nonEmpty = values.filter((value) => value !== '').length;
+    return nonEmpty > 0 && matches / nonEmpty >= 0.6;
+}
+
 function detectUtf16Encoding(buffer: Buffer): 'utf-16le' | 'utf-16be' | null {
     if (buffer.length >= 2) {
         if (buffer[0] === 0xff && buffer[1] === 0xfe) return 'utf-16le';
@@ -777,7 +802,8 @@ async function parseInputFile(buffer: Buffer): Promise<ParsedImportFile> {
                 });
                 return normalizedRow;
             })
-            .filter((row) => hasMeaningfulRowData(row));
+            .filter((row) => hasMeaningfulRowData(row))
+            .filter((row) => !looksLikeHeaderRow(row, headers));
 
         return {
             source: 'excel',
@@ -857,21 +883,40 @@ function parseDate(value: any): Date | null {
     }
 
     if (typeof value === 'number') {
+        // Excel stores dates as serial numbers: days since 1900-01-01
+        // (with the 1900 leap year bug shifting everything by 1).
+        // Anything outside the 1900-2100 range is almost certainly a
+        // wrong cell (phone number, ID, etc.) and should be treated as
+        // missing data instead of producing a year +32843.
+        if (value < 0 || value > 73050) return null;
         const date = new Date(Math.round((value - 25569) * 86400 * 1000));
-        return isValid(date) ? date : null;
+        if (!isValid(date)) return null;
+        const year = date.getFullYear();
+        if (year < 1900 || year > 2100) return null;
+        return date;
     }
 
     const raw = cleanText(value);
     if (!raw) return null;
 
+    // Reject obvious non-dates early: long numeric strings, IDs, etc.
+    // are sometimes left in date-mapped cells by mistake.
+    if (/^\d{6,}$/.test(raw)) return null;
+
     const formats = ['dd/MM/yyyy', 'd/M/yyyy', 'dd-MM-yyyy', 'd-M-yyyy', 'yyyy-MM-dd', 'dd.MM.yyyy', 'd.M.yyyy'];
     for (const format of formats) {
         const parsed = parseDateString(raw, format, new Date());
-        if (isValid(parsed)) return parsed;
+        if (isValid(parsed)) {
+            const year = parsed.getFullYear();
+            if (year >= 1900 && year <= 2100) return parsed;
+        }
     }
 
     const fallback = new Date(raw);
-    return isValid(fallback) ? fallback : null;
+    if (!isValid(fallback)) return null;
+    const fallbackYear = fallback.getFullYear();
+    if (fallbackYear < 1900 || fallbackYear > 2100) return null;
+    return fallback;
 }
 
 function formatPreviewDate(value: Date | null): string {
@@ -1629,8 +1674,12 @@ export const EmployeeImportService = {
                 };
 
                 if (contactName || contactPhone) {
-                    employeeData.emergencyContacts = {
-                        deleteMany: {},
+                    // The Prisma relation `emergencyContacts` requires a
+                    // nested write. `deleteMany` is only valid under an
+                    // `update` operation, not a `create`, so we handle
+                    // both paths separately below instead of embedding
+                    // the contact inside `employeeData`.
+                    (employeeData as any).emergencyContacts = {
                         create: [{
                             name: contactName || 'Contacto',
                             phone: contactPhone || '',
@@ -1642,9 +1691,23 @@ export const EmployeeImportService = {
                 const existing = await prisma.employee.findUnique({ where: { dni } });
 
                 if (existing) {
+                    // For the update path, first delete any existing
+                    // emergency contacts so we don't accumulate
+                    // duplicates on repeated imports, then attach the
+                    // nested create.
+                    await prisma.emergencyContact.deleteMany({ where: { employeeId: existing.id } });
                     const updated = await withRetry(() => prisma.employee.update({
                         where: { id: existing.id },
-                        data: employeeData
+                        data: {
+                            ...employeeData,
+                            emergencyContacts: contactName || contactPhone ? {
+                                create: [{
+                                    name: contactName || 'Contacto',
+                                    phone: contactPhone || '',
+                                    relationship: contactRelationship || null
+                                }]
+                            } : undefined
+                        }
                     }), { operationName: 'importUpdateEmployee' });
                     await upsertEmployeeVacationBalance(updated, importYear, {
                         annualQuotaDays: vacationAnnualQuota,
