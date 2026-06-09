@@ -690,6 +690,27 @@ const LOW_MEMORY_XLSX_OPTIONS: XLSX.Sheet2JSONOpts = {
     blankrows: false
 };
 
+function countExcelRows(buffer: Buffer): number {
+    // Count the number of data rows in the first sheet WITHOUT parsing
+    // cell values. We only need the worksheet range, which xlsx reads
+    // cheaply. This lets us reject oversized files BEFORE allocating
+    // any per-cell objects, preventing OOM on large workbooks.
+    const workbook = XLSX.read(buffer, {
+        type: 'buffer',
+        cellStyles: false,
+        cellFormula: false,
+        cellHTML: false,
+        cellNF: false,
+        cellText: false,
+        bookVBA: true
+    });
+    const firstSheetName = workbook.SheetNames[0];
+    if (!firstSheetName) return 0;
+    const worksheet = workbook.Sheets[firstSheetName];
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    return Math.max(0, range.e.r - range.s.r);
+}
+
 function parseExcelBuffer(buffer: Buffer): { headers: string[]; rows: Record<string, any>[] } {
     const workbook = XLSX.read(buffer, {
         type: 'buffer',
@@ -727,19 +748,26 @@ async function parseInputFile(buffer: Buffer): Promise<ParsedImportFile> {
     const isExcel = buffer[0] === 0x50 && buffer[1] === 0x4b;
 
     if (isExcel) {
+        // Pre-flight row count: rejects oversized workbooks BEFORE we
+        // allocate per-cell objects. The previous implementation only
+        // checked the row count after a full sheet_to_json, so files
+        // with tens of thousands of rows would OOM the process before
+        // the limit was even evaluated. This read is cheap: xlsx only
+        // materializes the workbook range, not every cell.
+        const rowCount = countExcelRows(buffer);
+        if (rowCount > MAX_IMPORT_ROWS) {
+            throw new AppError(
+                `El archivo contiene aproximadamente ${rowCount} filas, pero el máximo permitido es ${MAX_IMPORT_ROWS}. Divide el archivo en lotes más pequeños.`,
+                400
+            );
+        }
+
         // Use SheetJS (xlsx) with low-memory options instead of exceljs.
         // exceljs was causing OOM crashes on Excels with embedded images
         // because it eagerly loaded the entire workbook representation
         // (styles, formulas, hyperlinks, etc.) into the V8 heap.
         const parsed = parseExcelBuffer(buffer);
         const headers = parsed.headers.map((header, index) => cleanText(header) || `Columna ${index + 1}`);
-
-        if (parsed.rows.length > MAX_IMPORT_ROWS) {
-            throw new AppError(
-                `El archivo contiene ${parsed.rows.length} filas, pero el máximo permitido es ${MAX_IMPORT_ROWS}. Divide el archivo en lotes más pequeños.`,
-                400
-            );
-        }
 
         const rows = parsed.rows
             .map((row) => {

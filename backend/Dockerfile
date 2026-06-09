@@ -104,6 +104,11 @@ EXPOSE 3000
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV RETURN_TOKENS=false
+# Cap V8 heap so the process fails fast with a clear error instead of
+# being killed by the kernel OOM killer when memory runs out. The
+# previous OOM crashes inside the Excel parser manifested as silent
+# container restarts, which made the entire app appear to hang.
+ENV NODE_OPTIONS="--max-old-space-size=1536"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/api/health', r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"
