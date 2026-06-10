@@ -1375,13 +1375,25 @@ function sanitizeMapping(
 ): Partial<Record<EmployeeImportFieldKey, string>> {
     if (!providedMapping) return {};
 
-    const headerSet = new Set(headers);
+    // Build a lookup from normalized-header -> original-header. The
+    // frontend may send headers with different case or without
+    // diacritics (the user types what they see in the wizard and the
+    // browser/frontend may normalise it). Match on the normalized
+    // form to be tolerant without losing the original (which is
+    // the key used to look up the actual cell values downstream).
+    const headerLookup = new Map<string, string>();
+    for (const header of headers) {
+        headerLookup.set(normalizeString(header), header);
+    }
+
     const sanitized: Partial<Record<EmployeeImportFieldKey, string>> = {};
 
     for (const [fieldKey, header] of Object.entries(providedMapping)) {
         if (!FIELD_MAP.has(fieldKey as EmployeeImportFieldKey)) continue;
-        if (!header || !headerSet.has(header)) continue;
-        sanitized[fieldKey as EmployeeImportFieldKey] = header;
+        if (!header) continue;
+        const canonicalHeader = headerLookup.get(normalizeString(header));
+        if (!canonicalHeader) continue;
+        sanitized[fieldKey as EmployeeImportFieldKey] = canonicalHeader;
     }
 
     return sanitized;
@@ -1715,21 +1727,6 @@ export const EmployeeImportService = {
                 const contactPhone = getMappedString(row, currentMapping, 'emergencyContactPhone');
                 const contactRelationship = getMappedString(row, currentMapping, 'emergencyContactRelationship');
 
-                // TEMP DEBUG: log every raw gender value seen so we can
-                // diagnose why employees keep being classified as MALE
-                // in production. Remove once the issue is identified.
-                const _rawGender = getMappedRawValue(row, currentMapping, 'gender');
-                const _normGender = normalizeGender(_rawGender);
-                log.warn({
-                    rowNumber,
-                    dni,
-                    rawGender: _rawGender,
-                    rawGenderType: typeof _rawGender,
-                    rawGenderLen: typeof _rawGender === 'string' ? _rawGender.length : null,
-                    rawGenderBytes: typeof _rawGender === 'string' ? Buffer.from(_rawGender, 'utf8').toString('hex').slice(0, 80) : null,
-                    normalizedGender: _normGender
-                }, 'DEBUG gender value');
-
                 const employeeData: any = {
                     dni,
                     name: fullName,
@@ -1746,7 +1743,7 @@ export const EmployeeImportService = {
                     subaccount465: getMappedString(row, currentMapping, 'subaccount465') || null,
                     socialSecurityNumber: socialSecurityNumber ? EncryptionService.encrypt(socialSecurityNumber) : null,
                     iban: iban ? EncryptionService.encrypt(iban) : null,
-                    gender: _normGender ?? undefined,
+                    gender: normalizeGender(getMappedRawValue(row, currentMapping, 'gender')) ?? undefined,
                     dniExpiration: parseDate(getMappedRawValue(row, currentMapping, 'dniExpiration')),
                     birthDate: parseDate(getMappedRawValue(row, currentMapping, 'birthDate')),
                     entryDate: parseDate(getMappedRawValue(row, currentMapping, 'entryDate')),
