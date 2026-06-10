@@ -968,9 +968,29 @@ function parseWeeklyHours(value: any): number | null {
 function normalizeGender(value: any): string | null {
     const raw = normalizeString(cleanText(value));
     if (!raw) return null;
-    if (['hombre', 'masculino', 'male', 'm', 'varon', 'varón'].some((term) => raw.includes(term))) return 'MALE';
-    if (['mujer', 'femenino', 'female', 'f'].some((term) => raw.includes(term))) return 'FEMALE';
-    if (['otro', 'other', 'no binario'].some((term) => raw.includes(term))) return 'OTHER';
+
+    // IMPORTANT: never use single-letter abbreviations like 'm' or
+    // 'f' as substring matches. They produce false positives like
+    // 'mujer' -> MALE (contains 'm') or 'femenino' -> MALE (the 'm'
+    // in 'mujer' matches before the 'femenino' check). The single-letter
+    // form is only accepted when the cell value IS exactly one
+    // character, which is the only safe interpretation.
+    const exactToken = (token: string) => raw === token;
+    const tokenIncluded = (token: string) => {
+        // Multi-word tokens match if the full normalized text equals
+        // the token OR contains the token as a standalone word
+        // (bounded by spaces, after normalizeString collapses
+        // punctuation into spaces).
+        if (raw === token) return true;
+        return new RegExp(`\\b${token}\\b`).test(raw);
+    };
+
+    if (['hombre', 'masculino', 'male', 'varon'].some(tokenIncluded)) return 'MALE';
+    if (['mujer', 'femenino', 'female'].some(tokenIncluded)) return 'FEMALE';
+    // Aceptar 'm' o 'f' solo si la celda es exactamente esa letra.
+    if (exactToken('m')) return 'MALE';
+    if (exactToken('f')) return 'FEMALE';
+    if (['otro', 'other', 'no binario'].some(tokenIncluded)) return 'OTHER';
     return null;
 }
 
