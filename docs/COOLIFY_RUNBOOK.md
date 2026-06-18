@@ -213,7 +213,7 @@ Watch in Coolify's metrics:
 
 See `docs/disaster-recovery.md`. TL;DR:
 
-- **RPO**: 24 hours (daily backup at 02:00)
+- **RPO**: 24 hours (daily backup at 02:00) — mejorable a <5 min habilitando WAL shipping a S3
 - **RTO**: 4 hours (redeploy + restore)
 - **Verify backups weekly** with `scripts/verify-backups.sh`
 - **Test restore monthly** with `scripts/test-restore-backup.sh`

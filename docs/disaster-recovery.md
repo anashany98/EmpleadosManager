@@ -8,7 +8,9 @@
 | Métrica | Objetivo | Descripción |
 |--------|---------|-------------|
 | RTO | 4 horas | Maximum Tiempo de Recuperación |
-| RPO | 1 hora | Punto de Recuperación Máximo (1 backup/hora) |
+| RPO | 24 horas | Punto de Recuperación Máximo (1 backup/día a las 02:00) — Mejorado a <5 minutos si WAL archiving + PITR están habilitados |
+
+> **Nota sobre RPO**: El backup programado por `prodrigestivill/postgres-backup-local` corre diario (`0 2 * * *`). Sin embargo, PostgreSQL está configurado con `wal_level=replica` + `archive_mode=on`, lo que permite **Point-In-Time Recovery (PITR)** hasta el último WAL archivado. Para usar PITR en un escenario real, sigue el procedimiento en "PITR Recovery" más abajo. Para RPO <5 min, habilita WAL shipping continuo a S3.
 
 ---
 
@@ -16,15 +18,20 @@
 
 ### Tipos de Backups
 
-1. **Snapshots (Cada hora)**
+1. **Snapshots (Cada día a las 02:00 UTC)**
    - Base de datos PostgreSQL
-   - Retención: 24 snapshots (configurable via BACKUP_RETENTION_DAYS)
+   - Retención: configurable via `BACKUP_KEEP_DAYS` (default 30 días)
    - Ubicación: `/backups/snapshots/` + S3 si BACKUP_S3_ENABLED=true
 
-2. **Full Backup (Diario)**
+2. **Full Backup (Semanal, domingos 03:00 UTC)**
    - Base de datos + archivos subidos (uploads)
-   - Retención: 30 días
+   - Retención: 4 semanas (`BACKUP_KEEP_WEEKS`)
    - Ubicación: `/backups/full/` + S3
+
+3. **WAL Archiving (Continuo)**
+   - Permite Point-In-Time Recovery (PITR) hasta el último WAL archivado
+   - Configurado en `docker-compose.yml` con `wal_level=replica`, `archive_mode=on`
+   - Si se habilita WAL shipping a S3, el RPO efectivo baja a <5 min
 
 3. **Uploads Backup**
    - Scripts dedicados: `scripts/backup-uploads.sh`
@@ -66,6 +73,30 @@ aws s3 cp s3://backup-bucket/snapshots/latest.dump /tmp/
 
 # Restaurar
 pg_restore -h postgres -U rrhh -d rrhh -v /tmp/latest.dump
+```
+
+#### PITR Recovery (Point-In-Time)
+Si WAL archiving está habilitado y los WAL se envían a S3, puedes recuperar hasta
+cualquier momento entre el último snapshot y el último WAL archivado:
+
+```bash
+# 1. Parar postgres
+docker compose stop postgres
+
+# 2. Recuperar el último snapshot
+docker compose run --rm -v backup_data:/backups postgres \
+    pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" /backups/snapshots/latest.dump
+
+# 3. Configurar recovery con target time
+docker compose run --rm postgres bash -c '
+    cat > /var/lib/postgresql/data/recovery.signal <<EOF
+recovery_target_time = "2026-06-18 14:30:00+00"
+recovery_target_action = "promote"
+EOF
+'
+
+# 4. Levantar postgres (aplicará WAL archived hasta el target time)
+docker compose up -d postgres
 ```
 
 ---

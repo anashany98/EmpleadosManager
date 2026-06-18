@@ -1,5 +1,6 @@
 import { alertService } from './AlertService';
 // import { backupScheduler } from './BackupScheduler';  // DISABLED: prodrigestivill container handles automated backups
+import { gdprPurgeScheduler } from './GdprPurgeScheduler';
 import { loggers } from './LoggerService';
 import { vacationRolloverScheduler } from './VacationRolloverScheduler';
 
@@ -27,6 +28,9 @@ export class SchedulerService {
         // for manual snapshots via BackupService.
         // backupScheduler.start();
         vacationRolloverScheduler.start();
+        // GDPR: purge PII of soft-deleted employees after retention period
+        // (default 4 years, configurable via GDPR_PURGE_RETENTION_YEARS).
+        gdprPurgeScheduler.start();
 
         log.info('All scheduler tasks started');
     }
@@ -39,6 +43,7 @@ export class SchedulerService {
 
         // backupScheduler.stop();
         vacationRolloverScheduler.stop();
+        gdprPurgeScheduler.stop();
 
         log.info('All scheduler tasks stopped');
     }

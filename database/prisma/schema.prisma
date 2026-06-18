@@ -121,6 +121,15 @@ model Employee {
   drivingLicense           Boolean               @default(false)
   drivingLicenseType       String?
   drivingLicenseExpiration DateTime?
+
+  // Encrypted-at-rest PII fields (GDPR Art. 32). SOURCE OF TRUTH for sensitive
+  // identifiers. The plaintext columns above stay at their last-known value (or
+  // empty for new rows) for ad-hoc SQL queries, but the application layer MUST
+  // use these `*Enc` fields and decrypt via EncryptionService. Stored as
+  // `gcm:iv:authTag:ciphertext` (AES-256-GCM).
+  dniEnc                   String? @db.Text
+  socialSecurityNumberEnc  String? @db.Text
+  ibanEnc                  String? @db.Text
   companyPhone             String?
   companyId                String?
   company                  Company?              @relation(fields: [companyId], references: [id])
