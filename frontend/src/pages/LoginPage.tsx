@@ -54,7 +54,9 @@ export default function LoginPage() {
 
         try {
             const response = await api.post("/auth/login", { identifier: email, password });
-            login("", "", response.data.user);
+            // SECURITY: tokens are set as HttpOnly cookies by the backend
+            // response. The frontend never needs to receive or store them.
+            login(response.data.user);
             toast.success("¡Bienvenido de nuevo!");
             const redirectTo = sessionStorage.getItem("redirectTo") || location.state?.from?.pathname || "/";
             sessionStorage.removeItem("redirectTo");

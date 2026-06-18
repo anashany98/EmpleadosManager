@@ -123,8 +123,8 @@ describe('EmployeeController', () => {
             }));
             const payload = (res.json as any).mock.calls[0][0];
             expect(payload.success).toBe(true);
-            expect(payload.data[0]).not.toHaveProperty('socialSecurityNumber');
-            expect(payload.data[0]).not.toHaveProperty('iban');
+            expect(payload.data.data[0]).not.toHaveProperty('socialSecurityNumber');
+            expect(payload.data.data[0]).not.toHaveProperty('iban');
         });
 
         it('should support pagination', async () => {

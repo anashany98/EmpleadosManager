@@ -1,10 +1,8 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Webcam from 'react-webcam';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Moon, Settings, Wifi, WifiOff } from 'lucide-react';
+import { Moon, Settings, Wifi, WifiOff, Delete } from 'lucide-react';
 import { API_URL } from '../../api/client';
 import { KioskAdminPanel } from '../../components/KioskAdminPanel';
-import { FaceRecognitionService } from '../../services/faceRecognition';
 
 const KIOSK_SECRET = import.meta.env.VITE_KIOSK_DEVICE_SECRET || '';
 
@@ -40,8 +38,7 @@ const logoutSession = async () => {
 type OfflineQueueItem = {
     payload: {
         employeeId: string;
-        method: string;
-        descriptor?: number[];
+        pin: string;
         timestamp: string;
         clientRequestId: string;
     };
@@ -144,70 +141,84 @@ const useOfflineQueue = () => {
     return { isOnline, addToQueue };
 };
 
-interface IdentifiedEmployee {
+interface Employee {
     id: string;
     name: string;
-    jobTitle?: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    department?: string | null;
 }
 
 const KioskPage: React.FC = () => {
-    const webcamRef = useRef<Webcam>(null);
-    const lastActivity = useRef<number>(0);
     const navigate = useNavigate();
     const { speak } = useTextToSpeech();
     const { isOnline, addToQueue } = useOfflineQueue();
 
-    const [status, setStatus] = useState('Cargando Cerebro IA...');
-    const [subStatus, setSubStatus] = useState('');
-    const [isScanning, setIsScanning] = useState(false);
-    const [lastDetection, setLastDetection] = useState(0);
-    const [requireSmile, setRequireSmile] = useState(false);
-    const [detectedEmployee, setDetectedEmployee] = useState<IdentifiedEmployee | null>(null);
+    const [status, setStatus] = useState('Listo');
+    const [subStatus, setSubStatus] = useState('Selecciona tu nombre');
     const [isIdle, setIsIdle] = useState(false);
     const [showAdmin, setShowAdmin] = useState(false);
+    const [employees, setEmployees] = useState<Employee[]>([]);
+    const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+    const [pin, setPin] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [search, setSearch] = useState('');
+    const [lastActivity, setLastActivity] = useState(Date.now());
 
     useEffect(() => {
-        lastActivity.current = Date.now();
-        FaceRecognitionService.loadModels()
-            .then(() => {
-                setStatus('Listo');
-                setSubStatus('Mira a la camara');
-                setIsScanning(true);
-            })
-            .catch((error) => setStatus(`Error IA: ${error.message}`));
+        fetchEmployees();
     }, []);
 
     useEffect(() => {
         const timer = setInterval(() => {
-            if (!showAdmin && Date.now() - lastActivity.current > 30000 && !isIdle) {
+            if (!showAdmin && Date.now() - lastActivity > 30000 && !isIdle) {
                 setIsIdle(true);
+                setSelectedEmployee(null);
+                setPin('');
             }
         }, 5000);
 
         return () => clearInterval(timer);
-    }, [isIdle, showAdmin]);
+    }, [isIdle, showAdmin, lastActivity]);
+
+    const fetchEmployees = async () => {
+        try {
+            const headers = getKioskHeaders();
+            const response = await fetch(`${API_URL}/employees?status=active&limit=200`, {
+                headers: { ...headers, 'Content-Type': 'application/json' },
+                credentials: 'include'
+            });
+            const data = await response.json();
+            const list = Array.isArray(data.data) ? data.data : data.data?.data || [];
+            setEmployees(list);
+        } catch {
+            setEmployees([]);
+        }
+    };
 
     const wakeUp = () => {
         if (isIdle) {
             setIsIdle(false);
         }
-        lastActivity.current = Date.now();
+        setLastActivity(Date.now());
     };
 
     const closeAdminPanel = useCallback(async () => {
         await logoutSession();
         setShowAdmin(false);
+        fetchEmployees();
     }, []);
 
-    const handleClockIn = useCallback(async (employee: IdentifiedEmployee, descriptor?: number[]) => {
-        setIsScanning(false);
-        setSubStatus('Fichando...');
+    const handleClockIn = useCallback(async () => {
+        if (!selectedEmployee || pin.length < 4) return;
+
+        setLoading(true);
+        setLastActivity(Date.now());
 
         try {
             const payload = {
-                employeeId: employee.id,
-                method: 'face',
-                descriptor,
+                employeeId: selectedEmployee.id,
+                pin,
                 timestamp: new Date().toISOString(),
                 clientRequestId: createClientRequestId()
             };
@@ -219,9 +230,9 @@ const KioskPage: React.FC = () => {
                 if (clockData.success) {
                     entryType = clockData.data.entry.type === 'IN' ? 'ENTRADA' : 'SALIDA';
                     setStatus(`${entryType} CORRECTA`);
-                    speak(`${entryType} confirmada para ${employee.name.split(' ')[0]}`);
+                    speak(`${entryType} confirmada para ${selectedEmployee.name.split(' ')[0]}`);
                 } else {
-                    setStatus('Error al fichar');
+                    setStatus(clockData.message || 'Error al fichar');
                     speak('Hubo un error al fichar');
                 }
             } else {
@@ -230,89 +241,57 @@ const KioskPage: React.FC = () => {
                 speak('Fichaje guardado en modo sin conexion');
             }
 
-            setSubStatus(employee.name);
+            setSubStatus(selectedEmployee.name);
+            setPin('');
 
             setTimeout(() => {
                 setStatus('Listo');
-                setSubStatus('Mira a la camara');
-                setIsScanning(true);
-                setRequireSmile(false);
-                setDetectedEmployee(null);
+                setSubStatus('Selecciona tu nombre');
+                setSelectedEmployee(null);
             }, 4000);
         } catch {
             setStatus('Error de conexion');
-            setIsScanning(true);
+        } finally {
+            setLoading(false);
         }
-    }, [addToQueue, isOnline, speak]);
+    }, [addToQueue, isOnline, pin, selectedEmployee, speak]);
 
-    const captureAndCheck = useCallback(async () => {
-        if (!webcamRef.current || !isScanning || isIdle) {
-            return;
+    const handlePinDigit = (digit: string) => {
+        setLastActivity(Date.now());
+        if (pin.length < 12) {
+            setPin(prev => prev + digit);
         }
+    };
 
-        if (Date.now() - lastDetection < 500) {
-            return;
-        }
+    const handlePinDelete = () => {
+        setLastActivity(Date.now());
+        setPin(prev => prev.slice(0, -1));
+    };
 
-        const video = webcamRef.current.video;
-        if (!video || video.readyState !== 4) {
-            return;
-        }
+    const handlePinClear = () => {
+        setLastActivity(Date.now());
+        setPin('');
+    };
 
-        try {
-            lastActivity.current = Date.now();
+    const handleSelectEmployee = (emp: Employee) => {
+        setSelectedEmployee(emp);
+        setPin('');
+        setLastActivity(Date.now());
+    };
 
-            if (requireSmile && detectedEmployee) {
-                setStatus(`Hola ${detectedEmployee.name}`);
-                setSubStatus('Sonrie para confirmar');
+    const handleBack = () => {
+        setSelectedEmployee(null);
+        setPin('');
+        setLastActivity(Date.now());
+    };
 
-                const expressions = await FaceRecognitionService.detectExpressions(video);
-                if (expressions && (expressions.happy > 0.7 || expressions.surprised > 0.6)) {
-                    const freshDescriptor = await FaceRecognitionService.getFaceDescriptor(video);
-                    await handleClockIn(detectedEmployee, Array.from(freshDescriptor || []));
-                    setRequireSmile(false);
-                    setDetectedEmployee(null);
-                }
-                return;
-            }
-
-            const descriptor = await FaceRecognitionService.getFaceDescriptor(video);
-            if (!descriptor) {
-                setStatus('Buscando cara...');
-                setSubStatus('');
-                return;
-            }
-
-            setLastDetection(Date.now());
-            const data = await postKiosk('/identify', { descriptor: Array.from(descriptor) });
-
-            if (data.success && data.data.identified) {
-                const employee = data.data.employee as IdentifiedEmployee;
-                setDetectedEmployee(employee);
-                setRequireSmile(true);
-                speak(`Hola ${employee.name}, sonrie por favor`);
-                return;
-            }
-
-            setStatus('No reconocido');
-            setSubStatus('');
-        } catch (error) {
-            console.error(error);
-            setStatus('Error tecnico');
-        }
-    }, [detectedEmployee, handleClockIn, isIdle, isScanning, lastDetection, requireSmile, speak]);
-
-    useEffect(() => {
-        if (showAdmin) {
-            return;
-        }
-
-        const interval = setInterval(() => {
-            void captureAndCheck();
-        }, 500);
-
-        return () => clearInterval(interval);
-    }, [captureAndCheck, showAdmin]);
+    const filteredEmployees = employees.filter(emp => {
+        if (!search) return true;
+        const q = search.toLowerCase();
+        return (emp.name || '').toLowerCase().includes(q)
+            || (emp.firstName || '').toLowerCase().includes(q)
+            || (emp.lastName || '').toLowerCase().includes(q);
+    });
 
     if (showAdmin) {
         return <div className="min-h-screen bg-slate-900"><KioskAdminPanel onClose={() => void closeAdminPanel()} /></div>;
@@ -334,7 +313,7 @@ const KioskPage: React.FC = () => {
     }
 
     return (
-        <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white p-4 relative" onClick={wakeUp}>
+        <div className="min-h-screen bg-slate-900 flex flex-col items-center text-white p-4 relative" onClick={wakeUp}>
             <div className="absolute top-4 left-4 flex gap-4 text-slate-500">
                 {isOnline ? <Wifi size={20} className="text-green-500" /> : <WifiOff size={20} className="text-red-500" />}
             </div>
@@ -347,31 +326,123 @@ const KioskPage: React.FC = () => {
                 <Settings size={24} />
             </button>
 
-            <h1 className="text-3xl font-bold mb-2 text-center">Punto de Fichaje Inteligente</h1>
+            <h1 className="text-3xl font-bold mb-2 text-center mt-16">Punto de Fichaje</h1>
             <p className="text-slate-400 mb-6 text-center h-6">{subStatus}</p>
 
-            <div className={`relative rounded-2xl overflow-hidden shadow-2xl border-4 transition-colors duration-300 w-full max-w-md aspect-[3/4] ${requireSmile ? 'border-yellow-400' : 'border-blue-500'}`}>
-                <Webcam
-                    ref={webcamRef}
-                    audio={false}
-                    screenshotFormat="image/jpeg"
-                    videoConstraints={{ facingMode: 'user' }}
-                    mirrored={true}
-                    className="w-full h-full object-cover scale-x-[-1]"
-                />
-
-                <div className="absolute bottom-0 inset-x-0 bg-black/60 p-4 text-center backdrop-blur-sm transition-all duration-300">
-                    <p className={`text-xl font-medium ${requireSmile ? 'text-yellow-300 animate-bounce' : 'text-white'}`}>
-                        {status}
-                    </p>
-                </div>
+            {/* Status feedback */}
+            <div className={`text-xl font-medium mb-4 transition-colors duration-300 ${
+                status.includes('CORRECTA') ? 'text-green-400' :
+                status.includes('Error') ? 'text-red-400' :
+                status.includes('guardado') ? 'text-yellow-400' :
+                'text-white'
+            }`}>
+                {status}
             </div>
+
+            {!selectedEmployee ? (
+                /* Employee Selection */
+                <div className="w-full max-w-md">
+                    <div className="relative mb-4">
+                        <input
+                            type="text"
+                            placeholder="Buscar por nombre..."
+                            value={search}
+                            onChange={e => { setSearch(e.target.value); setLastActivity(Date.now()); }}
+                            className="w-full p-3 rounded-xl bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                            autoFocus
+                        />
+                    </div>
+                    <div className="max-h-96 overflow-y-auto space-y-2 rounded-xl">
+                        {filteredEmployees.length === 0 && (
+                            <p className="text-center text-slate-500 py-8">No hay empleados</p>
+                        )}
+                        {filteredEmployees.map(emp => (
+                            <button
+                                key={emp.id}
+                                onClick={() => handleSelectEmployee(emp)}
+                                className="w-full p-4 bg-slate-800 hover:bg-slate-700 rounded-xl text-left transition-colors border border-slate-700 hover:border-blue-500"
+                            >
+                                <span className="font-medium text-lg">{emp.name || `${emp.firstName || ''} ${emp.lastName || ''}`.trim()}</span>
+                                {emp.department && <span className="text-slate-400 text-sm ml-2">({emp.department})</span>}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                /* PIN Entry */
+                <div className="w-full max-w-sm">
+                    <button
+                        onClick={handleBack}
+                        className="text-slate-400 hover:text-white mb-4 text-sm"
+                    >
+                        &larr; Cambiar empleado
+                    </button>
+
+                    <div className="text-center mb-6">
+                        <p className="text-xl font-bold">{selectedEmployee.name}</p>
+                        <p className="text-slate-400 text-sm">{selectedEmployee.department}</p>
+                    </div>
+
+                    {/* PIN Display */}
+                    <div className="flex justify-center gap-3 mb-6">
+                        {Array.from({ length: Math.max(4, pin.length + 1) }).map((_, i) => (
+                            <div
+                                key={i}
+                                className={`w-4 h-4 rounded-full transition-colors ${
+                                    i < pin.length ? 'bg-blue-500' : 'bg-slate-700'
+                                }`}
+                            />
+                        ))}
+                    </div>
+
+                    {/* PIN Pad */}
+                    <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, 'del'].map((key, i) => (
+                            <button
+                                key={i}
+                                onClick={() => {
+                                    if (key === 'del') handlePinDelete();
+                                    else if (key !== null) handlePinDigit(String(key));
+                                }}
+                                disabled={key === null || loading}
+                                className={`h-16 rounded-xl text-2xl font-bold transition-all ${
+                                    key === null
+                                        ? 'invisible'
+                                        : key === 'del'
+                                            ? 'bg-slate-700 hover:bg-slate-600 flex items-center justify-center'
+                                            : 'bg-slate-800 hover:bg-slate-700 active:bg-slate-600 border border-slate-700'
+                                }`}
+                            >
+                                {key === 'del' ? <Delete size={24} /> : key}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex gap-3 mt-4 max-w-xs mx-auto">
+                        <button
+                            onClick={handlePinClear}
+                            disabled={pin.length === 0 || loading}
+                            className="flex-1 h-12 rounded-xl bg-slate-700 hover:bg-slate-600 disabled:opacity-30 transition text-sm"
+                        >
+                            Borrar
+                        </button>
+                        <button
+                            onClick={() => void handleClockIn()}
+                            disabled={pin.length < 4 || loading}
+                            className="flex-1 h-12 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:opacity-30 transition font-bold"
+                        >
+                            {loading ? 'Fichando...' : 'Fichar'}
+                        </button>
+                    </div>
+                </div>
+            )}
 
             <button
                 className="mt-8 px-6 py-3 bg-slate-800 rounded-full hover:bg-slate-700 transition text-sm text-slate-400 border border-slate-700"
                 onClick={() => navigate('/login')}
             >
-                Entrar con PIN / Contrasena
+                Entrar al sistema
             </button>
         </div>
     );

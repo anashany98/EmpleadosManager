@@ -77,21 +77,28 @@ export class AnalyticsService {
         const avgHeadcount = (totalEmployees + (totalEmployees - departures)) / 2 || 1;
         const turnoverRate = (departures / avgHeadcount) * 100;
 
-        // Avg tenure (in years)
-        const employees = await prisma.employee.findMany({
-            where: { active: true, ...companyFilter },
-            select: { entryDate: true }
-        });
-        
+        // Avg tenure (in years) - cursor pagination
+        let cursor: string | undefined;
         let totalTenure = 0;
         let countWithDate = 0;
-        employees.forEach(emp => {
-            if (emp.entryDate) {
-                const years = (now.getTime() - new Date(emp.entryDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
-                totalTenure += years;
-                countWithDate++;
-            }
-        });
+        do {
+            const batch = await prisma.employee.findMany({
+                where: { active: true, ...companyFilter },
+                select: { id: true, entryDate: true },
+                take: 500,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+            });
+
+            batch.forEach(emp => {
+                if (emp.entryDate) {
+                    const years = (now.getTime() - new Date(emp.entryDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+                    totalTenure += years;
+                    countWithDate++;
+                }
+            });
+
+            cursor = batch.length === 500 ? batch[batch.length - 1].id : undefined;
+        } while (cursor);
         const avgTenure = countWithDate > 0 ? totalTenure / countWithDate : 0;
 
         // Open positions (placeholder - would need a JobPosition model)
@@ -186,21 +193,30 @@ export class AnalyticsService {
         const { companyId } = filters;
         const companyFilter = companyId ? { companyId } : {};
 
-        const employees = await prisma.employee.findMany({
-            where: {
-                active: true,
-                ...companyFilter
-            },
-            select: { department: true }
-        });
-
-        const total = employees.length;
         const breakdown: Record<string, number> = {};
+        let total = 0;
 
-        employees.forEach(emp => {
-            const dept = emp.department || 'Sin Departamento';
-            breakdown[dept] = (breakdown[dept] || 0) + 1;
-        });
+        // Cursor pagination for department breakdown
+        let cursor: string | undefined;
+        do {
+            const batch = await prisma.employee.findMany({
+                where: {
+                    active: true,
+                    ...companyFilter
+                },
+                select: { id: true, department: true },
+                take: 500,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+            });
+
+            batch.forEach(emp => {
+                total++;
+                const dept = emp.department || 'Sin Departamento';
+                breakdown[dept] = (breakdown[dept] || 0) + 1;
+            });
+
+            cursor = batch.length === 500 ? batch[batch.length - 1].id : undefined;
+        } while (cursor);
 
         return Object.entries(breakdown)
             .map(([department, count]) => ({
@@ -234,7 +250,8 @@ export class AnalyticsService {
                 },
                 ...companyFilter
             },
-            select: { startDate: true, endDate: true }
+            select: { startDate: true, endDate: true },
+            take: 1000
         });
 
         // Count absences by day of week and month
@@ -341,8 +358,11 @@ export class AnalyticsService {
 
             result.push({
                 month: monthStart.toISOString().slice(0, 7),
-                hours: overtime._sum.hours || 0,
-                cost: overtime._sum.total || 0
+                // Prisma returns `number | null` for `Int` sums and
+                // `Prisma.Decimal | null` for `Decimal` sums. Coerce both
+                // to JS numbers here so the public shape is stable.
+                hours: overtime._sum.hours ? overtime._sum.hours.toNumber() : 0,
+                cost: overtime._sum.total ? overtime._sum.total.toNumber() : 0
             });
         }
 
@@ -358,15 +378,6 @@ export class AnalyticsService {
         const { companyId } = filters;
         const companyFilter = companyId ? { companyId } : {};
 
-        const employees = await prisma.employee.findMany({
-            where: {
-                active: true,
-                ...companyFilter
-            },
-            select: { entryDate: true }
-        });
-
-        const now = new Date();
         const ranges: Record<string, number> = {
             '< 1 año': 0,
             '1-2 años': 0,
@@ -375,21 +386,38 @@ export class AnalyticsService {
             '> 10 años': 0
         };
 
-        employees.forEach(emp => {
-            if (!emp.entryDate) {
-                ranges['< 1 año']++;
-                return;
-            }
+        // Cursor pagination for tenure distribution
+        const now = new Date();
+        let cursor: string | undefined;
+        do {
+            const batch = await prisma.employee.findMany({
+                where: {
+                    active: true,
+                    ...companyFilter
+                },
+                select: { id: true, entryDate: true },
+                take: 500,
+                ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+            });
 
-            const entryDate = new Date(emp.entryDate);
-            const years = (now.getTime() - entryDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+            batch.forEach(emp => {
+                if (!emp.entryDate) {
+                    ranges['< 1 año']++;
+                    return;
+                }
 
-            if (years < 1) ranges['< 1 año']++;
-            else if (years < 2) ranges['1-2 años']++;
-            else if (years < 5) ranges['2-5 años']++;
-            else if (years < 10) ranges['5-10 años']++;
-            else ranges['> 10 años']++;
-        });
+                const entryDate = new Date(emp.entryDate);
+                const years = (now.getTime() - entryDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+
+                if (years < 1) ranges['< 1 año']++;
+                else if (years < 2) ranges['1-2 años']++;
+                else if (years < 5) ranges['2-5 años']++;
+                else if (years < 10) ranges['5-10 años']++;
+                else ranges['> 10 años']++;
+            });
+
+            cursor = batch.length === 500 ? batch[batch.length - 1].id : undefined;
+        } while (cursor);
 
         return Object.entries(ranges).map(([range, count]) => ({ range, count }));
     }

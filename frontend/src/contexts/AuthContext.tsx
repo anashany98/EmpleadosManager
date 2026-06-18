@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
 import { api } from '../api/client';
-import { canAccessFeature as canSharedAccessFeature, normalizeActor } from '@shared/authz';
+import { normalizeActor } from '@shared/authz';
 import type { AppFeatureKey, PermissionMap, Role } from '@shared/authz';
 
 interface User {
@@ -16,7 +16,7 @@ interface User {
 interface AuthContextType {
     user: User | null;
     loading: boolean;
-    login: (token: string, refreshToken: string, userData: User) => void;
+    login: (userData: User) => void;
     logout: () => void;
     isAdmin: boolean;
     isManager: boolean;
@@ -25,7 +25,6 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-const AUTH_SESSION_HINT_KEY = 'rrhh_auth_session_hint';
 const AUTH_PAGES = new Set(['/login', '/request-reset', '/reset-password']);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -53,59 +52,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
     }, []);
 
-    const hasSessionHint = useCallback((): boolean => {
-        try {
-            return window.localStorage.getItem(AUTH_SESSION_HINT_KEY) === '1';
-        } catch {
-            return false;
-        }
-    }, []);
-
-    const setSessionHint = useCallback((value: boolean): void => {
-        try {
-            if (value) {
-                window.localStorage.setItem(AUTH_SESSION_HINT_KEY, '1');
-            } else {
-                window.localStorage.removeItem(AUTH_SESSION_HINT_KEY);
-            }
-        } catch {
-            // Ignore storage errors
-        }
-    }, []);
-
+    // SECURITY: All authentication state lives in HttpOnly cookies set by the
+    // backend. The frontend never stores tokens, refresh tokens, or session
+    // hints in localStorage / sessionStorage. The session bootstrap is a
+    // single /auth/me call whose 200/401 response determines the user state.
     const checkAuth = useCallback(async (): Promise<void> => {
         try {
             const response = await api.get<{ data: User }>('/auth/me');
             setUser(normalizeUser(response.data));
-            setSessionHint(true);
         } catch {
             setUser(null);
-            setSessionHint(false);
         } finally {
             setLoading(false);
         }
-    }, [normalizeUser, setSessionHint]);
+    }, [normalizeUser]);
 
     const bootstrapAuth = useCallback(async (): Promise<void> => {
         if (authAttemptedRef.current) return;
         authAttemptedRef.current = true;
-        const path = window.location.pathname;
-        const isAuthPage = AUTH_PAGES.has(path);
-        if (isAuthPage && !hasSessionHint()) {
-            setLoading(false);
-            return;
-        }
+        // Always call /auth/me; the backend will return 401 if no valid cookie
         await checkAuth();
-    }, [hasSessionHint, checkAuth]);
+    }, [checkAuth]);
 
     useEffect(() => {
         bootstrapAuth();
     }, [bootstrapAuth]);
 
-    const login = useCallback((_token: string, _refreshToken: string, userData: User): void => {
+    const login = useCallback((userData: User): void => {
         setUser(normalizeUser(userData));
-        setSessionHint(true);
-    }, [normalizeUser, setSessionHint]);
+    }, [normalizeUser]);
 
     const logout = useCallback(async (): Promise<void> => {
         try {
@@ -114,9 +89,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Logout error', error);
         }
         setUser(null);
-        setSessionHint(false);
         window.location.href = '/login';
-    }, [setSessionHint]);
+    }, []);
 
     const canAccessFeature = useCallback((feature: AppFeatureKey): boolean => {
         const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;

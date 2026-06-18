@@ -52,10 +52,10 @@ describe('AnalyticsService.getMainKPIs', () => {
                 createdAt: expect.any(Object)
             }
         });
-        expect(prisma.employee.findMany).toHaveBeenCalledWith({
+        expect(prisma.employee.findMany).toHaveBeenCalledWith(expect.objectContaining({
             where: { active: true, companyId: 'company-1' },
-            select: { entryDate: true }
-        });
+            select: expect.objectContaining({ entryDate: true })
+        }));
         expect(prisma.vacation.count).toHaveBeenCalledWith({
             where: {
                 status: 'PENDING',

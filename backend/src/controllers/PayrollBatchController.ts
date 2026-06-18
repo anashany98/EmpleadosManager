@@ -12,6 +12,13 @@ import { withRetry } from '../utils/dbRetry';
 
 const log = createLogger('PayrollBatchController');
 
+function getRequestContext(req: Request) {
+    return {
+        ipAddress: req.ip || req.socket.remoteAddress || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown'
+    };
+}
+
 export const PayrollBatchController = {
     upload: async (req: Request, res: Response) => {
         try {
@@ -21,6 +28,7 @@ export const PayrollBatchController = {
 
             const { user } = req as AuthenticatedRequest;
             const userId = user?.id || 'system';
+            const ctx = getRequestContext(req);
 
             const buffer = req.file.buffer;
             const headers = await ExcelParser.getHeaders(buffer);
@@ -47,7 +55,12 @@ export const PayrollBatchController = {
                 data: { sourceFileUrl: key }
             });
 
-            await AuditService.log('UPLOAD', 'PAYROLL_BATCH', batch.id, { filename: req.file.originalname }, userId);
+            await AuditService.logWithContext('UPLOAD', 'PAYROLL_BATCH', batch.id, {
+                userId,
+                ipAddress: ctx.ipAddress,
+                userAgent: ctx.userAgent,
+                metadata: { filename: req.file.originalname, fileSize: req.file.size }
+            });
 
             return ApiResponse.success(res, {
                 batchId: batch.id,
@@ -66,6 +79,7 @@ export const PayrollBatchController = {
         const { mappingRules, filename } = req.body;
         const { user } = req as AuthenticatedRequest;
         const userId = user?.id || 'system';
+        const ctx = getRequestContext(req);
 
         try {
             const batch = await prisma.payrollImportBatch.findUnique({
@@ -114,7 +128,12 @@ export const PayrollBatchController = {
                 })
             ]), { operationName: 'applyPayrollMapping' });
 
-            await AuditService.log('APPLY_MAPPING', 'PAYROLL_BATCH', id, { rowCount: rowsData.length }, userId);
+            await AuditService.logWithContext('APPLY_MAPPING', 'PAYROLL_BATCH', id, {
+                userId,
+                ipAddress: ctx.ipAddress,
+                userAgent: ctx.userAgent,
+                metadata: { rowCount: rowsData.length, batchName: batch.sourceFilename }
+            });
 
             return ApiResponse.success(res, { rowsCreated: rowsData.length }, 'Mapeo aplicado correctamente');
 

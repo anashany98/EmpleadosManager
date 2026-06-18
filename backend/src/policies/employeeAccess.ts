@@ -4,6 +4,7 @@ import {
     SELF_EDITABLE_EMPLOYEE_FIELDS
 } from '../../../shared/authz';
 import { EncryptionService } from '../services/EncryptionService';
+import { SalaryEncryption } from '../services/SalaryEncryption';
 import { AuthUser } from '../types/express';
 
 interface EmployeeTargetLike {
@@ -46,8 +47,6 @@ export function sanitizeEmployeeListItem(employee: EmployeeRecord) {
         monthlyTotalSalary,
         privateNotes,
         payrollRows,
-        faceDescriptor,
-        kioskPin,
         users,
         companyShortPhone,
         subaccount465,
@@ -62,8 +61,6 @@ export function sanitizeEmployeeListItem(employee: EmployeeRecord) {
     void monthlyTotalSalary;
     void privateNotes;
     void payrollRows;
-    void faceDescriptor;
-    void kioskPin;
     void users;
     void companyShortPhone;
     void subaccount465;
@@ -78,14 +75,19 @@ export function sanitizeEmployeeDetail(employee: EmployeeRecord, includeSensitiv
         return safeEmployee;
     }
 
+    // Decrypt sensitive fields. The salary fields are stored
+    // encrypted-at-rest; we delegate to SalaryEncryption so the
+    // plaintext is reconstructed from the *Enc columns.
+    const decryptedSalaries = SalaryEncryption.decryptEmployeeSalaries(employee);
+
     return {
         ...safeEmployee,
         socialSecurityNumber: EncryptionService.decrypt(employee.socialSecurityNumber),
         iban: EncryptionService.decrypt(employee.iban),
-    annualGrossSalary: employee.annualGrossSalary,
-    monthlyGrossSalary: employee.monthlyGrossSalary,
-    annualTotalSalary: employee.annualTotalSalary,
-    monthlyTotalSalary: employee.monthlyTotalSalary,
+        annualGrossSalary: decryptedSalaries.annualGrossSalary,
+        monthlyGrossSalary: decryptedSalaries.monthlyGrossSalary,
+        annualTotalSalary: decryptedSalaries.annualTotalSalary,
+        monthlyTotalSalary: decryptedSalaries.monthlyTotalSalary,
         privateNotes: employee.privateNotes,
         payrollRows: employee.payrollRows
     };

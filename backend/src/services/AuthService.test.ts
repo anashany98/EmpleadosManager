@@ -122,7 +122,7 @@ describe('AuthService.login', () => {
 
         const result = await AuthService.login('admin@company.test', 'secret');
 
-        const decoded = jwt.verify(result.accessToken, process.env.JWT_SECRET || 'test-jwt-secret') as {
+        const decoded = jwt.verify(result.accessToken, process.env.JWT_SECRET || 'test-jwt-secret', { algorithms: ['HS256'] }) as {
             id: string;
             sessionVersion: number;
         };

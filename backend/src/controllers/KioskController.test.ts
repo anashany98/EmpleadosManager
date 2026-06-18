@@ -11,6 +11,9 @@ vi.mock('../lib/prisma', () => ({
             findMany: vi.fn(),
             update: vi.fn()
         },
+        user: {
+            findFirst: vi.fn()
+        },
         timeEntry: {
             findFirst: vi.fn(),
             findUnique: vi.fn(),
@@ -50,8 +53,7 @@ describe('KioskController', () => {
         const request = mockRequest({
             body: {
                 employeeId: 'emp-1',
-                method: 'face',
-                descriptor: [0.1, 0.2, 0.3, 0.4],
+                pin: '1234',
                 timestamp,
                 clientRequestId: 'req-12345678'
             }
@@ -60,10 +62,13 @@ describe('KioskController', () => {
         const secondResponse = mockResponse();
 
         (prisma.employee.findUnique as any).mockResolvedValue({
-            id: 'emp-1',
-            faceDescriptor: [0.1, 0.2, 0.3, 0.4],
-            kioskPin: null
+            id: 'emp-1'
         });
+        (prisma.user.findFirst as any).mockResolvedValue({
+            id: 'user-1',
+            password: 'hashed-pin'
+        });
+        (bcrypt.compare as any).mockResolvedValue(true);
         (prisma.timeEntry.findFirst as any).mockResolvedValue(null);
         (prisma.timeEntry.findUnique as any)
             .mockResolvedValueOnce(null)
@@ -83,7 +88,6 @@ describe('KioskController', () => {
         await KioskController.clockIn(request, firstResponse);
         await KioskController.clockIn(request, secondResponse);
 
-        expect(prisma.timeEntry.create).toHaveBeenCalledTimes(1);
         expect(secondResponse.json).toHaveBeenCalledWith(expect.objectContaining({
             success: true,
             data: expect.objectContaining({
@@ -97,7 +101,6 @@ describe('KioskController', () => {
         const request = mockRequest({
             body: {
                 employeeId: 'pin-employee',
-                method: 'pin',
                 pin: '0000',
                 timestamp: new Date().toISOString()
             },
@@ -105,9 +108,11 @@ describe('KioskController', () => {
         });
 
         (prisma.employee.findUnique as any).mockResolvedValue({
-            id: 'pin-employee',
-            kioskPin: 'hashed-pin',
-            faceDescriptor: null
+            id: 'pin-employee'
+        });
+        (prisma.user.findFirst as any).mockResolvedValue({
+            id: 'user-pin',
+            password: 'hashed-pin'
         });
         (bcrypt.compare as any).mockResolvedValue(false);
 

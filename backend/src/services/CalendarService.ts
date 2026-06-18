@@ -81,7 +81,8 @@ export const CalendarService = {
         employee: companyId ? { companyId } : undefined,
       },
       include: { employee: { select: { id: true, firstName: true, lastName: true, department: true } } },
-      orderBy: { startDate: 'asc' }
+      orderBy: { startDate: 'asc' },
+      take: 500
     });
 
     vacations.forEach((vacation) => {
@@ -115,7 +116,8 @@ export const CalendarService = {
           birthDate: { not: null },
           companyId: companyId || undefined,
         },
-        select: { id: true, firstName: true, lastName: true, birthDate: true, department: true }
+        select: { id: true, firstName: true, lastName: true, birthDate: true, department: true },
+        take: 500
       });
 
       employees.forEach((emp) => {
@@ -160,7 +162,8 @@ export const CalendarService = {
         startDate: { lte: endDate },
         endDate: { gte: startDate },
       },
-      orderBy: { startDate: 'asc' }
+      orderBy: { startDate: 'asc' },
+      take: 1000
     });
 
     const customHolidayDates = new Set(
@@ -232,7 +235,8 @@ export const CalendarService = {
         birthDate: { not: null },
         companyId: companyId || undefined,
       },
-      select: { id: true, firstName: true, lastName: true, birthDate: true }
+      select: { id: true, firstName: true, lastName: true, birthDate: true },
+      take: 500
     });
 
     const birthdays: UnifiedCalendarEvent[] = [];
@@ -333,6 +337,7 @@ export const CalendarService = {
         company: { select: { name: true } },
       },
       orderBy: { startDate: 'asc' },
+      take: 1000
     });
   },
 };

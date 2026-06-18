@@ -15,7 +15,7 @@ export const FileController = {
         }
 
         // Validate filename chars - only allow alphanumeric, hyphens, underscores, periods
-        if (!filename || !/^[\w\-\.]+$/.test(filename)) {
+        if (!filename || !/^[\w\-.]+$/.test(filename)) {
             throw new AppError('Nombre de archivo inválido', 400);
         }
 

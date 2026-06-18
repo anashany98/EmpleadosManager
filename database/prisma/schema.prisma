@@ -1,11 +1,5 @@
 generator client {
-  provider      = "prisma-client-js"
-  output        = "../../backend/node_modules/.prisma/client"
-}
-
-generator client_root {
-  provider      = "prisma-client-js"
-  output        = "../../node_modules/.prisma/client"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -56,7 +50,7 @@ model PasswordResetToken {
   expiresAt   DateTime
   usedAt      DateTime?
   createdAt   DateTime  @default(now())
-  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@index([employeeId, purpose, usedAt])
   @@index([expiresAt])
@@ -114,6 +108,13 @@ model Employee {
   gender                   String?
   subaccount465            String?               @unique
   active                   Boolean               @default(true)
+  // Soft-delete: GDPR right-to-be-forgotten. When set, the row is
+  // hidden from all reads and excluded from FK joins. The data is
+  // physically purged by a scheduled job after the configured
+  // retention period (default 4 years for payroll, 5 for medical).
+  deletedAt                DateTime?
+  deletedById              String?
+  deletionReason           String?
   socialSecurityNumber     String?
   iban                     String?
   dniExpiration            DateTime?
@@ -147,6 +148,15 @@ model Employee {
   monthlyGrossSalary  Decimal?  @db.Decimal(15,2) @default(0)
   annualTotalSalary   Decimal?  @db.Decimal(15,2) @default(0)
   monthlyTotalSalary  Decimal?  @db.Decimal(15,2) @default(0)
+  // Encrypted-at-rest salary fields. These are the SOURCE OF TRUTH.
+  // The `Decimal` columns above stay at 0 (or with the same value for
+  // backward-compat reads inside the same query); the application
+  // layer MUST use the `Enc` fields and decrypt via EncryptionService.
+  // Stored as `gcm:iv:authTag:ciphertext` (AES-256-GCM).
+  annualGrossSalaryEnc   String? @db.Text
+  monthlyGrossSalaryEnc  String? @db.Text
+  annualTotalSalaryEnc   String? @db.Text
+  monthlyTotalSalaryEnc  String? @db.Text
   companyShortPhone String?
   privateNotes             String?
   accountingEntries        AccountingEntry[]
@@ -156,7 +166,7 @@ model Employee {
   checklistTasks           ChecklistTask[]
   contractExtensions       ContractExtension[]
   documents                Document[]
-  manager                  Employee?             @relation("Hierarchy", fields: [managerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  manager                  Employee?             @relation("Hierarchy", fields: [managerId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so subordinates stay with managerId=null when manager is deleted
   subordinates             Employee[]            @relation("Hierarchy")
   projectWork              EmployeeProjectWork[]
   expenses                 Expense[]
@@ -168,9 +178,9 @@ model Employee {
   vacations                Vacation[]
   vacationBalances         EmployeeVacationBalance[]
   emergencyContacts        EmergencyContact[]
+  consents                Consent[]
   anomalies                AnomalyEvent[]
-  kioskPin                 String?              // Encrypted PIN for kiosk backup
-  faceDescriptor           Json?                // Array of numbers for face recognition
+
   vehicles                 Vehicle[]
   cards                    Card[]
   users                    User[]
@@ -183,6 +193,7 @@ model Employee {
 
   @@index([companyId])
   @@index([active])
+  @@index([deletedAt])
   @@index([department])
   @@index([contractType])
   @@index([contractEndDate])
@@ -204,7 +215,7 @@ model EmployeeVacationBalance {
   importedUsedDays Decimal  @default(0)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@unique([employeeId, year])
   @@index([year])
@@ -218,7 +229,7 @@ model EmergencyContact {
   relationship String?  // Padre, Madre, Pareja...
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
-  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@index([employeeId])
 }
@@ -244,8 +255,8 @@ model EmployeeProjectWork {
   notes      String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so project work records are deleted when project is deleted
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete
 
   @@index([employeeId])
   @@index([projectId])
@@ -283,7 +294,7 @@ model ChecklistTask {
   deadline    DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
 
   @@index([employeeId, type])
 }
@@ -293,14 +304,14 @@ model Expense {
   employeeId    String
   date          DateTime @default(now())
   category      String
-  amount        Float
+  amount        Decimal  @db.Decimal(15,2)
   description   String?
   receiptUrl    String?
   status        String   @default("PENDING")
   paymentMethod String   @default("CASH")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
 
   @@index([employeeId])
   @@index([status])
@@ -320,7 +331,7 @@ model Document {
   expiryDate DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
-  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
 
   @@index([employeeId])
   @@index([category])
@@ -338,7 +349,7 @@ model MedicalReview {
   fileUrl        String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
 }
 
 model Training {
@@ -351,7 +362,7 @@ model Training {
   fileUrl    String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 }
 
 model Vacation {
@@ -371,7 +382,7 @@ model Vacation {
   approvedAt      DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @default(now()) @updatedAt
-  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@index([employeeId, status])
   @@index([startDate, endDate])
@@ -458,7 +469,7 @@ model PayrollImportBatch {
   entries          AccountingEntry[]
   exports          Export[]
   createdBy        User              @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  mappingProfile   MappingProfile?   @relation(fields: [mappingProfileId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  mappingProfile   MappingProfile?   @relation(fields: [mappingProfileId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so batches persist with mappingProfileId=null when profile is deleted
   rows             PayrollRow[]
 }
 
@@ -475,8 +486,8 @@ model PayrollRow {
   extraData       String?
   status          String             @default("PENDING")
   validationNotes String?
-  employee        Employee?          @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  batch           PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee        Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so payroll rows persist with employeeId=null when employee is deleted
+  batch           PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so payroll rows are deleted when batch is deleted
   items           PayrollItem[]
 }
 
@@ -488,7 +499,7 @@ model PayrollItem {
   type         String      // "EARNING", "DEDUCTION"
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
-  payrollRow   PayrollRow  @relation(fields: [payrollRowId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  payrollRow   PayrollRow  @relation(fields: [payrollRowId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so payroll items are deleted when payroll row is deleted
 
   @@index([payrollRowId])
 }
@@ -504,8 +515,8 @@ model AccountingEntry {
   totalHaber Decimal
   status     String                @default("DRAFT")
   createdAt  DateTime              @default(now())
-  employee   Employee?             @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  batch      PayrollImportBatch    @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee   Employee?             @relation(fields: [employeeId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so accounting entries persist with employeeId=null when employee is deleted
+  batch      PayrollImportBatch    @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so accounting entries are deleted when batch is deleted
   lines      AccountingEntryLine[]
 }
 
@@ -518,7 +529,7 @@ model AccountingEntryLine {
   haber    Decimal
   document String?
   order    Int
-  entry    AccountingEntry @relation(fields: [entryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  entry    AccountingEntry @relation(fields: [entryId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so entry lines are deleted when accounting entry is deleted
 }
 
 model Export {
@@ -528,8 +539,8 @@ model Export {
   filename    String
   generatedAt DateTime           @default(now())
   createdById String
-  createdBy   User               @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  batch       PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdBy   User               @relation(fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction) // KEPT: required FK, NoAction prevents orphaning exports
+  batch       PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so exports are deleted when batch is deleted
 }
 
 model AuditLog {
@@ -540,9 +551,11 @@ model AuditLog {
   metadata         String?
   userId           String?
   targetEmployeeId String?
+  ipAddress        String?
+  userAgent        String?
   createdAt        DateTime  @default(now())
-  targetEmployee   Employee? @relation("TargetEmployee", fields: [targetEmployeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  user             User?     @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  targetEmployee   Employee? @relation("TargetEmployee", fields: [targetEmployeeId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so audit logs persist with targetEmployeeId=null when employee is deleted
+  user             User?     @relation(fields: [userId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so audit logs persist with userId=null when user is deleted
 
   @@index([userId])
   @@index([targetEmployeeId])
@@ -552,21 +565,21 @@ model AuditLog {
 model CategoryRate {
   id                  String   @id @default(uuid())
   category            String   @unique
-  overtimeRate        Float    @default(0.0)
-  holidayOvertimeRate Float    @default(0.0)
+  overtimeRate        Decimal  @db.Decimal(6,4) @default(0)
+  holidayOvertimeRate Decimal  @db.Decimal(6,4) @default(0)
   updatedAt           DateTime @updatedAt
 }
 
 model OvertimeEntry {
   id         String   @id @default(uuid())
   employeeId String
-  hours      Float
-  rate       Float
-  total      Float
+  hours      Decimal  @db.Decimal(8,2)
+  rate       Decimal  @db.Decimal(10,4)
+  total      Decimal  @db.Decimal(15,2)
   date       DateTime @default(now())
   status     String   @default("PENDING")
   createdAt  DateTime @default(now())
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@index([employeeId])
   @@index([date])
@@ -583,7 +596,7 @@ model ContractExtension {
   fileUrl         String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete
 
   @@index([employeeId])
 }
@@ -603,7 +616,7 @@ model Alert {
   isDismissed Boolean   @default(false)
   createdAt   DateTime  @default(now())
   expiresAt   DateTime?
-  employee    Employee? @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee    Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so alerts persist with employeeId=null when employee is deleted
 
   @@index([isRead, severity])
   @@index([createdAt])
@@ -681,7 +694,7 @@ model TimeEntry {
   location   String?
   device     String?
   
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@index([employeeId, timestamp])
   @@index([timestamp])
@@ -757,7 +770,7 @@ model OnboardingTemplate {
 model EmployeeOnboarding {
   id          String   @id @default(uuid())
   employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete
   title       String
   items       String   // JSON: { text: string, completed: boolean }[]
   status      String   @default("PENDING") // PENDING, COMPLETED, IN_PROGRESS
@@ -1142,4 +1155,40 @@ enum LockAction {
   EXPIRED
   FORCE_RELEASED
   REFRESHED
+}
+
+// GDPR consent record. Captures explicit, granular consent given by
+// the data subject (employee) for specific processing activities
+// that are not strictly necessary for the employment contract.
+//
+// Examples of `purpose`:
+//   - "MEDICAL_DATA_PROCESSING"      (Article 9(2)(a) — explicit consent for health data)
+//   - "MARKETING_COMMUNICATIONS"
+//   - "THIRD_PARTY_DATA_SHARING"
+//   - "BIOMETRIC_DATA"               (face recognition, fingerprint)
+//
+// Withdrawal of consent must be at least as easy as giving it
+// (GDPR Art. 7(3)). The DELETE endpoint is exposed; a soft-delete
+// (anonymising the user_id) is also acceptable but we keep the
+// record for the legally-required retention period.
+model Consent {
+  id          String    @id @default(uuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  purpose     String    // see comment above
+  granted     Boolean   // true = consent given, false = consent withdrawn
+  grantedAt   DateTime  @default(now())
+  withdrawnAt DateTime?
+  ipAddress   String?
+  userAgent   String?
+  legalBasis  String    @default("CONSENT") // CONSENT | CONTRACT | LEGAL_OBLIGATION | VITAL_INTEREST | PUBLIC_TASK | LEGITIMATE_INTEREST
+  // Free-text policy version the user consented to. GDPR Art. 7(1)
+  // requires demonstrable evidence of what the user agreed to.
+  policyVersion String  @default("1.0.0")
+  notes       String?
+
+  @@index([employeeId])
+  @@index([purpose])
+  @@index([granted])
+  @@index([grantedAt])
 }

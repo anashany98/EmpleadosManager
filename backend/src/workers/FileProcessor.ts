@@ -6,13 +6,82 @@ import { StorageService } from '../services/StorageService';
 import { NotificationService } from '../services/NotificationService';
 import { createLogger } from '../services/LoggerService';
 import { inboxService } from '../services/InboxService';
-import { createWorker } from 'tesseract.js';
+import { createWorker, type Worker as TesseractWorker } from 'tesseract.js';
 import jsQR from 'jsqr';
 import { PDFDocument } from 'pdf-lib';
 import { PNG } from 'pngjs';
 import jpeg from 'jpeg-js';
 
 const log = createLogger('FileProcessor');
+
+// OCR is memory-expensive (each Tesseract worker ~150-300MB). We use a
+// small pool and serialise access to keep memory bounded under the
+// 1GB container limit.
+const OCR_POOL_SIZE = Math.max(1, Math.min(2, parseInt(process.env.OCR_POOL_SIZE || '2', 10)));
+const OCR_TIMEOUT_MS = Math.max(10_000, parseInt(process.env.OCR_TIMEOUT_MS || '60000', 10));
+const SUPPORTED_OCR_EXTS = ['.png', '.jpg', '.jpeg'];
+
+class OcrPool {
+    private workers: TesseractWorker[] = [];
+    private busy: boolean[] = [];
+    private waiters: Array<(worker: TesseractWorker) => void> = [];
+
+    async init(): Promise<void> {
+        if (this.workers.length > 0) return;
+        for (let i = 0; i < OCR_POOL_SIZE; i++) {
+            log.info({ slot: i }, 'Initializing Tesseract worker');
+            const worker = await createWorker('spa');
+            this.workers.push(worker);
+            this.busy.push(false);
+        }
+    }
+
+    async acquire(): Promise<TesseractWorker> {
+        if (this.workers.length === 0) {
+            await this.init();
+        }
+        for (let i = 0; i < this.workers.length; i++) {
+            if (!this.busy[i]) {
+                this.busy[i] = true;
+                return this.workers[i];
+            }
+        }
+        return new Promise((resolve) => this.waiters.push(resolve));
+    }
+
+    release(worker: TesseractWorker): void {
+        const idx = this.workers.indexOf(worker);
+        if (idx === -1) return;
+        const next = this.waiters.shift();
+        if (next) {
+            next(worker);
+        } else {
+            this.busy[idx] = false;
+        }
+    }
+
+    async close(): Promise<void> {
+        await Promise.all(this.workers.map((w) => w.terminate().catch((err) => log.warn({ err }, 'Error terminating Tesseract worker'))));
+        this.workers = [];
+        this.busy = [];
+    }
+}
+
+const ocrPool = new OcrPool();
+export { ocrPool };
+
+/**
+ * Race a Promise against a timeout. Throws on timeout.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: NodeJS.Timeout | null = null;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    });
+    return Promise.race([promise, timeout]).finally(() => {
+        if (timer) clearTimeout(timer);
+    });
+}
 
 export const FileProcessor = async (job: Job) => {
     const { filePath } = job.data;
@@ -62,20 +131,24 @@ export const FileProcessor = async (job: Job) => {
             qrData = await scanImageForQR(buffer);
         }
 
-        // 1.5. OCR Extraction (Text)
+        // 1.5. OCR Extraction (Text) — pooled + timeout-bounded to prevent
+        // unbounded memory growth and stuck workers.
         let extractedText = '';
-        try {
-            if (['.png', '.jpg', '.jpeg'].includes(ext.toLowerCase())) {
-                const worker = await createWorker('spa');
-                const { data: { text } } = await worker.recognize(buffer);
-                await worker.terminate();
+        if (SUPPORTED_OCR_EXTS.includes(ext.toLowerCase())) {
+            const worker = await ocrPool.acquire();
+            try {
+                const { data: { text } } = await withTimeout(
+                    worker.recognize(buffer),
+                    OCR_TIMEOUT_MS,
+                    `OCR(${filename})`
+                );
                 extractedText = text;
-                log.info({ filename }, 'OCR Completed');
+                log.info({ filename, length: text.length }, 'OCR Completed');
+            } catch (ocrError) {
+                log.error({ filename, error: ocrError }, 'OCR Failed (will continue without text)');
+            } finally {
+                ocrPool.release(worker);
             }
-            // TODO: Add PDF OCR support (requires pdf-to-image or similar, complex in Node pure)
-            // For now, we only support Image OCR.
-        } catch (ocrError) {
-            log.error({ filename, error: ocrError }, 'OCR Failed');
         }
 
         // 2. Upload to Storage

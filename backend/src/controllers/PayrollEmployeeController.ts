@@ -3,11 +3,19 @@ import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { PayrollPdfService } from '../services/PayrollPdfService';
 import { EncryptionService } from '../services/EncryptionService';
+import { AuditService } from '../services/AuditService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { AppError } from '../utils/AppError';
 
 const log = createLogger('PayrollEmployeeController');
+
+function getRequestContext(req: Request) {
+    return {
+        ipAddress: req.ip || req.socket.remoteAddress || 'unknown',
+        userAgent: req.headers['user-agent'] || 'unknown'
+    };
+}
 
 export const PayrollEmployeeController = {
     getByEmployee: async (req: Request, res: Response) => {
@@ -42,6 +50,7 @@ export const PayrollEmployeeController = {
     downloadPdf: async (req: Request, res: Response) => {
         const { id } = req.params;
         const { user } = req as AuthenticatedRequest;
+        const ctx = getRequestContext(req);
 
         try {
             const payroll = await prisma.payrollRow.findUnique({
@@ -60,6 +69,19 @@ export const PayrollEmployeeController = {
             if (user.role !== 'admin' && payroll.employee.companyId !== user.companyId) {
                 throw new AppError('No autorizado', 403);
             }
+
+            // Log payroll PDF download (sensitive action)
+            await AuditService.logWithContext('DOWNLOAD_PDF', 'PAYROLL', id, {
+                userId: user.id,
+                ipAddress: ctx.ipAddress,
+                userAgent: ctx.userAgent,
+                metadata: {
+                    employeeId: payroll.employeeId,
+                    employeeName: payroll.employee.name,
+                    month: payroll.batch.month,
+                    year: payroll.batch.year
+                }
+            });
 
             const companyData = payroll.employee.company;
             await PayrollPdfService.generate(res, {
@@ -80,7 +102,7 @@ export const PayrollEmployeeController = {
                 },
                 employee: {
                     name: payroll.employee.name,
-                    dni: payroll.employee.dni || '',
+                    dni: EncryptionService.decrypt(payroll.employee.dni) || '',
                     socialSecurityNumber: EncryptionService.decrypt(payroll.employee.socialSecurityNumber || '') || '',
                     jobTitle: payroll.employee.jobTitle || 'Empleado',
                     category: payroll.employee.category || undefined,
@@ -97,6 +119,7 @@ export const PayrollEmployeeController = {
     createManual: async (req: Request, res: Response) => {
         const { year, month, employeeId, bruto, neto, ssEmpresa, ssTrabajador, irpf } = req.body;
         const { user } = req as AuthenticatedRequest;
+        const ctx = getRequestContext(req);
 
         try {
             if (user.role !== 'admin') {
@@ -105,7 +128,7 @@ export const PayrollEmployeeController = {
 
             const employee = await prisma.employee.findUnique({
                 where: { id: employeeId },
-                select: { id: true, companyId: true }
+                select: { id: true, companyId: true, name: true }
             });
 
             if (!employee) return ApiResponse.error(res, 'Empleado no encontrado', 404);
@@ -141,6 +164,21 @@ export const PayrollEmployeeController = {
                     irpf: parseFloat(irpf) || 0,
                     status: 'VALID',
                     rawEmployeeName: 'Manual Entry'
+                }
+            });
+
+            // Log manual payroll creation (sensitive action)
+            await AuditService.logWithContext('CREATE_MANUAL', 'PAYROLL', payroll.id, {
+                userId,
+                ipAddress: ctx.ipAddress,
+                userAgent: ctx.userAgent,
+                metadata: {
+                    employeeId: employee.id,
+                    employeeName: employee.name,
+                    year: Number(year),
+                    month: Number(month),
+                    bruto: parseFloat(bruto),
+                    neto: parseFloat(neto)
                 }
             });
 

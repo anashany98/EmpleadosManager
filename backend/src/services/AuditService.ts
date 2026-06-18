@@ -1,4 +1,47 @@
 import { prisma } from '../lib/prisma';
+import { createLogger } from './LoggerService';
+
+const log = createLogger('AuditService');
+
+/**
+ * Internal helper: persist an audit log entry, with up to 3 retries on
+ * transient errors. Errors are logged with the structured logger but
+ * never thrown, since audit failures must not break the caller's
+ * business flow. If the log still cannot be written, the metadata is
+ * emitted as a log entry at `fatal` level so the information is at
+ * least shipped to the log aggregator (and Sentry via log forwarding).
+ */
+async function persistAuditEntry(
+    data: Parameters<typeof prisma.auditLog.create>[0]['data'],
+    maxRetries = 3
+): Promise<void> {
+    let lastError: unknown = null;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            await prisma.auditLog.create({ data });
+            return;
+        } catch (error) {
+            lastError = error;
+            if (attempt < maxRetries) {
+                // Exponential backoff: 100, 200, 400 ms
+                const delay = 100 * Math.pow(2, attempt - 1);
+                await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+        }
+    }
+
+    // All retries failed: log to structured logger and as fatal so Sentry
+    // captures it. The audit data is included so it can be reconstructed
+    // by an operator if needed.
+    log.fatal(
+        {
+            err: lastError,
+            auditData: data,
+            message: 'Audit log write failed after retries. The action was NOT audited in DB.'
+        },
+        'AUDIT_WRITE_FAILURE'
+    );
+}
 
 export enum AuditAction {
     LOGIN = 'LOGIN',
@@ -48,22 +91,20 @@ export class AuditService {
         entityId: string,
         metadata?: Record<string, any>,
         userId?: string,
-        targetEmployeeId?: string
+        targetEmployeeId?: string,
+        ipAddress?: string,
+        userAgent?: string
     ) {
-        try {
-            await prisma.auditLog.create({
-                data: {
-                    action,
-                    entity,
-                    entityId,
-                    metadata: metadata ? JSON.stringify(metadata) : null,
-                    userId,
-                    targetEmployeeId
-                }
-            });
-        } catch (error) {
-            console.error('Error logging audit:', error);
-        }
+        await persistAuditEntry({
+            action,
+            entity,
+            entityId,
+            metadata: metadata ? JSON.stringify(metadata) : null,
+            userId,
+            targetEmployeeId,
+            ipAddress: ipAddress || null,
+            userAgent: userAgent || null
+        });
     }
 
     static async logWithContext(
@@ -78,20 +119,16 @@ export class AuditService {
             metadata?: Record<string, any>;
         }
     ) {
-        try {
-            await prisma.auditLog.create({
-                data: {
-                    action,
-                    entity,
-                    entityId,
-                    metadata: context.metadata ? JSON.stringify(context.metadata) : null,
-                    userId: context.userId,
-                    targetEmployeeId: context.targetEmployeeId
-                }
-            });
-        } catch (error) {
-            console.error('Error logging audit with context:', error);
-        }
+        await persistAuditEntry({
+            action,
+            entity,
+            entityId,
+            metadata: context.metadata ? JSON.stringify(context.metadata) : null,
+            userId: context.userId,
+            targetEmployeeId: context.targetEmployeeId,
+            ipAddress: context.ipAddress || null,
+            userAgent: context.userAgent || null
+        });
     }
 
     static async logSecurityEvent(
@@ -104,24 +141,18 @@ export class AuditService {
             metadata?: Record<string, any>;
         }
     ) {
-        try {
-            await prisma.auditLog.create({
-                data: {
-                    action,
-                    entity: AuditEntity.USER,
-                    entityId: details.userId || 'unknown',
-                    metadata: JSON.stringify({
-                        ...details.metadata,
-                        reason: details.reason,
-                        ipAddress: details.ipAddress,
-                        userAgent: details.userAgent
-                    }),
-                    userId: details.userId
-                }
-            });
-        } catch (error) {
-            console.error('Error logging security event:', error);
-        }
+        await persistAuditEntry({
+            action,
+            entity: AuditEntity.USER,
+            entityId: details.userId || 'unknown',
+            metadata: JSON.stringify({
+                ...details.metadata,
+                reason: details.reason
+            }),
+            userId: details.userId,
+            ipAddress: details.ipAddress || null,
+            userAgent: details.userAgent || null
+        });
     }
 
     static async logLoginSuccess(userId: string, ipAddress?: string, userAgent?: string) {

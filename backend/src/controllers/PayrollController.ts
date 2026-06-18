@@ -456,7 +456,7 @@ export const PayrollController = {
                 },
                 employee: {
                     name: payroll.employee.name,
-                    dni: payroll.employee.dni,
+                    dni: EncryptionService.decrypt(payroll.employee.dni) || '',
                     socialSecurityNumber: EncryptionService.decrypt(payroll.employee.socialSecurityNumber) || '',
                     jobTitle: payroll.employee.jobTitle || 'Empleado',
                     category: payroll.employee.category || undefined,
@@ -470,7 +470,7 @@ export const PayrollController = {
             });
 
             res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename=Nomina_${payroll.batch.month}_${payroll.batch.year}_${payroll.employee.dni}.pdf`);
+            res.setHeader('Content-Disposition', `attachment; filename=Nomina_${payroll.batch.month}_${payroll.batch.year}_${EncryptionService.decrypt(payroll.employee.dni) || 'unknown'}.pdf`);
             res.send(pdfBuffer);
 
         } catch (err) {

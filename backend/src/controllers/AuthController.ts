@@ -6,7 +6,7 @@ import { AuthService } from '../services/AuthService';
 import crypto from 'crypto';
 import { issueCsrfToken } from '../middlewares/csrfMiddleware';
 import { createLogger } from '../services/LoggerService';
-import { AuditService } from '../services/AuditService';
+import { AuditService, AuditAction } from '../services/AuditService';
 import { signAccessToken } from '../utils/accessTokens';
 import { recordFailedLogin, resetFailedLogin } from '../middlewares/accountLockout';
 
@@ -110,9 +110,33 @@ export const AuthController = {
                 include: { user: true }
             });
 
-            if (!storedToken || storedToken.revoked || new Date() > new Date(storedToken.expiresAt)) {
-                // Should we revoke the family if reused? For now just deny.
+            if (!storedToken || new Date() > new Date(storedToken.expiresAt)) {
                 throw new AppError('Refresh Token inválido o expirado', 401);
+            }
+
+            // Token family detection: if a revoked token is reused, it means
+            // the token was stolen. Revoke ALL tokens for this user immediately.
+            if (storedToken.revoked) {
+                log.warn({ userId: storedToken.userId, tokenId: storedToken.id }, 'Refresh token reuse detected — revoking all sessions');
+
+                await prisma.refreshToken.updateMany({
+                    where: { userId: storedToken.userId, revoked: false },
+                    data: { revoked: true }
+                });
+
+                await AuditService.logSecurityEvent(AuditAction.SECURITY_VIOLATION, {
+                    reason: 'Refresh token reuse detected — all sessions revoked',
+                    userId: storedToken.userId,
+                    ipAddress: req.ip || req.socket.remoteAddress,
+                    userAgent: req.headers['user-agent'],
+                    metadata: { tokenId: storedToken.id }
+                });
+
+                res.clearCookie('access_token', clearCookieOptions);
+                res.clearCookie('refresh_token', clearCookieOptions);
+                res.clearCookie(CSRF_COOKIE_NAME, { ...clearCookieOptions, httpOnly: false });
+
+                throw new AppError('Sesión comprometida. Todas las sesiones han sido revocadas.', 401);
             }
 
             const user = storedToken.user;

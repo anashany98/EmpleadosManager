@@ -132,7 +132,7 @@ function AppContent() {
       />
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden flex flex-col relative">
+      <main id="main-content" className="flex-1 overflow-hidden flex flex-col relative">
 
         <Header
           sidebarOpen={sidebarOpen}
@@ -207,11 +207,16 @@ import { ConfirmProvider } from './context/ConfirmContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 
 function App() {
-  return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <ConfirmProvider>
-          <NotificationProvider>
+    return (
+        <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+                <ConfirmProvider>
+                    <NotificationProvider>
+                        {/* Skip-navigation link for keyboard users.
+                            Hidden until focused (per WCAG 2.4.1). */}
+                        <a href="#main-content" className="skip-link">
+                            Saltar al contenido principal
+                        </a>
             <ErrorBoundary>
               <AppContent />
             </ErrorBoundary>

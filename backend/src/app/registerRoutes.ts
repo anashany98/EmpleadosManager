@@ -37,6 +37,8 @@ import calendarRoutes from '../routes/calendarRoutes';
 import analyticsRoutes from '../routes/analyticsRoutes';
 import performanceRoutes from '../routes/performanceRoutes';
 import lockRoutes from '../routes/lockRoutes';
+import consentRoutes from '../routes/consentRoutes';
+import meRoutes from '../routes/meRoutes';
 
 export function registerRoutes(app: Express): void {
     app.use('/api/kiosk', kioskRoutes);
@@ -78,4 +80,6 @@ export function registerRoutes(app: Express): void {
     app.use('/api/employee-project-work', protect, checkPermission('projects', 'read'), employeeProjectWorkRoutes);
     app.use('/api/performance', protect, performanceRoutes);
     app.use('/api/locks', protect, lockRoutes);
+    app.use('/api/consents', protect, consentRoutes);
+    app.use('/api/me', protect, meRoutes);
 }

@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { prisma } from '../../lib/prisma';
+import { EncryptionService } from '../EncryptionService';
 import { StorageService } from '../StorageService';
 import { InventoryService } from '../InventoryService';
 import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
@@ -62,7 +63,7 @@ export const generateTechDeviceInternal = async (employeeId: string, deviceName:
     if (!employee) throw new Error('Empleado no encontrado');
 
     const doc = new PDFDocument({ margin: 50 });
-    const fileName = `Entrega_Material_Tecnologico_${employee.dni}_${Date.now()}.pdf`;
+    const fileName = `Entrega_Material_Tecnologico_${EncryptionService.decrypt(employee.dni) || 'unknown'}_${Date.now()}.pdf`;
 
     const logoPath = getLogoPath();
     const template = await CompanyDocumentTemplateService.getTemplate('TECH_DEVICE', employee.companyId);

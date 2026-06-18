@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { prisma } from '../../lib/prisma';
+import { EncryptionService } from '../EncryptionService';
 import { StorageService } from '../StorageService';
 import { InventoryService } from '../InventoryService';
 import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
@@ -90,7 +91,7 @@ export const generateMaterialDeliveryInternal = async (
     if (!employee) throw new Error('Empleado no encontrado');
 
     const doc = new PDFDocument({ margin: 50 });
-    const fileName = `Entrega_Material_${employee.dni}_${Date.now()}.pdf`;
+    const fileName = `Entrega_Material_${EncryptionService.decrypt(employee.dni) || 'unknown'}_${Date.now()}.pdf`;
     const logoPath = getLogoPath();
     const normalizedItems = normalizeItems(items);
     const listado = normalizedItems.length > 0

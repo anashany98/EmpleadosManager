@@ -249,6 +249,25 @@ jobs:
           head: HEAD
           extra_args: --debug --only-verified
 
+      # npm audit: surface known vulnerable packages. Runs for BOTH
+      # backend and frontend. We only fail the build on HIGH or
+      # CRITICAL vulnerabilities in production dependencies
+      # (--omit=dev). Dev-time vulnerabilities are reported but
+      # non-blocking because they don't ship to the user.
+      - name: npm audit (backend production deps)
+        working-directory: backend
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: false
+
+      - name: npm audit (frontend production deps)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: false
+
+      - name: npm audit (root workspace deps)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: false
+
   # Job 6: Deploy to Coolify (only on push to main)
   deploy:
     name: Deploy to Coolify

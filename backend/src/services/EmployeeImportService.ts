@@ -1669,13 +1669,10 @@ export const EmployeeImportService = {
 
         let importedCount = 0;
         const errors: string[] = [];
-        // Track DNIs already processed in THIS import. Excel files with
-        // accidental duplicates would otherwise create the first
-        // employee and fail the second with a P2002 unique violation,
-        // surfacing as a confusing per-row error. Detecting the dup up
-        // front gives a clear message and keeps the imported count
-        // honest.
         const processedDnis = new Set<string>();
+
+        // Collect valid rows first
+        const validRows: Array<{ row: Record<string, any>; index: number }> = [];
 
         for (let index = 0; index < parsed.rows.length; index += 1) {
             const row = parsed.rows[index];
@@ -1708,127 +1705,164 @@ export const EmployeeImportService = {
                 continue;
             }
 
+            validRows.push({ row, index });
+        }
+
+        // Process in chunks of 100 rows per transaction
+        const CHUNK_SIZE = 100;
+        for (let chunkStart = 0; chunkStart < validRows.length; chunkStart += CHUNK_SIZE) {
+            const chunk = validRows.slice(chunkStart, chunkStart + CHUNK_SIZE);
+
             try {
-                const resolvedCompany = await companyResolver.resolve(getMappedString(row, currentMapping, 'companyName'));
-                const phone = getMappedString(row, currentMapping, 'phone');
-                const companyPhone = getMappedString(row, currentMapping, 'companyPhone');
-                const socialSecurityNumber = getMappedString(row, currentMapping, 'socialSecurityNumber');
-                const iban = getMappedString(row, currentMapping, 'iban');
-                const managerId = getMappedString(row, currentMapping, 'managerId');
-                const annualGrossSalary = parseMoney(getMappedRawValue(row, currentMapping, 'annualGrossSalary'));
-                const monthlyGrossSalary = parseMoney(getMappedRawValue(row, currentMapping, 'monthlyGrossSalary'));
-                const vacationAnnualQuota = parseMoney(getMappedRawValue(row, currentMapping, 'vacationAnnualQuota'));
-                const vacationCarryOver = parseMoney(getMappedRawValue(row, currentMapping, 'vacationCarryOver'));
-                const vacationImportedUsed = parseMoney(getMappedRawValue(row, currentMapping, 'vacationImportedUsed'));
-                const weeklyHours = parseWeeklyHours(getMappedRawValue(row, currentMapping, 'weeklyHours'));
-                const firstName = firstNameInput || fullName;
-                const lastName = lastNameInput || null;
-                const contactName = getMappedString(row, currentMapping, 'emergencyContactName');
-                const contactPhone = getMappedString(row, currentMapping, 'emergencyContactPhone');
-                const contactRelationship = getMappedString(row, currentMapping, 'emergencyContactRelationship');
+                await prisma.$transaction(async (tx) => {
+                    for (const { row, index } of chunk) {
+                        const rowNumber = index + 2;
+                        const dni = getMappedString(row, currentMapping, 'dni').toUpperCase();
+                        const fullNameInput = getMappedString(row, currentMapping, 'fullName');
+                        const firstNameInput = getMappedString(row, currentMapping, 'firstName');
+                        const lastNameInput = getMappedString(row, currentMapping, 'lastName');
+                        const fullName = cleanText(fullNameInput || [firstNameInput, lastNameInput].filter(Boolean).join(' '));
 
-                const employeeData: any = {
-                    dni,
-                    name: fullName,
-                    firstName,
-                    lastName,
-                    email: getMappedString(row, currentMapping, 'email') || null,
-                    phone: phone || null,
-                    companyPhone: companyPhone || null,
-                    address: getMappedString(row, currentMapping, 'address') || null,
-                    city: getMappedString(row, currentMapping, 'city') || null,
-                    postalCode: getMappedString(row, currentMapping, 'postalCode') || null,
-                    province: getMappedString(row, currentMapping, 'province') || null,
-                    country: getMappedString(row, currentMapping, 'country') || 'España',
-                    subaccount465: getMappedString(row, currentMapping, 'subaccount465') || null,
-                    socialSecurityNumber: socialSecurityNumber ? EncryptionService.encrypt(socialSecurityNumber) : null,
-                    iban: iban ? EncryptionService.encrypt(iban) : null,
-                    gender: normalizeGender(getMappedRawValue(row, currentMapping, 'gender')) ?? undefined,
-                    dniExpiration: parseDate(getMappedRawValue(row, currentMapping, 'dniExpiration')),
-                    birthDate: parseDate(getMappedRawValue(row, currentMapping, 'birthDate')),
-                    entryDate: parseDate(getMappedRawValue(row, currentMapping, 'entryDate')),
-                    callDate: parseDate(getMappedRawValue(row, currentMapping, 'callDate')),
-                    contractInterruptionDate: parseDate(getMappedRawValue(row, currentMapping, 'contractInterruptionDate')),
-                    lowDate: parseDate(getMappedRawValue(row, currentMapping, 'lowDate')),
-                    department: departmentResolver.resolve(getMappedString(row, currentMapping, 'department')) || null,
-                    category: categoryResolver.resolve(getMappedString(row, currentMapping, 'category')) || null,
-                    jobTitle: getMappedString(row, currentMapping, 'jobTitle') || null,
-                    contractType: getMappedString(row, currentMapping, 'contractType') || null,
-                    agreementType: getMappedString(row, currentMapping, 'agreementType') || null,
-                    registeredIn: getMappedString(row, currentMapping, 'registeredIn') || null,
-                    lowReason: getMappedString(row, currentMapping, 'lowReason') || null,
-                    monthlyGrossSalary,
-                    annualGrossSalary,
-                    drivingLicense: parseBool(getMappedRawValue(row, currentMapping, 'drivingLicense')) ?? undefined,
-                    drivingLicenseType: getMappedString(row, currentMapping, 'drivingLicenseType') || null,
-                    drivingLicenseExpiration: parseDate(getMappedRawValue(row, currentMapping, 'drivingLicenseExpiration')),
-                    companyId: resolvedCompany.companyId,
-                    managerId: managerId && isUuid(managerId) ? managerId : null,
-                    workingDayType: normalizeWorkingDayType(getMappedRawValue(row, currentMapping, 'workingDayType')),
-                    weeklyHours,
-                    privateNotes: getMappedString(row, currentMapping, 'privateNotes') || null,
-                    active: true
-                };
+                        try {
+                            const resolvedCompany = await companyResolver.resolve(getMappedString(row, currentMapping, 'companyName'));
+                            const phone = getMappedString(row, currentMapping, 'phone');
+                            const companyPhone = getMappedString(row, currentMapping, 'companyPhone');
+                            const socialSecurityNumber = getMappedString(row, currentMapping, 'socialSecurityNumber');
+                            const iban = getMappedString(row, currentMapping, 'iban');
+                            const managerId = getMappedString(row, currentMapping, 'managerId');
+                            const annualGrossSalary = parseMoney(getMappedRawValue(row, currentMapping, 'annualGrossSalary'));
+                            const monthlyGrossSalary = parseMoney(getMappedRawValue(row, currentMapping, 'monthlyGrossSalary'));
+                            const vacationAnnualQuota = parseMoney(getMappedRawValue(row, currentMapping, 'vacationAnnualQuota'));
+                            const vacationCarryOver = parseMoney(getMappedRawValue(row, currentMapping, 'vacationCarryOver'));
+                            const vacationImportedUsed = parseMoney(getMappedRawValue(row, currentMapping, 'vacationImportedUsed'));
+                            const weeklyHours = parseWeeklyHours(getMappedRawValue(row, currentMapping, 'weeklyHours'));
+                            const firstName = firstNameInput || fullName;
+                            const lastName = lastNameInput || null;
+                            const contactName = getMappedString(row, currentMapping, 'emergencyContactName');
+                            const contactPhone = getMappedString(row, currentMapping, 'emergencyContactPhone');
+                            const contactRelationship = getMappedString(row, currentMapping, 'emergencyContactRelationship');
 
-                if (contactName || contactPhone) {
-                    // The Prisma relation `emergencyContacts` requires a
-                    // nested write. `deleteMany` is only valid under an
-                    // `update` operation, not a `create`, so we handle
-                    // both paths separately below instead of embedding
-                    // the contact inside `employeeData`.
-                    (employeeData as any).emergencyContacts = {
-                        create: [{
-                            name: contactName || 'Contacto',
-                            phone: contactPhone || '',
-                            relationship: contactRelationship || null
-                        }]
-                    };
-                }
+                            const employeeData: any = {
+                                dni,
+                                name: fullName,
+                                firstName,
+                                lastName,
+                                email: getMappedString(row, currentMapping, 'email') || null,
+                                phone: phone || null,
+                                companyPhone: companyPhone || null,
+                                address: getMappedString(row, currentMapping, 'address') || null,
+                                city: getMappedString(row, currentMapping, 'city') || null,
+                                postalCode: getMappedString(row, currentMapping, 'postalCode') || null,
+                                province: getMappedString(row, currentMapping, 'province') || null,
+                                country: getMappedString(row, currentMapping, 'country') || 'España',
+                                subaccount465: getMappedString(row, currentMapping, 'subaccount465') || null,
+                                socialSecurityNumber: socialSecurityNumber ? EncryptionService.encrypt(socialSecurityNumber) : null,
+                                iban: iban ? EncryptionService.encrypt(iban) : null,
+                                gender: normalizeGender(getMappedRawValue(row, currentMapping, 'gender')) ?? undefined,
+                                dniExpiration: parseDate(getMappedRawValue(row, currentMapping, 'dniExpiration')),
+                                birthDate: parseDate(getMappedRawValue(row, currentMapping, 'birthDate')),
+                                entryDate: parseDate(getMappedRawValue(row, currentMapping, 'entryDate')),
+                                callDate: parseDate(getMappedRawValue(row, currentMapping, 'callDate')),
+                                contractInterruptionDate: parseDate(getMappedRawValue(row, currentMapping, 'contractInterruptionDate')),
+                                lowDate: parseDate(getMappedRawValue(row, currentMapping, 'lowDate')),
+                                department: departmentResolver.resolve(getMappedString(row, currentMapping, 'department')) || null,
+                                category: categoryResolver.resolve(getMappedString(row, currentMapping, 'category')) || null,
+                                jobTitle: getMappedString(row, currentMapping, 'jobTitle') || null,
+                                contractType: getMappedString(row, currentMapping, 'contractType') || null,
+                                agreementType: getMappedString(row, currentMapping, 'agreementType') || null,
+                                registeredIn: getMappedString(row, currentMapping, 'registeredIn') || null,
+                                lowReason: getMappedString(row, currentMapping, 'lowReason') || null,
+                                monthlyGrossSalary,
+                                annualGrossSalary,
+                                drivingLicense: parseBool(getMappedRawValue(row, currentMapping, 'drivingLicense')) ?? undefined,
+                                drivingLicenseType: getMappedString(row, currentMapping, 'drivingLicenseType') || null,
+                                drivingLicenseExpiration: parseDate(getMappedRawValue(row, currentMapping, 'drivingLicenseExpiration')),
+                                companyId: resolvedCompany.companyId,
+                                managerId: managerId && isUuid(managerId) ? managerId : null,
+                                workingDayType: normalizeWorkingDayType(getMappedRawValue(row, currentMapping, 'workingDayType')),
+                                weeklyHours,
+                                privateNotes: getMappedString(row, currentMapping, 'privateNotes') || null,
+                                active: true
+                            };
 
-                const existing = await prisma.employee.findUnique({ where: { dni } });
+                            if (contactName || contactPhone) {
+                                (employeeData as any).emergencyContacts = {
+                                    create: [{
+                                        name: contactName || 'Contacto',
+                                        phone: contactPhone || '',
+                                        relationship: contactRelationship || null
+                                    }]
+                                };
+                            }
 
-                if (existing) {
-                    // For the update path, first delete any existing
-                    // emergency contacts so we don't accumulate
-                    // duplicates on repeated imports, then attach the
-                    // nested create.
-                    await prisma.emergencyContact.deleteMany({ where: { employeeId: existing.id } });
-                    const updated = await withRetry(() => prisma.employee.update({
-                        where: { id: existing.id },
-                        data: {
-                            ...employeeData,
-                            emergencyContacts: contactName || contactPhone ? {
-                                create: [{
-                                    name: contactName || 'Contacto',
-                                    phone: contactPhone || '',
-                                    relationship: contactRelationship || null
-                                }]
-                            } : undefined
+                            const existing = await tx.employee.findUnique({ where: { dni } });
+
+                            if (existing) {
+                                await tx.emergencyContact.deleteMany({ where: { employeeId: existing.id } });
+                                const updated = await tx.employee.update({
+                                    where: { id: existing.id },
+                                    data: {
+                                        ...employeeData,
+                                        emergencyContacts: contactName || contactPhone ? {
+                                            create: [{
+                                                name: contactName || 'Contacto',
+                                                phone: contactPhone || '',
+                                                relationship: contactRelationship || null
+                                            }]
+                                        } : undefined
+                                    }
+                                });
+                                await upsertEmployeeVacationBalance(updated, importYear, {
+                                    annualQuotaDays: vacationAnnualQuota,
+                                    carriedOverDays: vacationCarryOver,
+                                    importedUsedDays: vacationImportedUsed
+                                }, tx);
+                                await tx.auditLog.create({
+                                    data: {
+                                        action: 'UPDATE',
+                                        entity: 'EMPLOYEE',
+                                        entityId: existing.id,
+                                        metadata: JSON.stringify({ info: 'Import Bulk Update', name: fullName }),
+                                        userId: options.auditUserId
+                                    }
+                                });
+                            } else {
+                                const created = await tx.employee.create({
+                                    data: employeeData
+                                });
+                                await upsertEmployeeVacationBalance(created, importYear, {
+                                    annualQuotaDays: vacationAnnualQuota,
+                                    carriedOverDays: vacationCarryOver,
+                                    importedUsedDays: vacationImportedUsed
+                                }, tx);
+                                await tx.auditLog.create({
+                                    data: {
+                                        action: 'CREATE',
+                                        entity: 'EMPLOYEE',
+                                        entityId: created.id,
+                                        metadata: JSON.stringify({ info: 'Import Bulk Create', name: fullName }),
+                                        userId: options.auditUserId
+                                    }
+                                });
+                            }
+
+                            importedCount += 1;
+                        } catch (error: any) {
+                            const message = error?.message || String(error);
+                            log.error({ rowNumber, error: message }, 'Error importing employee row');
+                            errors.push(`Fila ${rowNumber} (${dni}): ${message}`);
+                            // Re-throw to abort the entire chunk transaction
+                            throw error;
                         }
-                    }), { operationName: 'importUpdateEmployee' });
-                    await upsertEmployeeVacationBalance(updated, importYear, {
-                        annualQuotaDays: vacationAnnualQuota,
-                        carriedOverDays: vacationCarryOver,
-                        importedUsedDays: vacationImportedUsed
-                    });
-                    await AuditService.log('UPDATE', 'EMPLOYEE', existing.id, { info: 'Import Bulk Update', name: fullName });
-                } else {
-                    const created = await withRetry(() => prisma.employee.create({
-                        data: employeeData
-                    }), { operationName: 'importCreateEmployee' });
-                    await upsertEmployeeVacationBalance(created, importYear, {
-                        annualQuotaDays: vacationAnnualQuota,
-                        carriedOverDays: vacationCarryOver,
-                        importedUsedDays: vacationImportedUsed
-                    });
-                    await AuditService.log('CREATE', 'EMPLOYEE', created.id, { info: 'Import Bulk Create', name: fullName });
-                }
-
-                importedCount += 1;
-            } catch (error: any) {
-                const message = error?.message || String(error);
-                log.error({ rowNumber, error: message, stack: error?.stack }, 'Error importing employee row');
-                errors.push(`Fila ${rowNumber} (${dni}): ${message}`);
+                    }
+                }, {
+                    maxWait: 30000,
+                    timeout: 60000
+                });
+            } catch (transactionError: any) {
+                // If the transaction fails, log it and continue with next chunk
+                log.error({ chunkStart, error: transactionError.message }, 'Chunk transaction failed, continuing with next chunk');
+                // The individual row errors were already added above
             }
         }
 

@@ -1,4 +1,5 @@
 import * as ExcelJS from 'exceljs';
+import { EncryptionService } from './EncryptionService';
 
 type Accent = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
 
@@ -373,7 +374,7 @@ export class ExcelService {
             ],
             data.map((entry) => ({
                 employee: entry.employee?.name || 'N/A',
-                dni: entry.employee?.dni || '-',
+                dni: EncryptionService.decrypt(entry.employee?.dni) || '-',
                 department: entry.employee?.department || 'Sin asignar',
                 date: formatDate(entry.timestamp),
                 time: formatTime(entry.timestamp),
@@ -458,7 +459,7 @@ export class ExcelService {
             ],
             data.map((item) => ({
                 employee: item.employeeName,
-                dni: item.employeeDni || '-',
+                dni: EncryptionService.decrypt(item.employeeDni) || '-',
                 department: item.department || 'Sin asignar',
                 date: formatDate(item.date),
                 hours: safeNumber(item.totalHours),
@@ -541,7 +542,7 @@ export class ExcelService {
             ],
             data.map((entry) => ({
                 employee: entry.employee?.name || 'N/A',
-                dni: entry.employee?.dni || '-',
+                dni: EncryptionService.decrypt(entry.employee?.dni) || '-',
                 department: entry.employee?.department || 'Sin asignar',
                 date: formatDate(entry.date),
                 hours: safeNumber(entry.hours),
@@ -802,7 +803,7 @@ export class ExcelService {
             ],
             data.map((item) => ({
                 employee: item.employee?.name || 'N/A',
-                dni: item.employee?.dni || '-',
+                dni: EncryptionService.decrypt(item.employee?.dni) || '-',
                 department: item.employee?.department || 'Sin asignar',
                 startDate: formatDate(item.startDate),
                 endDate: formatDate(item.endDate),

@@ -78,7 +78,7 @@ export const UserController = {
             }
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+         
         const { password: _, ...userWithoutPassword } = user;
         return ApiResponse.success(res, userWithoutPassword, 'Usuario creado correctamente', 201);
     },
@@ -108,7 +108,7 @@ export const UserController = {
             data
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+         
         const { password: _, ...userWithoutPassword } = user;
         return ApiResponse.success(res, userWithoutPassword, 'Usuario actualizado correctamente');
     },
@@ -169,7 +169,7 @@ export const UserController = {
             }
         });
 
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+         
         const { password: _, ...userWithoutPassword } = user;
         return ApiResponse.success(res, userWithoutPassword, isActive ? 'Usuario habilitado' : 'Usuario deshabilitado');
     }

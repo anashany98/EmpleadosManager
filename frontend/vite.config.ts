@@ -49,6 +49,37 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
+    // Strip `console.log/info/debug` (NOT `console.warn` or
+    // `console.error` — those are kept because they are typically
+    // used for production error reporting). This is a defense-in-depth
+    // measure: even if a developer leaves a `console.log` in the
+    // codebase, it will not leak to end users in the production
+    // bundle.
+    //
+    // esbuild's `drop: ['console']` removes ALL console calls, so
+    // we use a small esbuild plugin instead to keep `console.warn`
+    // and `console.error` intact.
+    esbuild: {
+      plugins: process.env.NODE_ENV === 'production' ? [
+        {
+          name: 'strip-debug-console',
+          setup(build) {
+            build.onLoad({ filter: /\.(ts|tsx|js|jsx)$/ }, async (args) => {
+              const fs = await import('node:fs/promises');
+              const source = await fs.readFile(args.path, 'utf8');
+              // Remove only `console.log(...)` and `console.debug(...)` calls.
+              // We deliberately keep `console.warn` and `console.error` for
+              // production error visibility.
+              const stripped = source
+                .replace(/console\.log\s*\(/g, '/* eslint-disable-next-line no-console */ void 0(')
+                .replace(/console\.debug\s*\(/g, '/* eslint-disable-next-line no-console */ void 0(')
+                .replace(/console\.info\s*\(/g, '/* eslint-disable-next-line no-console */ void 0(');
+              return { contents: stripped, loader: 'tsx' };
+            });
+          }
+        }
+      ] : []
+    },
     rollupOptions: {
       output: {
         entryFileNames: `assets/[name]-[hash].js`,

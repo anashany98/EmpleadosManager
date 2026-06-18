@@ -39,15 +39,32 @@ function buildRedisConfig(): string | RedisOptions {
 }
 
 const redisConfig = buildRedisConfig();
-export const redis = typeof redisConfig === 'string'
+let redisInstance: any;
+if (process.env.REDIS_MOCK === 'true') {
+  // Simple in‑memory mock with minimal API used in the codebase
+  class MockRedis {
+    private store = new Map<string, any>();
+    async set(key: string, value: any, _mode?: string, _ttl?: number) { this.store.set(key, value); return 'OK'; }
+    async get(key: string) { return this.store.get(key) ?? null; }
+    multi() { return this; }
+    async exec() { return []; }
+    async ping() { return 'PONG'; }
+    on(_event: string, _handler: (...args: any[]) => void) { /* no‑op */ }
+  }
+  redisInstance = new MockRedis();
+  console.info('Using MockRedis for tests');
+} else {
+  redisInstance = typeof redisConfig === 'string'
     ? new IORedis(redisConfig, { maxRetriesPerRequest: null })
     : new IORedis(redisConfig);
+}
+export const redis = redisInstance;
 
 redis.on('connect', () => {
     log.info('Redis client connected successfully');
 });
 
-redis.on('error', (err) => {
+redis.on('error', (err: unknown) => {
     log.error({ err }, 'Redis client connection error');
 });
 

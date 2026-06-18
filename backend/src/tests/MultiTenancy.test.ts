@@ -1,99 +1,58 @@
-// Move imports that depend on StorageService after the mock or mock them first
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response } from 'express';
 
-// Mock Services BEFORE importing controllers
 vi.mock('../services/StorageService', () => ({
-    StorageService: {
-        saveBuffer: vi.fn(),
-        getSignedDownloadUrl: vi.fn(),
-        deleteFile: vi.fn()
-    }
+    StorageService: { saveBuffer: vi.fn(), getSignedDownloadUrl: vi.fn(), deleteFile: vi.fn() }
 }));
-
 vi.mock('../services/EmailService', () => ({
-    EmailService: {
-        sendMail: vi.fn()
-    }
+    EmailService: { sendMail: vi.fn() }
 }));
-
 vi.mock('../services/NotificationService', () => ({
-    NotificationService: {
-        notifyAdmins: vi.fn(),
-        create: vi.fn()
-    }
+    NotificationService: { notifyAdmins: vi.fn(), create: vi.fn() }
 }));
-
 vi.mock('../services/AnomalyService', () => ({
-    AnomalyService: {
-        detectVacation: vi.fn(),
-        detectExpense: vi.fn()
-    }
+    AnomalyService: { detectVacation: vi.fn(), detectExpense: vi.fn() }
 }));
-
 vi.mock('../services/EncryptionService', () => ({
     EncryptionService: {
         encrypt: vi.fn((val) => val ? `encrypted_${val}` : null),
         decrypt: vi.fn((val) => val ? val.replace('encrypted_', '') : null)
     }
 }));
-
 vi.mock('../services/AuditService', () => ({
-    AuditService: {
-        log: vi.fn()
-    }
+    AuditService: { log: vi.fn(), logSecurityEvent: vi.fn() }
 }));
 
 import { EmployeeController } from '../controllers/EmployeeController';
-import { VacationController } from '../controllers/VacationController';
-import { ExpenseController } from '../controllers/ExpenseController';
-import { TimeEntryController } from '../controllers/TimeEntryController';
 import { prisma } from '../lib/prisma';
 
-// Mock Prisma
 vi.mock('../lib/prisma', () => ({
     prisma: (() => {
-        const prismaMock: any = {
-        employee: {
-            findMany: vi.fn(),
-            count: vi.fn(),
-            create: vi.fn(),
-            update: vi.fn(),
-            findUnique: vi.fn(),
-            findFirst: vi.fn(),
-            delete: vi.fn(),
-        },
-        vacation: {
-            findMany: vi.fn(),
-            count: vi.fn(),
-        },
-        expense: {
-            findMany: vi.fn(),
-            count: vi.fn(),
-        },
-        employeeVacationBalance: {
-            findUnique: vi.fn(),
-            upsert: vi.fn(),
-        },
-        timeEntry: {
-            create: vi.fn(),
-            findFirst: vi.fn()
-        }
+        const mock: any = {
+            employee: {
+                findMany: vi.fn(),
+                count: vi.fn(),
+                create: vi.fn(),
+                update: vi.fn(),
+                findUnique: vi.fn(),
+                findFirst: vi.fn(),
+                delete: vi.fn(),
+            },
+            vacation: { findMany: vi.fn(), count: vi.fn() },
+            expense: { findMany: vi.fn(), count: vi.fn() },
+            employeeVacationBalance: { findUnique: vi.fn(), upsert: vi.fn() },
+            auditLog: { create: vi.fn(), findMany: vi.fn() },
         };
-        prismaMock.$transaction = vi.fn(async (callback: any) => callback(prismaMock));
-        return prismaMock;
+        mock.$transaction = vi.fn(async (cb: any) => cb(mock));
+        return mock;
     })()
 }));
 
-// Helper to create mock request/response
-const mockRequest = (user: any, query: any = {}) => ({
-    user,
-    query,
-    params: {},
-    body: {}
+const mockReq = (user: any, params: any = {}, body: any = {}) => ({
+    user, params, body, query: {}
 }) as unknown as Request;
 
-const mockResponse = () => {
+const mockRes = () => {
     const res: Partial<Response> = {
         status: vi.fn().mockReturnThis(),
         json: vi.fn().mockReturnThis(),
@@ -101,159 +60,140 @@ const mockResponse = () => {
     return res as Response;
 };
 
-describe('Multi-tenancy Security', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
+describe('Multi-tenant isolation (extended)', () => {
+    beforeEach(() => vi.clearAllMocks());
 
-    describe('EmployeeController.create', () => {
-        it('should allow Admin to create employee in their OWN company', async () => {
-            const user = { id: 'u1', role: 'admin', companyId: 'company-A' };
-            const req = mockRequest(user);
-            req.body = {
-                dni: '12345678A',
-                companyId: 'company-A', // Matching company
-                name: 'New Employee'
-            };
-            const res = mockResponse();
+    describe('EmployeeController.update', () => {
+        it('should BLOCK cross-company update via canManageEmployee', async () => {
+            const user = { id: 'u1', role: 'admin', companyId: 'company-A', employeeId: null, permissions: {} };
+            const req = mockReq(user, { id: 'emp-B' }, { name: 'Hacked' });
+            const res = mockRes();
 
-            (prisma.employee.findUnique as any).mockResolvedValue(null); // No dup DNI/Subaccount
-            (prisma.employee.create as any).mockResolvedValue({ id: 'new-1', ...req.body });
-            (prisma.employeeVacationBalance.findUnique as any).mockResolvedValue(null);
-            (prisma.employeeVacationBalance.upsert as any).mockResolvedValue({ id: 'balance-1' });
+            // Target employee belongs to company-B
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-B',
+                companyId: 'company-B'
+            });
 
-            await EmployeeController.create(req, res);
+            await EmployeeController.update(req, res);
 
+            expect(res.status).toHaveBeenCalledWith(403);
+        });
 
-            // Verify success response wrapper: { success, message, data: { id: 'new-1' } }
+        it('should ALLOW same-company update', async () => {
+            const user = { id: 'u1', role: 'admin', companyId: 'company-A', employeeId: null, permissions: {} };
+            const req = mockReq(user, { id: 'emp-A' }, { name: 'Updated' });
+            const res = mockRes();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-A',
+                companyId: 'company-A',
+                name: 'Old Name',
+                firstName: 'Old',
+                lastName: 'Name'
+            });
+            (prisma.employee.update as any).mockResolvedValue({
+                id: 'emp-A',
+                name: 'Updated',
+                companyId: 'company-A'
+            });
+
+            await EmployeeController.update(req, res);
+
             expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-                success: true,
-                data: expect.objectContaining({
-                    id: 'new-1'
-                })
+                success: true
             }));
-
-            // Verify companyId enforcement manually
-            const createCalls = (prisma.employee.create as any).mock.calls;
-            expect(createCalls.length).toBe(1);
-            const createArg = createCalls[0][0];
-
-            // Check critical fields
-            expect(createArg.data.companyId).toBe('company-A');
-            expect(createArg.data.dni).toBe('12345678A');
         });
 
-        it('should BLOCK Admin from creating employee in ANOTHER company', async () => {
-            const user = { id: 'u1', role: 'admin', companyId: 'company-A' };
-            const req = mockRequest(user);
-            req.body = {
-                dni: '12345678B',
-                companyId: 'company-B', // Different company
-                name: 'Intruder'
-            };
-            const res = mockResponse();
+        it('should ALLOW self-edit for own employee record', async () => {
+            const user = { id: 'u1', role: 'employee', companyId: 'company-A', employeeId: 'emp-A', permissions: {} };
+            const req = mockReq(user, { id: 'emp-A' }, { phone: '600123456' });
+            const res = mockRes();
 
-            await EmployeeController.create(req, res);
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-A',
+                companyId: 'company-A'
+            });
+            (prisma.employee.update as any).mockResolvedValue({
+                id: 'emp-A',
+                phone: '600123456'
+            });
+
+            await EmployeeController.update(req, res);
+
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true
+            }));
+        });
+
+        it('should BLOCK self-edit from changing forbidden fields', async () => {
+            const user = { id: 'u1', role: 'employee', companyId: 'company-A', employeeId: 'emp-A', permissions: {} };
+            const req = mockReq(user, { id: 'emp-A' }, { salary: 99999, phone: '600123456' });
+            const res = mockRes();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-A',
+                companyId: 'company-A'
+            });
+
+            await EmployeeController.update(req, res);
+
+            // Should reject because 'salary' is not in SELF_EDITABLE_EMPLOYEE_FIELDS
+            expect(res.status).toHaveBeenCalledWith(403);
+        });
+    });
+
+    describe('EmployeeController.delete', () => {
+        it('should BLOCK cross-company delete', async () => {
+            const user = { id: 'u1', role: 'admin', companyId: 'company-A' };
+            const req = mockReq(user, { id: 'emp-B' });
+            const res = mockRes();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-B',
+                companyId: 'company-B',
+                name: 'Target'
+            });
+
+            await EmployeeController.delete(req, res);
 
             expect(res.status).toHaveBeenCalledWith(403);
         });
     });
 
-    describe('EmployeeController.getAll', () => {
-        it('should filter employees by companyId for standard admins', async () => {
-            const user = { id: 'u1', role: 'admin', companyId: 'company-A' };
-            const req = mockRequest(user);
-            const res = mockResponse();
+    describe('EmployeeController.getById', () => {
+        it('should BLOCK cross-company read', async () => {
+            const user = { id: 'u1', role: 'admin', companyId: 'company-A', employeeId: null, permissions: {} };
+            const req = mockReq(user, { id: 'emp-B' });
+            const res = mockRes();
 
-            (prisma.employee.findMany as any).mockResolvedValue([]);
-            (prisma.employee.count as any).mockResolvedValue(0);
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-B',
+                companyId: 'company-B'
+            });
 
-            await EmployeeController.getAll(req, res);
-
-            // Verify that companyId was added to the prisma query
-            expect(prisma.employee.findMany).toHaveBeenCalledWith(expect.objectContaining({
-                where: expect.objectContaining({
-                    companyId: 'company-A'
-                })
-            }));
-        });
-
-        it('should NOT filter by companyId for Super Admins (no companyId)', async () => {
-            const user = { id: 'u2', role: 'admin', companyId: null }; // Simulating superadmin without company
-            const req = mockRequest(user);
-            const res = mockResponse();
-
-            (prisma.employee.findMany as any).mockResolvedValue([]);
-            (prisma.employee.count as any).mockResolvedValue(0);
-
-            await EmployeeController.getAll(req, res);
-
-            // Verify that companyId was NOT added to the prisma query
-            expect(prisma.employee.findMany).toHaveBeenCalledWith(expect.objectContaining({
-                where: expect.not.objectContaining({
-                    companyId: expect.anything()
-                })
-            }));
-        });
-    });
-
-    describe('VacationController.getAll', () => {
-        it('should filter vacations by employee companyId', async () => {
-            const user = { id: 'u1', role: 'admin', companyId: 'company-B' };
-            const req = mockRequest(user);
-            const res = mockResponse();
-
-            (prisma.vacation.findMany as any).mockResolvedValue([]);
-
-            await VacationController.getAll(req, res);
-
-            // Verify that the query filters employees by companyId
-            expect(prisma.vacation.findMany).toHaveBeenCalledWith(expect.objectContaining({
-                where: expect.objectContaining({
-                    employee: {
-                        companyId: 'company-B'
-                    }
-                })
-            }));
-        });
-    });
-
-    describe('ExpenseController.getAll', () => {
-        it('should filter expenses by employee companyId', async () => {
-            const user = { id: 'u1', role: 'admin', companyId: 'company-C' };
-            const req = mockRequest(user);
-            const res = mockResponse();
-
-            (prisma.expense.findMany as any).mockResolvedValue([]);
-
-            await ExpenseController.getAll(req, res);
-
-            expect(prisma.expense.findMany).toHaveBeenCalledWith(expect.objectContaining({
-                where: expect.objectContaining({
-                    employee: {
-                        companyId: 'company-C'
-                    }
-                })
-            }));
-        });
-    });
-    describe('TimeEntryController.createManual', () => {
-        it('should BLOCK Admin from creating time entry for employee in ANOTHER company', async () => {
-            const user = { id: 'u1', role: 'admin', companyId: 'company-A' };
-            const req = mockRequest(user);
-            req.body = {
-                employeeId: 'emp-B', // Belongs to Company B
-                type: 'IN',
-                timestamp: new Date()
-            };
-            const res = mockResponse();
-
-            // Mock employee lookup to return Company B
-            (prisma.employee.findUnique as any).mockResolvedValue({ id: 'emp-B', companyId: 'company-B' });
-
-            await TimeEntryController.createManual(req, res);
+            await EmployeeController.getById(req, res);
 
             expect(res.status).toHaveBeenCalledWith(403);
+        });
+
+        it('should ALLOW global admin to read any employee', async () => {
+            const user = { id: 'u1', role: 'admin', companyId: null, employeeId: null, permissions: {} };
+            const req = mockReq(user, { id: 'emp-B' });
+            const res = mockRes();
+
+            (prisma.employee.findUnique as any).mockResolvedValue({
+                id: 'emp-B',
+                companyId: 'company-B',
+                name: 'Employee B',
+                dni: 'encrypted_12345678A'
+            });
+
+            await EmployeeController.getById(req, res);
+
+            expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+                success: true
+            }));
         });
     });
 });

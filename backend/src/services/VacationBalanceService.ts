@@ -235,7 +235,8 @@ async function getVacationBalanceState(
                     endDate: true,
                     status: true,
                     type: true
-                }
+                },
+                take: 1000
             })
         ]);
 
@@ -356,31 +357,40 @@ export async function materializeVacationBalancesForYear(
     tx?: Prisma.TransactionClient
 ): Promise<{ year: number; processed: number; created: number; skipped: number }> {
     const db = tx || prisma;
-    const employees = await db.employee.findMany({
-        where: {
-            active: true
-        },
-        select: {
-            id: true,
-            entryDate: true,
-            createdAt: true
-        }
-    });
-
+    let processed = 0;
     let created = 0;
+    let cursor: string | undefined;
 
-    for (const employee of employees) {
-        const result = await materializeEmployeeVacationBalance(employee, year, tx);
-        if (result.created) {
-            created += 1;
+    do {
+        const batch = await db.employee.findMany({
+            where: {
+                active: true
+            },
+            select: {
+                id: true,
+                entryDate: true,
+                createdAt: true
+            },
+            take: 500,
+            ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {})
+        });
+
+        for (const employee of batch) {
+            const result = await materializeEmployeeVacationBalance(employee, year, tx);
+            if (result.created) {
+                created += 1;
+            }
+            processed += 1;
         }
-    }
+
+        cursor = batch.length === 500 ? batch[batch.length - 1].id : undefined;
+    } while (cursor);
 
     return {
         year,
-        processed: employees.length,
+        processed,
         created,
-        skipped: employees.length - created
+        skipped: processed - created
     };
 }
 

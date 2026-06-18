@@ -185,7 +185,7 @@ export const AnomalyService = {
                 _count: true
             });
 
-            const avg = stats._avg.amount || 0;
+            const avg = stats._avg.amount ? stats._avg.amount.toNumber() : 0;
             const count = stats._count || 0;
             const threshold = count >= 3 ? Math.max(100, avg * 2) : 500;
 

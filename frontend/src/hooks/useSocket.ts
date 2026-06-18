@@ -12,23 +12,24 @@ export function useSocket() {
             return;
         }
 
-        const legacyToken = import.meta.env.DEV
-            ? sessionStorage.getItem('token') || localStorage.getItem('token')
-            : undefined;
-
+        // SECURITY: Auth is handled via the HttpOnly `access_token` cookie
+        // automatically attached by the browser through `withCredentials`.
+        // We do NOT read any token from localStorage / sessionStorage. The
+        // server-side socket auth handler reads the cookie from the upgrade
+        // request and validates the JWT.
         socketInstance = io(window.location.origin, {
-            auth: legacyToken ? { token: legacyToken } : undefined,
             withCredentials: true,
             transports: ['websocket', 'polling'],
             reconnection: true,
             reconnectionAttempts: 5,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
+            pingTimeout: 60000,
+            pingInterval: 25000,
         });
 
         setSocket(socketInstance);
         // Singleton socket - do not disconnect on unmount
-        // Production auth uses the HttpOnly access_token cookie via withCredentials.
         return () => {
             // Socket instance persists globally for shared lock state.
         };

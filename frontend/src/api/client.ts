@@ -195,7 +195,13 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
                     const text = await res.text();
                     try {
                         const json = JSON.parse(text);
+                        // Unified error shape: { success: false, message, errors? }
+                        // Also handle legacy { status: "error", message, errors } from older endpoints
                         errMsg = json.message || text;
+                        if (json.errors && Array.isArray(json.errors) && json.errors.length > 0) {
+                            const first = json.errors[0];
+                            if (first?.message) errMsg = `${errMsg}: ${first.message}`;
+                        }
                     } catch { errMsg = text; }
                 } catch {
                         // Ignore parse errors, use text value

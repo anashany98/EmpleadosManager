@@ -1,6 +1,7 @@
 ﻿import { PrismaClient } from '@prisma/client';
 import { createLogger } from './LoggerService';
-import { queueService, connection as redisConnection } from './QueueService';
+import { queueService } from './QueueService';
+import { redis as redisConnection } from '../config/redis';
 import fs from 'fs';
 import path from 'path';
 

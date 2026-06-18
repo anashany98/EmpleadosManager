@@ -7,7 +7,6 @@ interface EmployeeDetailHeaderProps {
     canManageLifecycle: boolean;
     generatingAccess: boolean;
     onGenerateAccess: () => void;
-    onOpenFaceEnroll: () => void;
     onOpenOnboarding: () => void;
     onOpenOffboarding: () => void;
     onEdit: () => void;
@@ -19,7 +18,6 @@ export function EmployeeDetailHeader({
     canManageLifecycle,
     generatingAccess,
     onGenerateAccess,
-    onOpenFaceEnroll,
     onOpenOnboarding,
     onOpenOffboarding,
     onEdit

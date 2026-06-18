@@ -1,6 +1,7 @@
 import { prisma } from '../../lib/prisma';
 import { CacheService } from '../CacheService';
 import { CacheKeys } from '../../utils/cacheKeys';
+import { EncryptionService } from '../EncryptionService';
 
 // Cache TTL in seconds - 10 minutes since cost data is relatively stable
 const COST_CACHE_TTL = 600;
@@ -66,7 +67,7 @@ export class CostReportService {
 
             return {
                 name: emp?.name || 'Desconocido',
-                dni: emp?.dni || '-',
+                dni: EncryptionService.decrypt(emp?.dni) || '-',
                 department: emp?.department || '-',
                 bruto,
                 ssEmpresa,

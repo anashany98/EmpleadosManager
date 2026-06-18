@@ -83,7 +83,8 @@ export function getCompanyFilter(user: AuthUser | null | undefined): string | un
  * company of a target employee (looked up from a route param).
  * Use in routes that operate on employee data: /api/employees/:id/*
  */
-export const requireEmployeeCompanyAccess = (paramName: string = 'id') => {
+// eslint-disable-next-line arrow-body-style
+export const requireEmployeeCompanyAccess = (paramName: string = 'id'): ((req: Request, res: Response, next: NextFunction) => Promise<void>) => {
     return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
         try {
             const user = (req as AuthenticatedRequest).user;

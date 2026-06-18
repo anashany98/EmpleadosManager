@@ -21,10 +21,6 @@ vi.mock('../contexts/AuthContext', () => ({
     })
 }));
 
-vi.mock('../components/FaceEnrollModal', () => ({
-    FaceEnrollModal: () => null
-}));
-
 vi.mock('../components/OnboardingWizard', () => ({
     default: () => null
 }));

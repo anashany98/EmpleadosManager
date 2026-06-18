@@ -1,175 +1,92 @@
 import type { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { TimeEntryIdempotencyService } from '../services/TimeEntryIdempotencyService';
+import { RedisRateLimiter } from '../services/RedisRateLimiter';
 
-const FACE_MATCH_THRESHOLD = 0.5;
-const CACHE_TTL_MS = 5 * 60 * 1000;
-const PIN_ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
+const PIN_ATTEMPT_WINDOW_SECONDS = 15 * 60; // 15 minutes
 const PIN_ATTEMPT_LIMIT = 5;
-const CLOCK_REQUEST_TTL_MS = 15 * 60 * 1000;
-
-type CachedDescriptor = {
-    id: string;
-    name: string | null;
-    jobTitle: string | null;
-    faceDescriptor: number[];
-};
-
-let cachedDescriptors: CachedDescriptor[] | null = null;
-let lastCacheUpdate = 0;
-
-const pinAttempts = new Map<string, { count: number; expiresAt: number }>();
-const processedClockRequests = new Map<string, { entryId: string; expiresAt: number }>();
-
-async function getFaceDescriptors() {
-    const now = Date.now();
-    if (cachedDescriptors && now - lastCacheUpdate < CACHE_TTL_MS) {
-        return cachedDescriptors;
-    }
-
-    const employees = await prisma.employee.findMany({
-        where: {
-            active: true,
-            faceDescriptor: { not: Prisma.DbNull }
-        },
-        select: {
-            id: true,
-            name: true,
-            jobTitle: true,
-            faceDescriptor: true
-        }
-    });
-
-    cachedDescriptors = employees.map((employee) => ({
-        id: employee.id,
-        name: employee.name,
-        jobTitle: employee.jobTitle,
-        faceDescriptor: employee.faceDescriptor as unknown as number[]
-    }));
-    lastCacheUpdate = now;
-
-    return cachedDescriptors;
-}
-
-function getEuclideanDistance(face1: number[], face2: number[]): number {
-    if (face1.length !== face2.length) {
-        return 1;
-    }
-
-    return Math.sqrt(
-        face1
-            .map((value, index) => value - face2[index])
-            .reduce((sum, difference) => sum + difference * difference, 0)
-    );
-}
-
-function cleanupExpiringMaps(): void {
-    const now = Date.now();
-
-    pinAttempts.forEach((value, key) => {
-        if (value.expiresAt <= now) {
-            pinAttempts.delete(key);
-        }
-    });
-
-    processedClockRequests.forEach((value, key) => {
-        if (value.expiresAt <= now) {
-            processedClockRequests.delete(key);
-        }
-    });
-}
+const CLOCK_REQUEST_TTL_SECONDS = 15 * 60; // 15 minutes
 
 function getRequesterIp(req: Request): string {
     const forwardedFor = req.headers['x-forwarded-for'];
     if (typeof forwardedFor === 'string') {
         return forwardedFor.split(',')[0].trim();
     }
-
     return req.ip || 'unknown';
 }
 
 function getPinAttemptKey(employeeId: string, ip: string): string {
-    return `${employeeId}:${ip}`;
+    return `kiosk:pin:${employeeId}:${ip}`;
 }
 
-function assertPinAttemptAllowed(employeeId: string, ip: string): void {
-    cleanupExpiringMaps();
-    const attempt = pinAttempts.get(getPinAttemptKey(employeeId, ip));
-
-    if (attempt && attempt.count >= PIN_ATTEMPT_LIMIT && attempt.expiresAt > Date.now()) {
-        throw new AppError('Too many failed PIN attempts. Try again later.', 429);
+async function assertPinAttemptAllowed(employeeId: string, ip: string): Promise<void> {
+    const result = await RedisRateLimiter.hit(
+        getPinAttemptKey(employeeId, ip),
+        PIN_ATTEMPT_LIMIT,
+        PIN_ATTEMPT_WINDOW_SECONDS
+    );
+    if (!result.allowed) {
+        throw new AppError(
+            `Too many failed PIN attempts. Try again in ${result.retryAfterSeconds} seconds.`,
+            429
+        );
     }
 }
 
-function recordFailedPinAttempt(employeeId: string, ip: string): void {
-    const key = getPinAttemptKey(employeeId, ip);
-    const current = pinAttempts.get(key);
-    const expiresAt = Date.now() + PIN_ATTEMPT_WINDOW_MS;
-
-    pinAttempts.set(key, {
-        count: (current?.count || 0) + 1,
-        expiresAt
-    });
-}
-
-function clearPinAttempts(employeeId: string, ip: string): void {
-    pinAttempts.delete(getPinAttemptKey(employeeId, ip));
+async function clearPinAttempts(employeeId: string, ip: string): Promise<void> {
+    await RedisRateLimiter.reset(getPinAttemptKey(employeeId, ip));
 }
 
 function parseClockTimestamp(value: string | undefined): Date {
     if (!value) {
         return new Date();
     }
-
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
         throw new AppError('Invalid kiosk timestamp', 400);
     }
-
     const now = Date.now();
     if (date.getTime() > now + 5 * 60 * 1000) {
         throw new AppError('Future kiosk timestamps are not allowed', 400);
     }
-
     if (now - date.getTime() > 60 * 60 * 1000) {
         throw new AppError('Kiosk timestamps older than 1 hour are not allowed', 400);
     }
-
     return date;
 }
 
 async function findProcessedClockEntry(clientRequestId?: string) {
-    cleanupExpiringMaps();
-
-    if (clientRequestId) {
-        const processed = processedClockRequests.get(clientRequestId);
-        if (processed && processed.entryId && processed.expiresAt > Date.now()) {
-            const existingEntry = await prisma.timeEntry.findUnique({
-                where: { id: processed.entryId }
-            });
-
-            if (existingEntry) {
-                return existingEntry;
-            }
+    if (!clientRequestId) {
+        return null;
+    }
+    const dedupeKey = `kiosk:clock:${clientRequestId}`;
+    const { firstTime, existing } = await RedisRateLimiter.dedupe(dedupeKey, CLOCK_REQUEST_TTL_SECONDS);
+    if (firstTime) {
+        return null;
+    }
+    // We had this request before. Try to find the persisted entry.
+    if (existing && existing !== '1') {
+        const existingEntry = await prisma.timeEntry.findUnique({ where: { id: existing } });
+        if (existingEntry) {
+            return existingEntry;
         }
     }
-
     return null;
 }
 
-function rememberProcessedClockRequest(clientRequestId: string | undefined, entryId: string): void {
+async function rememberProcessedClockRequest(clientRequestId: string | undefined, entryId: string): Promise<void> {
     if (!clientRequestId) {
         return;
     }
-
-    processedClockRequests.set(clientRequestId, {
-        entryId,
-        expiresAt: Date.now() + CLOCK_REQUEST_TTL_MS
-    });
+    const dedupeKey = `kiosk:clock:${clientRequestId}`;
+    // Set the dedupe key with the entry id as value so subsequent calls
+    // can locate the existing row. We bypass the `dedupe` helper because
+    // we already have a specific value to store.
+    const { redis } = await import('../config/redis');
+    await redis.set(`dedupe:${dedupeKey}`, entryId, 'EX', CLOCK_REQUEST_TTL_SECONDS);
 }
 
 export const KioskController = {
@@ -179,106 +96,51 @@ export const KioskController = {
         if (configuredSecret && secret !== configuredSecret) {
             throw new AppError('Kiosk Unauthorized', 401);
         }
-
         return ApiResponse.success(res, { status: 'authorized' });
     },
 
-    identifyEmployee: async (req: Request, res: Response) => {
-        const { secret, descriptor } = req.body;
-        const configuredSecret = process.env.KIOSK_DEVICE_SECRET || process.env.KIOSK_SECRET;
-        if (configuredSecret && secret !== configuredSecret) {
-            throw new AppError('Kiosk Unauthorized', 401);
-        }
-
-        const employees = await getFaceDescriptors();
-
-        let bestMatch: CachedDescriptor | null = null;
-        let minDistance = 1;
-
-        for (const employee of employees) {
-            const distance = getEuclideanDistance(descriptor, employee.faceDescriptor);
-            if (distance < minDistance) {
-                minDistance = distance;
-                bestMatch = employee;
-            }
-        }
-
-        if (bestMatch && minDistance < FACE_MATCH_THRESHOLD) {
-            return ApiResponse.success(res, {
-                identified: true,
-                employee: {
-                    id: bestMatch.id,
-                    name: bestMatch.name,
-                    jobTitle: bestMatch.jobTitle,
-                    distance: minDistance
-                }
-            });
-        }
-
-        return ApiResponse.success(res, { identified: false }, 'No match found');
-    },
-
-    enrollFace: async (req: Request, res: Response) => {
-        const { employeeId, descriptor } = req.body;
-
-        await prisma.employee.update({
-            where: { id: employeeId },
-            data: { faceDescriptor: descriptor }
-        });
-
-        cachedDescriptors = null;
-
-        return ApiResponse.success(res, null, 'Face enrolled successfully');
-    },
-
     clockIn: async (req: Request, res: Response) => {
-        const { employeeId, method, pin, descriptor, latitude, longitude, timestamp, clientRequestId } = req.body;
+        const { employeeId, pin, latitude, longitude, timestamp, clientRequestId } = req.body;
         const requestIp = getRequesterIp(req);
         const employee = await prisma.employee.findUnique({
             where: { id: employeeId },
-            select: {
-                id: true,
-                kioskPin: true,
-                faceDescriptor: true
-            }
+            select: { id: true }
         });
 
         if (!employee) {
             throw new AppError('Employee not found', 404);
         }
 
-        if (method === 'pin') {
-            assertPinAttemptAllowed(employeeId, requestIp);
+        // Pre-check (counter is incremented on every attempt; we only
+        // roll it back if the PIN is valid, see `clearPinAttempts`).
+        await assertPinAttemptAllowed(employeeId, requestIp);
 
-            if (!employee.kioskPin) {
-                throw new AppError('PIN not set up', 400);
-            }
-
-            const valid = await bcrypt.compare(pin, employee.kioskPin);
-            if (!valid) {
-                recordFailedPinAttempt(employeeId, requestIp);
-                throw new AppError('Invalid PIN', 401);
-            }
-
-            clearPinAttempts(employeeId, requestIp);
+        if (!pin) {
+            throw new AppError('PIN requerido', 400);
         }
 
-        if (method === 'face') {
-            if (!employee.faceDescriptor) {
-                throw new AppError('Employee does not have a registered face', 400);
-            }
+        const user = await prisma.user.findFirst({
+            where: { employeeId },
+            select: { id: true, password: true }
+        });
 
-            const storedDescriptor = employee.faceDescriptor as unknown as number[];
-            const distance = getEuclideanDistance(descriptor, storedDescriptor);
-            if (distance > FACE_MATCH_THRESHOLD) {
-                throw new AppError('Face verification failed on server', 401);
-            }
+        if (!user) {
+            throw new AppError('PIN not set up', 400);
         }
+
+        const valid = await bcrypt.compare(pin, user.password);
+        if (!valid) {
+            throw new AppError('Invalid PIN', 401);
+        }
+
+        // PIN OK: clear the counter so a single bad attempt followed by
+        // a good one does not lock the user out for the full window.
+        await clearPinAttempts(employeeId, requestIp);
 
         const effectiveTimestamp = parseClockTimestamp(timestamp);
         const cachedEntry = await findProcessedClockEntry(clientRequestId);
         if (cachedEntry) {
-            rememberProcessedClockRequest(clientRequestId, cachedEntry.id);
+            await rememberProcessedClockRequest(clientRequestId, cachedEntry.id);
             return ApiResponse.success(
                 res,
                 { entry: cachedEntry, deduplicated: true, dedupedBy: 'clientRequestId' },
@@ -300,13 +162,13 @@ export const KioskController = {
             type,
             timestamp: effectiveTimestamp,
             location: 'Kiosk',
-            device: `Tablet Kiosk (${method})`,
+            device: 'Tablet Kiosk (pin)',
             latitude,
             longitude,
             clientRequestId
         });
 
-        rememberProcessedClockRequest(clientRequestId, result.entry.id);
+        await rememberProcessedClockRequest(clientRequestId, result.entry.id);
 
         return ApiResponse.success(
             res,
@@ -346,7 +208,7 @@ export const KioskController = {
                 : (entry.employee.name || 'Empleado'),
             type: entry.type,
             timestamp: entry.timestamp,
-            method: entry.device?.includes('(face)') ? 'Face' : 'PIN'
+            method: 'PIN'
         }));
 
         return ApiResponse.success(res, formatted);

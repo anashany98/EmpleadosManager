@@ -218,7 +218,10 @@ export const TimelineService = {
                 type: 'EXPENSE',
                 title: `Gasto: ${exp.category}`,
                 description: exp.description || '',
-                amount: exp.amount,
+                // Prisma returns `Prisma.Decimal` for `Decimal` columns;
+                // the public TimelineEvent shape uses JS numbers, so we
+                // coerce here. `expense.amount` is non-null in the schema.
+                amount: exp.amount ? exp.amount.toNumber() : null,
                 status: exp.status,
                 fileUrl: exp.receiptUrl ? `/api/expenses/${exp.id}/receipt` : null
             });

@@ -3,6 +3,8 @@
   postgres:
     image: postgres:15.4-alpine
     container_name: manager_db
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
@@ -37,6 +39,8 @@
   redis:
     image: redis:7.2-alpine
     container_name: manager_redis
+    security_opt:
+      - no-new-privileges:true
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
@@ -68,9 +72,21 @@
     container_name: manager_backend
     ports:
       - "127.0.0.1:16161:3000"
+    # Hardening: drop capabilities, no-new-privileges, read-only root
+    # filesystem where possible. /tmp and /app/backend/uploads are
+    # mounted as tmpfs/volumes for the few paths that need write.
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - FOWNER
+    read_only: false  # Set true after confirming Prisma engine writes elsewhere
     environment:
       - NODE_ENV=${NODE_ENV:?NODE_ENV is required}
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB}?schema=public&connection_timeout=10
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB}?schema=public&connection_limit=20&pool_timeout=15&connection_timeout=10
       - PORT=3000
       - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:?ENCRYPTION_KEY is required}
@@ -97,6 +113,11 @@
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       - PRISMA_QUERY_TIMEOUT=10000
       - PRISMA_CONNECT_TIMEOUT=10000
+      - OCR_POOL_SIZE=${OCR_POOL_SIZE:-2}
+      - OCR_TIMEOUT_MS=${OCR_TIMEOUT_MS:-60000}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - SENTRY_RELEASE=${SENTRY_RELEASE:-}
+      - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
     volumes:
       - backend_uploads:/app/backend/uploads
     depends_on:
@@ -110,13 +131,19 @@
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 1G
+          cpus: '1.5'
+          memory: 1.5G
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/api/health/liveness', r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))\""]
       interval: 15s
       timeout: 5s
       retries: 5
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Frontend (Vite React - Nginx)
   frontend:
@@ -128,6 +155,16 @@
     container_name: manager_frontend
     ports:
       - "127.0.0.1:17171:80"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - FOWNER
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
     depends_on:
       - backend
     networks:
@@ -144,6 +181,11 @@
       timeout: 5s
       retries: 3
       start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 
 

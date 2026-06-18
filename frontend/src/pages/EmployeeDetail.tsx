@@ -4,7 +4,6 @@ import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { LockBanner } from '../components/lock/LockBanner';
-import { FaceEnrollModal } from '../components/FaceEnrollModal';
 import OffboardingWizard from '../components/OffboardingWizard';
 import OnboardingWizard from '../components/OnboardingWizard';
 import { useAuth } from '../contexts/AuthContext';
@@ -70,7 +69,6 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                     canManageLifecycle={isGlobalAdmin}
                     generatingAccess={detail.generatingAccess}
                     onGenerateAccess={detail.handleGenerateAccess}
-                    onOpenFaceEnroll={() => detail.setShowFaceEnroll(true)}
                     onOpenOnboarding={() => detail.setShowOnboardingWizard(true)}
                     onOpenOffboarding={() => detail.setShowOffboardingWizard(true)}
                     onEdit={detail.enterEditMode}
@@ -111,14 +109,6 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                         </AnimatePresence>
                     </div>
                 </div>
-
-                <FaceEnrollModal
-                    isOpen={detail.showFaceEnroll}
-                    onClose={() => detail.setShowFaceEnroll(false)}
-                    employeeId={employeeId}
-                    employeeName={getEmployeeDisplayName(detail.employeeView)}
-                    onSuccess={() => toast.success('Biometría actualizada')}
-                />
 
                 {detail.showOnboardingWizard && (
                     <OnboardingWizard

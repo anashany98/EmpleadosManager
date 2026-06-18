@@ -250,7 +250,7 @@ describe('Authz - Domain Policies', () => {
     describe('canAccessPolicy', () => {
         it('should allow admin to read employee list', () => {
             const admin = { role: 'admin', companyId: 'comp-1' };
-            expect(canAccessPolicy('employee.read.list', admin)).toBe(true);
+            expect(canAccessPolicy('employee.read.list', admin, { companyId: 'comp-1' })).toBe(true);
         });
 
         it('should deny employee to read employee list', () => {

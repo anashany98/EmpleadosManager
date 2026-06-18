@@ -60,14 +60,17 @@ router.post('/generate-from-kiosk', checkPermission('payroll', 'write'), async (
             if (companyId !== user.companyId) throw new AppError('No puedes generar nóminas para otra empresa', 403);
         }
 
-        const batch = await PayrollAutomationService.generateFromAttendance(
+        // Enqueue instead of running synchronously: the calculation can
+        // take minutes for large companies. The HTTP response returns
+        // immediately with the batch id so the UI can poll its status.
+        const { jobId, batchId } = await PayrollAutomationService.enqueuePayrollGeneration(
             Number(year),
             Number(month),
             companyId,
             userId
         );
 
-        return ApiResponse.success(res, batch, 'Lote de nóminas generado automáticamente desde datos de Kiosco');
+        return ApiResponse.success(res, { batchId, jobId, status: 'GENERATING' }, 'Generación de nóminas encolada. Consulta el estado del lote para ver el progreso.');
     } catch (error: any) {
         return ApiResponse.error(res, 'Error al generar nóminas automáticas: ' + error.message, 500);
     }

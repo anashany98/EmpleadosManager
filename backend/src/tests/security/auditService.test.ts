@@ -1,7 +1,23 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AuditService, AuditAction, AuditEntity } from '../../services/AuditService';
 
+vi.mock('../../lib/prisma', () => ({
+    prisma: {
+        auditLog: {
+            create: vi.fn().mockResolvedValue({ id: 'log-1' }),
+            findMany: vi.fn().mockResolvedValue([
+                { id: 'log-1', action: 'LOGIN', entity: 'USER', entityId: 'u1', ipAddress: '1.1.1.1', createdAt: new Date() }
+            ]),
+            count: vi.fn().mockResolvedValue(1)
+        }
+    }
+}));
+
 describe('AuditService Security Tests', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
     describe('logLoginSuccess', () => {
         it('should log successful login without throwing', async () => {
             await expect(
@@ -55,7 +71,7 @@ describe('AuditService Security Tests', () => {
                 {},
                 { page: 1, limit: 10 }
             );
-            
+
             expect(result.logs).toBeDefined();
             expect(result.pagination).toBeDefined();
             expect(result.pagination.page).toBe(1);
@@ -69,7 +85,7 @@ describe('AuditService Security Tests', () => {
                 { entity: AuditEntity.USER },
                 { page: 1, limit: 10 }
             );
-            
+
             expect(result.logs).toBeDefined();
             expect(Array.isArray(result.logs)).toBe(true);
         });
@@ -77,12 +93,12 @@ describe('AuditService Security Tests', () => {
         it('should retrieve logs filtered by date range', async () => {
             const startDate = new Date('2024-01-01');
             const endDate = new Date();
-            
+
             const result = await AuditService.getLogs(
                 { startDate, endDate },
                 { page: 1, limit: 10 }
             );
-            
+
             expect(result.logs).toBeDefined();
         });
     });

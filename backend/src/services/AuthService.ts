@@ -56,7 +56,7 @@ export class AuthService {
         });
 
         // Remove password from user object
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+         
         const { password: _password, employee, ...userWithoutPassword } = user;
         const normalizedUser = normalizeActor({
             id: userWithoutPassword.id,

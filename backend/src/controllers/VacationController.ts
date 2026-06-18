@@ -72,10 +72,7 @@ export const VacationController = {
             const vacationsWithUrl = await transformVacationListWithUrl(vacations);
 
             if (pagination.isPaginationRequested) {
-                return ApiResponse.success(res, {
-                    data: vacationsWithUrl,
-                    meta: buildPaginationMeta(total, pagination)
-                });
+                return ApiResponse.paginated(res, vacationsWithUrl, buildPaginationMeta(total, pagination));
             }
 
             return ApiResponse.success(res, vacationsWithUrl);
@@ -120,10 +117,7 @@ export const VacationController = {
             const vacationsWithUrl = await transformVacationListWithUrl(vacations);
 
             if (pagination.isPaginationRequested) {
-                return ApiResponse.success(res, {
-                    data: vacationsWithUrl,
-                    meta: buildPaginationMeta(total, pagination)
-                });
+                return ApiResponse.paginated(res, vacationsWithUrl, buildPaginationMeta(total, pagination));
             }
 
             return ApiResponse.success(res, vacationsWithUrl);

@@ -2,6 +2,7 @@ import { prisma } from '../../lib/prisma';
 import { PaginationParams, getPrismaPagination } from '../../utils/pagination';
 import { CacheService } from '../CacheService';
 import { CacheKeys } from '../../utils/cacheKeys';
+import { EncryptionService } from '../EncryptionService';
 
 // Cache TTL in seconds - short because attendance data changes frequently
 const ATTENDANCE_CACHE_TTL = 60; // 1 minute
@@ -90,16 +91,25 @@ export class AttendanceReportService {
             select: { id: true, name: true, firstName: true, lastName: true, dni: true, department: true }
         });
 
-        const report = await Promise.all(employees.map(async (emp) => {
-            const entries = await prisma.timeEntry.findMany({
-                where: {
-                    employeeId: emp.id,
-                    timestamp: { gte: start, lte: end }
-                },
-                orderBy: { timestamp: 'asc' }
-            });
+        const employeeIds = employees.map(e => e.id);
+        const allEntries = await prisma.timeEntry.findMany({
+            where: {
+                employeeId: { in: employeeIds },
+                timestamp: { gte: start, lte: end }
+            },
+            orderBy: { timestamp: 'asc' }
+        });
 
-            // Calculate total hours and days worked
+        const entriesByEmployee = new Map<string, typeof allEntries>();
+        for (const entry of allEntries) {
+            const list = entriesByEmployee.get(entry.employeeId) || [];
+            list.push(entry);
+            entriesByEmployee.set(entry.employeeId, list);
+        }
+
+        const report = employees.map(emp => {
+            const entries = entriesByEmployee.get(emp.id) || [];
+
             let totalMs = 0;
             let lastIn: Date | null = null;
             const daysWorked = new Set<string>();
@@ -121,7 +131,7 @@ export class AttendanceReportService {
             return {
                 employeeId: emp.id,
                 employeeName: emp.firstName && emp.lastName ? `${emp.firstName} ${emp.lastName}` : (emp.name || 'Empleado'),
-                employeeDni: emp.dni || null,
+                employeeDni: EncryptionService.decrypt(emp.dni) || null,
                 department: emp.department || null,
                 totalHours: Number((totalMs / (1000 * 60 * 60)).toFixed(2)),
                 daysWorked: daysWorked.size,
@@ -129,7 +139,7 @@ export class AttendanceReportService {
                 firstEntry: entries.length > 0 ? entries[0].timestamp : null,
                 lastEntry: entries.length > 0 ? entries[entries.length - 1].timestamp : null
             };
-        }));
+        });
 
         return { data: report, total: report.length };
     }

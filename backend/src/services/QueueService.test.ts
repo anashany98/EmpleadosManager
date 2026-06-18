@@ -1,7 +1,32 @@
 ﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { QueueService, QUEUES, connection } from '../services/QueueService';
 
-// Mock BullMQ classes
+// Use vi.hoisted so the mock function is available when vi.mock factories run (they are hoisted)
+const { mockDisconnect } = vi.hoisted(() => ({
+    mockDisconnect: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('ioredis', () => {
+    const mockRedis = {
+        on: vi.fn(),
+        disconnect: mockDisconnect,
+        connect: vi.fn(),
+        ping: vi.fn().mockResolvedValue('PONG'),
+    };
+    const Redis = vi.fn(function Redis() {
+        return mockRedis;
+    });
+    return { default: Redis, Redis, RedisOptions: {} };
+});
+
+vi.mock('../../lib/prisma', () => ({
+    prisma: {
+        $connect: vi.fn().mockResolvedValue(undefined),
+        $disconnect: vi.fn().mockResolvedValue(undefined),
+        $transaction: vi.fn(),
+    }
+}));
+
+// Mock bullmq
 vi.mock('bullmq', () => ({
     Queue: vi.fn(function Queue() {
         return {
@@ -20,27 +45,7 @@ vi.mock('bullmq', () => ({
     Job: vi.fn(),
 }));
 
-// Mock ioredis (connection is created at module load)
-vi.mock('ioredis', () => {
-    const mockRedis = {
-        on: vi.fn(),
-        disconnect: vi.fn(),
-        connect: vi.fn(),
-        ping: vi.fn().mockResolvedValue('PONG'),
-    };
-    const Redis = vi.fn(function Redis() {
-        return mockRedis;
-    });
-    return { default: Redis, Redis, RedisOptions: {} };
-});
-
-vi.mock('../../lib/prisma', () => ({
-    prisma: {
-        $connect: vi.fn().mockResolvedValue(undefined),
-        $disconnect: vi.fn().mockResolvedValue(undefined),
-        $transaction: vi.fn(),
-    }
-}));
+import { QueueService, QUEUES } from '../services/QueueService';
 
 describe('QueueService', () => {
     let queueService: any;
@@ -117,7 +122,7 @@ describe('QueueService', () => {
     describe('close', () => {
         it('should close all queues and disconnect Redis', async () => {
             await queueService.close();
-            expect(connection.disconnect).toHaveBeenCalled();
+            expect(mockDisconnect).toHaveBeenCalled();
         });
     });
 });

@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ExternalLink, Download, ShieldCheck, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
+import { X, ExternalLink, Download, Sparkles, Loader2, CheckCircle2 } from 'lucide-react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { FaceVerificationModal } from './FaceVerificationModal';
 import SignaturePad from './SignaturePad';
 
 interface DocumentPreviewProps {
@@ -17,7 +16,6 @@ interface DocumentPreviewProps {
 }
 
 export default function DocumentPreview({ isOpen, onClose, fileUrl, title, documentId, employeeId, canSign = false }: DocumentPreviewProps) {
-    const [verifying, setVerifying] = useState(false);
     const [signing, setSigning] = useState(false);
     const [isSigned, setIsSigned] = useState(false);
     const [processing, setProcessing] = useState(false);
@@ -32,14 +30,9 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
     // Signature functions temporarily unused
     /*
     const handleStartSigning = () => {
-        setVerifying(true);
-    };
-    */
-
-    const handleVerificationSuccess = () => {
-        setVerifying(false);
         setSigning(true);
     };
+    */
 
     const handleSaveSignature = async (signatureBase64: string) => {
         if (!documentId) return;
@@ -149,7 +142,7 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
                             {/* Security Overlay */}
                             <div className="absolute top-4 left-4 p-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-2xl border border-white/20 shadow-lg flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
                                 <div className="p-2 bg-emerald-500 rounded-xl text-white">
-                                    <ShieldCheck size={18} />
+                                    <CheckCircle2 size={18} />
                                 </div>
                                 <div>
                                     <p className="text-[10px] font-black uppercase text-slate-400 tracking-tighter">Encriptado</p>
@@ -162,21 +155,12 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
                     {/* Footer / Status */}
                     {isSigned && (
                         <div className="p-4 bg-emerald-500 text-white text-center font-black text-xs uppercase tracking-widest shrink-0 animate-in slide-in-from-bottom duration-500">
-                            Documento firmado y verificado facialmente
+                            Documento firmado correctamente
                         </div>
                     )}
                 </motion.div>
 
-                {/* Verification/Signing Modals */}
-                {verifying && employeeId && (
-                    <FaceVerificationModal
-                        isOpen={verifying}
-                        onClose={() => setVerifying(false)}
-                        employeeId={employeeId}
-                        onSuccess={handleVerificationSuccess}
-                    />
-                )}
-
+                {/* Signing Modal */}
                 {signing && (
                     <SignaturePad
                         isOpen={signing}

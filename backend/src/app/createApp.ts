@@ -1,4 +1,4 @@
-﻿import express, { type Express, type Request, type Response } from 'express';
+import express, { type Express, type Request, type Response } from 'express';
 import { createServer } from 'http';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -9,6 +9,7 @@ import { Server } from 'socket.io';
 import { errorMiddleware } from '../middlewares/errorMiddleware';
 import { requestIdMiddleware } from '../middlewares/requestId';
 import { csrfProtection } from '../middlewares/csrfMiddleware';
+import { sanitizeBodyMiddleware } from '../middlewares/sanitizeMiddleware';
 import { registerRoutes } from './registerRoutes';
 import { initializeHealthChecker, healthController } from './health.controller';
 import { initSocketHandlers } from '../websocket/handler';
@@ -117,10 +118,28 @@ function configureSecurity(app: Express): void {
         message: 'Too many payroll requests, please try again after 1 minute'
     });
 
+    const importLimiter = rateLimit({
+        windowMs: 5 * 60 * 1000,
+        max: 3,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: 'Too many import requests. Please wait before trying again.'
+    });
+
+    const exportLimiter = rateLimit({
+        windowMs: 60 * 1000,
+        max: 5,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: 'Too many export requests. Please wait before trying again.'
+    });
+
     app.use(intranetLimiter);
 
     app.locals.employeeLimiter = employeeLimiter;
     app.locals.payrollLimiter = payrollLimiter;
+    app.locals.importLimiter = importLimiter;
+    app.locals.exportLimiter = exportLimiter;
     app.use(cors({
         origin: (origin, callback) => {
             if (!origin) {
@@ -146,6 +165,7 @@ function configureBaseMiddleware(app: Express): void {
     app.use(cookieParser());
     app.use(express.json({ limit: '1mb' }));
     app.use(express.urlencoded({ extended: true }));
+    app.use(sanitizeBodyMiddleware);
     app.use(csrfProtection);
     app.use('/assets', express.static(path.join(process.cwd(), 'assets')));
 }
@@ -169,7 +189,13 @@ export function createApp(): { app: Express; server: ReturnType<Express['listen'
 
     const io = new Server(httpServer, {
         cors: {
-            origin: allowedOrigins,
+            origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+                if (!origin || isAllowedOrigin(origin)) {
+                    callback(null, true);
+                } else {
+                    callback(new Error('Not allowed by CORS'));
+                }
+            },
             credentials: true
         }
     });

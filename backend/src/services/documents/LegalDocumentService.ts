@@ -2,6 +2,7 @@ import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
 import { prisma } from '../../lib/prisma';
+import { EncryptionService } from '../EncryptionService';
 import { StorageService } from '../StorageService';
 import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
 import { CompanyDocumentTemplateService } from './DocumentTemplateService';
@@ -12,7 +13,7 @@ export const generateNDA = async (employeeId: string, authorName?: string): Prom
     if (!employee) throw new Error('Empleado no encontrado');
 
     const doc = new PDFDocument({ margin: 50 });
-    const fileName = `NDA_${employee.dni}_${Date.now()}.pdf`;
+    const fileName = `NDA_${EncryptionService.decrypt(employee.dni) || 'unknown'}_${Date.now()}.pdf`;
 
     const logoPath = getLogoPath();
     const template = await CompanyDocumentTemplateService.getTemplate('NDA', employee.companyId);
@@ -51,7 +52,7 @@ export const generateRGPD = async (employeeId: string, authorName?: string): Pro
     if (!employee) throw new Error('Empleado no encontrado');
 
     const doc = new PDFDocument({ margin: 50 });
-    const fileName = `RGPD_${employee.dni}_${Date.now()}.pdf`;
+    const fileName = `RGPD_${EncryptionService.decrypt(employee.dni) || 'unknown'}_${Date.now()}.pdf`;
 
     const logoPath = getLogoPath();
     const template = await CompanyDocumentTemplateService.getTemplate('RGPD', employee.companyId);
@@ -113,7 +114,7 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
         if (nameField) nameField.setText(`${employee.lastName}, ${employee.firstName}`);
 
         const dniField = form.getTextField('NIF');
-        if (dniField) dniField.setText(employee.dni || '');
+        if (dniField) dniField.setText(EncryptionService.decrypt(employee.dni) || '');
 
         const birthYearField = form.getTextField('Año de nacimiento');
         if (birthYearField && employee.birthDate) {
@@ -134,7 +135,7 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
         try {
             // Copy Fields
             form.getTextField('Apellidos y Nombre_2')?.setText(`${employee.lastName}, ${employee.firstName}`);
-            form.getTextField('NIF_2')?.setText(employee.dni || '');
+            form.getTextField('NIF_2')?.setText(EncryptionService.decrypt(employee.dni) || '');
             if (employee.birthDate) {
                 form.getTextField('Año de nacimiento_2')?.setText(new Date(employee.birthDate).getFullYear().toString());
             }
@@ -177,7 +178,7 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
 
     const finalPdfBytes = await pdfDocWithMeta.save();
 
-    const fileName = `Modelo_145_${employee.dni}_${Date.now()}.pdf`;
+    const fileName = `Modelo_145_${EncryptionService.decrypt(employee.dni) || 'unknown'}_${Date.now()}.pdf`;
     const { key } = await StorageService.saveBuffer({
         folder: `documents/EXP_${employeeId}`,
         originalName: fileName,

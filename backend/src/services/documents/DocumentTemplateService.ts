@@ -641,7 +641,7 @@ export const CompanyDocumentTemplateService = {
         const context: TemplateContext = {
             empleado: {
                 id: employee.id,
-                dni: employee.dni,
+                dni: EncryptionService.decrypt(employee.dni) || '',
                 nombre: employee.firstName || employee.name || '',
                 apellidos: employee.lastName || '',
                 nombreCompleto: `${employee.firstName || employee.name || ''} ${employee.lastName || ''}`.trim(),

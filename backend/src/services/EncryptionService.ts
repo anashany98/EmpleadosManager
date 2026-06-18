@@ -10,8 +10,12 @@ const GCM_PREFIX = 'gcm';
 
 const getEncryptionKey = (): string => {
     const key = process.env.ENCRYPTION_KEY;
-    if (!key || key.length !== 32) {
-        throw new Error('FATAL: ENCRYPTION_KEY must be defined in environment and be exactly 32 characters long.');
+    if (!key) {
+        throw new Error('FATAL: ENCRYPTION_KEY must be defined and be 32 bytes for AES-256-GCM');
+    }
+    const keyBytes = Buffer.from(key, 'utf8');
+    if (keyBytes.length !== 32) {
+        throw new Error(`FATAL: ENCRYPTION_KEY must be exactly 32 bytes for AES-256-GCM (got ${keyBytes.length} bytes from ${key.length} characters)`);
     }
     return key;
 };

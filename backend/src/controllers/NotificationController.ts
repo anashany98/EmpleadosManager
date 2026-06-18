@@ -3,20 +3,11 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { NotificationStream } from '../services/NotificationStream';
+import { NotificationService } from '../services/NotificationService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 
 const log = createLogger('NotificationController');
-
-export const createNotification = async (userId: string, title: string, message: string, type: 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR' = 'INFO', link?: string) => {
-    try {
-        await prisma.notification.create({
-            data: { userId, title, message, type, link }
-        });
-    } catch {
-        log.error('Error creating notification');
-    }
-};
 
 export const NotificationController = {
     stream: async (req: Request, res: Response) => {

@@ -18,7 +18,7 @@ async function main() {
         console.log('No admin found');
         return;
     }
-    const token = jwt.sign({ id: user.id }, JWT_SECRET || 'test-secret', { expiresIn: '1h' });
+    const token = jwt.sign({ id: user.id }, JWT_SECRET || 'test-secret', { algorithm: 'HS256', expiresIn: '1h' });
     console.log('Got token');
 
     // 2. Get Payroll ID

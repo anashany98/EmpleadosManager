@@ -3,7 +3,9 @@ import multer from 'multer';
 import { DocumentController } from '../controllers/DocumentController';
 import { createMulterOptions } from '../config/multer';
 import { authorize } from '../middlewares/authMiddleware';
+import { validateResource } from '../middlewares/validateResource';
 import { prisma } from '../lib/prisma';
+import { documentUploadMetadataSchema } from '../schemas/documentSchemas';
 
 const router = Router();
 
@@ -50,7 +52,7 @@ router.post('/generate-145', authorize('document.write', resolveDocumentEmployee
 router.post('/generate-nda', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateNDA);
 router.post('/generate-rgpd', authorize('document.write', resolveDocumentEmployeeTarget), DocumentTemplateController.generateRGPD);
 
-router.post('/upload', upload.single('file'), authorize('document.write', resolveDocumentEmployeeTarget), DocumentController.upload);
+router.post('/upload', upload.single('file'), validateResource(documentUploadMetadataSchema), authorize('document.write', resolveDocumentEmployeeTarget), DocumentController.upload);
 router.post('/ocr', upload.single('file'), DocumentController.processOCR);
 router.get('/employee/:employeeId', authorize('document.read', resolveDocumentEmployeeTarget), DocumentController.getByEmployee);
 router.get('/:id/download', authorize('document.read', resolveStoredDocumentTarget), DocumentController.download);

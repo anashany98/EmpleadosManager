@@ -49,7 +49,7 @@ async function main() {
         }
 
         console.log('Generating tokens...');
-        jwt.sign({ id: user.id }, JWT_SECRET || 'test-secret', { expiresIn: '15m' });
+        jwt.sign({ id: user.id }, JWT_SECRET || 'test-secret', { algorithm: 'HS256', expiresIn: '15m' });
         const refreshToken = crypto.randomBytes(40).toString('hex');
 
         console.log('Creating refresh token in DB...');

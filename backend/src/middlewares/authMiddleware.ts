@@ -40,7 +40,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
             return next(new AppError('No estás autenticado. Por favor inicia sesión.', 401));
         }
 
-        const decoded = jwt.verify(token, JWT_SECRET) as { id: string; sessionVersion?: number };
+        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { id: string; sessionVersion?: number };
 
         const user = await prisma.user.findUnique({
             where: { id: decoded.id },

@@ -86,7 +86,7 @@ async function authenticateSocket(socket: Socket): Promise<AuthUser | null> {
     }
 
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { id: string; sessionVersion?: number };
+        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }) as { id: string; sessionVersion?: number };
 
         const user = await prisma.user.findUnique({
             where: { id: decoded.id },

@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
 import { prisma } from '../../lib/prisma';
+import { EncryptionService } from '../EncryptionService';
 import { StorageService } from '../StorageService';
 import { InventoryService } from '../InventoryService';
 import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
@@ -60,7 +61,7 @@ export const generateUniformInternal = async (employeeId: string, customItems?: 
     if (!employee) throw new Error('Empleado no encontrado');
 
     const doc = new PDFDocument({ margin: 50 });
-    const fileName = `Entrega_Uniforme_${employee.dni}_${Date.now()}.pdf`;
+    const fileName = `Entrega_Uniforme_${EncryptionService.decrypt(employee.dni) || 'unknown'}_${Date.now()}.pdf`;
 
     const logoPath = getLogoPath();
     const items = (customItems && customItems.length > 0) ? customItems : [];
@@ -83,7 +84,7 @@ export const generateUniformInternal = async (employeeId: string, customItems?: 
                 numeroSerie: '',
                 talla: firstItem?.size || '',
                 cantidad: firstItemQty > 1 ? String(firstItemQty) : '',
-                items: items
+                items
             }
         }
     });

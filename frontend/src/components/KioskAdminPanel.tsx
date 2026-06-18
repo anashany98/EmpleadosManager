@@ -1,7 +1,6 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
-import { Search, Camera, X, UserCheck, LogOut, Loader2 } from 'lucide-react';
-import { FaceEnrollModal } from './FaceEnrollModal';
+import { Search, X, LogOut, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { getEmployeeDisplayName } from '../utils/employeeDisplay';
 
@@ -11,7 +10,6 @@ interface Employee {
     firstName?: string | null;
     lastName?: string | null;
     dni: string;
-    faceDescriptor?: unknown;
     department?: string;
     jobTitle?: string;
 }
@@ -21,18 +19,12 @@ interface KioskAdminPanelProps {
 }
 
 export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => {
-    // Auth State
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
-
-    // Dashboard State
     const [search, setSearch] = useState('');
     const [employees, setEmployees] = useState<Employee[]>([]);
-    // filteredEmployees is no longer needed since we fetch filtered data directly
-    const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
-    const [showEnrollModal, setShowEnrollModal] = useState(false);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -45,7 +37,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
             }
             setIsAuthenticated(true);
             fetchEmployees('');
-            toast.success('SesiÃ³n de administraciÃ³n iniciada');
+            toast.success('Sesion de administracion iniciada');
         } catch {
             toast.error('Credenciales incorrectas');
         } finally {
@@ -57,7 +49,6 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
         try {
             const query = searchTerm ? `?search=${encodeURIComponent(searchTerm)}` : '';
             const res = await api.get(`/employees${query}`);
-            // If pagination is used, data might be in res.data.data
             const data = Array.isArray(res.data) ? res.data : res.data.data || [];
             setEmployees(data);
         } catch (error) {
@@ -66,19 +57,13 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
         }
     };
 
-    // Debounce Search
     useEffect(() => {
         if (!isAuthenticated) return;
         const timer = setTimeout(() => {
             fetchEmployees(search);
-        }, 500); // 500ms debounce
+        }, 500);
         return () => clearTimeout(timer);
     }, [search, isAuthenticated]);
-
-    const handleEnrollClick = (employee: Employee) => {
-        setSelectedEmployee(employee);
-        setShowEnrollModal(true);
-    };
 
     if (!isAuthenticated) {
         return (
@@ -104,7 +89,7 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                             />
                         </div>
                         <div>
-                            <label className="block text-sm font-medium mb-1 dark:text-slate-300">ContraseÃ±a</label>
+                            <label className="block text-sm font-medium mb-1 dark:text-slate-300">Contrasena</label>
                             <input
                                 type="password"
                                 value={password}
@@ -127,9 +112,8 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
 
     return (
         <div className="fixed inset-0 z-50 bg-slate-100 dark:bg-slate-900 flex flex-col animate-in slide-in-from-bottom">
-            {/* Header */}
             <div className="bg-white dark:bg-slate-800 p-4 shadow-md flex justify-between items-center z-10">
-                <h2 className="text-xl font-bold dark:text-white">Modo GestiÃ³n Kiosco</h2>
+                <h2 className="text-xl font-bold dark:text-white">Modo Gestion Kiosco</h2>
                 <button
                     onClick={onClose}
                     className="flex items-center gap-2 px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg hover:bg-slate-300 transition dark:text-white"
@@ -138,7 +122,6 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                 </button>
             </div>
 
-            {/* Content */}
             <div className="flex-1 overflow-hidden flex flex-col p-4 max-w-4xl mx-auto w-full">
                 <div className="relative mb-4">
                     <Search className="absolute left-3 top-3.5 text-slate-400" size={20} />
@@ -157,21 +140,10 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                             <div>
                                 <h3 className="font-bold text-lg dark:text-white">{getEmployeeDisplayName(emp)}</h3>
                                 <div className="text-sm text-slate-500 flex gap-3">
-                                    <span>MyDNI: {emp.dni}</span>
+                                    <span>DNI: {emp.dni}</span>
                                     <span>{emp.department}</span>
                                 </div>
                             </div>
-
-                            <button
-                                onClick={() => handleEnrollClick(emp)}
-                                className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition ${emp.faceDescriptor
-                                    ? 'bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400'
-                                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
-                                    }`}
-                            >
-                                {emp.faceDescriptor ? <UserCheck size={18} /> : <Camera size={18} />}
-                                {emp.faceDescriptor ? 'Actualizar' : 'Registrar'}
-                            </button>
                         </div>
                     ))}
                     {employees.length === 0 && (
@@ -181,24 +153,6 @@ export const KioskAdminPanel: React.FC<KioskAdminPanelProps> = ({ onClose }) => 
                     )}
                 </div>
             </div>
-
-            {/* Modal */}
-            {selectedEmployee && (
-                <FaceEnrollModal
-                    isOpen={showEnrollModal}
-                    onClose={() => {
-                        setShowEnrollModal(false);
-                        setSelectedEmployee(null);
-                    }}
-                    employeeId={selectedEmployee.id}
-                    employeeName={getEmployeeDisplayName(selectedEmployee)}
-                    onSuccess={() => {
-                        fetchEmployees(search); // Refresh list to show green state
-                        toast.success('BiometrÃ­a guardada');
-                    }}
-                />
-            )}
         </div>
     );
 };
-

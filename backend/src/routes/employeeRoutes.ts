@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import rateLimit from 'express-rate-limit';
 import { EmployeeController } from '../controllers/EmployeeController';
 import { EmployeeMedicalController } from '../controllers/EmployeeMedicalController';
 import { EmployeeTrainingController } from '../controllers/EmployeeTrainingController';
@@ -38,13 +39,21 @@ const resolveEmployeeTarget = async (req: any) => {
         : { employeeId: id };
 };
 
-// Admin / HR Access with rate limiting
+const importLimiter = rateLimit({
+    windowMs: 5 * 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: 'Too many import requests. Please wait before trying again.'
+});
+
+// Admin / HR Access
 router.get('/', authorize('employee.read.list'), EmployeeController.getAll);
 router.get('/departments', authorize('employee.read.list'), EmployeeController.getDepartments);
 router.get('/options', authorize('employee.read.list'), EmployeeController.getFieldOptions);
 router.get('/hierarchy', authorize('employee.read.list'), EmployeeController.getHierarchy);
-router.post('/import/preview', checkPermission('employees', 'write'), upload.single('file'), EmployeeImportController.previewImport);
-router.post('/import', checkPermission('employees', 'write'), upload.single('file'), EmployeeImportController.importEmployees);
+router.post('/import/preview', importLimiter, checkPermission('employees', 'write'), upload.single('file'), EmployeeImportController.previewImport);
+router.post('/import', importLimiter, checkPermission('employees', 'write'), upload.single('file'), EmployeeImportController.importEmployees);
 router.get('/template', authorize('employee.read.list'), EmployeeImportController.downloadTemplate);
 
 // Self-Service Capable Routes
@@ -55,9 +64,9 @@ router.get('/:id/private-notes/history', validateResource(idParamSchema), author
 router.put('/:id/private-notes', validateResource(idParamSchema), validateResource(updateEmployeePrivateNotesSchema), authorize('employee.write.company', resolveEmployeeTarget), EmployeeController.updatePrivateNotes);
 router.put('/:id/vacation-balance', validateResource(idParamSchema), validateResource(updateEmployeeVacationBalanceSchema), authorize('employee.write.company', resolveEmployeeTarget), EmployeeController.updateVacationBalance);
 
-// Write Access (Strict)
+// Write Access (Strict) — authorize middleware added to PUT
 router.post('/', checkPermission('employees', 'write'), validateResource(createEmployeeSchema), EmployeeController.create);
-router.put('/:id', validateResource(idParamSchema), validateResource(updateEmployeeSchema), EmployeeController.update);
+router.put('/:id', validateResource(idParamSchema), authorize('employee.write.company', resolveEmployeeTarget), validateResource(updateEmployeeSchema), EmployeeController.update);
 router.delete('/:id', checkPermission('employees', 'write'), validateResource(idParamSchema), EmployeeController.delete);
 router.post('/bulk-update', checkPermission('employees', 'write'), EmployeeController.bulkUpdate);
 

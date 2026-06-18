@@ -21,7 +21,6 @@ export const healthController = {
         if (!healthChecker) {
             res.status(503).json({
                 status: 'error',
-                message: 'Health checker not initialized',
                 timestamp: new Date().toISOString()
             });
             return;
@@ -29,13 +28,15 @@ export const healthController = {
 
         try {
             const health = await healthChecker.checkAll();
-            const statusCode = health.status === 'ok' ? 200 : health.status === 'degraded' ? 200 : 503;
-            res.status(statusCode).json(health);
+            const statusCode = health.status === 'ok' || health.status === 'degraded' ? 200 : 503;
+            res.status(statusCode).json({
+                status: health.status,
+                timestamp: new Date().toISOString()
+            });
         } catch (error) {
             console.error('Health check error:', error);
             res.status(503).json({
                 status: 'error',
-                message: 'Health check failed',
                 timestamp: new Date().toISOString()
             });
         }

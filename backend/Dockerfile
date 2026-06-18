@@ -89,14 +89,14 @@ COPY --from=builder --chown=appuser:appgroup /app/shared ./shared
 COPY --from=builder --chown=appuser:appgroup /app/database ./database
 
 # Create directories with proper permissions
-# Ensure uploads/documents exists and is writable by appuser
-RUN mkdir -p ./backend/uploads/documents ./backend/data && \
-    chown -R appuser:appgroup /app/backend && \
-    chmod -R 775 /app/backend/uploads
+# Ensure uploads/documents, data/inbox exists and is writable by appuser
+RUN mkdir -p ./backend/uploads/documents ./backend/uploads/vehicle-documents ./backend/uploads/template-logos ./backend/data/inbox ./backend/data/inbox_temp ./backend/backups/snapshots ./backend/backups/full && \
+    chown -R appuser:appgroup /app && \
+    chmod -R 775 /app/backend/uploads /app/backend/data /app/backend/backups
 
 # Use wrapper script to fix permissions at runtime
 COPY backend/entrypoint.sh /app/entrypoint.sh
-RUN chmod +x /app/entrypoint.sh
+RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
 WORKDIR /app/backend
 
@@ -117,5 +117,6 @@ LABEL org.opencontainers.image.title="EmpleadosManager Backend" \
       org.opencontainers.image.description="Payroll & HR Management API" \
       org.opencontainers.image.vendor="Your Company"
 
-# Run directly without entrypoint wrapper (permissions fixed by COPY --chown)
+# Use entrypoint to create directories as root, then run as appuser
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "--require", "./instrument.js", "dist/backend/src/index.js"]

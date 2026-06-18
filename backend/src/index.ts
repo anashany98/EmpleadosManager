@@ -1,6 +1,7 @@
-﻿import dotenv from 'dotenv';
+import dotenv from 'dotenv';
 dotenv.config();
 
+import path from 'path';
 import 'express-async-errors';
 import { prisma } from './lib/prisma';
 import { createApp } from './app/createApp';
@@ -134,7 +135,7 @@ process.on('unhandledRejection', (reason: any) => {
 
 // Only start server if this file is executed directly (not imported as a module)
 // This allows tests to import app without starting the server
-const path = require('path');
+// path is imported at the top of the file (ESM-compatible).
 const isDirectlyExecuted = process.argv[1] && (
     process.argv[1].endsWith('index.ts') ||
     process.argv[1].endsWith('index.js') ||

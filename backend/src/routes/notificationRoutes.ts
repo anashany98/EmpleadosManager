@@ -1,7 +1,8 @@
-
 import { Router } from 'express';
 import { NotificationController } from '../controllers/NotificationController';
 import { protect } from '../middlewares/authMiddleware';
+import { validateResource } from '../middlewares/validateResource';
+import { notificationMarkReadSchema } from '../schemas/notificationSchemas';
 
 const router = Router();
 
@@ -9,7 +10,7 @@ router.use(protect);
 
 router.get('/', NotificationController.getMine);
 router.get('/stream', NotificationController.stream);
-router.put('/:id/read', NotificationController.markRead);
+router.put('/:id/read', validateResource(notificationMarkReadSchema), NotificationController.markRead);
 router.put('/read-all', NotificationController.markAllRead);
 
 export default router;
