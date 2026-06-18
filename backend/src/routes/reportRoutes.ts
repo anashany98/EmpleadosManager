@@ -1,8 +1,54 @@
-
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { ReportController } from '../controllers/ReportController';
+import { protect, checkPermission } from '../middlewares/authMiddleware';
+
+/**
+ * Reports router
+ *
+ * Security (fixed 2026-06-18 — critical finding from permissions audit):
+ *   - All endpoints require authentication (`protect`).
+ *   - All endpoints require the `reports:read` permission.
+ *   - Rate-limited per-user to prevent DoS via expensive aggregations.
+ *   - Company scope is enforced by the controller via resolveAuthorizedCompanyId()
+ *     so a non-global-admin can only see their own company's data.
+ *
+ * The `protect` middleware populates `req.user`. Without it, `resolveAuthorizedCompanyId`
+ * throws a 403 "Usuario sin empresa asignada" which is technically correct but:
+ *   1. Does not differentiate "no auth" from "no access" (both 403).
+ *   2. Cannot rate-limit per-user (attacker can hammer unauthenticated).
+ *   3. Cannot audit which user accessed which report.
+ *
+ * Global admins (no `companyId`) get the full data set; company-scoped users only
+ * see their own company.
+ */
 
 const router = Router();
+
+// Defense in depth: require authentication for ALL report endpoints.
+router.use(protect);
+
+// Permission gate: requires `reports:read` at minimum.
+// Company-scoped staff (hr/manager) inherit this via COMPANY_STAFF_DEFAULTS;
+// global admins always have it via ALL_MODULE_WRITE.
+router.use(checkPermission('reports', 'read'));
+
+// Per-user rate limit. Reports can be DB-intensive (joins over TimeEntry,
+// Vacation, PayrollRow) so we cap at 30 req/min/user to avoid DoS by
+// legitimate users AND to slow down reconnaissance by authenticated attackers.
+const reportLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+        const user = (req as { user?: { id?: string } }).user;
+        return user?.id ?? req.ip ?? 'anonymous';
+    },
+    message: { error: 'Demasiadas solicitudes de reportes. Inténtalo de nuevo en un minuto.' }
+});
+
+router.use(reportLimiter);
 
 router.get('/attendance', ReportController.getAttendance);
 router.get('/attendance-summary', ReportController.getAttendanceSummary);

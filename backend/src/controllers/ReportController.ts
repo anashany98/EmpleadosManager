@@ -7,12 +7,47 @@ import { getPaginationParams, buildPaginationMeta } from '../utils/pagination';
 import { AuthenticatedRequest } from '../types/express';
 import { AppError } from '../utils/AppError';
 import { resolveAuthorizedCompanyId } from '../utils/companyAccess';
+import { AuditService, AuditAction, AuditEntity } from '../services/AuditService';
 
 const log = createLogger('ReportController');
 
 const getCompanyScope = (req: Request): string | undefined => {
     const user = (req as AuthenticatedRequest).user;
     return resolveAuthorizedCompanyId(user, req.query.companyId as string | undefined);
+};
+
+/**
+ * Record report access in the audit log. Reports expose sensitive payroll
+ * and HR data, so every successful access is logged with the report name,
+ * period filters, format (json/xlsx), and resolved company scope.
+ *
+ * Failures to write the audit log are NOT propagated to the caller —
+ * audit failures must not break the report response.
+ */
+const auditReportAccess = async (
+    req: Request,
+    reportName: string,
+    filters: Record<string, unknown> = {},
+    format: 'json' | 'xlsx' = 'json'
+): Promise<void> => {
+    const user = (req as AuthenticatedRequest).user;
+    try {
+        await AuditService.log(
+            AuditAction.DATA_EXPORT,
+            AuditEntity.PAYROLL,
+            `report:${reportName}`,
+            {
+                report: reportName,
+                format,
+                ...filters,
+                userEmail: user?.email
+            },
+            user?.id
+        );
+    } catch (auditError) {
+        // Never let audit failures break the response.
+        log.error({ auditError, reportName, userId: user?.id }, 'Failed to write report audit log');
+    }
 };
 
 const buildExcelContext = (context: {
@@ -69,6 +104,11 @@ export class ReportController {
                 return res.status(400).json({ error: `El rango máximo permitido es de ${maxRangeDays} días` });
             }
             const result = await ReportService.getAttendanceData(startDate, endDate, { companyId, department });
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            await auditReportAccess(req, 'attendance', {
+                start, end, department, companyId, format: requestedFormat
+            });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateAttendanceReport(result.data, buildExcelContext({
@@ -112,6 +152,11 @@ export class ReportController {
                 employeeId: employeeId as string
             });
 
+            await auditReportAccess(req, 'attendance-summary', {
+                start, end, employeeId, companyId,
+                format: req.query.format === 'xlsx' ? 'xlsx' : 'json'
+            });
+
             if (req.query.format === 'xlsx') {
                 const buffer = await ExcelService.generateAttendanceSummaryReport(data, buildExcelContext({
                     title: 'Resumen diario de asistencia',
@@ -153,6 +198,11 @@ export class ReportController {
                 return res.status(400).json({ error: `El rango máximo permitido es de ${maxRangeDays} días` });
             }
             const result = await ReportService.getOvertimeData(startDate, endDate, { companyId, department });
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            await auditReportAccess(req, 'overtime', {
+                start, end, department, companyId, format: requestedFormat
+            });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateOvertimeReport(result.data, buildExcelContext({
@@ -186,6 +236,11 @@ export class ReportController {
             const pagination = getPaginationParams(req);
 
             const result = await ReportService.getVacationData(targetYear, { companyId, department }, pagination);
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            await auditReportAccess(req, 'vacations', {
+                year: targetYear, department, companyId, format: requestedFormat
+            });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateVacationReport(result.data, buildExcelContext({
@@ -223,6 +278,11 @@ export class ReportController {
             const targetMonth = month ? parseInt(month as string) : undefined;
 
             const data = await ReportService.getCompanyCostData(targetYear, targetMonth, { companyId });
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            await auditReportAccess(req, 'costs', {
+                year: targetYear, month: targetMonth, companyId, format: requestedFormat
+            });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateCostReport(data, buildExcelContext({
@@ -264,6 +324,11 @@ export class ReportController {
             }
             const pagination = getPaginationParams(req);
             const result = await ReportService.getDetailedAbsenceData(startDate, endDate, { companyId, department }, pagination);
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            await auditReportAccess(req, 'absences-detailed', {
+                start, end, department, companyId, format: requestedFormat
+            });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateDetailedAbsenceReport(result.data, buildExcelContext({
@@ -302,6 +367,11 @@ export class ReportController {
 
             const summary = await ReportService.getKPIMetrics(targetYear, targetMonth, { companyId });
             const deptStats = await ReportService.getAbsenteeismByDepartment(targetYear, targetMonth, { companyId });
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            await auditReportAccess(req, 'kpis', {
+                year: targetYear, month: targetMonth, companyId, format: requestedFormat
+            });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateKPIReport(summary, deptStats, buildExcelContext({
@@ -331,6 +401,11 @@ export class ReportController {
             const { year, format } = req.query;
             const companyId = getCompanyScope(req);
             const data = await ReportService.getGenderGapData({ companyId, year });
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            await auditReportAccess(req, 'gender-gap', {
+                year, companyId, format: requestedFormat
+            });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateGenderGapReport(data, buildExcelContext({
@@ -362,6 +437,11 @@ export class ReportController {
             const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
 
             const data = await ReportService.getUsageByDepartment(targetYear, { companyId });
+
+            await auditReportAccess(req, 'vacations-usage-by-department', {
+                year: targetYear, companyId
+            });
+
             res.json(data);
         } catch (error) {
             log.error({ error }, 'Vacation Usage By Department Error');
