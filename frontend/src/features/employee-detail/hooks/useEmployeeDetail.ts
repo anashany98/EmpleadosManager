@@ -65,7 +65,6 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
     const [saving, setSaving] = useState(false);
     const [activeTab, setActiveTab] = useState(isNew ? 'personal' : 'resumen');
     const [generatingAccess, setGeneratingAccess] = useState(false);
-    const [showFaceEnroll, setShowFaceEnroll] = useState(false);
     const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
     const [showOffboardingWizard, setShowOffboardingWizard] = useState(false);
     const [formData, setFormData] = useState<EmployeeFormData>(createDefaultEmployeeFormData());
@@ -211,7 +210,7 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
                 contractType: data.contractType || '',
                 agreementType: data.agreementType || '',
                 jobTitle: data.jobTitle || '',
-                entryDate: data.entryDate ? data.entryDate.split('T')[0] : (data.seniorityDate ? data.seniorityDate.split('T')[0] : ''),
+                entryDate: data.entryDate ? data.entryDate.split('T')[0] : '',
                 exitDate: data.exitDate ? data.exitDate.split('T')[0] : '',
                 callDate: data.callDate ? data.callDate.split('T')[0] : '',
                 contractInterruptionDate: data.contractInterruptionDate ? data.contractInterruptionDate.split('T')[0] : '',
@@ -233,7 +232,8 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
                 monthlyGrossSalary: data.monthlyGrossSalary !== undefined && data.monthlyGrossSalary !== null ? String(data.monthlyGrossSalary) : '',
                 managerId: data.managerId || '',
                 privateNotes: data.privateNotes || '',
-                active: data.active ?? true
+                active: data.active ?? true,
+                vacationDaysTotal: data.vacationDaysTotal !== undefined && data.vacationDaysTotal !== null ? String(data.vacationDaysTotal) : ''
             });
         } catch (error) {
             console.error(error);
@@ -294,14 +294,60 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
 
         setSaving(true);
         try {
+            const toNullIfEmpty = (value: unknown) =>
+                typeof value === 'string' && value.trim() === '' ? null : value;
+
             const payload = {
                 ...formData,
-                email: formData.email || null,
+                dni: formData.dni,
+                firstName: formData.firstName,
+                lastName: formData.lastName,
+                email: toNullIfEmpty(formData.email),
+                phone: toNullIfEmpty(formData.phone),
+                companyPhone: toNullIfEmpty(formData.companyPhone),
+                companyShortPhone: toNullIfEmpty(formData.companyShortPhone),
+                address: toNullIfEmpty(formData.address),
+                city: toNullIfEmpty(formData.city),
+                postalCode: toNullIfEmpty(formData.postalCode),
+                socialSecurityNumber: toNullIfEmpty(formData.socialSecurityNumber),
+                subaccount465: toNullIfEmpty(formData.subaccount465),
+                iban: toNullIfEmpty(formData.iban),
+                department: toNullIfEmpty(formData.department),
+                category: toNullIfEmpty(formData.category),
+                contractType: toNullIfEmpty(formData.contractType),
+                agreementType: toNullIfEmpty(formData.agreementType),
+                jobTitle: toNullIfEmpty(formData.jobTitle),
+                entryDate: toNullIfEmpty(formData.entryDate),
+                exitDate: toNullIfEmpty(formData.exitDate),
+                callDate: toNullIfEmpty(formData.callDate),
+                contractInterruptionDate: toNullIfEmpty(formData.contractInterruptionDate),
+                lowDate: toNullIfEmpty(formData.lowDate),
+                lowReason: toNullIfEmpty(formData.lowReason),
+                dniExpiration: toNullIfEmpty(formData.dniExpiration),
+                birthDate: toNullIfEmpty(formData.birthDate),
+                province: toNullIfEmpty(formData.province),
+                registeredIn: toNullIfEmpty(formData.registeredIn),
+                drivingLicenseType: toNullIfEmpty(formData.drivingLicenseType),
+                drivingLicenseExpiration: toNullIfEmpty(formData.drivingLicenseExpiration),
+                gender: toNullIfEmpty(formData.gender),
+                workingDayType: toNullIfEmpty(formData.workingDayType),
                 weeklyHours: formData.weeklyHours ? Number(formData.weeklyHours) : null,
                 companyId: formData.companyId || null,
                 managerId: formData.managerId || null,
                 annualGrossSalary: formData.annualGrossSalary ? Number(formData.annualGrossSalary) : 0,
-                monthlyGrossSalary: formData.monthlyGrossSalary ? Number(formData.monthlyGrossSalary) : 0
+                monthlyGrossSalary: formData.monthlyGrossSalary ? Number(formData.monthlyGrossSalary) : 0,
+                annualTotalSalary: formData.annualTotalSalary ? Number(formData.annualTotalSalary) : 0,
+                monthlyTotalSalary: formData.monthlyTotalSalary ? Number(formData.monthlyTotalSalary) : 0,
+                vacationDaysTotal: formData.vacationDaysTotal ? Number(formData.vacationDaysTotal) : null,
+                vacationYear: formData.vacationYear ? Number(formData.vacationYear) : null,
+                vacationAnnualQuota: formData.vacationAnnualQuota ? Number(formData.vacationAnnualQuota) : null,
+                vacationCarryOver: formData.vacationCarryOver ? Number(formData.vacationCarryOver) : null,
+                vacationImportedUsed: formData.vacationImportedUsed ? Number(formData.vacationImportedUsed) : null,
+                emergencyContacts: formData.emergencyContacts.map((contact) => ({
+                    name: contact.name,
+                    phone: toNullIfEmpty(contact.phone),
+                    relationship: toNullIfEmpty(contact.relationship)
+                }))
             };
 
             if (isNew) {
@@ -332,7 +378,6 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
         saving,
         activeTab,
         generatingAccess,
-        showFaceEnroll,
         showOnboardingWizard,
         showOffboardingWizard,
         formData,
@@ -342,7 +387,6 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
         allEmployees,
         fieldOptions,
         setActiveTab,
-        setShowFaceEnroll,
         setShowOnboardingWizard,
         setShowOffboardingWizard,
         setFormData,

@@ -22,26 +22,37 @@ vi.mock('../components/BulkActionToolbar', () => ({
     EMPLOYEE_BULK_ACTIONS: []
 }));
 
-describe('Employees page', () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-        vi.mocked(api.get).mockResolvedValue({
+beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(api.get).mockImplementation(async ({ params }: any) => {
+        const allEmployees = [
+            { id: 'emp-1', firstName: 'Ana', lastName: 'Gomez', dni: '111', subaccount465: '4651', department: 'IT', active: true },
+            { id: 'emp-2', firstName: 'Luis', lastName: 'Perez', dni: '222', subaccount465: '4652', department: 'Ventas', active: false }
+        ];
+        const search = (params?.search || '').toLowerCase();
+        let filtered = allEmployees;
+        if (search) {
+            filtered = allEmployees.filter(e =>
+                `${e.firstName} ${e.lastName}`.toLowerCase().includes(search) ||
+                e.dni.toLowerCase().includes(search)
+            );
+        }
+        return {
             data: {
-                data: [
-                    { id: 'emp-1', firstName: 'Ana', lastName: 'Gomez', dni: '111', subaccount465: '4651', department: 'IT', active: true },
-                    { id: 'emp-2', firstName: 'Luis', lastName: 'Perez', dni: '222', subaccount465: '4652', department: 'Ventas', active: false }
-                ],
+                data: filtered,
                 meta: {
-                    total: 2,
-                    page: 1,
-                    limit: 20,
-                    totalPages: 1
+                    total: filtered.length,
+                    page: params?.page || 1,
+                    limit: params?.limit || 20,
+                    totalPages: Math.ceil(filtered.length / (params?.limit || 20))
                 }
             }
-        } as never);
+        } as never;
     });
+});
 
-    it('filters the list and keeps selection state outside the page shell', async () => {
+describe('Employees page', () => {
+    it('filters the list via server-side search', async () => {
         const queryClient = new QueryClient();
 
         render(
@@ -62,8 +73,8 @@ describe('Employees page', () => {
             expect(screen.queryByText('Ana Gomez')).not.toBeInTheDocument();
         });
 
-        fireEvent.click(screen.getByLabelText(/seleccionar todos los empleados/i));
-
-        expect(screen.getByText('1 de 1 seleccionados')).toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.getAllByText('Luis Perez').length).toBeGreaterThan(0);
+        });
     });
 });

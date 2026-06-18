@@ -24,7 +24,7 @@ export function createDniValidator() {
 }
 
 export function createIbanValidator() {
-    return z.string().regex(IBAN_REGEX, 'IBAN inválido (ejemplo: ES9121000418450200051332)').optional().nullable();
+    return z.string().regex(IBAN_REGEX, 'IBAN inválido (ejemplo: ES9121000418450200051332)').optional().nullable().or(z.literal(''));
 }
 
 export function createEmailValidator() {
@@ -32,5 +32,5 @@ export function createEmailValidator() {
 }
 
 export function createPhoneValidator() {
-    return z.string().regex(PHONE_REGEX, 'Teléfono inválido (mínimo 6 caracteres)').optional().nullable();
+    return z.string().regex(PHONE_REGEX, 'Teléfono inválido (mínimo 6 caracteres)').optional().nullable().or(z.literal(''));
 }

@@ -49,6 +49,12 @@ export interface EmployeeFormData {
     managerId: string;
     privateNotes: string;
     active: boolean;
+    vacationDaysTotal: string;
+    // Vacation balance fields
+    vacationYear: string;
+    vacationAnnualQuota: string;
+    vacationCarryOver: string;
+    vacationImportedUsed: string;
 }
 
 export interface CompanyOption {
@@ -124,16 +130,20 @@ export interface EmployeeViewRecord {
     emergencyContacts?: EmergencyContact[];
     workingDayType?: string;
     weeklyHours?: string | number;
-  annualGrossSalary?: string | number;
-  monthlyGrossSalary?: string | number;
-  annualTotalSalary?: string | number;
-  monthlyTotalSalary?: string | number;
+    annualGrossSalary?: string | number;
+    monthlyGrossSalary?: string | number;
+    annualTotalSalary?: string | number;
+    monthlyTotalSalary?: string | number;
     companyShortPhone?: string;
     managerId?: string;
     privateNotes?: string;
     active?: boolean;
     vacationBalance?: EmployeeVacationBalanceSummary | null;
-    [key: string]: unknown;
+    // Vacation balance fields (year-specific)
+    vacationYear?: number;
+    vacationAnnualQuota?: number;
+    vacationCarryOver?: number;
+    vacationImportedUsed?: number;
 }
 
 export interface AuditLogEntry {
@@ -214,5 +224,10 @@ export const createDefaultEmployeeFormData = (): EmployeeFormData => ({
   companyShortPhone: '',
     managerId: '',
     privateNotes: '',
-    active: true
+    active: true,
+    vacationDaysTotal: '',
+    vacationYear: String(new Date().getFullYear()),
+    vacationAnnualQuota: '',
+    vacationCarryOver: '',
+    vacationImportedUsed: ''
 });

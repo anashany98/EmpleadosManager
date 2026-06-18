@@ -1,4 +1,7 @@
 import { EncryptionService } from './EncryptionService';
+import { SalaryEncryption } from './SalaryEncryption';
+import { sanitizeText } from '../utils/sanitize';
+import { Prisma } from '@prisma/client';
 
 const EMPLOYEE_DATE_FIELDS = [
     'entryDate', 'exitDate', 'callDate', 'contractInterruptionDate', 'lowDate',
@@ -10,7 +13,8 @@ const EMPLOYEE_STRING_FIELDS = [
     'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
     'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
     'drivingLicenseType', 'gender', 'managerId', 'lowReason', 'workingDayType',
-    'privateNotes', 'country', 'companyPhone', 'companyShortPhone'
+    'privateNotes', 'country', 'companyPhone', 'companyShortPhone',
+    'vacationYear', 'vacationAnnualQuota', 'vacationCarryOver', 'vacationImportedUsed'
 ];
 
 type EmployeeIdentitySource = {
@@ -60,9 +64,9 @@ function mapEmergencyContacts(contacts: unknown) {
     }
 
     return contacts.slice(0, 5).map((contact: any) => ({
-        name: contact.name,
-        phone: contact.phone,
-        relationship: contact.relationship
+        name: sanitizeText(contact.name) || '',
+        phone: sanitizeText(contact.phone) || '',
+        relationship: sanitizeText(contact.relationship)
     }));
 }
 
@@ -87,51 +91,68 @@ export function buildEmergencyContactsReplace(contacts: unknown) {
     };
 }
 
-export function buildEmployeeCreateData(body: Record<string, any>, effectiveCompanyId: string | null | undefined) {
+export function buildEmployeeCreateData(body: Record<string, any>, effectiveCompanyId: string | null | undefined): Prisma.EmployeeUncheckedCreateInput {
     const identity = resolveEmployeeIdentity(body);
 
+    if (!body.dni) {
+        throw new Error('DNI is required to create an employee');
+    }
+
+    const encryptedDni = EncryptionService.encrypt(body.dni);
+    if (!encryptedDni) {
+        throw new Error('DNI encryption failed');
+    }
+
     return {
-        dni: body.dni,
-        name: identity.name,
-        firstName: identity.firstName,
-        lastName: identity.lastName,
-        email: body.email,
-        phone: body.phone,
-        companyPhone: body.companyPhone,
-        address: body.address,
-        city: body.city,
-        postalCode: body.postalCode,
-        subaccount465: body.subaccount465 || null,
+        dni: encryptedDni,
+        // `name` is required by the schema. `sanitizeText` returns
+        // `string | null`, so we coerce the null branch to the empty
+        // string. The validator upstream is responsible for rejecting
+        // empty names.
+        name: sanitizeText(identity.name) ?? '',
+        firstName: sanitizeText(identity.firstName),
+        lastName: sanitizeText(identity.lastName),
+        email: sanitizeText(body.email),
+        phone: sanitizeText(body.phone),
+        companyPhone: sanitizeText(body.companyPhone),
+        address: sanitizeText(body.address),
+        city: sanitizeText(body.city),
+        postalCode: sanitizeText(body.postalCode),
+        subaccount465: sanitizeText(body.subaccount465),
         socialSecurityNumber: EncryptionService.encrypt(body.socialSecurityNumber),
         iban: EncryptionService.encrypt(body.iban),
-        companyId: effectiveCompanyId,
-        department: body.department,
-        category: body.category,
-        contractType: body.contractType,
-        agreementType: body.agreementType,
-        jobTitle: body.jobTitle,
+        companyId: effectiveCompanyId ?? undefined,
+        department: sanitizeText(body.department),
+        category: sanitizeText(body.category),
+        contractType: sanitizeText(body.contractType),
+        agreementType: sanitizeText(body.agreementType),
+        jobTitle: sanitizeText(body.jobTitle),
         entryDate: body.entryDate ? new Date(body.entryDate) : undefined,
         callDate: body.callDate ? new Date(body.callDate) : undefined,
         contractInterruptionDate: body.contractInterruptionDate ? new Date(body.contractInterruptionDate) : undefined,
         dniExpiration: body.dniExpiration ? new Date(body.dniExpiration) : undefined,
         birthDate: body.birthDate ? new Date(body.birthDate) : undefined,
-        province: body.province || null,
-        registeredIn: body.registeredIn || null,
+        province: sanitizeText(body.province),
+        registeredIn: sanitizeText(body.registeredIn),
         drivingLicense: body.drivingLicense === true || body.drivingLicense === 'true',
-        drivingLicenseType: body.drivingLicenseType || null,
+        drivingLicenseType: sanitizeText(body.drivingLicenseType),
         drivingLicenseExpiration: body.drivingLicenseExpiration ? new Date(body.drivingLicenseExpiration) : undefined,
         emergencyContacts: buildEmergencyContactsCreate(body.emergencyContacts),
         workingDayType: body.workingDayType || 'COMPLETE',
         weeklyHours: body.weeklyHours ? parseFloat(body.weeklyHours) : null,
         gender: body.gender || null,
         managerId: body.managerId || null,
-        privateNotes: body.privateNotes || null,
-  annualGrossSalary: body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0,
-  monthlyGrossSalary: body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0,
-  annualTotalSalary: body.annualTotalSalary ? parseFloat(body.annualTotalSalary) : 0,
-  monthlyTotalSalary: body.monthlyTotalSalary ? parseFloat(body.monthlyTotalSalary) : 0,
-  companyShortPhone: body.companyShortPhone || null,
-        country: body.country || 'España',
+        privateNotes: sanitizeText(body.privateNotes),
+        annualGrossSalary: 0,
+        monthlyGrossSalary: 0,
+        annualTotalSalary: 0,
+        monthlyTotalSalary: 0,
+        // Salaries are encrypted at rest via SalaryEncryption. The
+        // helper below populates the `*Enc` columns with AES-256-GCM
+        // ciphertext and zeroes the legacy Decimal columns.
+        ...SalaryEncryption.applyEncryptedSalaries({}, body),
+        companyShortPhone: sanitizeText(body.companyShortPhone),
+        country: sanitizeText(body.country) || 'España',
         active: true
     };
 }
@@ -163,21 +184,20 @@ export function buildCompanyEmployeeUpdateData(body: Record<string, any>, curren
         updateData.weeklyHours = body.weeklyHours ? parseFloat(body.weeklyHours) : null;
     }
 
-    if (body.annualGrossSalary !== undefined) {
-        updateData.annualGrossSalary = body.annualGrossSalary ? parseFloat(body.annualGrossSalary) : 0;
+    // Salaries: encrypt via SalaryEncryption. The helper zeroes the
+    // legacy Decimal column so the encrypted column is the only
+    // authoritative source. We invoke the helper for each defined
+    // salary field individually so partial updates (e.g. only
+    // annualGrossSalary) preserve the other encrypted columns.
+    const SALARY_FIELDS = SalaryEncryption.SALARY_FIELDS;
+    for (const field of SALARY_FIELDS) {
+        if (body[field] !== undefined) {
+            const encField = SalaryEncryption.FIELD_TO_ENC[field];
+            const ciphertext = SalaryEncryption.encryptSalary(body[field]);
+            updateData[encField] = ciphertext;
+            updateData[field] = 0; // non-authoritative
+        }
     }
-
-  if (body.monthlyGrossSalary !== undefined) {
-    updateData.monthlyGrossSalary = body.monthlyGrossSalary ? parseFloat(body.monthlyGrossSalary) : 0;
-  }
-
-  if (body.annualTotalSalary !== undefined) {
-    updateData.annualTotalSalary = body.annualTotalSalary ? parseFloat(body.annualTotalSalary) : 0;
-  }
-
-  if (body.monthlyTotalSalary !== undefined) {
-    updateData.monthlyTotalSalary = body.monthlyTotalSalary ? parseFloat(body.monthlyTotalSalary) : 0;
-  }
 
     if (updateData.socialSecurityNumber) {
         updateData.socialSecurityNumber = EncryptionService.encrypt(updateData.socialSecurityNumber);
@@ -185,6 +205,10 @@ export function buildCompanyEmployeeUpdateData(body: Record<string, any>, curren
 
     if (updateData.iban) {
         updateData.iban = EncryptionService.encrypt(updateData.iban);
+    }
+
+    if (body.dni !== undefined) {
+        updateData.dni = body.dni ? EncryptionService.encrypt(body.dni) : undefined;
     }
 
     const emergencyContacts = buildEmergencyContactsReplace(body.emergencyContacts);

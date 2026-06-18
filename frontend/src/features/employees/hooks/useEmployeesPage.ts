@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { api } from '../../../api/client';
 import { useConfirm } from '../../../context/ConfirmContext';
 import type { Employee, FilterState } from '../types';
-import { getEmployeeDisplayName } from '../../../utils/employeeDisplay';
+
 
 const DEFAULT_LIMIT = 20;
 
@@ -20,8 +20,10 @@ interface EmployeesResponse {
     meta: PaginatedMeta;
 }
 
-const fetchEmployees = async (page: number, limit: number, status: string = 'active'): Promise<{ employees: Employee[]; meta: PaginatedMeta }> => {
-    const res = await api.get<EmployeesResponse>('/employees', { params: { page, limit, status } });
+const fetchEmployees = async (page: number, limit: number, status: string = 'active', search: string = ''): Promise<{ employees: Employee[]; meta: PaginatedMeta }> => {
+    const params: Record<string, string | number> = { page, limit, status };
+    if (search.trim()) params.search = search.trim();
+    const res = await api.get<EmployeesResponse>('/employees', { params });
     const payload = res.data?.data ? res.data : (res.data || { data: [], meta: { total: 0, page: 1, limit, totalPages: 1 } });
     const employees: Employee[] = Array.isArray(payload.data) ? payload.data : [];
     const meta: PaginatedMeta = payload.meta || { total: 0, page: 1, limit, totalPages: 1 };
@@ -42,8 +44,8 @@ export function useEmployeesPage() {
     const [limit] = useState(DEFAULT_LIMIT);
 
     const { data, isLoading } = useQuery({
-        queryKey: ['employees', page, limit, filters.status],
-        queryFn: () => fetchEmployees(page, limit, filters.status),
+        queryKey: ['employees', page, limit, filters.status, searchTerm],
+        queryFn: () => fetchEmployees(page, limit, filters.status, searchTerm),
         staleTime: 1000 * 60 * 5
     });
 
@@ -72,17 +74,10 @@ export function useEmployeesPage() {
 
     const filteredEmployees = useMemo(() => {
         return employees.filter((employee) => {
-            const term = searchTerm.toLowerCase();
-            const fullName = getEmployeeDisplayName(employee, '').toLowerCase();
-            const matchesSearch = fullName.includes(term) || employee.dni.toLowerCase().includes(term);
             const matchesDepartment = !filters.department || (employee.department || 'General') === filters.department;
-            const matchesStatus = filters.status === 'all'
-                || (filters.status === 'active' && employee.active)
-                || (filters.status === 'inactive' && !employee.active);
-
-            return matchesSearch && matchesDepartment && matchesStatus;
+            return matchesDepartment;
         });
-    }, [employees, filters, searchTerm]);
+    }, [employees, filters.department]);
 
     const activeFilterCount = useMemo(() => {
         let count = 0;

@@ -1,8 +1,10 @@
 import DocumentArchive from '../../../components/DocumentArchive';
 import PRLArchive from '../../../components/PRLArchive';
 import { CONVENIOS, PUESTOS, TIPOS_CONTRATO } from '../constants';
-import type { CompanyOption, EmployeeFieldOptions, EmployeeFormData, EmployeeOption } from '../types';
+import type { CompanyOption, EmployeeFieldOptions, EmployeeFormData, EmployeeOption, EmployeeVacationBalanceSummary, EmployeeViewRecord } from '../types';
 import { getEmployeeDisplayName } from '../../../utils/employeeDisplay';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../../../api/client';
 
 interface EmployeeSecondarySectionsProps {
     activeTab: string;
@@ -13,6 +15,7 @@ interface EmployeeSecondarySectionsProps {
     allEmployees: EmployeeOption[];
     fieldOptions: EmployeeFieldOptions;
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
+    employeeView?: EmployeeViewRecord;
 }
 
 export function EmployeeSecondarySections({
@@ -23,8 +26,15 @@ export function EmployeeSecondarySections({
     companies,
     allEmployees,
     fieldOptions,
-    onChange
+    onChange,
+    employeeView
 }: EmployeeSecondarySectionsProps) {
+    const { data: vacationBalance } = useQuery({
+        queryKey: ['employee-vacation-balance', employeeId, new Date().getFullYear()],
+        queryFn: () => api.get(`/employees/${employeeId}/vacation-balance`).then(res => res.data),
+        enabled: !isNew && activeTab === 'financiero',
+        staleTime: 1000 * 60 * 5
+    });
     if (activeTab === 'laboral') {
         return (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-300">
@@ -94,6 +104,55 @@ export function EmployeeSecondarySections({
                         <input type="number" name="weeklyHours" value={formData.weeklyHours} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-blue-200 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-900/10 font-bold" placeholder="Ej: 20" />
                     </div>
                 )}
+                <div className="space-y-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
+                        Días Vacaciones Anuales
+                        <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-slate-500">Días naturales</span>
+                    </label>
+                    <input type="number" step="1" min="0" max="366" name="vacationDaysTotal" value={formData.vacationDaysTotal} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50/30 dark:bg-amber-900/10 font-bold text-amber-700 dark:text-amber-400" placeholder="Ej: 30" />
+                </div>
+            </div>
+        );
+    }
+
+    if (activeTab === 'vacaciones' && !isNew) {
+        const balance = (formData as any).vacationBalance;
+        return (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in duration-300">
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Año</label>
+                    <input type="number" min="2000" max="2100" name="vacationYear" value={formData.vacationYear || new Date().getFullYear()} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Cupo Anual (días)</label>
+                    <input type="number" step="0.5" min="0" max="366" name="vacationAnnualQuota" value={formData.vacationAnnualQuota || balance?.annualQuotaDays || ''} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-blue-200 dark:border-blue-700 bg-blue-50/30 dark:bg-blue-900/10 font-bold text-blue-700 dark:text-blue-400" placeholder="Ej: 30" />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Días Arrastrados (año anterior)</label>
+                    <input type="number" step="0.5" min="0" name="vacationCarryOver" value={formData.vacationCarryOver || balance?.carriedOverDays || ''} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-amber-200 dark:border-amber-700 bg-amber-50/30 dark:bg-amber-900/10 font-bold text-amber-700 dark:text-amber-400" placeholder="Ej: 2.5" />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Días ya Gastados (importados)</label>
+                    <input type="number" step="0.5" min="0" name="vacationImportedUsed" value={formData.vacationImportedUsed || balance?.importedUsedDays || ''} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-red-200 dark:border-red-700 bg-red-50/30 dark:bg-red-900/10 font-bold text-red-700 dark:text-red-400" placeholder="Ej: 0" />
+                </div>
+                <div className="md:col-span-2 pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <div className="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl text-center">
+                        <p className="text-xs text-slate-500 dark:text-slate-400">Total Derecho</p>
+                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{balance?.totalEntitledDays ?? 0}</p>
+                    </div>
+                    <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl text-center">
+                        <p className="text-xs text-blue-700 dark:text-blue-400">Gastados Aprobados</p>
+                        <p className="text-2xl font-bold text-blue-700 dark:text-blue-400">{balance?.approvedUsedDays ?? 0}</p>
+                    </div>
+                    <div className="bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl text-center">
+                        <p className="text-xs text-amber-700 dark:text-amber-400">Pendientes</p>
+                        <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">{balance?.pendingDays ?? 0}</p>
+                    </div>
+                    <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl text-center">
+                        <p className="text-xs text-emerald-700 dark:text-emerald-400">Dispony>Disponibles</p>
+                        <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{balance?.availableDays ?? 0}</p>
+                    </div>
+                </div>
             </div>
         );
     }
