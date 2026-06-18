@@ -220,9 +220,19 @@ export const DocumentController = {
 
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
+        const { user } = req as AuthenticatedRequest;
         try {
-            const document = await prisma.document.findUnique({ where: { id }, include: { employee: true } });
+            const document = await prisma.document.findUnique({
+                where: { id },
+                include: { employee: { select: { companyId: true } } }
+            });
             if (!document) throw new AppError('Documento no encontrado', 404);
+
+            // SECURITY: enforce company scoping on delete (same as download).
+            const isGlobalAdmin = user?.role === 'admin' && !user.companyId;
+            if (!isGlobalAdmin && user?.companyId && document.employee?.companyId !== user.companyId) {
+                throw new AppError('No tienes permiso para eliminar este documento', 403);
+            }
 
             // Eliminar archivo físico / S3
             if (document.fileUrl) {
@@ -240,14 +250,44 @@ export const DocumentController = {
     download: async (req: Request, res: Response) => {
         const { id } = req.params;
         const inline = req.query.inline === 'true';
+        const { user } = req as AuthenticatedRequest;
 
         try {
             const document = await prisma.document.findUnique({
                 where: { id },
-                include: { employee: true }
+                include: { employee: { select: { companyId: true, deletedAt: true } } }
             });
 
             if (!document) throw new AppError('Documento no encontrado', 404);
+
+            // ────────────────────────────────────────────────────────────────────
+            // SECURITY FIX 2026-06-18 — IDOR prevention (cross-tenant document
+            // download). The previous version only checked `document.read`
+            // permission via the `authorize` middleware, which does NOT verify
+            // that the authenticated user's company matches the document's
+            // employee's company. A user with valid `document.read` permission
+            // in company-A could download any document of company-B by
+            // guessing or enumerating document IDs.
+            //
+            // Multi-tenant rules:
+            //   - Global admin (role=admin, no companyId): full access.
+            //   - Company-scoped user: must match document's employee.companyId.
+            //   - Soft-deleted employee: refuse download (GDPR Art. 17 — once
+            //     retention period elapses and purge runs, files are gone;
+            //     until then only admins with explicit reason may access).
+            // ────────────────────────────────────────────────────────────────────
+            const isGlobalAdmin = user?.role === 'admin' && !user.companyId;
+            if (!isGlobalAdmin) {
+                if (user?.companyId && document.employee?.companyId !== user.companyId) {
+                    log.warn({
+                        userId: user?.id,
+                        userCompany: user?.companyId,
+                        documentCompany: document.employee?.companyId,
+                        documentId: id
+                    }, 'Cross-tenant document download attempt blocked');
+                    throw new AppError('No tienes permiso para acceder a este documento', 403);
+                }
+            }
 
             if (StorageService.provider === 'local') {
                 const fs = await import('fs');

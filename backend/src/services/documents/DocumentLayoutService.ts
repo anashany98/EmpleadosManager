@@ -206,17 +206,42 @@ const loadImageBuffer = async (source: string | null) => {
         return null;
     }
 
+    // ────────────────────────────────────────────────────────────────────
+    // SECURITY FIX 2026-06-18 — SSRF prevention.
+    //
+    // The previous implementation allowed any HTTP(S) URL passed via
+    // Company.logoUrl (or layout template `url` field) to be fetched server-side.
+    // A malicious admin could set logoUrl = "http://169.254.169.254/latest/meta-data/"
+    // or any internal service URL and exfiltrate responses via the rendered PDF.
+    //
+    // Fix: REFUSE any http(s) URL. Logo sources must resolve to a local file
+    // under one of the well-known upload directories. If a remote logo is
+    // needed, the operator must pre-download it to local storage (manual
+    // step) and reference the local path.
+    //
+    // For the (rare) case where S3 storage is configured, we also accept
+    // S3 keys via the StorageService abstraction — they resolve to local
+    // downloads via the S3 SDK rather than raw `fetch`.
+    // ────────────────────────────────────────────────────────────────────
     if (/^https?:\/\//i.test(source)) {
-        const response = await fetch(source);
-        if (!response.ok) {
-            throw new Error(`No se pudo descargar la imagen: ${response.status}`);
-        }
-
-        const arrayBuffer = await response.arrayBuffer();
-        return Buffer.from(arrayBuffer);
+        throw new Error(
+            'External URLs are not allowed for logo images (SSRF prevention). ' +
+            'Download the logo locally and reference the local path, or use the StorageService S3 key.'
+        );
     }
 
     const normalized = source.replace(/^file:\/\//i, '');
+
+    // Defense-in-depth: resolve the normalized path and ensure it stays
+    // within an allowed base directory (cwd, cwd/uploads, cwd/backend/uploads).
+    // This blocks path traversal attacks like "../../etc/passwd" even if
+    // an attacker controls the `url` field via a layout template.
+    const allowedBases = [
+        path.resolve(process.cwd()),
+        path.resolve(process.cwd(), 'uploads'),
+        path.resolve(process.cwd(), 'backend', 'uploads')
+    ];
+
     const candidatePaths = [
         normalized,
         path.isAbsolute(normalized) ? normalized : path.join(process.cwd(), normalized),
@@ -226,8 +251,20 @@ const loadImageBuffer = async (source: string | null) => {
     ];
 
     for (const candidate of candidatePaths) {
-        if (candidate && fs.existsSync(candidate)) {
-            return fs.readFileSync(candidate);
+        if (!candidate) continue;
+        const resolved = path.resolve(candidate);
+
+        // Path traversal guard: refuse paths that escape the allowed bases.
+        const isInsideAllowed = allowedBases.some(base => {
+            const rel = path.relative(base, resolved);
+            return rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+        });
+        if (!isInsideAllowed) {
+            continue;
+        }
+
+        if (fs.existsSync(resolved)) {
+            return fs.readFileSync(resolved);
         }
     }
 
