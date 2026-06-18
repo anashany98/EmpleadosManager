@@ -149,7 +149,7 @@ export function EmployeeSecondarySections({
                         <p className="text-2xl font-bold text-amber-700 dark:text-amber-400">{balance?.pendingDays ?? 0}</p>
                     </div>
                     <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl text-center">
-                        <p className="text-xs text-emerald-700 dark:text-emerald-400">Dispony>Disponibles</p>
+                        <p className="text-xs text-emerald-700 dark:text-emerald-400">Disponibles</p>
                         <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{balance?.availableDays ?? 0}</p>
                     </div>
                 </div>
