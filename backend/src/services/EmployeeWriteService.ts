@@ -12,7 +12,7 @@ const EMPLOYEE_STRING_FIELDS = [
     'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
     'subaccount465', 'department',
     'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
-    'drivingLicenseType', 'gender', 'managerId', 'lowReason', 'workingDayType',
+    'drivingLicenseType', 'gender', 'lowReason', 'workingDayType',
     'privateNotes', 'country', 'companyPhone', 'companyShortPhone',
     'vacationYear', 'vacationAnnualQuota', 'vacationCarryOver', 'vacationImportedUsed'
 ];
