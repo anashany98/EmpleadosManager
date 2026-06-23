@@ -204,13 +204,19 @@ export function buildCompanyEmployeeUpdateData(body: Record<string, any>, curren
     });
 
     // Prisma 5.x requires relation syntax for FK columns on update operations.
-    // The generated client does NOT accept `companyId: '...'` as an update arg,
-    // so we translate it to `company: { connect: { id: '...' } }`.
-    if (body.companyId !== undefined) {
-        if (body.companyId === null || body.companyId === '') {
-            updateData.company = { disconnect: true };
-        } else {
-            updateData.company = { connect: { id: body.companyId } };
+    // The generated client does NOT accept `<fkField>: '...'` as an update arg,
+    // so we translate every `<relation>Id` body field to `<relation>: { connect }`.
+    const RELATION_FK_FIELDS: Record<string, string> = {
+        companyId: 'company',
+        managerId: 'manager',
+    };
+    for (const [fkField, relation] of Object.entries(RELATION_FK_FIELDS)) {
+        if (body[fkField] !== undefined) {
+            if (body[fkField] === null || body[fkField] === '') {
+                updateData[relation] = { disconnect: true };
+            } else {
+                updateData[relation] = { connect: { id: body[fkField] } };
+            }
         }
     }
 

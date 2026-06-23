@@ -1799,10 +1799,15 @@ export const EmployeeImportService = {
 
                             if (existing) {
                                 await tx.emergencyContact.deleteMany({ where: { employeeId: existing.id } });
+                                // Translate FK fields (companyId, managerId) to Prisma 5.x relation syntax
+                                const { companyId, managerId, ...restData } = employeeData as Record<string, any>;
+                                const relationData: Record<string, any> = { ...restData };
+                                if (companyId !== undefined) relationData.company = companyId ? { connect: { id: companyId } } : { disconnect: true };
+                                if (managerId !== undefined) relationData.manager = managerId ? { connect: { id: managerId } } : { disconnect: true };
                                 const updated = await tx.employee.update({
                                     where: { id: existing.id },
                                     data: {
-                                        ...employeeData,
+                                        ...relationData,
                                         emergencyContacts: contactName || contactPhone ? {
                                             create: [{
                                                 name: contactName || 'Contacto',
