@@ -10,7 +10,7 @@ const EMPLOYEE_DATE_FIELDS = [
 
 const EMPLOYEE_STRING_FIELDS = [
     'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
-    'subaccount465', 'department', 'socialSecurityNumber', 'iban', 'companyId',
+    'subaccount465', 'department',
     'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
     'drivingLicenseType', 'gender', 'managerId', 'lowReason', 'workingDayType',
     'privateNotes', 'country', 'companyPhone', 'companyShortPhone',
@@ -58,6 +58,25 @@ function resolveEmployeeIdentity(source: EmployeeIdentitySource, current?: Emplo
     };
 }
 
+function normalizeDni(value: unknown): string | null {
+    const text = sanitizeText(value);
+    return text ? text.replace(/\s+/g, '').toUpperCase() : null;
+}
+
+function normalizeSocialSecurityNumber(value: unknown): string | null {
+    const text = sanitizeText(value);
+    return text ? text.replace(/[\s-]/g, '') : null;
+}
+
+function normalizeIban(value: unknown): string | null {
+    const text = sanitizeText(value);
+    return text ? text.replace(/\s+/g, '').toUpperCase() : null;
+}
+
+function encryptNullable(value: string | null): string | null {
+    return value ? EncryptionService.encrypt(value) : null;
+}
+
 function mapEmergencyContacts(contacts: unknown) {
     if (!Array.isArray(contacts) || contacts.length === 0) {
         return undefined;
@@ -93,18 +112,27 @@ export function buildEmergencyContactsReplace(contacts: unknown) {
 
 export function buildEmployeeCreateData(body: Record<string, any>, effectiveCompanyId: string | null | undefined): Prisma.EmployeeUncheckedCreateInput {
     const identity = resolveEmployeeIdentity(body);
+    const dni = normalizeDni(body.dni);
 
-    if (!body.dni) {
+    if (!dni) {
         throw new Error('DNI is required to create an employee');
     }
 
-    const encryptedDni = EncryptionService.encrypt(body.dni);
+    const encryptedDni = encryptNullable(dni);
     if (!encryptedDni) {
         throw new Error('DNI encryption failed');
     }
 
+    const socialSecurityNumber = normalizeSocialSecurityNumber(body.socialSecurityNumber);
+    const encryptedSocialSecurityNumber = encryptNullable(socialSecurityNumber);
+    const iban = normalizeIban(body.iban);
+    const encryptedIban = encryptNullable(iban);
+
     return {
-        dni: encryptedDni,
+        // Keep DNI searchable/unique for login and imports. The encrypted copy is
+        // stored in dniEnc for future full PII-at-rest migration.
+        dni,
+        dniEnc: encryptedDni,
         // `name` is required by the schema. `sanitizeText` returns
         // `string | null`, so we coerce the null branch to the empty
         // string. The validator upstream is responsible for rejecting
@@ -119,8 +147,11 @@ export function buildEmployeeCreateData(body: Record<string, any>, effectiveComp
         city: sanitizeText(body.city),
         postalCode: sanitizeText(body.postalCode),
         subaccount465: sanitizeText(body.subaccount465),
-        socialSecurityNumber: EncryptionService.encrypt(body.socialSecurityNumber),
-        iban: EncryptionService.encrypt(body.iban),
+        // Backward-compatible encrypted legacy columns plus new *Enc source fields.
+        socialSecurityNumber: encryptedSocialSecurityNumber,
+        socialSecurityNumberEnc: encryptedSocialSecurityNumber,
+        iban: encryptedIban,
+        ibanEnc: encryptedIban,
         companyId: effectiveCompanyId ?? undefined,
         department: sanitizeText(body.department),
         category: sanitizeText(body.category),
@@ -172,6 +203,17 @@ export function buildCompanyEmployeeUpdateData(body: Record<string, any>, curren
         }
     });
 
+    // Prisma 5.x requires relation syntax for FK columns on update operations.
+    // The generated client does NOT accept `companyId: '...'` as an update arg,
+    // so we translate it to `company: { connect: { id: '...' } }`.
+    if (body.companyId !== undefined) {
+        if (body.companyId === null || body.companyId === '') {
+            updateData.company = { disconnect: true };
+        } else {
+            updateData.company = { connect: { id: body.companyId } };
+        }
+    }
+
     if (body.active !== undefined) {
         updateData.active = body.active;
     }
@@ -199,16 +241,24 @@ export function buildCompanyEmployeeUpdateData(body: Record<string, any>, curren
         }
     }
 
-    if (updateData.socialSecurityNumber) {
-        updateData.socialSecurityNumber = EncryptionService.encrypt(updateData.socialSecurityNumber);
+    if (body.socialSecurityNumber !== undefined) {
+        const normalized = normalizeSocialSecurityNumber(body.socialSecurityNumber);
+        const encrypted = encryptNullable(normalized);
+        updateData.socialSecurityNumber = encrypted;
+        updateData.socialSecurityNumberEnc = encrypted;
     }
 
-    if (updateData.iban) {
-        updateData.iban = EncryptionService.encrypt(updateData.iban);
+    if (body.iban !== undefined) {
+        const normalized = normalizeIban(body.iban);
+        const encrypted = encryptNullable(normalized);
+        updateData.iban = encrypted;
+        updateData.ibanEnc = encrypted;
     }
 
     if (body.dni !== undefined) {
-        updateData.dni = body.dni ? EncryptionService.encrypt(body.dni) : undefined;
+        const dni = normalizeDni(body.dni);
+        updateData.dni = dni || undefined;
+        updateData.dniEnc = encryptNullable(dni);
     }
 
     const emergencyContacts = buildEmergencyContactsReplace(body.emergencyContacts);
