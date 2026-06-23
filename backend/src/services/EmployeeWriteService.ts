@@ -13,8 +13,7 @@ const EMPLOYEE_STRING_FIELDS = [
     'subaccount465', 'department',
     'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
     'drivingLicenseType', 'gender', 'lowReason', 'workingDayType',
-    'privateNotes', 'country', 'companyPhone', 'companyShortPhone',
-    'vacationYear', 'vacationAnnualQuota', 'vacationCarryOver', 'vacationImportedUsed'
+    'privateNotes', 'country', 'companyPhone', 'companyShortPhone'
 ];
 
 type EmployeeIdentitySource = {
