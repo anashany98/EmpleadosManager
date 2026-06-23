@@ -13,11 +13,8 @@ import {
 export async function validateVacationRequest(employeeId: string, start: Date, end: Date, type?: string, tx?: Prisma.TransactionClient) {
     const db = tx || prisma;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (start < today) {
-        throw new AppError('La fecha de inicio no puede ser anterior a hoy.', 400);
-    }
+    // Las fechas de inicio pueden ser anteriores a hoy (importar histórico, registrar
+    // ausencias pasadas, etc.). Solo validamos que inicio <= fin y no haya solapamientos.
 
     // Check for overlapping APPROVED/EXISTING vacations
     const overlapping = await db.vacation.findFirst({
