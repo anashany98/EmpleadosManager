@@ -175,6 +175,19 @@ export class EmployeeService {
 
         const serializedEmployee = sanitizeEmployeeDetail(detailedEmployee, includeSensitiveData);
 
+        // Attach the current-year vacation balance summary so the frontend
+        // employee detail page can render the balance without an extra round-trip.
+        // This is the source of truth for the saldo display.
+        try {
+            const { getEmployeeVacationBalanceSummary } = await import('./VacationBalanceService');
+            const currentYear = new Date().getFullYear();
+            const vacationBalance = await getEmployeeVacationBalanceSummary(id, currentYear);
+            (serializedEmployee as any).vacationBalance = vacationBalance;
+            (serializedEmployee as any).vacationDaysTotal = vacationBalance?.totalEntitledDays ?? null;
+        } catch (balanceError) {
+            log.warn({ err: balanceError, employeeId: id }, 'Failed to attach vacation balance to employee detail');
+        }
+
         return { employee: serializedEmployee, includeSensitiveData };
     }
 
