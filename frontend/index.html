@@ -11,31 +11,16 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!--
-    Content Security Policy. The inline script below registers the service
-    worker, so we allow it via a sha256 hash. The CSP sent by the Express
+    Content Security Policy. The service worker registration is moved to
+    /public/sw-register.js (an external file) so we no longer need any
+    'unsafe-inline' script or sha256 hash here. The CSP sent by the Express
     backend (via Helmet) is the source of truth; this meta tag acts as a
     defense-in-depth measure for the static shell before any backend response.
   -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-6RCa0bZ9F43rSSt/N24/xNUoR6rkoPZduq7ozNtA4Ug='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' ws: wss: https://api.empleadosmanager.egeadev.cloud; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self';" />
   <title>Empleados Manager APP</title>
   <link rel="apple-touch-icon" href="/icons/icon-192.svg" />
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', async () => {
-        const isLocalhost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
-        if (isLocalhost) {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(registrations.map((registration) => registration.unregister()));
-          return;
-        }
-
-        navigator.serviceWorker.register('/sw.js')
-          .then((registration) => console.log('SW registered:', registration.scope))
-          .catch((err) => console.log('SW registration failed:', err));
-      });
-    }
-  </script>
+  <script type="module" src="/sw-register.js"></script>
 </head>
 
 <body>
