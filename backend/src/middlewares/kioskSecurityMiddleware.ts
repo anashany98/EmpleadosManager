@@ -1,7 +1,15 @@
 import type { Request, Response, NextFunction } from 'express';
 import rateLimit from 'express-rate-limit';
+import crypto from 'crypto';
 
 const KIOSK_SECRET_HEADER = 'x-kiosk-secret';
+
+function safeSecretEquals(a: string, b: string): boolean {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+}
 
 function getConfiguredKioskSecret(): string | null {
     return process.env.KIOSK_DEVICE_SECRET || process.env.KIOSK_SECRET || null;
@@ -21,7 +29,7 @@ export function requireKioskSecretIfConfigured(req: Request, res: Response, next
     }
 
     const providedSecret = req.header(KIOSK_SECRET_HEADER) || req.body?.secret;
-    if (providedSecret !== configuredSecret) {
+    if (typeof providedSecret !== 'string' || !safeSecretEquals(providedSecret, configuredSecret)) {
         return res.status(401).json({
             status: 'error',
             message: 'Kiosk unauthorized'

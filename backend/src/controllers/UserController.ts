@@ -6,6 +6,8 @@ import { ApiResponse } from '../utils/ApiResponse';
 import { validatePassword } from '../utils/passwordPolicy';
 import { coercePermissionMap, getEffectivePermissions, normalizeRole } from '../../../shared/authz';
 
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '10', 10);
+
 export const UserController = {
     list: async (req: Request, res: Response) => {
         const users = await prisma.user.findMany({
@@ -64,7 +66,7 @@ export const UserController = {
             throw new AppError('El usuario ya existe', 400);
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
 
         const normalizedRole = normalizeRole(role);
         const normalizedPermissions = coercePermissionMap(permissions || {});
@@ -96,7 +98,7 @@ export const UserController = {
             if (!policy.ok) {
                 throw new AppError(policy.message || 'Contraseña no válida', 400);
             }
-            data.password = await bcrypt.hash(password, 10);
+            data.password = await bcrypt.hash(password, BCRYPT_ROUNDS);
         }
         if (typeof isActive === 'boolean') {
             data.isActive = isActive;

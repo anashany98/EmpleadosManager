@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
@@ -93,8 +94,14 @@ export const KioskController = {
     authenticateKiosk: async (req: Request, res: Response) => {
         const { secret } = req.body;
         const configuredSecret = process.env.KIOSK_DEVICE_SECRET || process.env.KIOSK_SECRET;
-        if (configuredSecret && secret !== configuredSecret) {
-            throw new AppError('Kiosk Unauthorized', 401);
+        if (configuredSecret) {
+            const provided = typeof secret === 'string' ? secret : '';
+            const bufA = Buffer.from(provided);
+            const bufB = Buffer.from(configuredSecret);
+            const sameLength = bufA.length === bufB.length;
+            if (!sameLength || !crypto.timingSafeEqual(bufA, bufB)) {
+                throw new AppError('Kiosk Unauthorized', 401);
+            }
         }
         return ApiResponse.success(res, { status: 'authorized' });
     },

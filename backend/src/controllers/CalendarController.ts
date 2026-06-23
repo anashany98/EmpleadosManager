@@ -39,29 +39,31 @@ export const CalendarController = {
 
         const backendUrl = process.env.PUBLIC_API_URL || process.env.VITE_API_URL;
 
-        // We return the full feed URL
-        // If frontend talks to backend via /api, the feed is at /api/calendar/feed
-        // The user needs an absolute URL to put in Google Calendar.
-
-        // Construct URL assuming typical deployment
+        // Devolvemos la URL con la firma en query (requerido por Google/Outlook Calendar).
+        // ADVERTENCIA: esta URL debe tratarse como secreta. Rotar si se sospecha fuga
+        // (cambiar JWT_SECRET invalida todas las firmas).
         const feedUrl = `${backendUrl}/api/calendar/feed?u=${employee.id}&s=${signature}`;
 
-        return ApiResponse.success(res, { url: feedUrl });
+        return ApiResponse.success(res, { url: feedUrl, headerName: 'X-Calendar-Signature', signature });
     },
 
     getFeed: async (req: Request, res: Response) => {
-        const { u: employeeId, s: signature } = req.query;
+        const { u: employeeId } = req.query;
+        // Preferir header (no se loguea por defecto); fallback a query para clientes calendario externos
+        const signature = (req.header('X-Calendar-Signature') || req.query.s) as string | undefined;
 
         if (!employeeId || !signature) {
             return res.status(400).send('Missing parameters');
         }
 
-        // Verify signature
+        // Verify signature usando comparación de tiempo constante para evitar timing attacks
         const expected = crypto.createHmac('sha256', SECRET)
             .update(employeeId as string)
             .digest('hex');
 
-        if (signature !== expected) {
+        const signatureBuffer = Buffer.from(String(signature));
+        const expectedBuffer = Buffer.from(expected);
+        if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
             return res.status(403).send('Invalid signature');
         }
 

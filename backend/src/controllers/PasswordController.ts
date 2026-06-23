@@ -20,6 +20,7 @@ if (!FRONTEND_URL) {
 
 const PASSWORD_RESET_EXPIRES_MS = 15 * 60 * 1000;
 const ACCESS_ACTIVATION_EXPIRES_MS = 7 * 24 * 60 * 60 * 1000;
+const BCRYPT_ROUNDS = parseInt(process.env.BCRYPT_ROUNDS || '10', 10);
 
 type PasswordTokenPurpose = 'PASSWORD_RESET' | 'ACCESS_ACTIVATION';
 
@@ -166,7 +167,7 @@ export const PasswordController = {
                 }
             });
 
-            const hashedPassword = await bcrypt.hash(newPassword, 10);
+            const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
             if (user) {
                 await prisma.$transaction([

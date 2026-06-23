@@ -8,22 +8,19 @@ describe('BackupService.pruneBackups', () => {
     const originalCwd = process.cwd();
 
     beforeEach(() => {
-        // Create a temporary directory for testing
-        tempDir = fs.mkdtempSync(path.join(originalCwd, 'test-backups-'));
-        process.chdir(tempDir);
-        
-        // Mock process.cwd() to return our temp dir
+        // Crear dir temporal bajo la carpeta temporal del OS (no fuga al repo si el cleanup falla)
+        const os = require('os');
+        tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rrhh-test-backups-'));
+        // Mock process.cwd() sin mutar el cwd real del proceso
         vi.spyOn(process, 'cwd').mockImplementation(() => tempDir);
     });
 
     afterEach(() => {
-        // Cleanup: delete temp directory recursively
         try {
-            if (fs.existsSync(tempDir)) {
+            vi.restoreAllMocks();
+            if (tempDir && fs.existsSync(tempDir)) {
                 fs.rmSync(tempDir, { recursive: true, force: true });
             }
-            process.chdir(originalCwd);
-            vi.restoreAllMocks();
         } catch {
             // Ignore cleanup errors
         }
@@ -36,7 +33,7 @@ const createTestFile = (dir: string, name: string, daysOld: number) => {
         // For our test, we'll sort by mtime as fallback
         const pastTime = new Date();
         pastTime.setDate(pastTime.getDate() - daysOld);
-        fs.utimesSync(filePath, pastTime, pastTime, pastTime);
+        fs.utimesSync(filePath, pastTime, pastTime);
         return filePath;
     };
 

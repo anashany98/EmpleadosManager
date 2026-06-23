@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { createLogger } from '../services/LoggerService';
+
+const log = createLogger('ErrorMiddleware');
 
 export const errorMiddleware = (
     err: Error | AppError,
@@ -12,9 +15,16 @@ export const errorMiddleware = (
         return ApiResponse.error(res, err.message, err.statusCode);
     }
 
-    console.error('UNEXPECTED ERROR:', err);
-
-    // Log to stdout (container-friendly)
+    // Logger estructurado (Sentry/Pino/JSON) en vez de console.error plano
+    log.error(
+        {
+            err,
+            path: req.path,
+            method: req.method,
+            requestId: (req as any).requestId
+        },
+        'Unexpected error'
+    );
 
     return ApiResponse.error(
         res,
