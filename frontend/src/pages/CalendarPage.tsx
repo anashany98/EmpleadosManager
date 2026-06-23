@@ -188,12 +188,15 @@ export default function CalendarPage() {
 
     useEffect(() => {
         if (canManageCalendarEvents) {
-            api.get('/employees').then((res: any) => {
-                const employees = res.data || res;
+            api.get('/employees?limit=999').then((res: any) => {
+                // The API returns { success, data: { data: [...], meta } } (paginated)
+                // or { success, data: [...] } (flat). Handle both shapes.
+                const raw = res?.data ?? res;
+                const employees = Array.isArray(raw) ? raw : (raw?.data ?? []);
                 if (Array.isArray(employees)) {
                     setAbsenceEmployees(employees.map((e: any) => ({
                         id: e.id,
-                        name: `${e.firstName || ''} ${e.lastName || ''}`.trim()
+                        name: `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.name
                     })));
                 }
             }).catch(console.error);
