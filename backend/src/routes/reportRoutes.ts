@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { ReportController } from '../controllers/ReportController';
 import { protect, checkPermission } from '../middlewares/authMiddleware';
 
@@ -34,19 +34,20 @@ router.use(protect);
 router.use(checkPermission('reports', 'read'));
 
 // Per-user rate limit. Reports can be DB-intensive (joins over TimeEntry,
-// Vacation, PayrollRow) so we cap at 30 req/min/user to avoid DoS by
-// legitimate users AND to slow down reconnaissance by authenticated attackers.
-const reportLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-    keyGenerator: (req) => {
-        const user = (req as { user?: { id?: string } }).user;
-        return user?.id ?? req.ip ?? 'anonymous';
-    },
-    message: { error: 'Demasiadas solicitudes de reportes. Inténtalo de nuevo en un minuto.' }
-});
+ // Vacation, PayrollRow) so we cap at 30 req/min/user to avoid DoS by
+ // legitimate users AND to slow down reconnaissance by authenticated attackers.
+ const reportLimiter = rateLimit({
+     windowMs: 60 * 1000,
+     max: 30,
+     standardHeaders: true,
+     legacyHeaders: false,
+     keyGenerator: (req) => {
+         const user = (req as { user?: { id?: string } }).user;
+         // Usar ipKeyGenerator correctamente para soportar IPv6 (evita ERR_ERL_KEY_GEN_IPV6)
+         return user?.id ?? ipKeyGenerator(req.ip ?? '0.0.0.0', 56);
+     },
+     message: { error: 'Demasiadas solicitudes de reportes. Inténtalo de nuevo en un minuto.' }
+ });
 
 router.use(reportLimiter);
 
