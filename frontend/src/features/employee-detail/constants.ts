@@ -26,8 +26,9 @@ export const EDIT_TABS = ['personal', 'laboral', 'financiero', 'fechas'];
 
 export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
     'resumen',
-    'nominas',
+    'vacaciones',
     'cronograma',
+    'nominas',
     ...(isAdmin
         ? [
             ...(isGlobalAdmin ? ['generar'] : []),
@@ -41,8 +42,7 @@ export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
             'notas-rrhh'
         ]
         : ['prl']),
-    'fichajes',
-    'vacaciones'
+    'fichajes'
 ]);
 
 export const getEmployeeTabLabel = (tab: string) => {

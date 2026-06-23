@@ -12,6 +12,7 @@ interface EmployeeViewTabContentProps {
     employeeId: string;
     employeeView: EmployeeViewRecord;
     onVacationBalanceChange: (vacationBalance: EmployeeVacationBalanceSummary) => void;
+    onNavigateToVacations: () => void;
     privateNotes: string;
     saving: boolean;
     onPrivateNotesChange: (value: string) => void;
@@ -23,7 +24,13 @@ export function EmployeeViewTabContent(props: EmployeeViewTabContentProps) {
     const employeeName = `${props.employeeView.firstName || ''} ${props.employeeView.lastName || ''}`.trim();
 
     if (props.activeTab === 'resumen') {
-        return <EmployeeSummarySection employeeId={props.employeeId} employeeView={props.employeeView} />;
+        return (
+            <EmployeeSummarySection
+                employeeId={props.employeeId}
+                employeeView={props.employeeView}
+                onNavigateToVacations={props.onNavigateToVacations}
+            />
+        );
     }
     if (['generar', 'expediente', 'prl'].includes(props.activeTab)) {
         return <EmployeeDocumentsSection activeTab={props.activeTab} employeeId={props.employeeId} onDocumentGenerated={props.onDocumentGenerated} />;

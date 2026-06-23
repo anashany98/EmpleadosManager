@@ -397,6 +397,7 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
         handlePrivateNotesSave,
         handleGenerateAccess,
         enterEditMode,
-        exitEditMode
+        exitEditMode,
+        navigateToVacations: () => setActiveTab('vacaciones')
     };
 }

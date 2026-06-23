@@ -99,6 +99,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                                         vacationDaysTotal: vacationBalance.totalEntitledDays,
                                         vacationBalance
                                     } : current)}
+                                    onNavigateToVacations={() => detail.setActiveTab('vacaciones')}
                                     privateNotes={detail.formData.privateNotes}
                                     saving={detail.saving}
                                     onPrivateNotesChange={(value) => detail.setFormData((current) => ({ ...current, privateNotes: value }))}
