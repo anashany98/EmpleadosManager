@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { getBcryptRounds } from '../utils/bcryptRounds';
 
 const prisma = new PrismaClient();
 
@@ -21,7 +22,7 @@ async function main() {
 
     console.log(`Creating admin user: ${email}`);
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await bcrypt.hash(password, getBcryptRounds());
 
     const permissions = {
         employees: 'write',

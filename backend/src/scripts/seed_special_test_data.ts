@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { getBcryptRounds } from '../utils/bcryptRounds';
 
 const prisma = new PrismaClient();
 
@@ -32,7 +33,7 @@ async function main() {
             process.exit(1);
         }
         
-        const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+        const hashedAdminPassword = await bcrypt.hash(adminPassword, getBcryptRounds());
         const adminDni = '11111111A';
 
         await prisma.user.upsert({
@@ -198,7 +199,7 @@ async function main() {
                     process.exit(1);
                 }
                 
-                const hashedEmployeePassword = await bcrypt.hash(employeePassword, 10);
+                const hashedEmployeePassword = await bcrypt.hash(employeePassword, getBcryptRounds());
 
                 // Create user for each employee
                 await prisma.user.upsert({

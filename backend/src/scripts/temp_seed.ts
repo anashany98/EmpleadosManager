@@ -1,6 +1,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { getBcryptRounds } from '../utils/bcryptRounds';
 
 const prisma = new PrismaClient();
 
@@ -34,7 +35,7 @@ async function main() {
         process.exit(1);
     }
 
-    const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+    const hashedAdminPassword = await bcrypt.hash(adminPassword, getBcryptRounds());
 
     // Clear existing data
     await prisma.timeEntry.deleteMany({});

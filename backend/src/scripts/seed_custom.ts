@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { getBcryptRounds } from '../utils/bcryptRounds';
 
 const prisma = new PrismaClient();
 
@@ -17,7 +18,7 @@ async function main() {
         process.exit(1);
     }
 
-    const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+    const hashedAdminPassword = await bcrypt.hash(adminPassword, getBcryptRounds());
 
     console.log(`Upserting Admin: ${adminEmail} ...`);
     await prisma.user.upsert({
@@ -88,7 +89,7 @@ async function main() {
         console.error('❌ FATAL: SEED_ADMIN_PASSWORD env var is required for Anas user');
         process.exit(1);
     }
-    const hashedAnasPassword = await bcrypt.hash(anasUserPassword, 10);
+    const hashedAnasPassword = await bcrypt.hash(anasUserPassword, getBcryptRounds());
 
     const anasUser = await prisma.user.findFirst({
         where: {

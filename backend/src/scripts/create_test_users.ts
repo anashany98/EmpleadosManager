@@ -1,6 +1,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { getBcryptRounds } from '../utils/bcryptRounds';
 
 const prisma = new PrismaClient();
 
@@ -22,7 +23,7 @@ async function main() {
         process.exit(1);
     }
 
-    const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+    const hashedAdminPassword = await bcrypt.hash(adminPassword, getBcryptRounds());
 
     // 1. Create/Update Admin
     const adminEmail = 'admin@empresa.com';
@@ -54,7 +55,7 @@ async function main() {
         return;
     }
 
-    const hashedEmployeePassword = await bcrypt.hash(employeePassword, 10);
+    const hashedEmployeePassword = await bcrypt.hash(employeePassword, getBcryptRounds());
     const employeeEmail = employee.email || `empleado${employee.dni}@empresa.com`;
 
     await prisma.user.upsert({

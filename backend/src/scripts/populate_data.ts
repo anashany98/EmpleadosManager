@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { getBcryptRounds } from '../utils/bcryptRounds';
 
 const prisma = new PrismaClient();
 
@@ -35,7 +36,7 @@ async function main() {
         process.exit(1);
     }
     
-    const hashedAnasPassword = await bcrypt.hash(anasPassword, 10);
+    const hashedAnasPassword = await bcrypt.hash(anasPassword, getBcryptRounds());
 
     let anasUser = await prisma.user.findUnique({ where: { dni: anasDni } });
     if (!anasUser) {

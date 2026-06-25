@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { getBcryptRounds } from './backend/src/utils/bcryptRounds';
 
 if (!process.env.DATABASE_URL) {
     console.error('❌ FATAL: DATABASE_URL environment variable is required');
@@ -39,7 +40,7 @@ async function createAdmin() {
         console.error('❌ FATAL: ADMIN_PASSWORD debe tener >=10 caracteres, mayúsculas, minúsculas, números y al menos un símbolo, sin espacios.');
         process.exit(1);
     }
-    const rounds = parseInt(process.env.BCRYPT_ROUNDS || '10', 10);
+    const rounds = getBcryptRounds();
     const hashedPassword = await bcrypt.hash(password, rounds);
 
     try {
