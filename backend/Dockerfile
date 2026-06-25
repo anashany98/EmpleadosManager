@@ -40,6 +40,7 @@ COPY database ./database
 # Copy application source code
 COPY backend/tsconfig.json ./backend/tsconfig.json
 COPY backend/src ./backend/src
+COPY backend/assets ./backend/assets
 COPY backend/instrument.js ./backend/instrument.js
 
 # Create non-root user
