@@ -4,12 +4,78 @@ import { createLogger } from './LoggerService';
 const log = createLogger('AuditService');
 
 /**
+ * Redacción del payload de auditoría antes de emitirlo a un agregador de
+ * logs (Pino/Sentry/Elasticsearch).
+ *
+ * La metadata de auditoría puede contener PII (nombres, DNIs, salarios,
+ * coordenadas GPS de fichajes, hashes de contraseña, etc.) según qué
+ * controller llamó. Si el insert en `auditLog` falla tras los reintentos,
+ * el camino viejo metía el `data` entero en `log.fatal({ auditData: data })`,
+ * lo que filtraba esa PII al log aggregator — que en este proyecto reenvía
+ * a Sentry.
+ *
+ * Esta función produce un objeto seguro para enviar a un log remoto:
+ *   - mantiene tipo de acción y entidad (útiles para alertas/alarms),
+ *   - trunca los ids a sus primeros 8 chars (suficiente para correlacionar
+ *     con el id completo en los logs locales, no para reconstruir el uuid),
+ *   - reporta tamaño y nombres de claves del metadata pero NUNCA los valores,
+ *   - omite `ipAddress` y `userAgent` (GDPR: datos personales identificables).
+ *
+ * El operador aún puede reconstruir el evento porque el `metadata` completo
+ * está en la base de datos si el insert fue exitoso; este scrubbing solo
+ * aplica a la rama de fallo donde no hay registro y recurrimos al log.
+ */
+function scrubAuditDataForLog(
+    data: Parameters<typeof prisma.auditLog.create>[0]['data']
+): {
+    action: unknown;
+    entity: unknown;
+    entityIdPrefix: string | null;
+    userIdPrefix: string | null;
+    targetEmployeeIdPrefix: string | null;
+    metadataBytes: number;
+    metadataKeys: string[];
+} {
+    const truncate = (s: unknown): string | null => {
+        if (typeof s !== 'string' || s.length === 0) return null;
+        return s.length <= 8 ? s : `${s.slice(0, 8)}…`;
+    };
+
+    let metadataBytes = 0;
+    let metadataKeys: string[] = [];
+    const rawMetadata = data.metadata;
+    if (typeof rawMetadata === 'string' && rawMetadata.length > 0) {
+        metadataBytes = Buffer.byteLength(rawMetadata, 'utf8');
+        try {
+            const parsed = JSON.parse(rawMetadata);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                // Solo nombres, nunca valores. Tope de 50 por si alguien
+                // metió un payload gigante con miles de claves.
+                metadataKeys = Object.keys(parsed).slice(0, 50);
+            }
+        } catch {
+            // Si no parsea, no exponemos nada — solo el tamaño en bytes.
+        }
+    }
+
+    return {
+        action: data.action,
+        entity: data.entity,
+        entityIdPrefix: truncate(data.entityId),
+        userIdPrefix: truncate(data.userId),
+        targetEmployeeIdPrefix: truncate(data.targetEmployeeId),
+        metadataBytes,
+        metadataKeys
+    };
+}
+
+/**
  * Internal helper: persist an audit log entry, with up to 3 retries on
  * transient errors. Errors are logged with the structured logger but
  * never thrown, since audit failures must not break the caller's
- * business flow. If the log still cannot be written, the metadata is
- * emitted as a log entry at `fatal` level so the information is at
- * least shipped to the log aggregator (and Sentry via log forwarding).
+ * business flow. If the log still cannot be written, a SCRUBBED summary
+ * is emitted as a `fatal` log entry so the information is shipped to the
+ * log aggregator (and Sentry via log forwarding) WITHOUT leaking PII.
  */
 async function persistAuditEntry(
     data: Parameters<typeof prisma.auditLog.create>[0]['data'],
@@ -30,13 +96,12 @@ async function persistAuditEntry(
         }
     }
 
-    // All retries failed: log to structured logger and as fatal so Sentry
-    // captures it. The audit data is included so it can be reconstructed
-    // by an operator if needed.
+    // All retries failed: log a scrubbed summary so Sentry captures an
+    // alert without leaking PII. The full payload is NOT included.
     log.fatal(
         {
             err: lastError,
-            auditData: data,
+            auditMeta: scrubAuditDataForLog(data),
             message: 'Audit log write failed after retries. The action was NOT audited in DB.'
         },
         'AUDIT_WRITE_FAILURE'
