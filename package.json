@@ -34,15 +34,6 @@
     "seed": "npx ts-node database/prisma/seed.ts"
   },
   "lint-staged": {
-    "*.{ts,tsx}": [
-      "eslint --fix",
-      "tsc --noEmit --skipLibCheck"
-    ],
-    "*.{css,scss}": [
-      "prettier --write"
-    ],
-    "*.{json,md}": [
-      "prettier --write"
-    ]
+    "*.{ts,tsx,js,mjs,cjs,json,md,css,scss,yml,yaml}": "node scripts/lint-staged.js"
   }
 }

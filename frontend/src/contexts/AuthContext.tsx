@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useMemo, useCallback, useRef, type ReactNode } from 'react';
 import { api } from '../api/client';
-import { normalizeActor } from '@shared/authz';
+import { canAccessFeature as sharedCanAccessFeature, normalizeActor } from '@shared/authz';
 import type { AppFeatureKey, PermissionMap, Role } from '@shared/authz';
 
 interface User {
@@ -93,13 +93,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const canAccessFeature = useCallback((feature: AppFeatureKey): boolean => {
-        const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
-
-        if ((feature === 'users' || feature === 'settings' || feature === 'audit') && !isGlobalAdmin) {
-            return false;
-        }
-
-        return true;
+        // Delegamos en la matriz APP_FEATURES de @shared/authz: ese módulo
+        // es la fuente de verdad (módulo, nivel, roles, requireEmployee) y se
+        // mantiene en sincronía con el backend (routes/* con checkPermission).
+        // Antes se reimplementaba aquí un subset y se dejaba pasar el resto.
+        if (!user) return false;
+        return sharedCanAccessFeature(feature, user);
     }, [user]);
 
     const value = useMemo(() => ({

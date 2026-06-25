@@ -50,10 +50,21 @@ export const CalendarController = {
     getFeed: async (req: Request, res: Response) => {
         const { u: employeeId } = req.query;
         // Preferir header (no se loguea por defecto); fallback a query para clientes calendario externos
-        const signature = (req.header('X-Calendar-Signature') || req.query.s) as string | undefined;
+        const headerSignature = req.header('X-Calendar-Signature');
+        const querySignature = req.query.s as string | undefined;
+        const signature = (headerSignature || querySignature) as string | undefined;
 
         if (!employeeId || !signature) {
             return res.status(400).send('Missing parameters');
+        }
+
+        // Defensa M6: si la firma viaja por query string, queda registrada en logs
+        // de nginx / proxies / Referer. Avisamos para que el cliente migre a header.
+        if (!headerSignature && querySignature) {
+            log.warn(
+                { employeeId, requestId: (req as any).requestId },
+                'Calendar feed accessed with signature in query string; recommend X-Calendar-Signature header'
+            );
         }
 
         // Verify signature usando comparación de tiempo constante para evitar timing attacks

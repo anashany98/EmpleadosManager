@@ -223,7 +223,32 @@ export const OnboardingController = {
 
     deleteChecklist: async (req: Request, res: Response, next: NextFunction) => {
         try {
+            const { user } = req as AuthenticatedRequest;
             const { id } = req.params;
+
+            const checklist = await prisma.employeeOnboarding.findUnique({
+                where: { id },
+                include: {
+                    employee: {
+                        select: {
+                            id: true,
+                            companyId: true
+                        }
+                    }
+                }
+            });
+
+            if (!checklist) {
+                return ApiResponse.error(res, 'Checklist no encontrado', 404);
+            }
+
+            // Defensa anti-IDOR: sin este check, un admin de empresa A podía
+            // borrar checklists de empresa B pasando el id. Mismo guard que
+            // updateChecklist para mantener simetría.
+            if (!canManageEmployee(user, checklist.employee)) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
+
             await prisma.employeeOnboarding.delete({
                 where: { id }
             });
