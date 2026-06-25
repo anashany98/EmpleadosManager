@@ -43,13 +43,8 @@ COPY backend/src ./backend/src
 COPY backend/assets ./backend/assets
 COPY backend/instrument.js ./backend/instrument.js
 
-# Create non-root user
-RUN useradd --create-home --shell /bin/bash appuser && \
-    chown -R appuser:appuser /app
-
-USER appuser
-
-# Generate Prisma Client
+# Generate Prisma Client (as root for write access; the builder stage is
+# discarded after this stage, so ownership here does not matter).
 ENV PRISMA_GENERATE_SKIP_AUTOINSTALL=1
 RUN cd backend && npx prisma generate --schema=../database/prisma/schema.prisma
 
