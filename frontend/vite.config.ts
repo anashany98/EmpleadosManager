@@ -31,7 +31,19 @@ export default defineConfig({
     ],
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        // Vite dev-server proxies /api/* to the backend.
+        //
+        // Two valid setups:
+        //   - Backend running natively:   target = http://localhost:3000  (default)
+        //                                 (cd backend && npm run dev)
+        //   - Backend running in Docker:  target = http://localhost:16161
+        //                                 (the docker-compose.yml port mapping
+        //                                 "127.0.0.1:16161:3000")
+        //
+        // Override with VITE_API_PROXY_TARGET env var when launching the dev
+        // server, e.g.:
+        //   VITE_API_PROXY_TARGET=http://localhost:16161 npm run dev
+        target: process.env.VITE_API_PROXY_TARGET || 'http://localhost:3000',
         changeOrigin: true,
         secure: false,
       },
