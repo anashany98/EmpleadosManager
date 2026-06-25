@@ -94,7 +94,7 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
     if (!employee) throw new Error('Empleado no encontrado');
 
     const { PDFDocument: PDFLibDocument } = await import('pdf-lib');
-    const templatePath = path.join(__dirname, '../../templates/modelo145.pdf');
+    const templatePath = path.join(process.cwd(), 'src', 'templates', 'modelo145.pdf');
 
     if (!fs.existsSync(templatePath)) throw new Error('Plantilla Modelo 145 no encontrada');
 

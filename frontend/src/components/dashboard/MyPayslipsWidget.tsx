@@ -32,10 +32,9 @@ export default function MyPayslipsWidget({ employeeId }: MyPayslipsWidgetProps) 
     const handleDownload = async (payroll: any) => {
         setDownloadingId(payroll.id);
         try {
-            const res = await api.get(`/payroll/${payroll.id}/pdf`, { responseType: 'blob' });
+            const blob = await api.get<Blob>(`/payroll/${payroll.id}/pdf`, { responseType: 'blob' });
 
-            // Create blob link to download
-            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
             const filename = `Nomina_${payroll.batch.month}_${payroll.batch.year}.pdf`;
@@ -43,6 +42,7 @@ export default function MyPayslipsWidget({ employeeId }: MyPayslipsWidgetProps) 
             document.body.appendChild(link);
             link.click();
             link.remove();
+            window.URL.revokeObjectURL(url);
 
             toast.success('Nómina descargada correctamente');
         } catch (error) {

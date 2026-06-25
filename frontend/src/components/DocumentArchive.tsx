@@ -133,29 +133,51 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
         ? documents
         : documents.filter(d => d.category === filter);
 
+    const getFileExtension = (doc: any): string => {
+        const url = doc.fileUrl || '';
+        const match = url.match(/\.([a-zA-Z0-9]+)$/);
+        if (match) return `.${match[1]}`;
+        const name = doc.name || '';
+        const nameMatch = name.match(/\.([a-zA-Z0-9]+)$/);
+        if (nameMatch) return '';
+        return '.pdf';
+    };
+
+    const getMimeType = (ext: string): string => {
+        const map: Record<string, string> = {
+            '.pdf': 'application/pdf',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.xls': 'application/vnd.ms-excel',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.doc': 'application/msword',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.txt': 'text/plain'
+        };
+        return map[ext.toLowerCase()] || 'application/octet-stream';
+    };
+
     const handleDownload = async (doc: any) => {
         try {
-            // Helper to clean URL, strip double slashes
-            const url = `${API_URL.replace(/\/+$/, '')}/documents/${doc.id}/download`;
+            const ext = getFileExtension(doc);
+            const baseName = doc.name || 'documento';
+            const cleanName = baseName.replace(/\.[^/.]+$/, '');
+            const fileName = `${cleanName}${ext}`;
 
-            // Try to download using fetch to avoid tab opening issues
-            const response = await fetch(url, { credentials: 'include' });
-            if (!response.ok) throw new Error('Download failed');
-
-            const blob = await response.blob();
-            const downloadUrl = window.URL.createObjectURL(blob);
+            const blob = await api.get<Blob>(`/documents/${doc.id}/download`, { responseType: 'blob' });
+            const blobWithType = new Blob([blob], { type: getMimeType(ext) });
+            const downloadUrl = window.URL.createObjectURL(blobWithType);
             const link = document.createElement('a');
             link.href = downloadUrl;
-            link.download = doc.name; // Use the document name for the file
+            link.download = fileName;
             document.body.appendChild(link);
             link.click();
             link.remove();
             window.URL.revokeObjectURL(downloadUrl);
         } catch (error) {
-            console.error(error);
-            // Fallback to simple link
-            const cleanBase = API_URL.replace(/\/+$/, '');
-            window.open(`${cleanBase}/documents/${doc.id}/download`, '_blank');
+            console.error('Download error:', error);
+            toast.error('Error al descargar el documento');
         }
     };
 

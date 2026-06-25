@@ -155,16 +155,9 @@ export default function EmployeePayrollViewer({ employeeId }: { employeeId: stri
                                     onClick={async () => {
                                         try {
                                             toast.info('Generando PDF...');
-                                            const res = await api.get(`/payroll/${payroll.id}/pdf`, { responseType: 'blob' });
+                                            const blob = await api.get<Blob>(`/payroll/${payroll.id}/pdf`, { responseType: 'blob' });
 
-                                            // Check if response is actually a JSON error
-                                            if (res.type === 'application/json') {
-                                                const text = await res.text();
-                                                const json = JSON.parse(text);
-                                                throw new Error(json.message || 'Error al generar PDF');
-                                            }
-
-                                            const url = window.URL.createObjectURL(new Blob([res]));
+                                            const url = window.URL.createObjectURL(blob);
                                             const link = document.createElement('a');
                                             link.href = url;
                                             link.setAttribute('download', `Nomina_${payroll.batch.month}_${payroll.batch.year}.pdf`);

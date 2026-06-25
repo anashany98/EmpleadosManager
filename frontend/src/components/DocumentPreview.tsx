@@ -27,6 +27,23 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
             ? `${import.meta.env.VITE_API_URL || ''}${fileUrl}`
             : `${import.meta.env.VITE_API_URL || ''}/uploads/${fileUrl}`;
 
+    const handleDownloadFile = async () => {
+        try {
+            const blob = await api.get<Blob>(fileUrl, { responseType: 'blob' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = title || 'documento';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch (error) {
+            console.error('Download error:', error);
+            toast.error('Error al descargar el documento');
+        }
+    };
+
     // Signature functions temporarily unused
     /*
     const handleStartSigning = () => {
@@ -112,14 +129,13 @@ export default function DocumentPreview({ isOpen, onClose, fileUrl, title, docum
                             >
                                 <ExternalLink size={20} />
                             </a>
-                            <a
-                                href={fullUrl}
-                                download
+                            <button
+                                onClick={handleDownloadFile}
                                 className="p-2.5 text-slate-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all"
                                 title="Descargar"
                             >
                                 <Download size={20} />
-                            </a>
+                            </button>
                             <div className="w-px h-8 bg-slate-100 dark:border-slate-800 mx-1"></div>
                             <button
                                 onClick={onClose}

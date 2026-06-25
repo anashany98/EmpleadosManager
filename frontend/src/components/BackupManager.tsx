@@ -40,17 +40,18 @@ export default function BackupManager() {
 
     const handleDownload = async (filename: string, type: 'SNAPSHOT' | 'FULL') => {
         try {
-            const response = await api.get(`/config/backup/download?filename=${filename}&type=${type}`, {
+            const blob = await api.get<Blob>(`/config/backup/download?filename=${filename}&type=${type}`, {
                 responseType: 'blob'
             });
 
-            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const url = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
             link.setAttribute('download', filename);
             document.body.appendChild(link);
             link.click();
             link.remove();
+            window.URL.revokeObjectURL(url);
         } catch (error) {
             toast.error('Error al descargar el archivo');
         }

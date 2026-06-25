@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '../../../api/client';
@@ -42,10 +42,19 @@ export function useEmployeesPage() {
     const [importBusy, setImportBusy] = useState(false);
     const [page, setPage] = useState(1);
     const [limit] = useState(DEFAULT_LIMIT);
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setDebouncedSearch(searchTerm);
+            setPage(1);
+        }, 300);
+        return () => clearTimeout(timer);
+    }, [searchTerm]);
 
     const { data, isLoading } = useQuery({
-        queryKey: ['employees', page, limit, filters.status, searchTerm],
-        queryFn: () => fetchEmployees(page, limit, filters.status, searchTerm),
+        queryKey: ['employees', page, limit, filters.status, debouncedSearch],
+        queryFn: () => fetchEmployees(page, limit, filters.status, debouncedSearch),
         staleTime: 1000 * 60 * 5
     });
 

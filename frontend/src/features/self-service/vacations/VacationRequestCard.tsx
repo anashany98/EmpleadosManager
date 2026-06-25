@@ -1,7 +1,7 @@
-import { Check, ExternalLink, Trash2, X } from 'lucide-react';
+import { Check, ExternalLink, FileText, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { API_URL } from '../../../api/client';
+import { api, API_URL } from '../../../api/client';
 import { ABSENCE_TYPES, CalendarIconSmall, formatVacationRange, type VacationRequest } from './types';
 
 interface VacationRequestCardProps {
@@ -10,6 +10,7 @@ interface VacationRequestCardProps {
     onApprove?: (comment?: string) => void;
     onReject?: (comment?: string) => void;
     onDelete?: () => void;
+    onDocumentGenerated?: (docUrl: string) => void;
 }
 
 export function VacationRequestCard({
@@ -17,9 +18,11 @@ export function VacationRequestCard({
     canManage,
     onApprove,
     onReject,
-    onDelete
+    onDelete,
+    onDocumentGenerated
 }: VacationRequestCardProps) {
     const [comment, setComment] = useState('');
+    const [generatingDoc, setGeneratingDoc] = useState(false);
     const config = ABSENCE_TYPES[request.type] || ABSENCE_TYPES.VACATION;
     const Icon = config.icon;
 
@@ -34,6 +37,24 @@ export function VacationRequestCard({
         if (onReject) {
             toast.success('Solicitud rechazada');
             onReject(comment);
+        }
+    };
+
+    const handleGenerateDocument = async () => {
+        setGeneratingDoc(true);
+        try {
+            const response = await api.post(`/vacations/${request.id}/generate-document`);
+            if (response.data?.fileUrl) {
+                toast.success('Documento generado correctamente');
+                if (onDocumentGenerated) {
+                    onDocumentGenerated(response.data.fileUrl);
+                }
+                window.open(`${API_URL}${response.data.fileUrl}`, '_blank');
+            }
+        } catch (error: any) {
+            toast.error(error.message || 'Error al generar documento');
+        } finally {
+            setGeneratingDoc(false);
         }
     };
 
@@ -115,6 +136,18 @@ export function VacationRequestCard({
                             </button>
                         </>
                     )}
+                </div>
+            )}
+            {request.status === 'APPROVED' && (
+                <div className="flex items-center gap-2 mt-2 md:mt-0">
+                    <button
+                        onClick={handleGenerateDocument}
+                        disabled={generatingDoc}
+                        className="px-4 py-2 bg-blue-50 text-blue-600 rounded-xl font-bold hover:bg-blue-100 transition-colors flex items-center gap-2 disabled:opacity-50"
+                    >
+                        <FileText size={16} />
+                        {generatingDoc ? 'Generando...' : 'Generar Documento'}
+                    </button>
                 </div>
             )}
         </div>

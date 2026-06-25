@@ -7,7 +7,7 @@ import QRCode from 'qrcode';
  * Returns the path to the company logo if it exists, otherwise null.
  */
 export const getLogoPath = (): string | null => {
-    const assetsPath = path.join(__dirname, '../../../assets/logo.png');
+    const assetsPath = path.join(process.cwd(), 'assets', 'logo.png');
     return fs.existsSync(assetsPath) ? assetsPath : null;
 };
 
