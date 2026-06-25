@@ -25,6 +25,10 @@ cookies.txt
 *cookies.txt
 login_response.json
 *.png
+# backend/assets/ contains static logos served via /assets/* at runtime
+# (see backend/src/app/createApp.ts line 170). They are PNGs, so we need to
+# re-include them after the global *.png ignore above.
+!backend/assets/**
 BUG_REPORT_*.md
 TESTING_REPORT_*.md
 nul
