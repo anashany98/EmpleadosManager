@@ -1,28 +1,9 @@
-import { useCallback, useState, useRef, useEffect } from 'react';
-import {
-    Type,
-    Variable,
-    Square,
-    Minus,
-    Image,
-    Layers,
-    Save,
-    Eye,
-    ZoomIn,
-    ZoomOut,
-    Trash2,
-    Move,
-    FileText,
-    X,
-    ChevronUp,
-    ChevronDown,
-    Download,
-    Upload,
-    Users,
-    FilePlus
-} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FilePlus, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/client';
+import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { UnsavedChangesBanner } from '../../components/feedback/UnsavedChangesBanner';
 import {
     AVAILABLE_VARIABLES as BASE_AVAILABLE_VARIABLES,
     DEFAULT_TEMPLATES as BASE_DEFAULT_TEMPLATES,
@@ -30,34 +11,17 @@ import {
     mergeTemplatesWithDefaults,
     serializeTemplateContent
 } from './templateBases';
-
-type ElementType = 'text' | 'variable' | 'box' | 'line' | 'image' | 'logo';
-
-interface CanvasElement {
-    id: string;
-    type: ElementType;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    content: string;
-    fontSize?: number;
-    fontWeight?: string;
-    color?: string;
-    textAlign?: 'left' | 'center' | 'right';
-    backgroundColor?: string;
-    borderColor?: string;
-    borderWidth?: number;
-    src?: string;
-    rotation?: number;
-}
-
-interface Template {
-    id: string;
-    name: string;
-    type: string;
-    content?: string;
-}
+import type { Template } from './templateBases';
+import { extractTemplateVariables } from './templateVariables';
+import { CanvasStage } from './components/CanvasStage';
+import { ElementToolbar } from './components/ElementToolbar';
+import { LayersPanel } from './components/LayersPanel';
+import { PropertiesPanel } from './components/PropertiesPanel';
+import { TopBar } from './components/TopBar';
+import { PreviewPane } from './components/PreviewPane';
+import { DuplicateTemplateDialog } from './components/DuplicateTemplateDialog';
+import { VariableInspector } from './components/VariableInspector';
+import type { CanvasElement, ElementType } from './components/types';
 
 interface Employee {
     id: string;
@@ -70,18 +34,16 @@ interface Employee {
 
 const extractList = <T,>(response: unknown): T[] => {
     if (Array.isArray(response)) return response as T[];
-
     const data = (response as { data?: unknown } | null)?.data;
     if (Array.isArray(data)) return data as T[];
-
-    const nestedData = (data as { data?: unknown } | null)?.data;
-    return Array.isArray(nestedData) ? nestedData as T[] : [];
+    const nested = (data as { data?: unknown } | null)?.data;
+    return Array.isArray(nested) ? nested as T[] : [];
 };
 
 const extractItem = <T,>(response: unknown): T | null => {
     const data = (response as { data?: unknown } | null)?.data;
     if (data && typeof data === 'object' && !Array.isArray(data)) return data as T;
-    return response && typeof response === 'object' && !Array.isArray(response) ? response as T : null;
+    return response && typeof response === 'object' && !Array.isArray(response) ? (response as T) : null;
 };
 
 export default function CanvaEditor() {
@@ -89,10 +51,7 @@ export default function CanvaEditor() {
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedTemplate, setSelectedTemplate] = useState<Template>(BASE_DEFAULT_TEMPLATES[0]);
     const [zoom, setZoom] = useState(100);
-    const [isDragging, setIsDragging] = useState(false);
-    const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-    const [draggedElement, setDraggedElement] = useState<string | null>(null);
-    const [isPreviewMode, setIsPreviewMode] = useState(false);
+    const [showGrid, setShowGrid] = useState(true);
     const [saving, setSaving] = useState(false);
     const [variableContext, setVariableContext] = useState<Record<string, unknown>>({});
     const [templates, setTemplates] = useState<Template[]>(BASE_DEFAULT_TEMPLATES);
@@ -103,10 +62,17 @@ export default function CanvaEditor() {
     const [showGenerateModal, setShowGenerateModal] = useState(false);
     const [newTemplateName, setNewTemplateName] = useState('');
     const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
+    const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+    const [previewEmployeeId, setPreviewEmployeeId] = useState<string>('');
+    const [catalogSource, setCatalogSource] = useState<'backend' | 'fallback'>('fallback');
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const canvasRef = useRef<HTMLDivElement>(null);
 
-    // Cargar plantillas del backend
+    const { isDirty, markDirty, markClean, confirmDiscard } = useUnsavedChanges();
+
+    // ---------------------------------------------------------------------------
+    // Data loading
+    // ---------------------------------------------------------------------------
+
     useEffect(() => {
         const fetchTemplates = async () => {
             setLoadingTemplates(true);
@@ -119,31 +85,32 @@ export default function CanvaEditor() {
                     ...extractList<Template>(catalogResponse),
                     ...extractList<Template>(storedResponse)
                 ];
-                const mergedTemplates = mergeTemplatesWithDefaults(remoteTemplates);
-
-                if (mergedTemplates.length > 0) {
-                    setTemplates(mergedTemplates);
-                    setSelectedTemplate(current =>
-                        mergedTemplates.find(template => template.type === current.type) || mergedTemplates[0]
-                    );
+                const merged = mergeTemplatesWithDefaults(remoteTemplates);
+                if (merged.length > 0) {
+                    setTemplates(merged);
+                    setSelectedTemplate((current) => merged.find((t) => t.type === current.type) || merged[0]);
+                    setCatalogSource('backend');
                 }
             } catch (error) {
                 console.warn('Usando plantillas locales:', error);
+                toast.warning('No se pudo conectar con el servidor de plantillas. Mostrando catálogo local.');
+                setCatalogSource('fallback');
             } finally {
                 setLoadingTemplates(false);
             }
         };
-        fetchTemplates();
+        void fetchTemplates();
     }, []);
 
-    // Cargar elementos cuando cambia la plantilla
     useEffect(() => {
         if (!selectedTemplate) return;
         setElements(createElementsForTemplate(selectedTemplate));
         setSelectedId(null);
-    }, [selectedTemplate]);
+        // Only clear dirty state when the user explicitly switches to a different
+        // template. The bootstrap fetch replaces `selectedTemplate` with an
+        // equivalent object after mount, which must NOT wipe the user's changes.
+    }, [selectedTemplate?.id, selectedTemplate?.type]);
 
-    // Cargar empleados para generar documentos
     useEffect(() => {
         const fetchEmployees = async () => {
             try {
@@ -153,11 +120,35 @@ export default function CanvaEditor() {
                 console.warn('Error al cargar empleados:', error);
             }
         };
-        fetchEmployees();
+        void fetchEmployees();
     }, []);
 
-    // Manejar creación de nueva plantilla
-    const handleCreateNewTemplate = () => {
+    useEffect(() => {
+        if (!previewEmployeeId) {
+            setVariableContext({});
+            return;
+        }
+        const fetchContext = async () => {
+            try {
+                const response = await api.get<{ data?: { exampleContext?: Record<string, unknown> } } | Record<string, unknown>>(
+                    `/document-templates/variables?employeeId=${previewEmployeeId}`
+                );
+                const data = extractItem<{ exampleContext?: Record<string, unknown> }>(response);
+                if (data?.exampleContext) {
+                    setVariableContext(data.exampleContext);
+                }
+            } catch (error) {
+                console.warn('No se pudo cargar el contexto de variables:', error);
+            }
+        };
+        void fetchContext();
+    }, [previewEmployeeId]);
+
+    // ---------------------------------------------------------------------------
+    // Mutations
+    // ---------------------------------------------------------------------------
+
+    const handleCreateNewTemplate = useCallback(() => {
         if (!newTemplateName.trim()) {
             toast.error('El nombre de la plantilla es obligatorio');
             return;
@@ -167,37 +158,18 @@ export default function CanvaEditor() {
             name: newTemplateName.trim(),
             type: 'CUSTOM'
         };
-        setTemplates(prev => [...prev, newTemplate]);
+        setTemplates((prev) => [...prev, newTemplate]);
         setSelectedTemplate(newTemplate);
         setElements([]);
         setShowNewTemplateModal(false);
         setNewTemplateName('');
-        toast.success(`Plantilla "${newTemplateName}" creada`);
-    };
+        toast.success(`Plantilla «${newTemplateName}» creada`);
+    }, [newTemplateName]);
 
-    // Guardar plantilla al backend
-    const handleSave = async () => {
+    const handleSave = useCallback(async () => {
         setSaving(true);
         try {
-            // Extraer variables de los elementos (patrones {{variable}})
-            const extractVariables = (elements: CanvasElement[]): string[] => {
-                const variableSet = new Set<string>();
-                elements.forEach(el => {
-                    if (el.content) {
-                        const matches = el.content.match(/\{\{([\w.]+)\}\}/g);
-                        if (matches) {
-                            matches.forEach(match => {
-                                const variable = match.replace(/^\{\{|\}\}$/g, '');
-                                variableSet.add(variable);
-                            });
-                        }
-                    }
-                });
-                return Array.from(variableSet);
-            };
-
-            const variables = extractVariables(elements);
-
+            const variables = extractTemplateVariables(serializeTemplateContent(elements));
             const payload = {
                 type: selectedTemplate.type,
                 name: selectedTemplate.name,
@@ -213,31 +185,74 @@ export default function CanvaEditor() {
                 content: payload.content
             };
 
-            setTemplates(prev => prev.map(template =>
-                template.id === selectedTemplate.id || (selectedTemplate.type !== 'CUSTOM' && template.type === selectedTemplate.type)
-                    ? updatedTemplate
-                    : template
-            ));
+            setTemplates((prev) =>
+                prev.map((template) =>
+                    template.id === selectedTemplate.id ||
+                    (selectedTemplate.type !== 'CUSTOM' && template.type === selectedTemplate.type)
+                        ? updatedTemplate
+                        : template
+                )
+            );
             setSelectedTemplate(updatedTemplate);
-            toast.success(`Plantilla "${selectedTemplate.name}" guardada`);
+            markClean();
+            toast.success(`Plantilla «${selectedTemplate.name}» guardada`);
         } catch (error) {
             console.error('Error al guardar:', error);
             toast.error('Error al guardar la plantilla');
         } finally {
             setSaving(false);
         }
-    };
+    }, [elements, selectedTemplate, markClean]);
 
-    // Generar documento desde empleado
-    const handleGenerateFromEmployee = () => {
+    const handleSelectTemplate = useCallback(
+        (id: string) => {
+            if (id === selectedTemplate.id) return;
+            if (!confirmDiscard()) return;
+            const template = templates.find((t) => t.id === id);
+            if (template) setSelectedTemplate(template);
+        },
+        [templates, selectedTemplate.id, confirmDiscard]
+    );
+
+    const handleDuplicateTemplate = useCallback(
+        async (target: { type: string; name: string }) => {
+            setSaving(true);
+            try {
+                const content = serializeTemplateContent(elements);
+                const variables = extractTemplateVariables(content);
+                await api.post('/document-templates/save', {
+                    type: target.type,
+                    name: target.name,
+                    content,
+                    variables
+                });
+                const duplicate: Template = {
+                    id: `${target.type.toLowerCase()}_${Date.now()}`,
+                    type: target.type,
+                    name: target.name
+                };
+                setTemplates((prev) => [...prev, duplicate]);
+                setSelectedTemplate(duplicate);
+                setShowDuplicateDialog(false);
+                toast.success(`Plantilla duplicada como «${target.name}»`);
+            } catch (error) {
+                console.error('Error al duplicar:', error);
+                toast.error('Error al duplicar la plantilla');
+            } finally {
+                setSaving(false);
+            }
+        },
+        [elements]
+    );
+
+    const handleGenerateFromEmployee = useCallback(() => {
         if (!selectedEmployeeId) {
             toast.error('Selecciona un empleado');
             return;
         }
-        const employee = employees.find(e => e.id === selectedEmployeeId);
+        const employee = employees.find((e) => e.id === selectedEmployeeId);
         if (!employee) return;
 
-        // Establecer contexto de variables con datos del empleado
         setVariableContext({
             'empleado.id': employee.id,
             'empleado.dni': employee.dni,
@@ -245,798 +260,377 @@ export default function CanvaEditor() {
             'empleado.puesto': employee.puesto,
             'empleado.fechaAlta': employee.fechaAlta,
             'empleado.tipoContrato': employee.tipoContrato || 'Indefinido',
-            'empresa.nombre': 'Mi Empresa SL',
-            'empresa.cif': 'B12345678',
-            'empresa.direccion': 'Calle Principal 123',
             'firma.fecha': new Date().toLocaleDateString('es-ES'),
-            'firma.autorizante': 'Director RRHH',
             'fechaActual': new Date().toLocaleDateString('es-ES')
         });
         setShowGenerateModal(false);
         setSelectedEmployeeId('');
         toast.success(`Documento generado para ${employee.nombreCompleto}`);
-    };
+    }, [selectedEmployeeId, employees]);
 
-    // Manejar subida de logo
-    const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
+    const handleLogoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
         if (file) {
             const reader = new FileReader();
-            reader.onload = (event) => {
-                setLogoUrl(event.target?.result as string);
+            reader.onload = (e) => {
+                setLogoUrl(e.target?.result as string);
                 toast.success('Logo subido correctamente');
             };
             reader.readAsDataURL(file);
         }
     };
 
-    // Eliminar logo
     const handleRemoveLogo = () => {
         setLogoUrl(null);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
-    const selectedElement = elements.find(el => el.id === selectedId);
+    // ---------------------------------------------------------------------------
+    // Element operations
+    // ---------------------------------------------------------------------------
 
-    const generateId = () => `el-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const generateId = () => `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
-    const addElement = useCallback((type: ElementType) => {
-        const newElement: CanvasElement = {
-            id: generateId(),
-            type,
-            x: 100,
-            y: 100,
-            width: type === 'line' ? 200 : 150,
-            height: type === 'text' || type === 'variable' ? 40 : type === 'line' ? 2 : 100,
-            content: type === 'text' ? 'Texto' : type === 'variable' ? '{{variable}}' : '',
-            fontSize: type === 'text' || type === 'variable' ? 16 : undefined,
-            fontWeight: type === 'text' ? 'normal' : undefined,
-            color: '#1e293b',
-            backgroundColor: type === 'box' ? '#ffffff' : undefined,
-            borderColor: type === 'box' || type === 'line' ? '#1e293b' : undefined,
-            borderWidth: type === 'box' ? 1 : undefined
-        };
+    const addElement = useCallback(
+        (type: ElementType) => {
+            const newElement: CanvasElement = {
+                id: generateId(),
+                type,
+                x: 100,
+                y: 100,
+                width: type === 'line' ? 200 : 150,
+                height: type === 'text' || type === 'variable' ? 40 : type === 'line' ? 2 : 100,
+                content: type === 'text' ? 'Texto' : type === 'variable' ? '{{variable}}' : '',
+                fontSize: type === 'text' || type === 'variable' ? 16 : undefined,
+                fontWeight: type === 'text' ? 'normal' : undefined,
+                color: '#1e293b',
+                backgroundColor: type === 'box' ? '#ffffff' : undefined,
+                borderColor: type === 'box' || type === 'line' ? '#1e293b' : undefined,
+                borderWidth: type === 'box' ? 1 : undefined
+            };
+            setElements((prev) => [...prev, newElement]);
+            setSelectedId(newElement.id);
+            markDirty();
+            toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} añadido`);
+        },
+        [markDirty]
+    );
 
-        setElements(prev => [...prev, newElement]);
-        setSelectedId(newElement.id);
-        toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} añadido`);
-    }, []);
+    const updateElement = useCallback(
+        (id: string, updates: Partial<CanvasElement>) => {
+            setElements((prev) => prev.map((el) => (el.id === id ? { ...el, ...updates } : el)));
+            markDirty();
+        },
+        [markDirty]
+    );
 
-    const updateElement = useCallback((id: string, updates: Partial<CanvasElement>) => {
-        setElements(prev => prev.map(el => el.id === id ? { ...el, ...updates } : el));
-    }, []);
+    const deleteElement = useCallback(
+        (id: string) => {
+            setElements((prev) => prev.filter((el) => el.id !== id));
+            setSelectedId((current) => (current === id ? null : current));
+            markDirty();
+            toast.success('Elemento eliminado');
+        },
+        [markDirty]
+    );
 
-    const deleteElement = useCallback((id: string) => {
-        setElements(prev => prev.filter(el => el.id !== id));
-        if (selectedId === id) {
-            setSelectedId(null);
-        }
-        toast.success('Elemento eliminado');
-    }, [selectedId]);
-
-    const handleMouseDown = (e: React.MouseEvent, elementId: string) => {
-        e.stopPropagation();
-        setSelectedId(elementId);
-        setIsDragging(true);
-        setDraggedElement(elementId);
-        setDragStart({ x: e.clientX, y: e.clientY });
-    };
-
-    const handleMouseMove = useCallback((e: React.MouseEvent) => {
-        if (!isDragging || !draggedElement) return;
-
-        const deltaX = (e.clientX - dragStart.x) / (zoom / 100);
-        const deltaY = (e.clientY - dragStart.y) / (zoom / 100);
-
-        const element = elements.find(el => el.id === draggedElement);
-        if (element) {
-            updateElement(draggedElement, {
-                x: element.x + deltaX,
-                y: element.y + deltaY
+    const moveLayer = useCallback(
+        (id: string, direction: 'up' | 'down') => {
+            setElements((prev) => {
+                const index = prev.findIndex((el) => el.id === id);
+                if (index < 0) return prev;
+                const newIndex = direction === 'up' ? index + 1 : index - 1;
+                if (newIndex < 0 || newIndex >= prev.length) return prev;
+                const next = [...prev];
+                [next[index], next[newIndex]] = [next[newIndex], next[index]];
+                return next;
             });
-            setDragStart({ x: e.clientX, y: e.clientY });
-        }
-    }, [isDragging, draggedElement, dragStart, zoom, elements, updateElement]);
+            markDirty();
+        },
+        [markDirty]
+    );
 
-    const handleMouseUp = () => {
-        setIsDragging(false);
-        setDraggedElement(null);
-    };
+    const insertVariableIntoSelection = useCallback(
+        (key: string) => {
+            if (!selectedId) {
+                toast.error('Selecciona primero un elemento de tipo texto o variable');
+                return;
+            }
+            const target = elements.find((el) => el.id === selectedId);
+            if (!target || (target.type !== 'text' && target.type !== 'variable')) {
+                toast.error('Las variables solo se insertan en elementos de texto o variable');
+                return;
+            }
+            updateElement(selectedId, { content: `${target.content || ''}{{${key}}}` });
+        },
+        [elements, selectedId, updateElement]
+    );
 
-    const handleCanvasClick = (e: React.MouseEvent) => {
-        if (e.target === canvasRef.current) {
-            setSelectedId(null);
-        }
-    };
+    const selectedElement = useMemo(
+        () => elements.find((el) => el.id === selectedId) || null,
+        [elements, selectedId]
+    );
 
-    // PREVIEW MEJORADO - Descargar como PNG con html2canvas
-    const handlePreview = async () => {
-        if (!canvasRef.current) return;
-        
-        try {
-            const html2canvas = (await import('html2canvas')).default;
-            
-            const canvas = await html2canvas(canvasRef.current, {
-                scale: 2,
-                useCORS: true,
-                backgroundColor: '#ffffff'
-            });
-            
-            // Nombre de archivo: {nombrePlantilla}_{fecha}.png
-            const fecha = new Date().toISOString().split('T')[0];
-            const nombreArchivo = `${selectedTemplate.name.replace(/\s+/g, '_')}_${fecha}.png`;
-            
-            const link = document.createElement('a');
-            link.download = nombreArchivo;
-            link.href = canvas.toDataURL('image/png');
-            link.click();
-            
-            toast.success('Vista previa descargada');
-        } catch (error) {
-            console.error('Error al generar preview:', error);
-            window.print();
-        }
-    };
+    const handleZoom = (delta: number) => setZoom((prev) => Math.min(Math.max(prev + delta, 50), 200));
 
-    const handleDownloadPDF = async () => {
-        // Usar la misma función que preview
-        await handlePreview();
-    };
-
-    const handleZoom = (delta: number) => {
-        setZoom(prev => Math.min(Math.max(prev + delta, 50), 200));
-    };
-
-    const resolveContent = (content: string): string => {
-        return content.replace(/\{\{([\w.]+)\}\}/g, (_match, key) => {
-            const value = variableContext[key as keyof typeof variableContext];
-            return value !== undefined ? String(value) : `{${key}}`;
-        });
-    };
-
-    const moveLayer = (direction: 'up' | 'down') => {
-        if (!selectedId) return;
-        const index = elements.findIndex(el => el.id === selectedId);
-        if (index === -1) return;
-
-        const newElements = [...elements];
-        const newIndex = direction === 'up' ? index + 1 : index - 1;
-
-        if (newIndex < 0 || newIndex >= elements.length) return;
-
-        [newElements[index], newElements[newIndex]] = [newElements[newIndex], newElements[index]];
-        setElements(newElements);
-    };
-
-    const renderElement = (element: CanvasElement) => {
-        const isSelected = selectedId === element.id;
-        const resolvedContent = element.type === 'variable' ? resolveContent(element.content) : element.content;
-
-        const style: React.CSSProperties = {
-            position: 'absolute',
-            left: element.x,
-            top: element.y,
-            width: element.type === 'line' ? `${element.width}px` : element.width,
-            height: element.type === 'line' ? `${element.height}px` : element.height,
-            fontSize: element.fontSize,
-            fontWeight: element.fontWeight as 'normal' | 'bold' | 'lighter',
-            color: element.color,
-            backgroundColor: element.backgroundColor,
-            borderColor: element.borderColor,
-            borderWidth: element.borderWidth && element.type === 'box' ? `${element.borderWidth}px` : undefined,
-            borderStyle: element.type === 'box' || element.type === 'line' ? 'solid' : undefined,
-            borderRadius: element.type === 'box' ? '0px' : undefined,
-            cursor: isDragging ? 'grabbing' : 'grab',
-            transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: element.textAlign === 'center' ? 'center' : element.textAlign === 'right' ? 'flex-end' : 'flex-start',
-            textAlign: element.textAlign || 'left',
-            userSelect: 'none'
-        };
-
-        if (element.type === 'image') {
-            return (
-                <div
-                    key={element.id}
-                    onMouseDown={(e) => handleMouseDown(e, element.id)}
-                    style={style}
-                    className={`${isSelected ? 'ring-2 ring-blue-500 ring-offset-2' : ''} overflow-hidden`}
-                >
-                    {element.src ? (
-                        <img src={element.src} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-400">
-                            <Image size={32} />
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
-        return (
-            <div
-                key={element.id}
-                onMouseDown={(e) => handleMouseDown(e, element.id)}
-                style={style}
-                className={`${isSelected ? 'ring-2 ring-blue-500 ring-offset-2' : ''} transition-shadow`}
-            >
-                {element.type === 'line' ? (
-                    <div className="w-full h-full" style={{ backgroundColor: element.borderColor }} />
-                ) : (
-                    <span className="px-2">{resolvedContent}</span>
-                )}
-            </div>
-        );
-    };
-
-    if (isPreviewMode) {
-        return (
-            <div className="fixed inset-0 z-50 bg-slate-900/90 flex items-center justify-center">
-                <div className="bg-white rounded-2xl shadow-2xl w-[850px] h-[1200px] flex flex-col overflow-hidden">
-                    <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200">
-                        <div className="flex items-center gap-2">
-                            <Eye className="text-blue-600" size={20} />
-                            <h2 className="text-lg font-semibold text-slate-900">Vista previa</h2>
-                        </div>
-                        <button
-                            onClick={() => setIsPreviewMode(false)}
-                            className="p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                        >
-                            <X size={20} className="text-slate-500" />
-                        </button>
-                    </div>
-                    <div className="flex-1 overflow-auto p-8 bg-slate-50">
-                        <div
-                            ref={canvasRef}
-                            className="relative bg-white mx-auto shadow-lg"
-                            style={{
-                                width: '210mm',
-                                height: '297mm',
-                                backgroundColor: 'white',
-                                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                                transform: `scale(${zoom / 100})`,
-                                transformOrigin: 'top center',
-                                backgroundImage: 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)',
-                                backgroundSize: '20px 20px'
-                            }}
-                        >
-                            {/* MOSTRAR LOGO EN LA ESQUINA SUPERIOR */}
-                            {logoUrl && (
-                                <div
-                                    className="absolute"
-                                    style={{
-                                        left: 40,
-                                        top: 40,
-                                        width: 100,
-                                        height: 60,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        border: '1px dashed #e2e8f0',
-                                        borderRadius: 4,
-                                        overflow: 'hidden'
-                                    }}
-                                >
-                                    <img 
-                                        src={logoUrl} 
-                                        alt="Logo" 
-                                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
-                                    />
-                                </div>
-                            )}
-                            {elements.map(renderElement)}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
+    const handleDiscardChanges = useCallback(() => {
+        if (!confirmDiscard()) return;
+        setElements(createElementsForTemplate(selectedTemplate));
+        setSelectedId(null);
+        markClean();
+    }, [selectedTemplate, confirmDiscard, markClean]);
 
     return (
-        <div className="flex flex-col h-screen bg-slate-50">
-            {/* Top Bar */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-white">
-                <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                        <FileText className="text-blue-600" size={20} />
-                        <span className="text-sm font-medium text-slate-700">Editor de plantillas</span>
+        <div className="flex h-screen flex-col bg-slate-50">
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleLogoUpload}
+                className="hidden"
+                aria-hidden="true"
+            />
+
+            <TopBar
+                templates={templates}
+                selectedTemplate={selectedTemplate}
+                loadingTemplates={loadingTemplates}
+                saving={saving}
+                dirty={isDirty}
+                logoUploaded={Boolean(logoUrl)}
+                onSelectTemplate={handleSelectTemplate}
+                onCreateNew={() => setShowNewTemplateModal(true)}
+                onUploadLogo={() => fileInputRef.current?.click()}
+                onRemoveLogo={handleRemoveLogo}
+                onSave={handleSave}
+            />
+
+            <UnsavedChangesBanner
+                visible={isDirty}
+                saving={saving}
+                onSave={handleSave}
+                onDiscard={handleDiscardChanges}
+            />
+
+            <div className="flex flex-1 overflow-hidden">
+                <ElementToolbar onAdd={addElement} onOpenVariables={() => insertVariableIntoSelection('')} />
+
+                <CanvasStage
+                    elements={elements}
+                    selectedId={selectedId}
+                    zoom={zoom}
+                    showGrid={showGrid}
+                    logoUrl={logoUrl}
+                    onSelectElement={setSelectedId}
+                    onMoveElement={(id, x, y) => updateElement(id, { x, y })}
+                    onMoveStart={markDirty}
+                />
+
+                <aside className="flex w-72 flex-col border-l border-slate-200 bg-white">
+                    <LayersPanel
+                        elements={elements}
+                        selectedId={selectedId}
+                        onSelect={setSelectedId}
+                        onMove={moveLayer}
+                        onDelete={deleteElement}
+                    />
+                    <div className="flex-1 overflow-auto">
+                        <PropertiesPanel element={selectedElement} onUpdate={updateElement} onDelete={deleteElement} />
+                        <VariableInspector
+                            elements={elements}
+                            onInsertVariable={(key) => {
+                                if (!selectedElement || selectedElement.type === 'box' || selectedElement.type === 'line' || selectedElement.type === 'image') {
+                                    addElement('variable');
+                                    return;
+                                }
+                                updateElement(selectedElement.id, {
+                                    content: `${selectedElement.content || ''}{{${key}}}`
+                                });
+                            }}
+                            showGrid={showGrid}
+                            onToggleGrid={() => setShowGrid((prev) => !prev)}
+                        />
                     </div>
+                </aside>
+
+                <PreviewPane
+                    elements={elements}
+                    variableContext={variableContext}
+                    employeeId={previewEmployeeId}
+                    showGrid={showGrid}
+                />
+            </div>
+
+            <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-2">
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                    {catalogSource === 'fallback' ? (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
+                            Catálogo local (servidor no disponible)
+                        </span>
+                    ) : (
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800">
+                            Sincronizado con el servidor
+                        </span>
+                    )}
+                    <span>·</span>
+                    <span>{BASE_AVAILABLE_VARIABLES.length} variables disponibles</span>
+                </div>
+                <div className="flex items-center gap-2">
                     <select
-                        value={selectedTemplate.id}
-                        onChange={(e) => {
-                            const tmpl = templates.find(t => t.id === e.target.value);
-                            if (tmpl) setSelectedTemplate(tmpl);
-                        }}
-                        disabled={loadingTemplates}
-                        className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
+                        value={previewEmployeeId}
+                        onChange={(e) => setPreviewEmployeeId(e.target.value)}
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        data-testid="preview-employee-select"
+                        aria-label="Empleado para previsualizar"
                     >
-                        {templates.map(t => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
+                        <option value="">Datos de ejemplo</option>
+                        {employees.map((employee) => (
+                            <option key={employee.id} value={employee.id}>
+                                {employee.nombreCompleto} — {employee.dni}
+                            </option>
                         ))}
                     </select>
                     <button
-                        onClick={() => setShowNewTemplateModal(true)}
-                        className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg text-sm font-medium transition-colors"
-                        title="Nueva Plantilla"
+                        type="button"
+                        onClick={() => setShowDuplicateDialog(true)}
+                        className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                        title="Duplicar plantilla actual en otro tipo"
+                        data-testid="open-duplicate-dialog"
                     >
-                        <FilePlus size={16} />
-                        Nueva
+                        Duplicar como…
                     </button>
-                </div>
-                <div className="flex items-center gap-2">
-                    {/* BOTÓN SUBIR LOGO */}
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handleLogoUpload}
-                        className="hidden"
-                    />
-                    {logoUrl ? (
-                        <button
-                            onClick={handleRemoveLogo}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium transition-colors"
-                            title="Eliminar logo"
-                        >
-                            <X size={16} />
-                            Logo
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-lg text-sm font-medium transition-colors"
-                            title="Subir logo"
-                        >
-                            <Upload size={16} />
-                            Subir Logo
-                        </button>
-                    )}
                     <button
+                        type="button"
                         onClick={() => setShowGenerateModal(true)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-600 rounded-lg text-sm font-medium transition-colors"
-                        title="Generar desde empleado"
+                        className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100"
+                        title="Generar documento desde empleado"
                     >
                         <Users size={16} />
                         Generar
                     </button>
-                    <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+                    <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
                         <button
+                            type="button"
                             onClick={() => handleZoom(-10)}
-                            className="p-1.5 hover:bg-white rounded-md transition-colors"
+                            className="rounded-md p-1.5 hover:bg-white"
                             title="Zoom menos"
+                            aria-label="Reducir zoom"
                         >
                             <ZoomOut size={16} className="text-slate-600" />
                         </button>
-                        <span className="px-2 text-sm text-slate-600 font-medium min-w-[50px] text-center">
-                            {zoom}%
-                        </span>
+                        <span className="min-w-[50px] px-2 text-center text-sm text-slate-600">{zoom}%</span>
                         <button
+                            type="button"
                             onClick={() => handleZoom(10)}
-                            className="p-1.5 hover:bg-white rounded-md transition-colors"
+                            className="rounded-md p-1.5 hover:bg-white"
                             title="Zoom más"
+                            aria-label="Aumentar zoom"
                         >
                             <ZoomIn size={16} className="text-slate-600" />
                         </button>
                     </div>
-                    <button
-                        onClick={handlePreview}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
-                    >
-                        <Eye size={16} />
-                        Preview
-                    </button>
-                    <button
-                        onClick={handleDownloadPDF}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                        <Download size={16} />
-                        PDF
-                    </button>
-                    <button
-                        onClick={handleSave}
-                        disabled={saving}
-                        className="flex items-center gap-2 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-400 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                        <Save size={16} />
-                        {saving ? 'Guardando...' : 'Guardar'}
-                    </button>
                 </div>
             </div>
 
-            <div className="flex flex-1 overflow-hidden">
-                {/* Left Toolbar */}
-                <div className="w-16 border-r border-slate-200 bg-white flex flex-col items-center py-4 gap-2">
-                    <button
-                        onClick={() => addElement('text')}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-blue-50 hover:text-blue-600 text-slate-600 transition-colors"
-                        title="Añadir texto"
-                    >
-                        <Type size={20} />
-                    </button>
-                    <button
-                        onClick={() => addElement('variable')}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-emerald-50 hover:text-emerald-600 text-slate-600 transition-colors"
-                        title="Añadir variable"
-                    >
-                        <Variable size={20} />
-                    </button>
-                    <button
-                        onClick={() => addElement('box')}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 hover:text-slate-700 text-slate-600 transition-colors"
-                        title="Añadir caja"
-                    >
-                        <Square size={20} />
-                    </button>
-                    <button
-                        onClick={() => addElement('line')}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-slate-100 hover:text-slate-700 text-slate-600 transition-colors"
-                        title="Añadir línea"
-                    >
-                        <Minus size={20} />
-                    </button>
-                    <button
-                        onClick={() => addElement('image')}
-                        className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 hover:bg-purple-50 hover:text-purple-600 text-slate-600 transition-colors"
-                        title="Añadir imagen"
-                    >
-                        <Image size={20} />
-                    </button>
-                </div>
-
-                {/* Canvas */}
-                <main
-                    className="flex-1 overflow-auto bg-slate-100 p-8"
-                    onMouseMove={handleMouseMove}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                >
-                    <div
-                        ref={canvasRef}
-                        onClick={handleCanvasClick}
-                        className="relative bg-white mx-auto shadow-lg"
-                        style={{
-                            width: '210mm',
-                            height: '297mm',
-                            backgroundColor: 'white',
-                            boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                            transform: `scale(${zoom / 100})`,
-                            transformOrigin: 'top left',
-                            backgroundImage: 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)',
-                            backgroundSize: '20px 20px'
-                        }}
-                    >
-                        {elements.length === 0 && (
-                            <div className="absolute inset-0 flex items-center justify-center text-slate-400">
-                                <div className="text-center">
-                                    <Type size={48} className="mx-auto mb-2 opacity-50" />
-                                    <p className="text-sm">Añade elementos desde la barra lateral</p>
-                                </div>
-                            </div>
-                        )}
-                        {/* MOSTRAR LOGO EN LA ESQUINA SUPERIOR */}
-                        {logoUrl && (
-                            <div
-                                className="absolute"
-                                style={{
-                                    left: 40,
-                                    top: 40,
-                                    width: 100,
-                                    height: 60,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    border: '1px dashed #e2e8f0',
-                                    borderRadius: 4,
-                                    overflow: 'hidden'
-                                }}
-                            >
-                                <img 
-                                    src={logoUrl} 
-                                    alt="Logo" 
-                                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} 
-                                />
-                            </div>
-                        )}
-                        {elements.map(renderElement)}
-                    </div>
-                </main>
-
-                {/* Right Panel */}
-                <div className="w-72 border-l border-slate-200 bg-white flex flex-col">
-                    {/* Layers */}
-                    <div className="border-b border-slate-200">
-                        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100">
-                            <Layers size={16} className="text-slate-500" />
-                            <span className="text-sm font-medium text-slate-700">Capas ({elements.length})</span>
-                        </div>
-                        <div className="max-h-[200px] overflow-auto">
-                            {elements.length === 0 ? (
-                                <div className="px-4 py-8 text-center text-slate-400 text-sm">
-                                    Sin elementos
-                                </div>
-                            ) : (
-                                <div className="divide-y divide-slate-100">
-                                    {elements.map((el, index) => (
-                                        <button
-                                            key={el.id}
-                                            onClick={() => setSelectedId(el.id)}
-                                            className={`w-full flex items-center gap-2 px-4 py-2 text-left transition-colors ${
-                                                selectedId === el.id
-                                                    ? 'bg-blue-50 text-blue-700'
-                                                    : 'hover:bg-slate-50 text-slate-600'
-                                            }`}
-                                        >
-                                            {el.type === 'text' && <Type size={14} />}
-                                            {el.type === 'variable' && <Variable size={14} />}
-                                            {el.type === 'box' && <Square size={14} />}
-                                            {el.type === 'line' && <Minus size={14} />}
-                                            {el.type === 'image' && <Image size={14} />}
-                                            <span className="text-xs flex-1 truncate">
-                                                {el.type === 'text' && el.content}
-                                                {el.type === 'variable' && el.content}
-                                                {el.type === 'box' && 'Caja'}
-                                                {el.type === 'line' && 'Línea'}
-                                                {el.type === 'image' && 'Imagen'}
-                                            </span>
-                                            <span className="text-xs text-slate-400">#{index + 1}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Properties */}
-                    <div className="flex-1 flex flex-col overflow-auto">
-                        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100">
-                            <Move size={16} className="text-slate-500" />
-                            <span className="text-sm font-medium text-slate-700">Propiedades</span>
-                        </div>
-                        {selectedElement ? (
-                            <div className="p-4 space-y-4">
-                                {/* Layer controls */}
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => moveLayer('up')}
-                                        disabled={elements.findIndex(el => el.id === selectedId) === elements.length - 1}
-                                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-slate-50 hover:bg-slate-100 disabled:opacity-50 rounded-lg text-xs text-slate-600 transition-colors"
-                                    >
-                                        <ChevronUp size={14} />
-                                        Subir
-                                    </button>
-                                    <button
-                                        onClick={() => moveLayer('down')}
-                                        disabled={elements.findIndex(el => el.id === selectedId) === 0}
-                                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-slate-50 hover:bg-slate-100 disabled:opacity-50 rounded-lg text-xs text-slate-600 transition-colors"
-                                    >
-                                        <ChevronDown size={14} />
-                                        Bajar
-                                    </button>
-                                </div>
-
-                                {(selectedElement.type === 'text' || selectedElement.type === 'variable') && (
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">Texto</label>
-                                        {selectedElement.type === 'variable' ? (
-                                            <select
-                                                value={selectedElement.content.replace(/^\{\{\s*|\s*\}\}$/g, '')}
-                                                onChange={(e) => updateElement(selectedElement.id, { content: `{{${e.target.value}}}` })}
-                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                            >
-                                                <option value="">Seleccionar variable...</option>
-                                                {BASE_AVAILABLE_VARIABLES.map(v => (
-                                                    <option key={v} value={v}>{v}</option>
-                                                ))}
-                                            </select>
-                                        ) : (
-                                            <input
-                                                type="text"
-                                                value={selectedElement.content}
-                                                onChange={(e) => updateElement(selectedElement.id, { content: e.target.value })}
-                                                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                            />
-                                        )}
-                                    </div>
-                                )}
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">X</label>
-                                        <input
-                                            type="number"
-                                            value={Math.round(selectedElement.x)}
-                                            onChange={(e) => updateElement(selectedElement.id, { x: Number(e.target.value) })}
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">Y</label>
-                                        <input
-                                            type="number"
-                                            value={Math.round(selectedElement.y)}
-                                            onChange={(e) => updateElement(selectedElement.id, { y: Number(e.target.value) })}
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">Ancho</label>
-                                        <input
-                                            type="number"
-                                            value={selectedElement.width}
-                                            onChange={(e) => updateElement(selectedElement.id, { width: Number(e.target.value) })}
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">Alto</label>
-                                        <input
-                                            type="number"
-                                            value={selectedElement.height}
-                                            onChange={(e) => updateElement(selectedElement.id, { height: Number(e.target.value) })}
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                        />
-                                    </div>
-                                </div>
-
-                                {(selectedElement.type === 'text' || selectedElement.type === 'variable') && (
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">Tamaño de fuente</label>
-                                        <input
-                                            type="number"
-                                            value={selectedElement.fontSize || 16}
-                                            onChange={(e) => updateElement(selectedElement.id, { fontSize: Number(e.target.value) })}
-                                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                        />
-                                    </div>
-                                )}
-
-                                {selectedElement.type === 'box' && (
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">Color de fondo</label>
-                                        <input
-                                            type="color"
-                                            value={selectedElement.backgroundColor || '#ffffff'}
-                                            onChange={(e) => updateElement(selectedElement.id, { backgroundColor: e.target.value })}
-                                            className="w-full h-10 rounded-lg cursor-pointer"
-                                        />
-                                    </div>
-                                )}
-
-                                {(selectedElement.type === 'box' || selectedElement.type === 'line') && (
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">Color de borde</label>
-                                        <input
-                                            type="color"
-                                            value={selectedElement.borderColor || '#1e293b'}
-                                            onChange={(e) => updateElement(selectedElement.id, { borderColor: e.target.value })}
-                                            className="w-full h-10 rounded-lg cursor-pointer"
-                                        />
-                                    </div>
-                                )}
-
-                                {(selectedElement.type === 'text' || selectedElement.type === 'variable') && (
-                                    <div>
-                                        <label className="block text-xs font-medium text-slate-600 mb-1">Color de texto</label>
-                                        <input
-                                            type="color"
-                                            value={selectedElement.color || '#1e293b'}
-                                            onChange={(e) => updateElement(selectedElement.id, { color: e.target.value })}
-                                            className="w-full h-10 rounded-lg cursor-pointer"
-                                        />
-                                    </div>
-                                )}
-
-                                <button
-                                    onClick={() => deleteElement(selectedElement.id)}
-                                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium transition-colors"
-                                >
-                                    <Trash2 size={16} />
-                                    Eliminar elemento
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="flex-1 flex items-center justify-center text-slate-400 text-sm p-4 text-center">
-                                Selecciona un elemento para editar sus propiedades
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* MODAL NUEVA PLANTILLA */}
             {showNewTemplateModal && (
-                <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center">
-                    <div className="bg-white rounded-xl shadow-2xl w-[400px] p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-slate-900">Nueva Plantilla</h3>
-                            <button
-                                onClick={() => {
-                                    setShowNewTemplateModal(false);
-                                    setNewTemplateName('');
-                                }}
-                                className="p-1 hover:bg-slate-100 rounded-lg"
-                            >
-                                <X size={20} className="text-slate-500" />
-                            </button>
-                        </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Nombre de la plantilla
-                                </label>
-                                <input
-                                    type="text"
-                                    value={newTemplateName}
-                                    onChange={(e) => setNewTemplateName(e.target.value)}
-                                    placeholder="Mi nueva plantilla"
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                    autoFocus
-                                />
-                            </div>
-                            <button
-                                onClick={handleCreateNewTemplate}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-                            >
-                                <FilePlus size={16} />
-                                Crear Plantilla
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <Modal title="Nueva plantilla" onClose={() => setShowNewTemplateModal(false)}>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Nombre de la plantilla
+                    </label>
+                    <input
+                        type="text"
+                        value={newTemplateName}
+                        onChange={(e) => setNewTemplateName(e.target.value)}
+                        placeholder="Mi nueva plantilla"
+                        autoFocus
+                        className="mb-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                        type="button"
+                        onClick={handleCreateNewTemplate}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                        <FilePlus size={16} />
+                        Crear plantilla
+                    </button>
+                </Modal>
             )}
 
-            {/* MODAL GENERAR DESDE EMPLEADO */}
             {showGenerateModal && (
-                <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center">
-                    <div className="bg-white rounded-xl shadow-2xl w-[400px] p-6">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-semibold text-slate-900">Generar Documento</h3>
-                            <button
-                                onClick={() => {
-                                    setShowGenerateModal(false);
-                                    setSelectedEmployeeId('');
-                                }}
-                                className="p-1 hover:bg-slate-100 rounded-lg"
-                            >
-                                <X size={20} className="text-slate-500" />
-                            </button>
-                        </div>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">
-                                    Seleccionar empleado
-                                </label>
-                                <select
-                                    value={selectedEmployeeId}
-                                    onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-                                >
-                                    <option value="">Seleccionar empleado...</option>
-                                    {employees.map(emp => (
-                                        <option key={emp.id} value={emp.id}>
-                                            {emp.nombreCompleto} - {emp.dni}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <button
-                                onClick={handleGenerateFromEmployee}
-                                disabled={!selectedEmployeeId}
-                                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-slate-400 text-white rounded-lg text-sm font-medium transition-colors"
-                            >
-                                <Users size={16} />
-                                Generar Documento
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <Modal title="Generar documento" onClose={() => setShowGenerateModal(false)}>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Seleccionar empleado
+                    </label>
+                    <select
+                        value={selectedEmployeeId}
+                        onChange={(e) => setSelectedEmployeeId(e.target.value)}
+                        className="mb-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                        <option value="">Seleccionar empleado...</option>
+                        {employees.map((employee) => (
+                            <option key={employee.id} value={employee.id}>
+                                {employee.nombreCompleto} — {employee.dni}
+                            </option>
+                        ))}
+                    </select>
+                    <button
+                        type="button"
+                        onClick={handleGenerateFromEmployee}
+                        disabled={!selectedEmployeeId}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:bg-slate-400"
+                    >
+                        <Users size={16} />
+                        Generar documento
+                    </button>
+                </Modal>
             )}
+
+            {showDuplicateDialog && (
+                <DuplicateTemplateDialog
+                    templates={templates}
+                    currentType={selectedTemplate.type}
+                    defaultName={`${selectedTemplate.name} (copia)`}
+                    onClose={() => setShowDuplicateDialog(false)}
+                    onConfirm={handleDuplicateTemplate}
+                />
+            )}
+        </div>
+    );
+}
+
+function Modal({
+    title,
+    onClose,
+    children
+}: {
+    title: string;
+    onClose: () => void;
+    children: React.ReactNode;
+}) {
+    return (
+        <div
+            role="dialog"
+            aria-label={title}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50"
+            onClick={onClose}
+        >
+            <div
+                className="w-[420px] rounded-xl bg-white p-6 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+            >
+                <div className="mb-4 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
+                        aria-label="Cerrar"
+                    >
+                        <X size={20} />
+                    </button>
+                </div>
+                {children}
+            </div>
         </div>
     );
 }

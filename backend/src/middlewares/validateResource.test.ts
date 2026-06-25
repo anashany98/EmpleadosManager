@@ -69,8 +69,9 @@ describe('validateResource Middleware', () => {
         expect(next).not.toHaveBeenCalled();
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-            status: 'error',
-            message: 'Error de validación'
+            success: false,
+            message: 'Error de validación',
+            errors: expect.any(Array)
         }));
     });
 });

@@ -1,10 +1,11 @@
 #!/bin/sh
-# Entrypoint script to ensure proper permissions before starting the app
-# Runs as root to fix volume permissions, then exec passes control to the CMD
+# Entrypoint script to ensure proper permissions before starting the app.
+# Runs as root only long enough to prepare mounted volumes, then drops
+# privileges so the Node.js process runs as appuser.
 
 set -e
 
-# Fix ALL directories that the app creates at runtime
+# Fix ALL directories that the app creates at runtime.
 echo "Fixing directory permissions..."
 mkdir -p /app/backend/uploads/documents \
          /app/backend/uploads/vehicle-documents \
@@ -16,6 +17,10 @@ mkdir -p /app/backend/uploads/documents \
 chown -R appuser:appgroup /app/backend/uploads /app/backend/data /app/backend/backups
 chmod -R 775 /app/backend/uploads /app/backend/data /app/backend/backups
 
-echo "Starting application..."
-# Execute the CMD (runs as root inside container — security from Docker cap_drop)
-exec "$@"
+if [ "${RUN_PRISMA_MIGRATIONS:-false}" = "true" ]; then
+  echo "Running Prisma migrations..."
+  gosu appuser npx prisma migrate deploy --schema=/app/database/prisma/schema.prisma
+fi
+
+echo "Starting application as appuser..."
+exec gosu appuser "$@"

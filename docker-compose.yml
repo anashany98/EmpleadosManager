@@ -83,6 +83,8 @@
       - NET_BIND_SERVICE
       - CHOWN
       - FOWNER
+      - SETGID
+      - SETUID
     read_only: false  # Set true after confirming Prisma engine writes elsewhere
     environment:
       - NODE_ENV=${NODE_ENV:?NODE_ENV is required}
@@ -120,6 +122,8 @@
       - SENTRY_ENVIRONMENT=${SENTRY_ENVIRONMENT:-production}
     volumes:
       - backend_uploads:/app/backend/uploads
+      - backend_data:/app/backend/data
+      - backend_backups:/app/backend/backups
     depends_on:
       postgres:
         condition: service_healthy
@@ -332,6 +336,8 @@ volumes:
     driver: local
   postgres_data:
   backend_uploads:
+  backend_data:
+  backend_backups:
   redis_data:
   rclone_config:
     # Persistent rclone config (created by scripts/setup-onedrive.sh).

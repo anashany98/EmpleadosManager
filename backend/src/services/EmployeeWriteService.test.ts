@@ -8,13 +8,13 @@ vi.mock('./EncryptionService', () => ({
 }));
 
 describe('EmployeeWriteService', () => {
-    it('builds create payloads with encryption and capped emergency contacts', () => {
+    it('builds create payloads with searchable DNI, encrypted PII and capped emergency contacts', () => {
         const payload = buildEmployeeCreateData({
-            dni: '12345678A',
+            dni: '12345678a',
             firstName: 'Ana',
             lastName: 'Gómez',
-            socialSecurityNumber: '123',
-            iban: 'ES00',
+            socialSecurityNumber: '123 45-6',
+            iban: 'es00 1234',
             emergencyContacts: Array.from({ length: 6 }).map((_, index) => ({
                 name: `Contacto ${index}`,
                 phone: `60000000${index}`,
@@ -23,8 +23,12 @@ describe('EmployeeWriteService', () => {
         }, 'company-1');
 
         expect(payload.companyId).toBe('company-1');
-        expect(payload.socialSecurityNumber).toBe('encrypted_123');
-        expect(payload.iban).toBe('encrypted_ES00');
+        expect(payload.dni).toBe('12345678A');
+        expect(payload.dniEnc).toBe('encrypted_12345678A');
+        expect(payload.socialSecurityNumber).toBe('encrypted_123456');
+        expect(payload.socialSecurityNumberEnc).toBe('encrypted_123456');
+        expect(payload.iban).toBe('encrypted_ES001234');
+        expect(payload.ibanEnc).toBe('encrypted_ES001234');
         expect(payload.emergencyContacts.create).toHaveLength(5);
         expect(payload.name).toBe('Ana Gómez');
     });
@@ -43,18 +47,25 @@ describe('EmployeeWriteService', () => {
 
     it('builds company update payloads with encrypted sensitive fields and replace semantics for contacts', () => {
         const payload = buildCompanyEmployeeUpdateData({
-            socialSecurityNumber: '321',
-            iban: 'ES99',
+            dni: ' 12345678a ',
+            socialSecurityNumber: '321 00-9',
+            iban: 'es99 0000',
             annualGrossSalary: '24000',
             monthlyGrossSalary: '2000',
             emergencyContacts: [{ name: 'Contacto', phone: '600', relationship: 'Padre' }],
             lowDate: ''
         });
 
-        expect(payload.socialSecurityNumber).toBe('encrypted_321');
-        expect(payload.iban).toBe('encrypted_ES99');
-        expect(payload.annualGrossSalary).toBe(24000);
-        expect(payload.monthlyGrossSalary).toBe(2000);
+        expect(payload.dni).toBe('12345678A');
+        expect(payload.dniEnc).toBe('encrypted_12345678A');
+        expect(payload.socialSecurityNumber).toBe('encrypted_321009');
+        expect(payload.socialSecurityNumberEnc).toBe('encrypted_321009');
+        expect(payload.iban).toBe('encrypted_ES990000');
+        expect(payload.ibanEnc).toBe('encrypted_ES990000');
+        expect(payload.annualGrossSalary).toBe(0);
+        expect(payload.monthlyGrossSalary).toBe(0);
+        expect(payload.annualGrossSalaryEnc).toBe('encrypted_24000.00');
+        expect(payload.monthlyGrossSalaryEnc).toBe('encrypted_2000.00');
         expect(payload.lowDate).toBeNull();
         expect(payload.emergencyContacts).toEqual({
             deleteMany: {},

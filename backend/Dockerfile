@@ -70,6 +70,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgif-dev \
     postgresql-client \
     curl \
+    gosu \
  && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -117,6 +118,6 @@ LABEL org.opencontainers.image.title="EmpleadosManager Backend" \
       org.opencontainers.image.description="Payroll & HR Management API" \
       org.opencontainers.image.vendor="Your Company"
 
-# Use entrypoint to create directories as root, then run as appuser
+# Use entrypoint to create directories as root, then drop privileges to appuser
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["node", "--require", "./instrument.js", "dist/backend/src/index.js"]

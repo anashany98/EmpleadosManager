@@ -1,6 +1,12 @@
 import { Router } from 'express';
 import { DocumentTemplateController } from '../controllers/DocumentTemplateController';
 import { protect, checkPermission, authorize } from '../middlewares/authMiddleware';
+import { validateResource } from '../middlewares/validateResource';
+import {
+    documentTemplateGenerateSchema,
+    documentTemplatePreviewSchema,
+    documentTemplateSaveSchema
+} from '../schemas/documentSchemas';
 import { prisma } from '../lib/prisma';
 import multer from 'multer';
 import path from 'path';
@@ -60,10 +66,25 @@ router.get('/stored', checkPermission('documents', 'read'), DocumentTemplateCont
 router.get('/variables', checkPermission('documents', 'read'), DocumentTemplateController.getAvailableVariables);
 router.get('/:type', checkPermission('documents', 'read'), DocumentTemplateController.getTemplate);
 
-router.post('/save', checkPermission('documents', 'write'), DocumentTemplateController.saveTemplate);
+router.post(
+    '/save',
+    checkPermission('documents', 'write'),
+    validateResource(documentTemplateSaveSchema),
+    DocumentTemplateController.saveTemplate
+);
 router.post('/logo', checkPermission('documents', 'write'), logoUpload.single('logo'), DocumentTemplateController.uploadLogo);
-router.post('/preview', checkPermission('documents', 'read'), DocumentTemplateController.previewTemplate);
-router.post('/generate', authorize('document.write', resolveTemplateGenerationEmployeeTarget), DocumentTemplateController.generate);
+router.post(
+    '/preview',
+    checkPermission('documents', 'read'),
+    validateResource(documentTemplatePreviewSchema),
+    DocumentTemplateController.previewTemplate
+);
+router.post(
+    '/generate',
+    authorize('document.write', resolveTemplateGenerationEmployeeTarget),
+    validateResource(documentTemplateGenerateSchema),
+    DocumentTemplateController.generate
+);
 router.post('/sign', checkPermission('documents', 'write'), DocumentTemplateController.sign);
 
 router.delete('/:id', checkPermission('documents', 'write'), DocumentTemplateController.deleteTemplate);

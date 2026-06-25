@@ -124,7 +124,18 @@ export class QueueService {
         await Promise.all(Object.values(this.queues).map(q => q.close()));
         await Promise.all(Object.values(this.workers).map(w => w.close()));
         await Promise.all(Object.values(this.queueEvents).map(e => e.close()));
-        connection.disconnect();
+
+        const redisConnection = connection as unknown as {
+            disconnect?: () => void;
+            quit?: () => Promise<unknown> | unknown;
+        };
+
+        if (typeof redisConnection.disconnect === 'function') {
+            redisConnection.disconnect();
+        } else if (typeof redisConnection.quit === 'function') {
+            await redisConnection.quit();
+        }
+
         log.info('QueueService closed');
     }
 }

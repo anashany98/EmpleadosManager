@@ -229,7 +229,7 @@ export function validateRuntimeConfiguration(): void {
     ];
 
     // === STORAGE CONFIGURATION (based on provider) ===
-    const storageProvider = (process.env.STORAGE_PROVIDER || 's3').toLowerCase();
+    const storageProvider = (process.env.STORAGE_PROVIDER || 'local').toLowerCase();
     if (storageProvider === 's3') {
         const _s3Validators: EnvValidator[] = [
             { name: 'S3_BUCKET', required: true, validate: (v) => v ? { valid: true } : { valid: false, error: 'S3_BUCKET is required when STORAGE_PROVIDER=s3' } },

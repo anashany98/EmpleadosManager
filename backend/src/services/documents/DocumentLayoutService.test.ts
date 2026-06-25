@@ -81,12 +81,10 @@ describe('loadImageBuffer security contract', () => {
         path.resolve(process.cwd(), 'backend', 'uploads')
     ];
 
-    const isInsideAllowed = (resolved: string): boolean => {
-        return allowedBases.some(base => {
-            const rel = path.relative(base, resolved);
-            return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
-        });
-    };
+    const isInsideAllowed = (resolved: string): boolean => allowedBases.some(base => {
+        const rel = path.relative(base, resolved);
+        return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel);
+    });
 
     it('rejects http:// URLs (SSRF)', () => {
         const source = 'http://169.254.169.254/latest/meta-data/';
