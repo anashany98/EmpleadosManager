@@ -96,7 +96,7 @@ describe('DocumentTemplateController.generateGeneric', () => {
             success: true,
             data: expect.objectContaining({
                 documentId: 'doc-1',
-                fileUrl: '/api/documents/doc-1/download'
+                fileUrl: '/documents/doc-1/download'
             })
         }));
     });
@@ -173,7 +173,7 @@ describe('DocumentTemplateController.generateMaterial', () => {
             success: true,
             data: expect.objectContaining({
                 documentId: 'doc-material-1',
-                fileUrl: '/api/documents/doc-material-1/download'
+                fileUrl: '/documents/doc-material-1/download'
             })
         }));
     });

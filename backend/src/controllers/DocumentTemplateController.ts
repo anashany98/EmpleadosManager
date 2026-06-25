@@ -176,7 +176,7 @@ export const DocumentTemplateController = {
 
         try {
             const doc = await DocumentTemplateService.generateUniform(employeeId, items || [], authorName);
-            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/api/documents/${doc.id}/download` : undefined });
+            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
     },
 
@@ -190,7 +190,7 @@ export const DocumentTemplateController = {
 
         try {
             const doc = await DocumentTemplateService.generateEPI(employeeId, items || [], authorName);
-            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/api/documents/${doc.id}/download` : undefined });
+            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
     },
 
@@ -204,7 +204,7 @@ export const DocumentTemplateController = {
 
         try {
             const doc = await DocumentTemplateService.generateMaterialDelivery(employeeId, items || [], authorName);
-            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/api/documents/${doc.id}/download` : undefined });
+            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
     },
 
@@ -218,7 +218,7 @@ export const DocumentTemplateController = {
 
         try {
             const doc = await DocumentTemplateService.generateTechDevice(employeeId, deviceName, serialNumber, authorName, itemId);
-            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/api/documents/${doc.id}/download` : undefined });
+            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
     },
 
@@ -232,7 +232,7 @@ export const DocumentTemplateController = {
 
         try {
             const doc = await DocumentTemplateService.generateModel145(employeeId, authorName);
-            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: `/api/documents/${doc.id}/download` });
+            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: `/documents/${doc.id}/download` });
         } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
     },
 
@@ -246,7 +246,7 @@ export const DocumentTemplateController = {
 
         try {
             const doc = await DocumentTemplateService.generateNDA(employeeId, authorName);
-            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/api/documents/${doc.id}/download` : undefined });
+            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
     },
 
@@ -260,7 +260,7 @@ export const DocumentTemplateController = {
 
         try {
             const doc = await DocumentTemplateService.generateRGPD(employeeId, authorName);
-            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/api/documents/${doc.id}/download` : undefined });
+            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
     },
 
@@ -289,7 +289,7 @@ export const DocumentTemplateController = {
         try {
             if (normalizedType === 'MODEL_145') {
                 const doc = await DocumentTemplateService.generateModel145(employeeId, authorName);
-                return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: `/api/documents/${doc.id}/download` });
+                return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: `/documents/${doc.id}/download` });
             }
 
             const doc = await CompanyDocumentTemplateService.generateDocumentFromTemplate({
@@ -299,7 +299,7 @@ export const DocumentTemplateController = {
                 authorName,
                 extraContext: data
             });
-            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/api/documents/${doc.id}/download` : undefined });
+            return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: any) {
             log.error({ error }, 'Error generating document');
             if (error instanceof AppError) {

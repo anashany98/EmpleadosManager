@@ -81,7 +81,7 @@ export function VacationRequestCard({
                     {request.reason && <span className="italic truncate max-w-[200px]">{request.reason}</span>}
                     {request.fileUrl && (
                         <a
-                            href={request.fileUrl}
+                            href={`${API_URL}${request.fileUrl}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 font-bold"

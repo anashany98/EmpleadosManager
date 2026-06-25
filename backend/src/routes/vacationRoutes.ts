@@ -78,7 +78,7 @@ router.post('/:id/generate-document', validateResource(vacationIdParamSchema), a
 
         return ApiResponse.success(res, {
             documentId: document.id,
-            fileUrl: `/api/documents/${document.id}/download`,
+            fileUrl: `/documents/${document.id}/download`,
             fileName: document.name
         }, 'Documento de vacaciones generado correctamente');
     } catch (error: any) {
