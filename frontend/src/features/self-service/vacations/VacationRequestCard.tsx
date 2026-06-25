@@ -49,7 +49,19 @@ export function VacationRequestCard({
                 if (onDocumentGenerated) {
                     onDocumentGenerated(response.data.fileUrl);
                 }
-                window.open(`${API_URL}${response.data.fileUrl}`, '_blank');
+                // Use an <a download> click instead of window.open so the
+                // browser honors the suggested filename (response.data.fileName
+                // includes the .pdf extension) and downloads the file rather
+                // than opening a viewer tab. window.open had no way to pass
+                // a filename hint.
+                const link = document.createElement('a');
+                link.href = `${API_URL}${response.data.fileUrl}`;
+                link.download = response.data.fileName || 'documento.pdf';
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             }
         } catch (error: any) {
             toast.error(error.message || 'Error al generar documento');

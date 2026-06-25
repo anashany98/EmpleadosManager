@@ -82,7 +82,11 @@ export const generateVacationDocument = async (data: VacationDocumentData): Prom
 
     const document = await prisma.document.create({
         data: {
-            name: `Solicitud Vacaciones ${new Date(data.startDate).toLocaleDateString('es-ES')} - ${new Date(data.endDate).toLocaleDateString('es-ES')}`,
+            // Include .pdf in document.name so res.download() emits a
+            // Content-Disposition with a usable filename. Browsers
+            // sometimes drop or mangle the filename when it lacks an
+            // extension even if Content-Type is application/pdf.
+            name: `Solicitud Vacaciones ${new Date(data.startDate).toLocaleDateString('es-ES')} - ${new Date(data.endDate).toLocaleDateString('es-ES')}.pdf`,
             category: 'OTHER',
             fileUrl: key,
             employeeId: data.employeeId
