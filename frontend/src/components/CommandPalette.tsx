@@ -74,9 +74,9 @@ export default function CommandPalette() {
             case '/settings':
                 return canAccessFeature('settings');
             case '/vacations':
-                return canAccessFeature('vacations');
+                return canAccessFeature('vacationsPortal');
             case '/expenses':
-                return canAccessFeature('expenses');
+                return canAccessFeature('expensesPortal');
             case '/anomalies':
                 return isGlobalAdmin;
             case '/audit':

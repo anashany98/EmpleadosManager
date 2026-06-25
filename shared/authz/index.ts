@@ -367,10 +367,23 @@ export function hasModuleAccess(
 }
 
 export function canAccessFeature(
-    featureKey: AppFeatureKey,
+    featureKey: AppFeatureKey | string | null | undefined,
     actor: AuthActor | NormalizedAuthActor | null | undefined
 ): boolean {
-    const feature: FeatureAccess = APP_FEATURES[featureKey];
+    // Fail closed on any invalid input rather than crashing the UI. The
+    // frontend used to throw "Cannot read properties of undefined (reading
+    // 'requireEmployee')" when a caller passed a misspelled key (e.g.
+    // 'vacations' instead of 'vacationsPortal'). Returning false silently
+    // hides the item in the menu, which is the safer failure mode.
+    if (typeof featureKey !== 'string' || featureKey.length === 0) {
+        return false;
+    }
+
+    const feature: FeatureAccess | undefined = APP_FEATURES[featureKey as AppFeatureKey];
+    if (!feature) {
+        return false;
+    }
+
     const normalized = normalizeActor(actor);
 
     if (!normalized) {
