@@ -129,7 +129,7 @@ export function isExcel(buffer: Buffer): boolean {
 }
 
 export function isOfficeDoc(buffer: Buffer): boolean {
-    const docSigs = FILE_SIGNATURES.filter(s => 
+    const docSigs = FILE_SIGNATURES.filter(s =>
         s.mimeType.includes('office') || s.mimeType.includes('word')
     );
 
@@ -141,4 +141,35 @@ export function isOfficeDoc(buffer: Buffer): boolean {
     }
 
     return false;
+}
+
+// WebP magic: "RIFF....WEBP". Solo nos interesa el prefijo RIFF y el sufijo
+// WEBP en los primeros 12 bytes; el tamaño中间的中间 4 bytes puede variar.
+export function isWebp(buffer: Buffer): boolean {
+    if (buffer.length < 12) return false;
+    const riff = buffer.slice(0, 4).toString('ascii');
+    const webp = buffer.slice(8, 12).toString('ascii');
+    return riff === 'RIFF' && webp === 'WEBP';
+}
+
+/**
+ * Valida un SVG contra patrones XSS comunes. Los SVG son texto plano y no
+ * tienen magic bytes, pero pueden contener <script>, on* handlers o
+ * javascript: URIs. Esto NO es un reemplazo de un sanitizer XML completo;
+ * es una primera barrera para bloquear payloads obvios. Para SVG que se
+ * sirven al frontend, debería además usarse DOMPurify.
+ */
+export function isSafeSvg(buffer: Buffer): boolean {
+    if (buffer.length < 5) return false;
+    const head = buffer.slice(0, 256).toString('utf8', 0, 256).trim().toLowerCase();
+    // Debe empezar por declaración XML o etiqueta <svg
+    if (!head.startsWith('<?xml') && !head.startsWith('<svg')) {
+        return false;
+    }
+    const fullText = buffer.toString('utf8', 0, Math.min(buffer.length, 64 * 1024)).toLowerCase();
+    // Bloqueos básicos: <script>, handlers de eventos on* y javascript: URIs
+    if (/<script\b/.test(fullText)) return false;
+    if (/\son[a-z]+\s*=/.test(fullText)) return false;
+    if (/javascript\s*:/.test(fullText)) return false;
+    return true;
 }

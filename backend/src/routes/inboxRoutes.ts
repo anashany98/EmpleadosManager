@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import { validateDiskUploadMiddleware } from '../config/multer';
 
 const router = Router();
 const tempDir = path.join(process.cwd(), 'data/inbox_temp/');
@@ -36,7 +37,7 @@ const resolveAssignTarget = async (req: any) => {
     return employee ? { employeeId: employee.id, companyId: employee.companyId } : null;
 };
 
-router.post('/upload', protect, checkPermission('employees', 'write'), upload.single('file'), InboxController.upload);
+router.post('/upload', protect, checkPermission('employees', 'write'), upload.single('file'), validateDiskUploadMiddleware('file'), InboxController.upload);
 router.get('/pending', protect, checkPermission('employees', 'read'), InboxController.getAllPending);
 router.post('/sync', protect, checkPermission('employees', 'read'), InboxController.triggerSync);
 router.get('/:id/download', protect, checkPermission('employees', 'read'), InboxController.download);

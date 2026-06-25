@@ -11,6 +11,7 @@ import { prisma } from '../lib/prisma';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { validateDiskUploadMiddleware } from '../config/multer';
 
 const router = Router();
 
@@ -72,7 +73,7 @@ router.post(
     validateResource(documentTemplateSaveSchema),
     DocumentTemplateController.saveTemplate
 );
-router.post('/logo', checkPermission('documents', 'write'), logoUpload.single('logo'), DocumentTemplateController.uploadLogo);
+router.post('/logo', checkPermission('documents', 'write'), logoUpload.single('logo'), validateDiskUploadMiddleware('logo'), DocumentTemplateController.uploadLogo);
 router.post(
     '/preview',
     checkPermission('documents', 'read'),

@@ -4,6 +4,7 @@ import { protect, checkPermission } from '../middlewares/authMiddleware';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { validateDiskUploadMiddleware } from '../config/multer';
 
 const router = Router();
 
@@ -47,7 +48,7 @@ router.put('/:id', checkPermission('fleet', 'write'), VehicleController.update);
 router.get('/:id/logs', checkPermission('fleet', 'read'), VehicleController.getLogs);
 router.post('/:id/logs', checkPermission('fleet', 'write'), VehicleController.createLog);
 router.delete('/:id/logs/:logId', checkPermission('fleet', 'write'), VehicleController.deleteLog);
-router.post('/:id/documents', checkPermission('fleet', 'write'), docUpload.single('document'), VehicleController.uploadDocument);
+router.post('/:id/documents', checkPermission('fleet', 'write'), docUpload.single('document'), validateDiskUploadMiddleware('document'), VehicleController.uploadDocument);
 router.get('/:id/documents/:docId/download', checkPermission('fleet', 'read'), VehicleController.downloadDocument);
 router.delete('/:id/documents/:docId', checkPermission('fleet', 'write'), VehicleController.deleteDocument);
 router.delete('/:id', checkPermission('fleet', 'write'), VehicleController.delete);
