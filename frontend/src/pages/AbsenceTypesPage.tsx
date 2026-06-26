@@ -1,9 +1,8 @@
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Calendar, Edit, Loader2, Plus, Search, Trash2, X } from 'lucide-react';
+import { Calendar, Edit, Loader2, Plus, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../api/client';
-import { useConfirm } from '../context/ConfirmContext';
 import { useClickOutside } from '../hooks/useClickOutside';
 
 interface AbsenceType {
@@ -35,7 +34,6 @@ const EMPTY_FORM = {
 };
 
 export default function AbsenceTypesPage() {
-    const confirmAction = useConfirm();
     const [types, setTypes] = useState<AbsenceType[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
@@ -116,27 +114,10 @@ export default function AbsenceTypesPage() {
             setIsModalOpen(false);
             await fetchTypes();
         } catch (err: any) {
-            const msg = err?.response?.data?.message || 'Error al guardar';
+            const msg = err?.message || 'Error al guardar';
             toast.error(msg);
         } finally {
             setSubmitting(false);
-        }
-    };
-
-    const handleDelete = async (t: AbsenceType) => {
-        const confirmed = await confirmAction({
-            title: 'Eliminar tipo de ausencia',
-            message: `¿Eliminar "${t.name}"? Esta acción no se puede deshacer.`,
-        });
-        if (!confirmed) return;
-
-        try {
-            await api.delete(`/absence-types/${t.id}`);
-            toast.success('Tipo eliminado');
-            await fetchTypes();
-        } catch (err: any) {
-            const msg = err?.response?.data?.message || 'Error al eliminar';
-            toast.error(msg);
         }
     };
 
@@ -263,9 +244,6 @@ export default function AbsenceTypesPage() {
                                                 <button type="button" onClick={() => openEdit(t)} className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-700">
                                                     <Edit size={16} className="text-slate-500" />
                                                 </button>
-                                                <button type="button" onClick={() => void handleDelete(t)} className="rounded-lg p-2 hover:bg-red-50 dark:hover:bg-red-900/20">
-                                                    <Trash2 size={16} className="text-red-500" />
-                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -289,9 +267,6 @@ export default function AbsenceTypesPage() {
                                     <div className="flex gap-1">
                                         <button type="button" onClick={() => openEdit(t)} className="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-slate-700">
                                             <Edit size={16} className="text-slate-500" />
-                                        </button>
-                                        <button type="button" onClick={() => void handleDelete(t)} className="rounded-lg p-2 hover:bg-red-50 dark:hover:bg-red-900/20">
-                                            <Trash2 size={16} className="text-red-500" />
                                         </button>
                                     </div>
                                 </div>
