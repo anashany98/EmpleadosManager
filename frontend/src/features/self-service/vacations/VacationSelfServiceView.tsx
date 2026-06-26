@@ -43,6 +43,8 @@ export function VacationSelfServiceView() {
     const [dateError, setDateError] = useState<string | null>(null);
     const [creating, setCreating] = useState(false);
     const [currentDate, setCurrentDate] = useState(new Date());
+    const [showNextYearWarning, setShowNextYearWarning] = useState(false);
+    const [nextYearDays, setNextYearDays] = useState(0);
 
     const TYPES_REQUIRING_DOCUMENT = ['MARRIAGE', 'DEATH', 'MOVING', 'FAMILY_SICK', 'PUBLIC_DUTY'];
 
@@ -99,8 +101,49 @@ export function VacationSelfServiceView() {
             return;
         }
 
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const startYear = startDate ? new Date(startDate + 'T00:00:00').getFullYear() : currentYear;
+        const endYear = endDate ? new Date(endDate + 'T00:00:00').getFullYear() : currentYear;
+
+        if (startYear > currentYear || endYear > currentYear) {
+            const startOfNextYear = new Date(currentYear, 0, 1);
+            const endOfStartYear = new Date(startYear, 0, 1);
+            const endOfEndDate = new Date(endYear + 1, 0, 1);
+            const daysInNextYear = Math.ceil((endOfEndDate.getTime() - Math.max(endOfStartYear.getTime(), startOfNextYear.getTime())) / (1000 * 60 * 60 * 24));
+            setNextYearDays(Math.max(0, daysInNextYear));
+            setShowNextYearWarning(true);
+            return;
+        }
+
         try {
             setCreating(true);
+            await createVacationRequest({
+                employeeId: user?.employeeId || '',
+                startDate,
+                endDate,
+                type,
+                reason,
+                attachment
+            });
+            toast.success('Solicitud enviada');
+            setShowModal(false);
+            setStartDate('');
+            setEndDate('');
+            setReason('');
+            setAttachment(null);
+            await fetchRequests();
+        } catch (error) {
+            toast.error(getErrorMessage(error));
+        } finally {
+            setCreating(false);
+        }
+    };
+
+    const confirmNextYear = async () => {
+        setShowNextYearWarning(false);
+        setCreating(true);
+        try {
             await createVacationRequest({
                 employeeId: user?.employeeId || '',
                 startDate,
@@ -332,6 +375,49 @@ export function VacationSelfServiceView() {
                             </div>
                             <div className="p-6">
                                 <VacationRequestCard request={selectedRequest} canManage={false} />
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+
+                {showNextYearWarning && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
+                        <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden">
+                            <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-amber-50 dark:bg-amber-900/20">
+                                <h3 className="text-lg font-black text-amber-700 dark:text-amber-400">Aviso: días del próximo año</h3>
+                                <button onClick={() => setShowNextYearWarning(false)}>
+                                    <X size={20} className="text-amber-400" />
+                                </button>
+                            </div>
+                            <div className="p-6 space-y-4">
+                                <p className="text-sm text-slate-700 dark:text-slate-300">
+                                    Tus fechas seleccionadas incluyen días del <strong>año siguiente</strong>.
+                                </p>
+                                <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 p-4 border border-amber-200 dark:border-amber-800">
+                                    <p className="text-sm text-amber-700 dark:text-amber-300 font-medium">
+                                        Estos días se descontarán del saldo de vacaciones del próximo año, lo que reducirá los días disponibles que tendrás entonces.
+                                    </p>
+                                </div>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                    ¿Deseas continuar con la solicitud?
+                                </p>
+                                <div className="flex gap-3 pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowNextYearWarning(false)}
+                                        className="flex-1 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => void confirmNextYear()}
+                                        disabled={creating}
+                                        className="flex-1 py-3 bg-amber-500 text-white font-bold rounded-xl shadow-lg hover:bg-amber-600 transition-all disabled:opacity-50"
+                                    >
+                                        {creating ? 'Enviando...' : 'Entendido, enviar'}
+                                    </button>
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>

@@ -1,4 +1,4 @@
-﻿import {
+import {
     BarChart3,
     Calendar as CalendarIcon,
     Building2,
@@ -91,6 +91,7 @@ export const navCategories: NavCategory[] = [
             { path: '/users', label: 'Usuarios', icon: <UserPlus size={18} />, feature: 'users' as const },
             { path: '/templates', label: 'Plantillas', icon: <ClipboardList size={18} />, feature: 'settings' as const },
             { path: '/admin/financial-dashboard', label: 'Dashboard Financiero', icon: <LayoutDashboard size={18} />, feature: 'settings' as const },
+            { path: '/absence-types', label: 'Tipos de Ausencia', icon: <CalendarIcon size={18} />, feature: 'settings' as const },
             { path: '/audit', label: 'Auditoría', icon: <FileText size={18} />, feature: 'audit' as const }
         ]
     }

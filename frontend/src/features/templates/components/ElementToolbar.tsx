@@ -21,9 +21,18 @@ const ICONS: Record<string, typeof Type> = {
     Image: ImageIcon
 };
 
+const TOOLTIPS: Record<ElementType, string> = {
+    text: 'Añadir texto',
+    variable: 'Añadir variable',
+    box: 'Añadir caja',
+    line: 'Añadir línea',
+    image: 'Añadir imagen'
+};
+
 export function ElementToolbar({ onAdd, onOpenVariables }: ToolbarProps) {
     return (
-        <div className="flex w-16 flex-col items-center gap-2 border-r border-slate-200 bg-white py-4">
+        <div className="flex w-14 flex-col items-center gap-1 border-r border-slate-200 bg-white py-3">
+            <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">Elementos</div>
             {ELEMENT_LIBRARY.map((descriptor) => {
                 const Icon = ICONS[descriptor.icon] || Type;
                 return (
@@ -31,25 +40,26 @@ export function ElementToolbar({ onAdd, onOpenVariables }: ToolbarProps) {
                         key={descriptor.type}
                         type="button"
                         onClick={() => onAdd(descriptor.type)}
-                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-50 text-slate-600 transition-colors hover:bg-blue-50 hover:text-blue-600"
-                        title={`Añadir ${descriptor.label.toLowerCase()}`}
-                        aria-label={`Añadir ${descriptor.label.toLowerCase()}`}
+                        className="group flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition-all hover:bg-indigo-50 hover:text-indigo-600 hover:shadow-sm"
+                        title={TOOLTIPS[descriptor.type]}
+                        aria-label={TOOLTIPS[descriptor.type]}
                         data-testid={`toolbar-add-${descriptor.type}`}
                     >
-                        <Icon size={20} />
+                        <Icon size={18} />
                     </button>
                 );
             })}
-            <div className="my-2 h-px w-8 bg-slate-200" />
+            <div className="my-2 h-px w-8 bg-slate-100" />
+            <div className="mb-1 text-[9px] font-bold uppercase tracking-wider text-slate-400">Variables</div>
             <button
                 type="button"
                 onClick={() => onOpenVariables()}
-                className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
-                title="Insertar variable en el texto seleccionado"
+                className="group flex h-10 w-10 items-center justify-center rounded-xl text-emerald-500 transition-all hover:bg-emerald-50 hover:text-emerald-600 hover:shadow-sm"
+                title="Insertar variable"
                 aria-label="Insertar variable"
                 data-testid="toolbar-insert-variable"
             >
-                <Variable size={20} />
+                <Variable size={18} />
             </button>
         </div>
     );

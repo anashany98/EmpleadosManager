@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { resolveTemplateContent, EMPTY_PREVIEW_CONTEXT } from '../templateVariables';
 import type { CanvasElement } from './types';
@@ -12,57 +12,47 @@ interface PreviewPaneProps {
 
 export function PreviewPane({ elements, variableContext, employeeId, showGrid }: PreviewPaneProps) {
     const [collapsed, setCollapsed] = useState(false);
-    const previewRef = useRef<HTMLDivElement | null>(null);
 
     const context = useMemo(() => {
         if (employeeId) return variableContext;
         return { ...EMPTY_PREVIEW_CONTEXT, ...variableContext };
     }, [employeeId, variableContext]);
 
-    useEffect(() => {
-        setCollapsed(false);
-    }, [employeeId]);
-
     if (collapsed) {
         return (
             <button
                 type="button"
                 onClick={() => setCollapsed(false)}
-                className="flex h-12 w-12 items-center justify-center border-l border-slate-200 bg-white text-slate-500 hover:text-slate-800"
+                className="flex h-full w-10 items-center justify-center border-l border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
                 title="Mostrar previsualización"
-                aria-label="Mostrar previsualización"
             >
-                <ChevronLeft size={18} />
+                <ChevronLeft size={16} />
             </button>
         );
     }
 
     return (
-        <aside className="flex w-[340px] flex-col border-l border-slate-200 bg-white">
-            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-                <div className="flex items-center gap-2">
-                    <Eye size={16} className="text-slate-500" />
-                    <span className="text-sm font-medium text-slate-700">Vista previa</span>
+        <aside className="flex w-[280px] flex-col border-l border-slate-200 bg-white">
+            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+                <div className="flex items-center gap-1.5">
+                    <Eye size={13} className="text-slate-400" />
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Vista previa</span>
                 </div>
                 <button
                     type="button"
                     onClick={() => setCollapsed(true)}
-                    className="text-slate-400 hover:text-slate-600"
-                    title="Ocultar previsualización"
-                    aria-label="Ocultar previsualización"
+                    className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
                 >
-                    <ChevronRight size={16} />
+                    <ChevronRight size={14} />
                 </button>
             </div>
-            <div className="flex-1 overflow-auto bg-slate-100 p-4">
+            <div className="flex-1 overflow-auto bg-slate-50 p-3">
                 <div
-                    ref={previewRef}
-                    className="relative mx-auto origin-top bg-white shadow"
+                    className="relative mx-auto origin-top bg-white shadow-md rounded-sm overflow-hidden"
                     style={{
                         width: '210mm',
                         maxWidth: '100%',
                         aspectRatio: '210 / 297',
-                        backgroundColor: 'white',
                         backgroundImage: showGrid
                             ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)'
                             : undefined,
@@ -72,9 +62,8 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
                     <PreviewElements elements={elements} context={context} />
                 </div>
                 {!employeeId && (
-                    <p className="mt-3 px-2 text-xs text-slate-500">
-                        Mostrando datos de ejemplo. Selecciona un empleado en la parte superior para
-                        previsualizar valores reales.
+                    <p className="mt-2 px-1 text-[10px] text-slate-400 leading-tight">
+                        Datos de ejemplo. Selecciona un empleado para ver valores reales.
                     </p>
                 )}
             </div>
@@ -92,10 +81,10 @@ function PreviewElements({
     return (
         <>
             {elements.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center text-slate-400">
+                <div className="absolute inset-0 flex items-center justify-center text-slate-300">
                     <div className="text-center">
-                        <EyeOff size={36} className="mx-auto mb-2 opacity-50" />
-                        <p className="text-sm">Añade elementos al lienzo para ver la previsualización</p>
+                        <EyeOff size={28} className="mx-auto mb-1 opacity-50" />
+                        <p className="text-[10px]">Vacío</p>
                     </div>
                 </div>
             )}
@@ -145,7 +134,7 @@ function PreviewElement({
                 {element.src ? (
                     <img src={element.src} alt="" className="h-full w-full object-cover" />
                 ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs text-slate-400">
+                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-[8px] text-slate-400">
                         Imagen
                     </div>
                 )}

@@ -43,6 +43,7 @@ const Employees = lazy(() => import('./pages/Employees'));
 const Reports = lazy(() => import('./pages/Reports'));
 const PayrollImport = lazy(() => import('./pages/PayrollImport'));
 const VacationRequests = lazy(() => import('./pages/VacationRequests'));
+const AbsenceTypesPage = lazy(() => import('./pages/AbsenceTypesPage'));
 
 function RouteLoading() {
   return (
@@ -179,6 +180,7 @@ function AppContent() {
                     </ProtectedRoute>
                   } />
                   <Route path="/vacations" element={<ProtectedRoute feature="vacationsPortal"><VacationRequests /></ProtectedRoute>} />
+                  <Route path="/absence-types" element={<ProtectedRoute feature="settings"><AbsenceTypesPage /></ProtectedRoute>} />
                   <Route path="/expenses" element={<ProtectedRoute feature="expensesPortal"><ExpensesPage /></ProtectedRoute>} />
                   <Route path="/anomalies" element={<ProtectedRoute feature="anomalies"><AnomaliesPage /></ProtectedRoute>} />
                   <Route path="/reconciliation" element={<ProtectedRoute feature="reconciliation"><AttendanceReconciliation /></ProtectedRoute>} />
