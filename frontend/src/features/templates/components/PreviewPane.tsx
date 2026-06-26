@@ -23,37 +23,41 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
 
     if (collapsed) {
         return (
-            <button type="button" onClick={() => setCollapsed(false)} className="flex h-full w-10 items-center justify-center border-l border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors" title="Mostrar previsualizacion">
+            <button type="button" onClick={() => setCollapsed(false)} className="flex h-full w-10 items-center justify-center border-l border-gray-200 bg-white text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600" title="Mostrar previsualizacion">
                 <ChevronLeft size={16} />
             </button>
         );
     }
 
     return (
-        <aside className="flex w-[280px] flex-col border-l border-slate-200 bg-white">
-            <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
-                <div className="flex items-center gap-1.5">
-                    <Eye size={13} className="text-slate-400" />
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Vista previa</span>
+        <aside className="flex w-[320px] flex-col border-l border-gray-200 bg-white">
+            <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
+                <div className="flex items-center gap-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50">
+                        <Eye size={13} className="text-indigo-500" />
+                    </div>
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Vista previa</span>
                 </div>
-                <button type="button" onClick={() => setCollapsed(true)} className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
+                <button type="button" onClick={() => setCollapsed(true)} className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600">
                     <ChevronRight size={14} />
                 </button>
             </div>
-            <div className="flex-1 overflow-auto bg-slate-50 p-3">
+            <div className="flex-1 overflow-auto bg-gray-50 p-4">
                 <div
-                    className="relative mx-auto origin-top bg-white shadow-md rounded-sm overflow-hidden"
+                    className="relative mx-auto origin-top bg-white overflow-hidden"
                     style={{
                         width: '210mm', maxWidth: '100%', aspectRatio: '210 / 297',
-                        backgroundImage: showGrid ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)' : undefined,
-                        backgroundSize: '20px 20px'
+                        boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+                        borderRadius: '3px',
+                        backgroundImage: showGrid ? 'radial-gradient(circle, #d1d5db 0.8px, transparent 0.8px)' : undefined,
+                        backgroundSize: '16px 16px'
                     }}
                 >
                     {elements.length === 0 && (
-                        <div className="absolute inset-0 flex items-center justify-center text-slate-300">
+                        <div className="absolute inset-0 flex items-center justify-center text-gray-300">
                             <div className="text-center">
-                                <EyeOff size={28} className="mx-auto mb-1 opacity-50" />
-                                <p className="text-[10px]">Vacio</p>
+                                <EyeOff size={32} className="mx-auto mb-2 opacity-40" />
+                                <p className="text-[11px] font-medium">Vacio</p>
                             </div>
                         </div>
                     )}
@@ -62,8 +66,8 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
                     ))}
                 </div>
                 {!employeeId && (
-                    <p className="mt-2 px-1 text-[10px] text-slate-400 leading-tight">
-                        Datos de ejemplo. Selecciona un empleado para ver valores reales.
+                    <p className="mt-3 px-1 text-[10px] text-gray-400 leading-relaxed">
+                        Mostrando datos de ejemplo. Selecciona un empleado del selector inferior para ver valores reales.
                     </p>
                 )}
             </div>
@@ -90,7 +94,7 @@ function PreviewElement({ element, context }: { element: CanvasElement; context:
                 {element.src ? (
                     <img src={element.src} alt="" className="h-full w-full object-cover" />
                 ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-[8px] text-slate-400">Imagen</div>
+                    <div className="flex h-full w-full items-center justify-center bg-gray-100 text-[8px] text-gray-400">Imagen</div>
                 )}
             </div>
         );
@@ -106,10 +110,12 @@ function PreviewElement({ element, context }: { element: CanvasElement; context:
                 borderColor: element.borderColor,
                 borderWidth: element.type === 'box' && element.borderWidth ? `${element.borderWidth}px` : undefined,
                 borderStyle: element.type === 'box' ? 'solid' : undefined,
+                borderRadius: element.type === 'box' ? '1px' : undefined,
                 display: 'flex', alignItems: 'center', padding: '0 4px',
                 textAlign: element.textAlign || 'left',
                 justifyContent: element.textAlign === 'center' ? 'center' : element.textAlign === 'right' ? 'flex-end' : 'flex-start',
-                whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                lineHeight: '1.4'
             }}
         >
             {isTextLike ? resolveTemplateContent(element.content, context) : ''}

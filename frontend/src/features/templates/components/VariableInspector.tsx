@@ -33,35 +33,41 @@ export function VariableInspector({ elements, onInsertVariable, showGrid, onTogg
 
     return (
         <>
-            <div className="border-t border-slate-200 px-4 py-3">
-                <div className="mb-2 flex items-center justify-between">
-                    <h3 className="flex items-center gap-1 text-xs font-bold uppercase text-slate-500">
-                        <Variable size={14} />
-                        Variables en uso
-                    </h3>
+            <div className="px-4 py-3">
+                <div className="mb-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                        <div className="flex h-5 w-5 items-center justify-center rounded bg-emerald-50">
+                            <Variable size={11} className="text-emerald-500" />
+                        </div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Variables ({referencedVariables.length})</span>
+                    </div>
                     <div className="flex items-center gap-1">
-                        <button type="button" onClick={onToggleGrid} className={`rounded-md p-1 text-xs ${showGrid ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:text-slate-700'}`} title={showGrid ? 'Ocultar cuadricula' : 'Mostrar cuadricula'} data-testid="toggle-grid">
-                            {showGrid ? <Eye size={14} /> : <EyeOff size={14} />}
+                        <button type="button" onClick={onToggleGrid} className={`rounded-md p-1 transition-colors ${showGrid ? 'bg-indigo-50 text-indigo-500' : 'text-gray-400 hover:text-gray-600'}`} title={showGrid ? 'Ocultar cuadricula' : 'Mostrar cuadricula'} data-testid="toggle-grid">
+                            {showGrid ? <Eye size={13} /> : <EyeOff size={13} />}
                         </button>
-                        <button type="button" onClick={() => setPopoverOpen(true)} className="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100" data-testid="open-variable-popover">
+                        <button type="button" onClick={() => setPopoverOpen(true)} className="rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-600 transition-colors hover:bg-emerald-100" data-testid="open-variable-popover">
                             + Insertar
                         </button>
                     </div>
                 </div>
                 {referencedVariables.length === 0 ? (
-                    <p className="text-xs text-slate-400">No hay variables en esta plantilla.</p>
+                    <p className="text-[11px] text-gray-300 italic">No hay variables en esta plantilla.</p>
                 ) : (
                     <ul className="space-y-1">
                         {referencedVariables.map((variable) => (
                             <li
                                 key={variable.key}
-                                className={`flex items-center justify-between rounded px-2 py-1 text-xs ${variable.known ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}
+                                className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-[11px] transition-colors ${
+                                    variable.known
+                                        ? 'bg-emerald-50 text-emerald-700'
+                                        : 'bg-red-50 text-red-600'
+                                }`}
                                 title={variable.known ? 'Variable reconocida' : 'Variable no definida'}
                                 data-testid={`variable-status-${variable.key}`}
                             >
-                                <span className="font-mono">{`{{${variable.key}}}`}</span>
-                                <span className="text-[10px] font-semibold uppercase tracking-wide">
-                                    {variable.known ? 'OK' : 'No definida'}
+                                <span className="font-mono text-[10px]">{`{{${variable.key}}}`}</span>
+                                <span className="text-[9px] font-bold uppercase tracking-wider">
+                                    {variable.known ? 'OK' : 'Sin definir'}
                                 </span>
                             </li>
                         ))}
