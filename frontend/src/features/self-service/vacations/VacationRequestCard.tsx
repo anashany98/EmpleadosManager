@@ -90,7 +90,6 @@ export function VacationRequestCard({
                         {formatVacationRange(request.startDate, request.endDate)}
                     </span>
                     <span className="font-medium text-slate-700 dark:text-slate-300">({request.days} dias)</span>
-                    {request.reason && <span className="italic truncate max-w-[200px]">{request.reason}</span>}
                     {request.fileUrl && (
                         <a
                             href={`${API_URL}${request.fileUrl}`}
@@ -114,6 +113,12 @@ export function VacationRequestCard({
                         </span>
                     )}
                 </div>
+
+                {request.reason && (
+                    <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 rounded-lg px-3 py-2">
+                        {request.reason}
+                    </p>
+                )}
 
                 {canManage && request.status === 'PENDING' && (
                     <div className="mt-3">

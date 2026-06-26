@@ -2,7 +2,6 @@ import {
     ChevronDown,
     ChevronUp,
     Image as ImageIcon,
-    Layers,
     Minus,
     Square,
     Trash2,
@@ -27,82 +26,86 @@ const ICONS: Partial<Record<CanvasElement['type'], typeof Type>> = {
     image: ImageIcon
 };
 
+const TYPE_COLORS: Record<string, string> = {
+    text: 'text-slate-500',
+    variable: 'text-emerald-500',
+    box: 'text-blue-500',
+    line: 'text-amber-500',
+    image: 'text-purple-500'
+};
+
 function describe(element: CanvasElement): string {
     switch (element.type) {
-        case 'text':
-            return element.content || 'Texto';
-        case 'variable':
-            return element.content || '{{variable}}';
-        case 'box':
-            return 'Caja';
-        case 'line':
-            return 'Línea';
-        case 'image':
-            return 'Imagen';
-        default:
-            return 'Elemento';
+        case 'text': return element.content || 'Texto';
+        case 'variable': return element.content || '{{variable}}';
+        case 'box': return 'Caja';
+        case 'line': return 'Línea';
+        case 'image': return 'Imagen';
+        default: return 'Elemento';
     }
 }
 
 export function LayersPanel({ elements, selectedId, onSelect, onMove, onDelete }: LayersPanelProps) {
     return (
         <div className="border-b border-slate-200">
-            <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-3">
-                <Layers size={16} className="text-slate-500" />
-                <span className="text-sm font-medium text-slate-700">Capas ({elements.length})</span>
+            <div className="flex items-center justify-between px-3 py-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capas ({elements.length})</span>
             </div>
-            <div className="max-h-[200px] overflow-auto">
+            <div className="max-h-[180px] overflow-auto">
                 {elements.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-sm text-slate-400">Sin elementos</div>
+                    <div className="px-3 py-6 text-center text-[11px] text-slate-400">Sin elementos</div>
                 ) : (
-                    <ul className="divide-y divide-slate-100">
-                        {elements.map((element, index) => {
+                    <ul className="space-y-0.5 px-1.5 pb-1.5">
+                        {[...elements].reverse().map((element, reverseIndex) => {
+                            const index = elements.length - 1 - reverseIndex;
                             const Icon = ICONS[element.type] || Type;
                             const isSelected = selectedId === element.id;
+                            const colorClass = TYPE_COLORS[element.type] || 'text-slate-500';
                             return (
                                 <li
                                     key={element.id}
-                                    className={`flex items-center gap-2 transition-colors ${
-                                        isSelected ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+                                    className={`group flex items-center gap-1.5 rounded-lg transition-colors ${
+                                        isSelected ? 'bg-indigo-50 ring-1 ring-indigo-200' : 'hover:bg-slate-50'
                                     }`}
                                 >
                                     <button
                                         type="button"
                                         onClick={() => onSelect(element.id)}
-                                        className="flex flex-1 items-center gap-2 px-4 py-2 text-left"
+                                        className="flex flex-1 items-center gap-2 px-2 py-1.5 text-left"
                                         data-testid={`layer-${element.id}`}
                                     >
-                                        <Icon size={14} />
-                                        <span className="flex-1 truncate text-xs">{describe(element)}</span>
-                                        <span className="text-xs text-slate-400">#{index + 1}</span>
+                                        <Icon size={12} className={colorClass} />
+                                        <span className={`flex-1 truncate text-[11px] ${isSelected ? 'font-medium text-indigo-700' : 'text-slate-600'}`}>
+                                            {describe(element)}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400">#{index + 1}</span>
                                     </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => onMove(element.id, 'up')}
-                                        className="p-1 text-slate-400 hover:text-slate-700"
-                                        title="Subir capa"
-                                        aria-label={`Subir capa ${describe(element)}`}
-                                    >
-                                        <ChevronUp size={14} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => onMove(element.id, 'down')}
-                                        className="p-1 text-slate-400 hover:text-slate-700"
-                                        title="Bajar capa"
-                                        aria-label={`Bajar capa ${describe(element)}`}
-                                    >
-                                        <ChevronDown size={14} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => onDelete(element.id)}
-                                        className="p-1 text-slate-400 hover:text-red-500"
-                                        title="Eliminar capa"
-                                        aria-label={`Eliminar capa ${describe(element)}`}
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
+                                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pr-1.5">
+                                        <button
+                                            type="button"
+                                            onClick={() => onMove(element.id, 'up')}
+                                            className="rounded p-0.5 text-slate-400 hover:text-slate-700"
+                                            title="Subir"
+                                        >
+                                            <ChevronUp size={11} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => onMove(element.id, 'down')}
+                                            className="rounded p-0.5 text-slate-400 hover:text-slate-700"
+                                            title="Bajar"
+                                        >
+                                            <ChevronDown size={11} />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => onDelete(element.id)}
+                                            className="rounded p-0.5 text-slate-400 hover:text-red-500"
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 size={11} />
+                                        </button>
+                                    </div>
                                 </li>
                             );
                         })}

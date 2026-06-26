@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FilePlus, Users, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { FilePlus, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../../api/client';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
@@ -46,6 +46,8 @@ const extractItem = <T,>(response: unknown): T | null => {
     return response && typeof response === 'object' && !Array.isArray(response) ? (response as T) : null;
 };
 
+const MAX_HISTORY = 50;
+
 export default function CanvaEditor() {
     const [elements, setElements] = useState<CanvasElement[]>([]);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -65,13 +67,40 @@ export default function CanvaEditor() {
     const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
     const [previewEmployeeId, setPreviewEmployeeId] = useState<string>('');
     const [catalogSource, setCatalogSource] = useState<'backend' | 'fallback'>('fallback');
+    const [history, setHistory] = useState<CanvasElement[][]>([]);
+    const [historyIndex, setHistoryIndex] = useState(-1);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const { isDirty, markDirty, markClean, confirmDiscard } = useUnsavedChanges();
 
-    // ---------------------------------------------------------------------------
-    // Data loading
-    // ---------------------------------------------------------------------------
+    const pushHistory = useCallback((newElements: CanvasElement[]) => {
+        setHistory((prev) => {
+            const trimmed = prev.slice(0, historyIndex + 1);
+            const next = [...trimmed, newElements];
+            if (next.length > MAX_HISTORY) next.shift();
+            return next;
+        });
+        setHistoryIndex((prev) => Math.min(prev + 1, MAX_HISTORY - 1));
+    }, [historyIndex]);
+
+    const undo = useCallback(() => {
+        if (historyIndex <= 0) return;
+        const newIndex = historyIndex - 1;
+        setElements(history[newIndex]);
+        setHistoryIndex(newIndex);
+        markDirty();
+    }, [history, historyIndex, markDirty]);
+
+    const redo = useCallback(() => {
+        if (historyIndex >= history.length - 1) return;
+        const newIndex = historyIndex + 1;
+        setElements(history[newIndex]);
+        setHistoryIndex(newIndex);
+        markDirty();
+    }, [history, historyIndex, markDirty]);
+
+    const canUndo = historyIndex > 0;
+    const canRedo = historyIndex < history.length - 1;
 
     useEffect(() => {
         const fetchTemplates = async () => {
@@ -91,9 +120,8 @@ export default function CanvaEditor() {
                     setSelectedTemplate((current) => merged.find((t) => t.type === current.type) || merged[0]);
                     setCatalogSource('backend');
                 }
-            } catch (error) {
-                console.warn('Usando plantillas locales:', error);
-                toast.warning('No se pudo conectar con el servidor de plantillas. Mostrando catálogo local.');
+            } catch {
+                toast.warning('No se pudo conectar con el servidor. Mostrando catálogo local.');
                 setCatalogSource('fallback');
             } finally {
                 setLoadingTemplates(false);
@@ -104,11 +132,11 @@ export default function CanvaEditor() {
 
     useEffect(() => {
         if (!selectedTemplate) return;
-        setElements(createElementsForTemplate(selectedTemplate));
+        const newElements = createElementsForTemplate(selectedTemplate);
+        setElements(newElements);
         setSelectedId(null);
-        // Only clear dirty state when the user explicitly switches to a different
-        // template. The bootstrap fetch replaces `selectedTemplate` with an
-        // equivalent object after mount, which must NOT wipe the user's changes.
+        setHistory([newElements]);
+        setHistoryIndex(0);
     }, [selectedTemplate?.id, selectedTemplate?.type]);
 
     useEffect(() => {
@@ -116,48 +144,56 @@ export default function CanvaEditor() {
             try {
                 const response = await api.get<unknown>('/employees');
                 setEmployees(extractList<Employee>(response));
-            } catch (error) {
-                console.warn('Error al cargar empleados:', error);
-            }
+            } catch { /* ignore */ }
         };
         void fetchEmployees();
     }, []);
 
     useEffect(() => {
-        if (!previewEmployeeId) {
-            setVariableContext({});
-            return;
-        }
+        if (!previewEmployeeId) { setVariableContext({}); return; }
         const fetchContext = async () => {
             try {
                 const response = await api.get<{ data?: { exampleContext?: Record<string, unknown> } } | Record<string, unknown>>(
                     `/document-templates/variables?employeeId=${previewEmployeeId}`
                 );
                 const data = extractItem<{ exampleContext?: Record<string, unknown> }>(response);
-                if (data?.exampleContext) {
-                    setVariableContext(data.exampleContext);
-                }
-            } catch (error) {
-                console.warn('No se pudo cargar el contexto de variables:', error);
-            }
+                if (data?.exampleContext) setVariableContext(data.exampleContext);
+            } catch { /* ignore */ }
         };
         void fetchContext();
     }, [previewEmployeeId]);
 
-    // ---------------------------------------------------------------------------
-    // Mutations
-    // ---------------------------------------------------------------------------
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA' || (e.target as HTMLElement).tagName === 'SELECT') return;
+
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedId) {
+                    setElements((prev) => prev.filter((el) => el.id !== selectedId));
+                    setSelectedId(null);
+                    markDirty();
+                }
+            }
+            if (e.key === 'Escape') setSelectedId(null);
+            if (e.ctrlKey || e.metaKey) {
+                if (e.key === 'z') { e.preventDefault(); undo(); }
+                if (e.key === 'y') { e.preventDefault(); redo(); }
+            }
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && selectedId) {
+                e.preventDefault();
+                const step = e.shiftKey ? 10 : 1;
+                const dir = e.key === 'ArrowUp' ? [0, -step] : e.key === 'ArrowDown' ? [0, step] : e.key === 'ArrowLeft' ? [-step, 0] : [step, 0];
+                setElements((prev) => prev.map((el) => el.id === selectedId ? { ...el, x: el.x + dir[0], y: el.y + dir[1] } : el));
+                markDirty();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedId, undo, redo, markDirty]);
 
     const handleCreateNewTemplate = useCallback(() => {
-        if (!newTemplateName.trim()) {
-            toast.error('El nombre de la plantilla es obligatorio');
-            return;
-        }
-        const newTemplate: Template = {
-            id: `custom_${Date.now()}`,
-            name: newTemplateName.trim(),
-            type: 'CUSTOM'
-        };
+        if (!newTemplateName.trim()) { toast.error('El nombre es obligatorio'); return; }
+        const newTemplate: Template = { id: `custom_${Date.now()}`, name: newTemplateName.trim(), type: 'CUSTOM' };
         setTemplates((prev) => [...prev, newTemplate]);
         setSelectedTemplate(newTemplate);
         setElements([]);
@@ -170,38 +206,16 @@ export default function CanvaEditor() {
         setSaving(true);
         try {
             const variables = extractTemplateVariables(serializeTemplateContent(elements));
-            const payload = {
-                type: selectedTemplate.type,
-                name: selectedTemplate.name,
-                content: serializeTemplateContent(elements),
-                variables
-            };
+            const payload = { type: selectedTemplate.type, name: selectedTemplate.name, content: serializeTemplateContent(elements), variables };
             const response = await api.post<unknown>('/document-templates/save', payload);
             const savedTemplate = extractItem<Template>(response);
-            const updatedTemplate: Template = {
-                ...selectedTemplate,
-                ...(savedTemplate || {}),
-                id: savedTemplate?.id || selectedTemplate.id,
-                content: payload.content
-            };
-
-            setTemplates((prev) =>
-                prev.map((template) =>
-                    template.id === selectedTemplate.id ||
-                    (selectedTemplate.type !== 'CUSTOM' && template.type === selectedTemplate.type)
-                        ? updatedTemplate
-                        : template
-                )
-            );
+            const updatedTemplate: Template = { ...selectedTemplate, ...(savedTemplate || {}), id: savedTemplate?.id || selectedTemplate.id, content: payload.content };
+            setTemplates((prev) => prev.map((t) => t.id === selectedTemplate.id || (selectedTemplate.type !== 'CUSTOM' && t.type === selectedTemplate.type) ? updatedTemplate : t));
             setSelectedTemplate(updatedTemplate);
             markClean();
-            toast.success(`Plantilla «${selectedTemplate.name}» guardada`);
-        } catch (error) {
-            console.error('Error al guardar:', error);
-            toast.error('Error al guardar la plantilla');
-        } finally {
-            setSaving(false);
-        }
+            toast.success(`Plantilla guardada`);
+        } catch { toast.error('Error al guardar'); }
+        finally { setSaving(false); }
     }, [elements, selectedTemplate, markClean]);
 
     const handleSelectTemplate = useCallback(
@@ -220,48 +234,27 @@ export default function CanvaEditor() {
             try {
                 const content = serializeTemplateContent(elements);
                 const variables = extractTemplateVariables(content);
-                await api.post('/document-templates/save', {
-                    type: target.type,
-                    name: target.name,
-                    content,
-                    variables
-                });
-                const duplicate: Template = {
-                    id: `${target.type.toLowerCase()}_${Date.now()}`,
-                    type: target.type,
-                    name: target.name
-                };
+                await api.post('/document-templates/save', { type: target.type, name: target.name, content, variables });
+                const duplicate: Template = { id: `${target.type.toLowerCase()}_${Date.now()}`, type: target.type, name: target.name };
                 setTemplates((prev) => [...prev, duplicate]);
                 setSelectedTemplate(duplicate);
                 setShowDuplicateDialog(false);
-                toast.success(`Plantilla duplicada como «${target.name}»`);
-            } catch (error) {
-                console.error('Error al duplicar:', error);
-                toast.error('Error al duplicar la plantilla');
-            } finally {
-                setSaving(false);
-            }
+                toast.success(`Duplicada como «${target.name}»`);
+            } catch { toast.error('Error al duplicar'); }
+            finally { setSaving(false); }
         },
         [elements]
     );
 
     const handleGenerateFromEmployee = useCallback(() => {
-        if (!selectedEmployeeId) {
-            toast.error('Selecciona un empleado');
-            return;
-        }
+        if (!selectedEmployeeId) { toast.error('Selecciona un empleado'); return; }
         const employee = employees.find((e) => e.id === selectedEmployeeId);
         if (!employee) return;
-
         setVariableContext({
-            'empleado.id': employee.id,
-            'empleado.dni': employee.dni,
-            'empleado.nombreCompleto': employee.nombreCompleto,
-            'empleado.puesto': employee.puesto,
-            'empleado.fechaAlta': employee.fechaAlta,
-            'empleado.tipoContrato': employee.tipoContrato || 'Indefinido',
-            'firma.fecha': new Date().toLocaleDateString('es-ES'),
-            'fechaActual': new Date().toLocaleDateString('es-ES')
+            'empleado.id': employee.id, 'empleado.dni': employee.dni,
+            'empleado.nombreCompleto': employee.nombreCompleto, 'empleado.puesto': employee.puesto,
+            'empleado.fechaAlta': employee.fechaAlta, 'empleado.tipoContrato': employee.tipoContrato || 'Indefinido',
+            'firma.fecha': new Date().toLocaleDateString('es-ES'), 'fechaActual': new Date().toLocaleDateString('es-ES')
         });
         setShowGenerateModal(false);
         setSelectedEmployeeId('');
@@ -272,32 +265,19 @@ export default function CanvaEditor() {
         const file = event.target.files?.[0];
         if (file) {
             const reader = new FileReader();
-            reader.onload = (e) => {
-                setLogoUrl(e.target?.result as string);
-                toast.success('Logo subido correctamente');
-            };
+            reader.onload = (e) => { setLogoUrl(e.target?.result as string); toast.success('Logo subido'); };
             reader.readAsDataURL(file);
         }
     };
 
-    const handleRemoveLogo = () => {
-        setLogoUrl(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-    };
-
-    // ---------------------------------------------------------------------------
-    // Element operations
-    // ---------------------------------------------------------------------------
+    const handleRemoveLogo = () => { setLogoUrl(null); if (fileInputRef.current) fileInputRef.current.value = ''; };
 
     const generateId = () => `el-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 
     const addElement = useCallback(
         (type: ElementType) => {
             const newElement: CanvasElement = {
-                id: generateId(),
-                type,
-                x: 100,
-                y: 100,
+                id: generateId(), type, x: 100, y: 100,
                 width: type === 'line' ? 200 : 150,
                 height: type === 'text' || type === 'variable' ? 40 : type === 'line' ? 2 : 100,
                 content: type === 'text' ? 'Texto' : type === 'variable' ? '{{variable}}' : '',
@@ -308,12 +288,11 @@ export default function CanvaEditor() {
                 borderColor: type === 'box' || type === 'line' ? '#1e293b' : undefined,
                 borderWidth: type === 'box' ? 1 : undefined
             };
-            setElements((prev) => [...prev, newElement]);
+            setElements((prev) => { const next = [...prev, newElement]; pushHistory(next); return next; });
             setSelectedId(newElement.id);
             markDirty();
-            toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} añadido`);
         },
-        [markDirty]
+        [markDirty, pushHistory]
     );
 
     const updateElement = useCallback(
@@ -324,14 +303,25 @@ export default function CanvaEditor() {
         [markDirty]
     );
 
+    const updateElementBatch = useCallback(
+        (id: string, updates: Partial<CanvasElement>) => {
+            setElements((prev) => {
+                const next = prev.map((el) => (el.id === id ? { ...el, ...updates } : el));
+                pushHistory(next);
+                return next;
+            });
+            markDirty();
+        },
+        [markDirty, pushHistory]
+    );
+
     const deleteElement = useCallback(
         (id: string) => {
-            setElements((prev) => prev.filter((el) => el.id !== id));
+            setElements((prev) => { const next = prev.filter((el) => el.id !== id); pushHistory(next); return next; });
             setSelectedId((current) => (current === id ? null : current));
             markDirty();
-            toast.success('Elemento eliminado');
         },
-        [markDirty]
+        [markDirty, pushHistory]
     );
 
     const moveLayer = useCallback(
@@ -343,53 +333,41 @@ export default function CanvaEditor() {
                 if (newIndex < 0 || newIndex >= prev.length) return prev;
                 const next = [...prev];
                 [next[index], next[newIndex]] = [next[newIndex], next[index]];
+                pushHistory(next);
                 return next;
             });
             markDirty();
         },
-        [markDirty]
+        [markDirty, pushHistory]
     );
 
     const insertVariableIntoSelection = useCallback(
         (key: string) => {
-            if (!selectedId) {
-                toast.error('Selecciona primero un elemento de tipo texto o variable');
-                return;
-            }
+            if (!selectedId) { toast.error('Selecciona un elemento de texto'); return; }
             const target = elements.find((el) => el.id === selectedId);
-            if (!target || (target.type !== 'text' && target.type !== 'variable')) {
-                toast.error('Las variables solo se insertan en elementos de texto o variable');
-                return;
-            }
+            if (!target || (target.type !== 'text' && target.type !== 'variable')) { toast.error('Solo en elementos de texto'); return; }
             updateElement(selectedId, { content: `${target.content || ''}{{${key}}}` });
         },
         [elements, selectedId, updateElement]
     );
 
-    const selectedElement = useMemo(
-        () => elements.find((el) => el.id === selectedId) || null,
-        [elements, selectedId]
-    );
+    const selectedElement = useMemo(() => elements.find((el) => el.id === selectedId) || null, [elements, selectedId]);
 
-    const handleZoom = (delta: number) => setZoom((prev) => Math.min(Math.max(prev + delta, 50), 200));
+    const handleZoom = (delta: number) => setZoom((prev) => Math.min(Math.max(prev + delta, 30), 200));
 
     const handleDiscardChanges = useCallback(() => {
         if (!confirmDiscard()) return;
-        setElements(createElementsForTemplate(selectedTemplate));
+        const newElements = createElementsForTemplate(selectedTemplate);
+        setElements(newElements);
         setSelectedId(null);
+        setHistory([newElements]);
+        setHistoryIndex(0);
         markClean();
     }, [selectedTemplate, confirmDiscard, markClean]);
 
     return (
         <div className="flex h-screen flex-col bg-slate-50">
-            <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                onChange={handleLogoUpload}
-                className="hidden"
-                aria-hidden="true"
-            />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" aria-hidden="true" />
 
             <TopBar
                 templates={templates}
@@ -398,19 +376,22 @@ export default function CanvaEditor() {
                 saving={saving}
                 dirty={isDirty}
                 logoUploaded={Boolean(logoUrl)}
+                zoom={zoom}
+                showGrid={showGrid}
+                canUndo={canUndo}
+                canRedo={canRedo}
                 onSelectTemplate={handleSelectTemplate}
                 onCreateNew={() => setShowNewTemplateModal(true)}
                 onUploadLogo={() => fileInputRef.current?.click()}
                 onRemoveLogo={handleRemoveLogo}
                 onSave={handleSave}
+                onZoom={handleZoom}
+                onToggleGrid={() => setShowGrid((p) => !p)}
+                onUndo={undo}
+                onRedo={redo}
             />
 
-            <UnsavedChangesBanner
-                visible={isDirty}
-                saving={saving}
-                onSave={handleSave}
-                onDiscard={handleDiscardChanges}
-            />
+            <UnsavedChangesBanner visible={isDirty} saving={saving} onSave={handleSave} onDiscard={handleDiscardChanges} />
 
             <div className="flex flex-1 overflow-hidden">
                 <ElementToolbar onAdd={addElement} onOpenVariables={() => insertVariableIntoSelection('')} />
@@ -423,211 +404,94 @@ export default function CanvaEditor() {
                     logoUrl={logoUrl}
                     onSelectElement={setSelectedId}
                     onMoveElement={(id, x, y) => updateElement(id, { x, y })}
+                    onResizeElement={(id, w, h, x, y) => updateElementBatch(id, { width: w, height: h, ...(x !== undefined ? { x } : {}), ...(y !== undefined ? { y } : {}) })}
                     onMoveStart={markDirty}
                 />
 
-                <aside className="flex w-72 flex-col border-l border-slate-200 bg-white">
-                    <LayersPanel
-                        elements={elements}
-                        selectedId={selectedId}
-                        onSelect={setSelectedId}
-                        onMove={moveLayer}
-                        onDelete={deleteElement}
-                    />
+                <aside className="flex w-64 flex-col border-l border-slate-200 bg-white">
+                    <LayersPanel elements={elements} selectedId={selectedId} onSelect={setSelectedId} onMove={moveLayer} onDelete={deleteElement} />
                     <div className="flex-1 overflow-auto">
-                        <PropertiesPanel element={selectedElement} onUpdate={updateElement} onDelete={deleteElement} />
+                        <PropertiesPanel element={selectedElement} onUpdate={updateElementBatch} onDelete={deleteElement} />
                         <VariableInspector
                             elements={elements}
                             onInsertVariable={(key) => {
-                                if (!selectedElement || selectedElement.type === 'box' || selectedElement.type === 'line' || selectedElement.type === 'image') {
-                                    addElement('variable');
-                                    return;
-                                }
-                                updateElement(selectedElement.id, {
-                                    content: `${selectedElement.content || ''}{{${key}}}`
-                                });
+                                if (!selectedElement || selectedElement.type === 'box' || selectedElement.type === 'line' || selectedElement.type === 'image') { addElement('variable'); return; }
+                                updateElement(selectedElement.id, { content: `${selectedElement.content || ''}{{${key}}}` });
                             }}
                             showGrid={showGrid}
-                            onToggleGrid={() => setShowGrid((prev) => !prev)}
+                            onToggleGrid={() => setShowGrid((p) => !p)}
                         />
                     </div>
                 </aside>
 
-                <PreviewPane
-                    elements={elements}
-                    variableContext={variableContext}
-                    employeeId={previewEmployeeId}
-                    showGrid={showGrid}
-                />
+                <PreviewPane elements={elements} variableContext={variableContext} employeeId={previewEmployeeId} showGrid={showGrid} />
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-2">
-                <div className="flex items-center gap-2 text-xs text-slate-500">
+            <div className="flex items-center justify-between border-t border-slate-200 bg-white px-4 py-1.5">
+                <div className="flex items-center gap-2 text-[11px] text-slate-500">
                     {catalogSource === 'fallback' ? (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-800">
-                            Catálogo local (servidor no disponible)
-                        </span>
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">Local</span>
                     ) : (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-800">
-                            Sincronizado con el servidor
-                        </span>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700">Servidor</span>
                     )}
                     <span>·</span>
-                    <span>{BASE_AVAILABLE_VARIABLES.length} variables disponibles</span>
+                    <span>{BASE_AVAILABLE_VARIABLES.length} variables</span>
+                    <span>·</span>
+                    <span>{elements.length} elementos</span>
                 </div>
                 <div className="flex items-center gap-2">
                     <select
                         value={previewEmployeeId}
                         onChange={(e) => setPreviewEmployeeId(e.target.value)}
-                        className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        data-testid="preview-employee-select"
-                        aria-label="Empleado para previsualizar"
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     >
                         <option value="">Datos de ejemplo</option>
-                        {employees.map((employee) => (
-                            <option key={employee.id} value={employee.id}>
-                                {employee.nombreCompleto} — {employee.dni}
-                            </option>
-                        ))}
+                        {employees.map((e) => <option key={e.id} value={e.id}>{e.nombreCompleto}</option>)}
                     </select>
-                    <button
-                        type="button"
-                        onClick={() => setShowDuplicateDialog(true)}
-                        className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-200"
-                        title="Duplicar plantilla actual en otro tipo"
-                        data-testid="open-duplicate-dialog"
-                    >
-                        Duplicar como…
+                    <button type="button" onClick={() => setShowDuplicateDialog(true)} className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50">Duplicar</button>
+                    <button type="button" onClick={() => setShowGenerateModal(true)} className="flex items-center gap-1 rounded-lg bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100">
+                        <Users size={12} /> Generar
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => setShowGenerateModal(true)}
-                        className="flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100"
-                        title="Generar documento desde empleado"
-                    >
-                        <Users size={16} />
-                        Generar
-                    </button>
-                    <div className="flex items-center gap-1 rounded-lg bg-slate-100 p-1">
-                        <button
-                            type="button"
-                            onClick={() => handleZoom(-10)}
-                            className="rounded-md p-1.5 hover:bg-white"
-                            title="Zoom menos"
-                            aria-label="Reducir zoom"
-                        >
-                            <ZoomOut size={16} className="text-slate-600" />
-                        </button>
-                        <span className="min-w-[50px] px-2 text-center text-sm text-slate-600">{zoom}%</span>
-                        <button
-                            type="button"
-                            onClick={() => handleZoom(10)}
-                            className="rounded-md p-1.5 hover:bg-white"
-                            title="Zoom más"
-                            aria-label="Aumentar zoom"
-                        >
-                            <ZoomIn size={16} className="text-slate-600" />
-                        </button>
-                    </div>
                 </div>
             </div>
 
             {showNewTemplateModal && (
                 <Modal title="Nueva plantilla" onClose={() => setShowNewTemplateModal(false)}>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                        Nombre de la plantilla
-                    </label>
-                    <input
-                        type="text"
-                        value={newTemplateName}
-                        onChange={(e) => setNewTemplateName(e.target.value)}
-                        placeholder="Mi nueva plantilla"
-                        autoFocus
-                        className="mb-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <button
-                        type="button"
-                        onClick={handleCreateNewTemplate}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-                    >
-                        <FilePlus size={16} />
-                        Crear plantilla
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Nombre</label>
+                    <input type="text" value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} placeholder="Mi plantilla" autoFocus className="mb-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
+                    <button type="button" onClick={handleCreateNewTemplate} className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+                        <FilePlus size={16} /> Crear
                     </button>
                 </Modal>
             )}
 
             {showGenerateModal && (
                 <Modal title="Generar documento" onClose={() => setShowGenerateModal(false)}>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">
-                        Seleccionar empleado
-                    </label>
-                    <select
-                        value={selectedEmployeeId}
-                        onChange={(e) => setSelectedEmployeeId(e.target.value)}
-                        className="mb-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                        <option value="">Seleccionar empleado...</option>
-                        {employees.map((employee) => (
-                            <option key={employee.id} value={employee.id}>
-                                {employee.nombreCompleto} — {employee.dni}
-                            </option>
-                        ))}
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Empleado</label>
+                    <select value={selectedEmployeeId} onChange={(e) => setSelectedEmployeeId(e.target.value)} className="mb-4 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="">Seleccionar...</option>
+                        {employees.map((e) => <option key={e.id} value={e.id}>{e.nombreCompleto} — {e.dni}</option>)}
                     </select>
-                    <button
-                        type="button"
-                        onClick={handleGenerateFromEmployee}
-                        disabled={!selectedEmployeeId}
-                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:bg-slate-400"
-                    >
-                        <Users size={16} />
-                        Generar documento
+                    <button type="button" onClick={handleGenerateFromEmployee} disabled={!selectedEmployeeId} className="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
+                        <Users size={16} /> Generar
                     </button>
                 </Modal>
             )}
 
             {showDuplicateDialog && (
-                <DuplicateTemplateDialog
-                    templates={templates}
-                    currentType={selectedTemplate.type}
-                    defaultName={`${selectedTemplate.name} (copia)`}
-                    onClose={() => setShowDuplicateDialog(false)}
-                    onConfirm={handleDuplicateTemplate}
-                />
+                <DuplicateTemplateDialog templates={templates} currentType={selectedTemplate.type} defaultName={`${selectedTemplate.name} (copia)`} onClose={() => setShowDuplicateDialog(false)} onConfirm={handleDuplicateTemplate} />
             )}
         </div>
     );
 }
 
-function Modal({
-    title,
-    onClose,
-    children
-}: {
-    title: string;
-    onClose: () => void;
-    children: React.ReactNode;
-}) {
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
     return (
-        <div
-            role="dialog"
-            aria-label={title}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50"
-            onClick={onClose}
-        >
-            <div
-                className="w-[420px] rounded-xl bg-white p-6 shadow-2xl"
-                onClick={(e) => e.stopPropagation()}
-            >
+        <div role="dialog" aria-label={title} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+            <div className="w-[400px] rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
                 <div className="mb-4 flex items-center justify-between">
-                    <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
-                    <button
-                        type="button"
-                        onClick={onClose}
-                        className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
-                        aria-label="Cerrar"
-                    >
-                        <X size={20} />
-                    </button>
+                    <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+                    <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:bg-slate-100"><X size={18} /></button>
                 </div>
                 {children}
             </div>

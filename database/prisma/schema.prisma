@@ -222,6 +222,7 @@ model EmployeeVacationBalance {
   annualQuotaDays  Decimal  @default(30)
   carriedOverDays  Decimal  @default(0)
   importedUsedDays Decimal  @default(0)
+  advancedDays     Decimal  @default(0)  // Días tomados por adelantado del año siguiente
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
@@ -433,6 +434,24 @@ enum AbsenceType {
   FAMILY_SICK
   PUBLIC_DUTY
   LACTATION
+}
+
+model AbsenceTypeConfig {
+  id                 String   @id @default(uuid())
+  code               String   @unique
+  name               String
+  color              String   @default("#6366f1")
+  icon               String   @default("calendar")
+  description        String?
+  annualLimitDays    Int?
+  countsForBalance   Boolean  @default(false)
+  requiresAttachment Boolean  @default(false)
+  requiresApproval   Boolean  @default(true)
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([isActive])
 }
 
 model DocumentTemplate {

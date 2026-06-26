@@ -30,6 +30,7 @@ async function main() {
     console.log('🌱 Starting database seed...');
 
     // Clear existing data
+    await prisma.absenceTypeConfig.deleteMany({});
     await prisma.timeEntry.deleteMany({});
     await prisma.overtimeEntry.deleteMany({});
     await prisma.payrollRow.deleteMany({});
@@ -464,6 +465,35 @@ async function main() {
         }
     }
     console.log('✅ Generated Onboarding Checklists');
+
+    // Seed absence type configurations
+    const absenceTypes = [
+        { code: 'VACATION', name: 'Vacaciones', color: '#10b981', icon: 'plane', annualLimitDays: 30, countsForBalance: true, requiresAttachment: false, requiresApproval: true, description: 'Vacaciones anuales retribuidas' },
+        { code: 'SICK', name: 'Baja médica', color: '#f43f5e', icon: 'stethoscope', annualLimitDays: null, countsForBalance: false, requiresAttachment: true, requiresApproval: true, description: 'Ausencia por enfermedad o accidente' },
+        { code: 'MEDICAL_APPOINTMENT', name: 'Cita médica', color: '#6366f1', icon: 'clock', annualLimitDays: null, countsForBalance: false, requiresAttachment: true, requiresApproval: true, description: 'Cita médica con justificante' },
+        { code: 'MATERNITY', name: 'Maternidad', color: '#ec4899', icon: 'baby', annualLimitDays: null, countsForBalance: true, requiresAttachment: true, requiresApproval: true, description: 'Permiso de maternidad' },
+        { code: 'PATERNITY', name: 'Paternidad', color: '#0ea5e9', icon: 'baby', annualLimitDays: null, countsForBalance: true, requiresAttachment: true, requiresApproval: true, description: 'Permiso de paternidad' },
+        { code: 'PERSONAL_DAY', name: 'Día personal', color: '#06b6d4', icon: 'sun', annualLimitDays: 5, countsForBalance: false, requiresAttachment: false, requiresApproval: true, description: 'Día personal sin necesidad de justificante' },
+        { code: 'MARRIAGE', name: 'Boda', color: '#f43f5e', icon: 'heart', annualLimitDays: null, countsForBalance: false, requiresAttachment: true, requiresApproval: true, description: 'Permiso por matrimonio' },
+        { code: 'DEATH', name: 'Fallecimiento', color: '#475569', icon: 'file-text', annualLimitDays: null, countsForBalance: false, requiresAttachment: true, requiresApproval: true, description: 'Permiso por fallecimiento de familiar' },
+        { code: 'MOVING', name: 'Mudanza', color: '#f59e0b', icon: 'plane', annualLimitDays: null, countsForBalance: false, requiresAttachment: true, requiresApproval: true, description: 'Permiso por mudanza' },
+        { code: 'FAMILY_SICK', name: 'Enfermedad familiar', color: '#f43f5e', icon: 'stethoscope', annualLimitDays: null, countsForBalance: false, requiresAttachment: true, requiresApproval: true, description: 'Ausencia por cuidado de familiar enfermo' },
+        { code: 'PUBLIC_DUTY', name: 'Función pública', color: '#3b82f6', icon: 'file-text', annualLimitDays: null, countsForBalance: false, requiresAttachment: true, requiresApproval: true, description: 'Cumplimiento de función pública' },
+        { code: 'UNPAID', name: 'Permiso sin goce', color: '#f59e0b', icon: 'file-text', annualLimitDays: null, countsForBalance: false, requiresAttachment: false, requiresApproval: true, description: 'Ausencia sin retribución' },
+        { code: 'LACTANCIA', name: 'Lactancia', color: '#ec4899', icon: 'baby', annualLimitDays: null, countsForBalance: false, requiresAttachment: false, requiresApproval: true, description: 'Permiso de lactancia' },
+        { code: 'TELETRABAJO', name: 'Teletrabajo', color: '#8b5cf6', icon: 'coffee', annualLimitDays: null, countsForBalance: false, requiresAttachment: false, requiresApproval: true, description: 'Jornada de teletrabajo' },
+        { code: 'PERMISO_SINDICAL', name: 'Permiso sindical', color: '#14b8a6', icon: 'file-text', annualLimitDays: null, countsForBalance: false, requiresAttachment: false, requiresApproval: true, description: 'Permiso por actividad sindical' },
+        { code: 'OTHER', name: 'Otros', color: '#64748b', icon: 'more-horizontal', annualLimitDays: null, countsForBalance: false, requiresAttachment: false, requiresApproval: true, description: 'Otro tipo de ausencia no categorizada' },
+    ];
+
+    for (const at of absenceTypes) {
+        await prisma.absenceTypeConfig.upsert({
+            where: { code: at.code },
+            update: {},
+            create: at,
+        });
+    }
+    console.log(`✅ Seeded ${absenceTypes.length} absence type configs`);
 
     console.log('\n🎉 Database seed complete!');
     console.log(`   - ${employees.length} employees`);
