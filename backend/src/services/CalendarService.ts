@@ -155,15 +155,21 @@ export const CalendarService = {
     // 3. Get custom calendar events (with recurrence expansion)
     const calendarEvents = await prisma.calendarEvent.findMany({
       where: {
-        OR: [
-          { companyId },
-          { isPublic: true, companyId: null },
-        ],
-        startDate: { lte: endDate },
-        OR: [
-          { recurrence: 'NONE' },
-          { recurrenceEnd: null },
-          { recurrenceEnd: { gte: startDate } }
+        AND: [
+          {
+            OR: [
+              { companyId },
+              { isPublic: true, companyId: null },
+            ],
+          },
+          { startDate: { lte: endDate } },
+          {
+            OR: [
+              { recurrence: 'NONE' },
+              { recurrenceEnd: null },
+              { recurrenceEnd: { gte: startDate } }
+            ]
+          }
         ]
       },
       orderBy: { startDate: 'asc' },
