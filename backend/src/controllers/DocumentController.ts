@@ -174,7 +174,11 @@ export const DocumentController = {
 
             return ApiResponse.success(res, document, 'Documento subido correctamente', 201);
         } catch (error) {
-            log.error({ error, savedKey }, 'Error al subir documento - archivo可能会保留');
+            if (savedKey) {
+                StorageService.deleteFile(savedKey).catch((delErr) => {
+                    log.error({ delErr, savedKey }, 'Failed to cleanup orphaned file after DB error');
+                });
+            }
             if (error instanceof AppError) throw error;
             throw new AppError('Error al registrar el documento en la base de datos', 500);
         }

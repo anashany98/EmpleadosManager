@@ -52,7 +52,7 @@ export interface VacationBalanceSummary {
     projectedAvailableDays: number;
 }
 
-function roundVacationValue(value: number | Decimal): number {
+export function roundVacationValue(value: number | Decimal): number {
     return Number(value.toFixed(2));
 }
 
@@ -144,7 +144,7 @@ function buildDefaultVacationBalance(employee: EmployeeBalanceEmployee, year: nu
     };
 }
 
-function calculateVacationOverlapDays(vacation: VacationRecord, year: number): number {
+export function calculateVacationOverlapDays(vacation: VacationRecord, year: number): number {
     if (!isVacationType(vacation.type)) {
         return 0;
     }

@@ -2,8 +2,7 @@ import { prisma } from '../../lib/prisma';
 import { PaginationParams, getPrismaPagination } from '../../utils/pagination';
 import { CacheService } from '../CacheService';
 import { CacheKeys } from '../../utils/cacheKeys';
-import { getEmployeeVacationBalanceSummary } from '../VacationBalanceService';
-import { VACATION_TYPES_FOR_BALANCE } from '../VacationBalanceService';
+import { getEmployeeVacationBalanceSummary, VACATION_TYPES_FOR_BALANCE, roundVacationValue, calculateVacationOverlapDays } from '../VacationBalanceService';
 
 // Cache TTL in seconds - 5 minutes
 const VACATION_CACHE_TTL = 300;
@@ -27,7 +26,7 @@ export class VacationReportService {
     }
 
     /**
-     * Computes the actual vacation data.
+     * Computes the actual vacation data using batched queries instead of N+1.
      */
     private static async computeVacationData(year: number, filters: any = {}, pagination?: PaginationParams) {
         const startOfYear = new Date(year, 0, 1);
@@ -39,7 +38,7 @@ export class VacationReportService {
 
         const prismaPagination = pagination ? getPrismaPagination(pagination) : {};
 
-        const [total, employees] = await Promise.all([
+        const [total, employees, balances] = await Promise.all([
             prisma.employee.count({ where }),
             prisma.employee.findMany({
                 where,
@@ -50,35 +49,75 @@ export class VacationReportService {
                             endDate: { gte: startOfYear },
                             type: { in: VACATION_TYPES_FOR_BALANCE }
                         },
-                        select: { id: true }
+                        select: {
+                            startDate: true,
+                            endDate: true,
+                            status: true,
+                            type: true
+                        }
                     }
                 },
                 ...prismaPagination
+            }),
+            prisma.employeeVacationBalance.findMany({
+                where: {
+                    year,
+                    ...(filters.companyId ? { employee: { companyId: filters.companyId } } : {}),
+                    ...(filters.department ? { employee: { department: filters.department } } : {})
+                },
+                select: {
+                    employeeId: true,
+                    annualQuotaDays: true,
+                    carriedOverDays: true,
+                    importedUsedDays: true,
+                    advancedDays: true
+                }
             })
         ]);
 
-        const data = await Promise.all(employees.map(async (emp) => {
-            const balance = await getEmployeeVacationBalanceSummary(emp.id, year);
-            const totalQuota = balance?.totalEntitledDays ?? emp.vacationDaysTotal ?? 30;
-            const usedDays = balance ? balance.importedUsedDays + balance.approvedUsedDays : 0;
-            const remainingDays = balance?.availableDays ?? (emp.vacationDaysTotal ?? 30);
+        const balanceMap = new Map(balances.map(b => [b.employeeId, b]));
+
+        const data = employees.map((emp) => {
+            const explicitBalance = balanceMap.get(emp.id);
+            const quota = explicitBalance
+                ? Number(explicitBalance.annualQuotaDays)
+                : (emp.vacationDaysTotal ?? 30);
+            const carriedOver = explicitBalance ? Number(explicitBalance.carriedOverDays) : 0;
+            const importedUsed = explicitBalance ? Number(explicitBalance.importedUsedDays) : 0;
+            const advanced = explicitBalance ? Number(explicitBalance.advancedDays ?? 0) : 0;
+
+            const totalEntitled = roundVacationValue(quota + carriedOver);
+
+            const approvedUsedDays = emp.vacations.reduce((sum, v) => {
+                if (v.status !== 'APPROVED') return sum;
+                return sum + calculateVacationOverlapDays(v, year);
+            }, 0);
+
+            const pendingDays = emp.vacations.reduce((sum, v) => {
+                if (v.status !== 'PENDING') return sum;
+                return sum + calculateVacationOverlapDays(v, year);
+            }, 0);
+
+            const availableDays = roundVacationValue(totalEntitled - importedUsed - approvedUsedDays);
+            const projectedAvailable = roundVacationValue(availableDays - pendingDays + advanced);
+
             return {
                 id: emp.id,
                 name: emp.name,
                 department: emp.department,
-                annualQuotaDays: balance?.annualQuotaDays ?? emp.vacationDaysTotal ?? 30,
-                carriedOverDays: balance?.carriedOverDays ?? 0,
-                importedUsedDays: balance?.importedUsedDays ?? 0,
-                approvedUsedDays: balance?.approvedUsedDays ?? 0,
-                pendingDays: balance?.pendingDays ?? 0,
-                totalQuota,
-                usedDays,
-                remainingDays,
-                projectedRemainingDays: balance?.projectedAvailableDays ?? remainingDays,
+                annualQuotaDays: roundVacationValue(quota),
+                carriedOverDays: roundVacationValue(carriedOver),
+                importedUsedDays: roundVacationValue(importedUsed),
+                approvedUsedDays: roundVacationValue(approvedUsedDays),
+                pendingDays: roundVacationValue(pendingDays),
+                totalQuota: totalEntitled,
+                usedDays: roundVacationValue(importedUsed + approvedUsedDays),
+                remainingDays: availableDays,
+                projectedRemainingDays: projectedAvailable,
                 requests: emp.vacations.length,
                 vacations: emp.vacations
             };
-        }));
+        });
 
         return { data, total };
     }

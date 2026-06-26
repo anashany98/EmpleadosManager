@@ -19,7 +19,7 @@ export const EmployeeController = {
         try {
             const { user } = req as AuthenticatedRequest;
             const result = await EmployeeService.getAll(user, req.query);
-            return ApiResponse.success(res, result);
+            return ApiResponse.paginated(res, result.data, result.meta);
         } catch (error: any) {
             log.error({ error }, 'Error fetching employees');
             return ApiResponse.error(res, error.message || 'Error al obtener empleados', error.statusCode || 500);

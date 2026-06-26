@@ -112,13 +112,18 @@ export const generateTechDeviceInternal = async (employeeId: string, deviceName:
         contentType: 'application/pdf'
     });
 
-    const docRecord = await prisma.document.create({
-        data: {
-            name: `Entrega ${deviceName}`,
-            category: 'OTHER',
-            fileUrl: key,
-            employeeId
-        }
-    });
-    return docRecord;
+    try {
+        const docRecord = await prisma.document.create({
+            data: {
+                name: `Entrega ${deviceName}`,
+                category: 'OTHER',
+                fileUrl: key,
+                employeeId
+            }
+        });
+        return docRecord;
+    } catch (error) {
+        await StorageService.deleteFile(key).catch(() => {});
+        throw error;
+    }
 };

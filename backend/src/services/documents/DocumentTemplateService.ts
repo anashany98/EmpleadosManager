@@ -790,14 +790,19 @@ export const CompanyDocumentTemplateService = {
             contentType: 'application/pdf'
         });
 
-        return prisma.document.create({
-            data: {
-                name: template.name,
-                category: DOCUMENT_CATEGORY_BY_TYPE[documentType] || 'OTHER',
-                fileUrl: key,
-                employeeId
-            }
-        });
+        try {
+            return await prisma.document.create({
+                data: {
+                    name: template.name,
+                    category: DOCUMENT_CATEGORY_BY_TYPE[documentType] || 'OTHER',
+                    fileUrl: key,
+                    employeeId
+                }
+            });
+        } catch (dbError) {
+            await StorageService.deleteFile(key).catch(() => {});
+            throw dbError;
+        }
     },
 
     saveTemplate: async (data: {

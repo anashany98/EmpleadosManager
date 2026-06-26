@@ -44,7 +44,12 @@ export const generateNDA = async (employeeId: string, authorName?: string): Prom
     const pdfBuffer = await buildPdfBuffer(doc);
     const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });
 
-    return prisma.document.create({ data: { name: 'Acuerdo Confidencialidad (NDA)', category: 'CONTRACT', fileUrl: key, employeeId } });
+    try {
+        return await prisma.document.create({ data: { name: 'Acuerdo Confidencialidad (NDA)', category: 'CONTRACT', fileUrl: key, employeeId } });
+    } catch (dbError) {
+        await StorageService.deleteFile(key).catch(() => {});
+        throw dbError;
+    }
 };
 
 export const generateRGPD = async (employeeId: string, authorName?: string): Promise<any> => {
@@ -82,7 +87,12 @@ export const generateRGPD = async (employeeId: string, authorName?: string): Pro
     const pdfBuffer = await buildPdfBuffer(doc);
     const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });
 
-    return prisma.document.create({ data: { name: 'Cláusula RGPD', category: 'CONTRACT', fileUrl: key, employeeId } });
+    try {
+        return await prisma.document.create({ data: { name: 'Cláusula RGPD', category: 'CONTRACT', fileUrl: key, employeeId } });
+    } catch (dbError) {
+        await StorageService.deleteFile(key).catch(() => {});
+        throw dbError;
+    }
 };
 
 export const generateModel145 = async (employeeId: string, authorName?: string): Promise<any> => {
@@ -186,14 +196,17 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
         contentType: 'application/pdf'
     });
 
-    const doc = await prisma.document.create({
-        data: {
-            name: 'Modelo 145 (Relleno)',
-            category: 'CONTRACT',
-            fileUrl: key,
-            employeeId
-        }
-    });
-
-    return doc;
+    try {
+        return await prisma.document.create({
+            data: {
+                name: 'Modelo 145 (Relleno)',
+                category: 'CONTRACT',
+                fileUrl: key,
+                employeeId
+            }
+        });
+    } catch (dbError) {
+        await StorageService.deleteFile(key).catch(() => {});
+        throw dbError;
+    }
 };

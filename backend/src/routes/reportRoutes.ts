@@ -25,13 +25,8 @@ import { protect, checkPermission } from '../middlewares/authMiddleware';
 
 const router = Router();
 
-// Defense in depth: require authentication for ALL report endpoints.
-router.use(protect);
-
-// Permission gate: requires `reports:read` at minimum.
-// Company-scoped staff (hr/manager) inherit this via COMPANY_STAFF_DEFAULTS;
-// global admins always have it via ALL_MODULE_WRITE.
-router.use(checkPermission('reports', 'read'));
+// NOTE: protect + checkPermission('reports', 'read') are already applied
+// at the app level in registerRoutes.ts. No duplicate middleware here.
 
 // Per-user rate limit. Reports can be DB-intensive (joins over TimeEntry,
  // Vacation, PayrollRow) so we cap at 30 req/min/user to avoid DoS by

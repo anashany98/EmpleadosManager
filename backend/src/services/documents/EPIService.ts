@@ -111,5 +111,10 @@ export const generateEPIInternal = async (employeeId: string, customItems?: Arra
     const pdfBuffer = await buildPdfBuffer(doc);
     const { key } = await StorageService.saveBuffer({ folder: `documents/EXP_${employeeId}`, originalName: fileName, buffer: pdfBuffer, contentType: 'application/pdf' });
 
-    return prisma.document.create({ data: { name: 'Entrega EPIs', category: 'PRL', fileUrl: key, employeeId } });
+    try {
+        return await prisma.document.create({ data: { name: 'Entrega EPIs', category: 'PRL', fileUrl: key, employeeId } });
+    } catch (error) {
+        await StorageService.deleteFile(key).catch(() => {});
+        throw error;
+    }
 };

@@ -10,7 +10,7 @@ import { employeeIdParamSchema, idParamSchema, uuidParamSchema } from './commonS
 
 export const documentUploadMetadataSchema = z.object({
     body: z.object({
-        employeeId: z.string().uuid("ID de empleado inválido").optional(),
+        employeeId: z.string().uuid("ID de empleado inválido"),
         name: z.string().min(1, "Nombre es requerido").max(255),
         category: z.string().min(1, "Categoría es requerida").max(100),
         description: z.string().max(1000).optional(),

@@ -139,12 +139,17 @@ export const generateMaterialDeliveryInternal = async (
         contentType: 'application/pdf'
     });
 
-    return prisma.document.create({
-        data: {
-            name: 'Entrega Material',
-            category: 'OTHER',
-            fileUrl: key,
-            employeeId
-        }
-    });
+    try {
+        return await prisma.document.create({
+            data: {
+                name: 'Entrega Material',
+                category: 'OTHER',
+                fileUrl: key,
+                employeeId
+            }
+        });
+    } catch (error) {
+        await StorageService.deleteFile(key).catch(() => {});
+        throw error;
+    }
 };
