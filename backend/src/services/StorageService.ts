@@ -82,7 +82,11 @@ export const StorageService = {
         if (!key) return;
         if (STORAGE_PROVIDER === 'local') {
             const filePath = path.join(LOCAL_UPLOAD_DIR, key);
-            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+            try {
+                await fs.promises.unlink(filePath);
+            } catch (err: any) {
+                if (err.code !== 'ENOENT') throw err;
+            }
             return;
         }
         if (!s3Client) throw new Error('S3 client not initialized');

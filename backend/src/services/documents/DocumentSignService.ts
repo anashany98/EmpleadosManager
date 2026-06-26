@@ -49,15 +49,21 @@ export const signDocument = async (documentId: string, signatureDataUrl: string)
         contentType: 'application/pdf'
     });
 
-    const signedDoc = await prisma.document.create({
-        data: {
-            employeeId: document.employeeId,
-            name: `FIRMADO: ${document.name}`,
-            category: document.category,
-            fileUrl: key,
-            expiryDate: document.expiryDate
-        }
-    });
+    let signedDoc;
+    try {
+        signedDoc = await prisma.document.create({
+            data: {
+                employeeId: document.employeeId,
+                name: `FIRMADO: ${document.name}`,
+                category: document.category,
+                fileUrl: key,
+                expiryDate: document.expiryDate
+            }
+        });
+    } catch (error) {
+        await StorageService.deleteFile(key).catch(() => {});
+        throw error;
+    }
 
     return signedDoc;
 };

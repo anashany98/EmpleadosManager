@@ -120,9 +120,14 @@ export const generateUniformInternal = async (employeeId: string, customItems?: 
         contentType: 'application/pdf'
     });
 
-    return prisma.document.create({
-        data: {
-            name: 'Entrega Uniforme', category: 'OTHER', fileUrl: key, employeeId
-        }
-    });
+    try {
+        return await prisma.document.create({
+            data: {
+                name: 'Entrega Uniforme', category: 'OTHER', fileUrl: key, employeeId
+            }
+        });
+    } catch (error) {
+        await StorageService.deleteFile(key).catch(() => {});
+        throw error;
+    }
 };
