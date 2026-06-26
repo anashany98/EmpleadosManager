@@ -665,6 +665,7 @@ model InventoryItem {
   sku              String?
   supplier         String?
   warehouseLocation String?
+  imageUrl          String?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   assets           Asset[]

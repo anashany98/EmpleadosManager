@@ -8,6 +8,7 @@ import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { DocumentTemplateService } from '../services/DocumentTemplateService';
 import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
+import multer from 'multer';
 
 const log = createLogger('InventoryController');
 
@@ -304,6 +305,138 @@ export const InventoryController = {
         } catch (error) {
             log.error({ error }, 'Error generating receipt');
             return ApiResponse.error(res, 'Error al generar el acta de entrega', 500);
+        }
+    },
+
+    withdraw: async (req: Request, res: Response) => {
+        try {
+            const { id } = req.params;
+            const { amount, notes } = req.body;
+            const userId = (req as AuthenticatedRequest).user?.id;
+
+            if (!amount || Number(amount) <= 0) {
+                return ApiResponse.error(res, 'Cantidad invalida', 400);
+            }
+
+            const item = await prisma.$transaction(async (tx) => {
+                const current = await tx.inventoryItem.findUnique({ where: { id } });
+                if (!current) {
+                    throw new AppError('Producto no encontrado', 404);
+                }
+                if (current.quantity < Number(amount)) {
+                    throw new AppError('Stock insuficiente', 400);
+                }
+
+                await tx.inventoryMovement.create({
+                    data: {
+                        inventoryItemId: id,
+                        type: 'EXIT',
+                        quantity: Number(amount),
+                        userId,
+                        notes: notes || 'Retiro de stock'
+                    }
+                });
+
+                return tx.inventoryItem.update({
+                    where: { id },
+                    data: { quantity: { decrement: Number(amount) } }
+                });
+            });
+
+            return ApiResponse.success(res, item, 'Stock retirado');
+        } catch (error) {
+            if ((error as any).statusCode === 404) return ApiResponse.error(res, (error as Error).message, 404);
+            if ((error as any).statusCode === 400) return ApiResponse.error(res, (error as Error).message, 400);
+            log.error({ error }, 'Error withdrawing stock');
+            return ApiResponse.error(res, (error as Error).message || 'Error al retirar stock', 500);
+        }
+    },
+
+    uploadImage: async (req: Request, res: Response) => {
+        try {
+            const { id } = req.params;
+            if (!req.file) {
+                return ApiResponse.error(res, 'No se ha subido ningun archivo', 400);
+            }
+
+            const imageUrl = `/uploads/inventory/${req.file.filename}`;
+            const item = await prisma.inventoryItem.update({
+                where: { id },
+                data: { imageUrl }
+            });
+
+            return ApiResponse.success(res, item, 'Imagen actualizada');
+        } catch (error) {
+            log.error({ error }, 'Error uploading image');
+            return ApiResponse.error(res, 'Error al subir imagen', 500);
+        }
+    },
+
+    importCsv: async (req: Request, res: Response) => {
+        try {
+            if (!req.file) {
+                return ApiResponse.error(res, 'No se ha subido ningun archivo', 400);
+            }
+
+            const content = fs.readFileSync(req.file.path, 'utf-8');
+            const lines = content.split('\n').filter(l => l.trim());
+            if (lines.length < 2) {
+                return ApiResponse.error(res, 'El CSV esta vacio o no tiene cabeceras', 400);
+            }
+
+            const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+            const results = { created: 0, errors: 0, errorDetails: [] as string[] };
+
+            for (let i = 1; i < lines.length; i++) {
+                try {
+                    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+                    const row: Record<string, string> = {};
+                    headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
+
+                    const name = row.nombre || row.name || '';
+                    if (!name) { results.errors++; results.errorDetails.push(`Fila ${i + 1}: sin nombre`); continue; }
+
+                    const existing = await prisma.inventoryItem.findFirst({ where: { name, size: row.talla || row.size || null } });
+                    if (existing) {
+                        await prisma.inventoryItem.update({
+                            where: { id: existing.id },
+                            data: {
+                                quantity: { increment: Number(row.cantidad || row.quantity || 0) },
+                                category: row.categoria || row.category || existing.category,
+                                sku: row.sku || existing.sku,
+                                brand: row.marca || row.brand || existing.brand,
+                                unitPrice: row.precio || row.price ? Number(row.precio || row.price) : existing.unitPrice
+                            }
+                        });
+                    } else {
+                        await prisma.inventoryItem.create({
+                            data: {
+                                name,
+                                category: row.categoria || row.category || 'OTHER',
+                                quantity: Number(row.cantidad || row.quantity || 0),
+                                minQuantity: Number(row.minimo || row.minQuantity || 5),
+                                size: row.talla || row.size || null,
+                                sku: row.sku || null,
+                                brand: row.marca || row.brand || null,
+                                unitPrice: row.precio || row.price ? Number(row.precio || row.price) : null,
+                                supplier: row.proveedor || row.supplier || null,
+                                warehouseLocation: row.ubicacion || row.location || null,
+                                description: row.descripcion || row.description || null
+                            }
+                        });
+                    }
+                    results.created++;
+                } catch (e) {
+                    results.errors++;
+                    results.errorDetails.push(`Fila ${i + 1}: ${(e as Error).message}`);
+                }
+            }
+
+            fs.unlinkSync(req.file.path);
+            return ApiResponse.success(res, results, `Importacion completada: ${results.created} creados, ${results.errors} errores`);
+        } catch (error) {
+            log.error({ error }, 'Error importing CSV');
+            return ApiResponse.error(res, 'Error al importar CSV', 500);
         }
     }
 };
