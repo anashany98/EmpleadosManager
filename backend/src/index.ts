@@ -7,6 +7,7 @@ import { prisma } from './lib/prisma';
 import { createApp } from './app/createApp';
 import { startInfrastructure, stopInfrastructure, validateRuntimeConfiguration } from './app/infrastructure';
 import { loggers } from './services/LoggerService';
+import { reportScheduler } from './services/ReportScheduler';
 
 const { app, server: httpServer } = createApp();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -23,6 +24,9 @@ async function startServer() {
 
         log.info('Starting background infrastructure...');
         startInfrastructure();
+
+        log.info('Starting report scheduler (hourly check)...');
+        reportScheduler.start(60 * 60 * 1000);
 
         log.info('Attempting to start HTTP server on ' + HOST + ':' + PORT);
 
@@ -96,6 +100,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     }
 
     try {
+        reportScheduler.stop();
         await stopInfrastructure();
     } catch (error) {
         log.error({ error }, 'Error stopping infrastructure');
