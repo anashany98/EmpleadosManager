@@ -476,7 +476,7 @@ export const VehicleController = {
                 throw new AppError('Archivo no encontrado', 404);
             }
 
-            res.setHeader('Content-Disposition', `inline; filename="${path.basename(existing.name)}"`);
+            res.setHeader('Content-Disposition', `attachment; filename="${path.basename(existing.name)}"`);
             return res.sendFile(filePath);
         } catch (error) {
             return handleControllerError(res, error, 'Error al descargar documento');

@@ -665,6 +665,7 @@ model InventoryItem {
   sku              String?
   supplier         String?
   warehouseLocation String?
+  imageUrl          String?
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   assets           Asset[]
@@ -1147,6 +1148,8 @@ model CalendarEvent {
   companyId   String?
   createdBy   String?
   isPublic    Boolean  @default(true)
+  recurrence  String   @default("NONE") // NONE, WEEKLY, MONTHLY
+  recurrenceEnd DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   

@@ -426,4 +426,130 @@ export const CalendarController = {
             return ApiResponse.error(res, 'Error al obtener eventos', 500);
         }
     },
+
+    getConflicts: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const companyId = user?.companyId;
+            const { date } = req.query;
+            if (!date) return ApiResponse.error(res, 'Fecha requerida', 400);
+
+            const targetDate = new Date(date as string);
+            const nextDay = new Date(targetDate);
+            nextDay.setDate(nextDay.getDate() + 1);
+
+            const vacations = await prisma.vacation.findMany({
+                where: {
+                    status: 'APPROVED',
+                    startDate: { lte: targetDate },
+                    endDate: { gte: targetDate },
+                    employee: companyId ? { companyId } : undefined,
+                },
+                include: { employee: { select: { department: true } } },
+                take: 200
+            });
+
+            const departmentCount: Record<string, number> = {};
+            vacations.forEach((v) => {
+                const dept = v.employee?.department || 'Sin departamento';
+                departmentCount[dept] = (departmentCount[dept] || 0) + 1;
+            });
+
+            const conflicts: Array<{ department: string; absentCount: number; totalCount: number; percentage: number }> = [];
+            for (const [dept, absentCount] of Object.entries(departmentCount)) {
+                const totalEmployees = await prisma.employee.count({
+                    where: { department: dept, active: true, ...(companyId ? { companyId } : {}) }
+                });
+                const percentage = totalEmployees > 0 ? (absentCount / totalEmployees) * 100 : 0;
+                if (percentage >= 30) {
+                    conflicts.push({ department: dept, absentCount, totalCount: totalEmployees, percentage: Math.round(percentage) });
+                }
+            }
+
+            return ApiResponse.success(res, { date: date as string, conflicts });
+        } catch (error) {
+            log.error({ error }, 'Error checking conflicts');
+            return ApiResponse.error(res, 'Error al verificar conflictos', 500);
+        }
+    },
+
+    exportIcs: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            if (!user?.id) return ApiResponse.error(res, 'No autenticado', 401);
+
+            const startStr = (req.query.start as string) || new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0];
+            const endStr = (req.query.end as string) || new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0];
+            const startDate = new Date(startStr);
+            const endDate = new Date(endStr);
+
+            const events = await CalendarService.getUnifiedEvents(user.id, user.companyId || null, startDate, endDate);
+
+            const icsLines = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//EmpleadosManager//Calendario//ES',
+                'CALSCALE:GREGORIAN',
+                'METHOD:PUBLISH',
+                'X-WR-CALNAME:EmpleadosManager',
+                'X-WR-TIMEZONE:Europe/Madrid'
+            ];
+
+            events.forEach((event) => {
+                const uid = `${event.id}@empleadosmanager`;
+                const dtStart = new Date(event.start).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                const dtEnd = new Date(event.end).toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                const now = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+
+                icsLines.push('BEGIN:VEVENT');
+                icsLines.push(`UID:${uid}`);
+                icsLines.push(`DTSTAMP:${now}`);
+                icsLines.push(`DTSTART;VALUE=DATE:${dtStart.replace(/T.*/, '')}`);
+                icsLines.push(`DTEND;VALUE=DATE:${dtEnd.replace(/T.*/, '')}`);
+                icsLines.push(`SUMMARY:${event.title}`);
+                if (event.description) icsLines.push(`DESCRIPTION:${event.description.replace(/\n/g, '\\n')}`);
+                if (event.location) icsLines.push(`LOCATION:${event.location}`);
+                icsLines.push('END:VEVENT');
+            });
+
+            icsLines.push('END:VCALENDAR');
+
+            res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+            res.setHeader('Content-Disposition', 'attachment; filename="empleadosmanager.ics"');
+            return res.send(icsLines.join('\r\n'));
+        } catch (error) {
+            log.error({ error }, 'Error exporting ICS');
+            return ApiResponse.error(res, 'Error al exportar calendario', 500);
+        }
+    },
+
+    getReminders: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            if (!user?.id) return ApiResponse.error(res, 'No autenticado', 401);
+
+            const today = new Date();
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const weekFromNow = new Date(today);
+            weekFromNow.setDate(weekFromNow.getDate() + 7);
+
+            const events = await CalendarService.getUnifiedEvents(user.id, user.companyId || null, today, weekFromNow);
+
+            const reminders = events.filter((event) => {
+                const start = new Date(event.start);
+                const diffDays = Math.ceil((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                return diffDays >= 0 && diffDays <= 7;
+            }).map((event) => {
+                const start = new Date(event.start);
+                const diffDays = Math.ceil((start.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                return { ...event, daysUntil: diffDays };
+            });
+
+            return ApiResponse.success(res, reminders);
+        } catch (error) {
+            log.error({ error }, 'Error getting reminders');
+            return ApiResponse.error(res, 'Error al obtener recordatorios', 500);
+        }
+    }
 };

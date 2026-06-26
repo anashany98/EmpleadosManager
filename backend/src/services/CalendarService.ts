@@ -152,7 +152,7 @@ export const CalendarService = {
       });
     }
 
-    // 3. Get custom calendar events
+    // 3. Get custom calendar events (with recurrence expansion)
     const calendarEvents = await prisma.calendarEvent.findMany({
       where: {
         OR: [
@@ -160,7 +160,11 @@ export const CalendarService = {
           { isPublic: true, companyId: null },
         ],
         startDate: { lte: endDate },
-        endDate: { gte: startDate },
+        OR: [
+          { recurrence: 'NONE' },
+          { recurrenceEnd: null },
+          { recurrenceEnd: { gte: startDate } }
+        ]
       },
       orderBy: { startDate: 'asc' },
       take: 1000
@@ -173,22 +177,66 @@ export const CalendarService = {
     );
 
     calendarEvents.forEach((event) => {
-      events.push({
-        id: `event-${event.id}`,
-        entityId: event.id,
-        title: event.title,
-        description: event.description || undefined,
-        location: event.location || undefined,
-        start: event.startDate,
-        end: event.endDate,
-        allDay: event.allDay,
-        type: event.type === 'HOLIDAY' ? 'holiday' : 'event',
-        color: event.color || (event.type === 'HOLIDAY' ? '#6b7280' : '#3b82f6'), // gray-500 or blue-500
-        source: 'calendar_event',
-        editable: true,
-        deletable: true,
-        calendarEventType: event.type,
-      });
+      // Expand recurring events
+      if (event.recurrence && event.recurrence !== 'NONE') {
+        const originalStart = new Date(event.startDate);
+        const originalEnd = new Date(event.endDate);
+        const duration = originalEnd.getTime() - originalStart.getTime();
+        const recEnd = event.recurrenceEnd ? new Date(event.recurrenceEnd) : endDate;
+        const effectiveEnd = recEnd < endDate ? recEnd : endDate;
+
+        let currentStart = new Date(originalStart);
+        let instanceCount = 0;
+        const MAX_INSTANCES = 100;
+
+        while (currentStart <= effectiveEnd && instanceCount < MAX_INSTANCES) {
+          if (currentStart >= startDate) {
+            const instEnd = new Date(currentStart.getTime() + duration);
+            events.push({
+              id: `event-${event.id}-${instanceCount}`,
+              entityId: event.id,
+              title: event.title,
+              description: event.description || undefined,
+              location: event.location || undefined,
+              start: currentStart,
+              end: instEnd,
+              allDay: event.allDay,
+              type: event.type === 'HOLIDAY' ? 'holiday' : 'event',
+              color: event.color || (event.type === 'HOLIDAY' ? '#6b7280' : '#3b82f6'),
+              source: 'calendar_event',
+              editable: true,
+              deletable: instanceCount === 0,
+              calendarEventType: event.type,
+            });
+          }
+
+          if (event.recurrence === 'WEEKLY') {
+            currentStart.setDate(currentStart.getDate() + 7);
+          } else if (event.recurrence === 'MONTHLY') {
+            currentStart.setMonth(currentStart.getMonth() + 1);
+          } else {
+            break;
+          }
+          instanceCount++;
+        }
+      } else {
+        events.push({
+          id: `event-${event.id}`,
+          entityId: event.id,
+          title: event.title,
+          description: event.description || undefined,
+          location: event.location || undefined,
+          start: event.startDate,
+          end: event.endDate,
+          allDay: event.allDay,
+          type: event.type === 'HOLIDAY' ? 'holiday' : 'event',
+          color: event.color || (event.type === 'HOLIDAY' ? '#6b7280' : '#3b82f6'),
+          source: 'calendar_event',
+          editable: true,
+          deletable: true,
+          calendarEventType: event.type,
+        });
+      }
     });
 
     // 4. Add Spanish holidays, unless the company already has a holiday on that date
@@ -288,6 +336,8 @@ export const CalendarService = {
         companyId: data.companyId,
         createdBy,
         isPublic: data.isPublic ?? true,
+        recurrence: (data as any).recurrence || 'NONE',
+        recurrenceEnd: (data as any).recurrenceEnd || null,
       },
     });
   },

@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, API_URL } from '../../api/client';
+import { api } from '../../api/client';
 import { toast } from 'sonner';
 import { Car, Plus, Trash2, PenSquare, Calendar, Activity, FileText, Download, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -324,6 +324,27 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
 function DocumentsSection({ vehicleId, documents = [] }: { vehicleId: string, documents?: VehicleDocument[] }) {
     const queryClient = useQueryClient();
     const [docExpiryDates, setDocExpiryDates] = useState<Record<string, string>>({});
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+    const handleDownload = async (doc: VehicleDocument) => {
+        try {
+            setDownloadingId(doc.id);
+            const blob = await api.get<Blob>(`/vehicles/${vehicleId}/documents/${doc.id}/download`, { responseType: 'blob' });
+            const blobWithType = new Blob([blob], { type: 'application/octet-stream' });
+            const downloadUrl = window.URL.createObjectURL(blobWithType);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = doc.name || 'documento';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(downloadUrl);
+        } catch {
+            toast.error('Error al descargar el documento');
+        } finally {
+            setDownloadingId(null);
+        }
+    };
 
     const docTypes = [
         { value: 'INSURANCE', label: 'Seguro' },
@@ -440,9 +461,9 @@ function DocumentsSection({ vehicleId, documents = [] }: { vehicleId: string, do
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <a href={`${API_URL}/vehicles/${vehicleId}/documents/${doc.id}/download`} target="_blank" rel="noopener noreferrer" className="p-2 text-slate-500 hover:text-slate-700">
+                                    <button onClick={() => handleDownload(doc)} disabled={downloadingId === doc.id} className="p-2 text-slate-500 hover:text-slate-700 disabled:opacity-50">
                                         <Download size={16} />
-                                    </a>
+                                    </button>
                                     <button onClick={() => handleDelete(doc.id)} className="p-2 text-rose-500 hover:text-rose-700">
                                         <Trash2 size={16} />
                                     </button>
