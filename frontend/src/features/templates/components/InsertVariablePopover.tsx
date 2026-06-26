@@ -11,11 +11,16 @@ const GROUPED_VARIABLES: VariableGroup[] = [
         category: 'Empleado',
         variables: [
             { key: 'empleado.nombreCompleto', label: 'Nombre completo' },
+            { key: 'empleado.nombre', label: 'Nombre' },
+            { key: 'empleado.apellidos', label: 'Apellidos' },
             { key: 'empleado.dni', label: 'DNI' },
+            { key: 'empleado.email', label: 'Email' },
+            { key: 'empleado.telefono', label: 'Telefono' },
             { key: 'empleado.puesto', label: 'Puesto' },
             { key: 'empleado.fechaAlta', label: 'Fecha de alta' },
-            { key: 'empleado.email', label: 'Email' },
-            { key: 'empleado.telefono', label: 'Telefono' }
+            { key: 'empleado.tipoContrato', label: 'Tipo contrato' },
+            { key: 'empleado.nss', label: 'NSS' },
+            { key: 'empleado.salarioBrutoMensual', label: 'Salario bruto mensual' }
         ]
     },
     {
@@ -23,7 +28,11 @@ const GROUPED_VARIABLES: VariableGroup[] = [
         variables: [
             { key: 'empresa.nombre', label: 'Nombre' },
             { key: 'empresa.cif', label: 'CIF' },
-            { key: 'empresa.direccion', label: 'Direccion' }
+            { key: 'empresa.representanteLegal', label: 'Representante legal' },
+            { key: 'empresa.direccion', label: 'Direccion' },
+            { key: 'empresa.ciudad', label: 'Ciudad' },
+            { key: 'empresa.email', label: 'Email' },
+            { key: 'empresa.telefono', label: 'Telefono' }
         ]
     },
     {
@@ -32,6 +41,7 @@ const GROUPED_VARIABLES: VariableGroup[] = [
             { key: 'ausencia.tipo', label: 'Tipo' },
             { key: 'ausencia.fechaInicio', label: 'Fecha inicio' },
             { key: 'ausencia.fechaFin', label: 'Fecha fin' },
+            { key: 'ausencia.dias', label: 'Dias' },
             { key: 'ausencia.motivo', label: 'Motivo' }
         ]
     },
@@ -40,7 +50,8 @@ const GROUPED_VARIABLES: VariableGroup[] = [
         variables: [
             { key: 'dietas.concepto', label: 'Concepto' },
             { key: 'dietas.importe', label: 'Importe' },
-            { key: 'dietas.fecha', label: 'Fecha' }
+            { key: 'dietas.fecha', label: 'Fecha' },
+            { key: 'dietas.kilometros', label: 'Kilometros' }
         ]
     },
     {
@@ -53,7 +64,12 @@ const GROUPED_VARIABLES: VariableGroup[] = [
     },
     {
         category: 'Otros',
-        variables: [{ key: 'fechaActual', label: 'Fecha actual' }]
+        variables: [
+            { key: 'carta.asunto', label: 'Asunto carta' },
+            { key: 'carta.contenido', label: 'Contenido carta' },
+            { key: 'entrega.listado', label: 'Listado entrega' },
+            { key: 'fechaActual', label: 'Fecha actual' }
+        ]
     }
 ];
 
@@ -75,45 +91,50 @@ export function InsertVariablePopover({ onInsert, onClose }: InsertVariablePopov
     }, [query]);
 
     return (
-        <div role="dialog" aria-label="Insertar variable" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50" onClick={onClose}>
-            <div className="flex max-h-[80vh] w-[520px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} data-testid="variable-popover">
-                <header className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
-                    <div className="flex items-center gap-2">
-                        <Variable size={20} className="text-emerald-500" />
-                        <h2 className="text-lg font-semibold text-slate-900">Insertar variable</h2>
+        <div role="dialog" aria-label="Insertar variable" className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={onClose}>
+            <div className="flex max-h-[80vh] w-[540px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()} data-testid="variable-popover">
+                <header className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100">
+                            <Variable size={18} className="text-emerald-600" />
+                        </div>
+                        <div>
+                            <h2 className="text-[15px] font-semibold text-gray-900">Insertar variable</h2>
+                            <p className="text-[11px] text-gray-400">Selecciona una variable para anadirla al documento</p>
+                        </div>
                     </div>
-                    <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-500 transition-colors hover:bg-slate-100" aria-label="Cerrar">
-                        <X size={20} />
+                    <button type="button" onClick={onClose} className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600" aria-label="Cerrar">
+                        <X size={18} />
                     </button>
                 </header>
-                <div className="border-b border-slate-100 px-6 py-3">
+                <div className="border-b border-gray-100 px-6 py-3">
                     <input
                         type="text" autoFocus value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder="Buscar variable (ej. empleado.dni)"
-                        className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        placeholder="Buscar variable... (ej. empleado.dni)"
+                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-[13px] text-gray-700 placeholder-gray-400 transition-colors focus:border-emerald-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-100"
                         data-testid="variable-search"
                     />
                 </div>
-                <div className="flex-1 overflow-auto p-4">
+                <div className="flex-1 overflow-auto p-5">
                     {filtered.length === 0 && (
-                        <p className="px-4 py-8 text-center text-sm text-slate-500">No hay variables que coincidan con "{query}".</p>
+                        <p className="px-4 py-10 text-center text-[13px] text-gray-400">No hay variables que coincidan con "{query}".</p>
                     )}
-                    <div className="space-y-4">
+                    <div className="space-y-5">
                         {filtered.map((group) => (
                             <section key={group.category}>
-                                <h3 className="mb-2 text-xs font-bold uppercase text-slate-500">{group.category}</h3>
+                                <h3 className="mb-2.5 text-[10px] font-bold uppercase tracking-wider text-gray-400">{group.category}</h3>
                                 <div className="grid grid-cols-2 gap-2">
                                     {group.variables.map((variable) => (
                                         <button
                                             key={variable.key}
                                             type="button"
                                             onClick={() => onInsert(variable.key)}
-                                            className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm transition-colors hover:border-blue-300 hover:bg-blue-50"
+                                            className="rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-left transition-all hover:border-indigo-300 hover:bg-indigo-50 hover:shadow-sm active:scale-[0.98]"
                                             data-testid={`variable-option-${variable.key}`}
                                         >
-                                            <div className="font-medium text-slate-900">{variable.label}</div>
-                                            <div className="mt-1 font-mono text-xs text-slate-500">{`{{${variable.key}}}`}</div>
+                                            <div className="text-[12px] font-medium text-gray-700">{variable.label}</div>
+                                            <div className="mt-0.5 font-mono text-[10px] text-gray-400">{`{{${variable.key}}}`}</div>
                                         </button>
                                     ))}
                                 </div>
@@ -121,9 +142,9 @@ export function InsertVariablePopover({ onInsert, onClose }: InsertVariablePopov
                         ))}
                     </div>
                 </div>
-                <footer className="border-t border-slate-200 px-6 py-3">
-                    <button type="button" onClick={onClose} className="w-full rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200">
-                        Cancelar
+                <footer className="border-t border-gray-100 px-6 py-3">
+                    <button type="button" onClick={onClose} className="w-full rounded-xl bg-gray-100 px-4 py-2.5 text-[13px] font-medium text-gray-600 transition-colors hover:bg-gray-200">
+                        Cerrar
                     </button>
                 </footer>
             </div>

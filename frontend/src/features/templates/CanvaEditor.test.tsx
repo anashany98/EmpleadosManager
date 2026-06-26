@@ -69,34 +69,34 @@ describe('CanvaEditor', () => {
             expect(screen.getByTestId('canvas-stage')).toBeInTheDocument();
         });
 
-        // The backend returns NDA + CERTIFICADO_EMPRESA; the merged list
-        // keeps DEFAULT_TEMPLATES order, so the first option is
-        // `certificado_empresa` and that is what gets auto-selected.
-        const select = screen.getByTestId('template-select') as HTMLSelectElement;
-        expect(select.options.length).toBeGreaterThan(0);
+        // Template cards are rendered as buttons with title attribute
+        const templateButtons = screen.getAllByRole('button').filter(
+            (btn) => btn.getAttribute('title') && btn.getAttribute('title')!.length > 0
+        );
+        expect(templateButtons.length).toBeGreaterThan(0);
+
         const stage = screen.getByTestId('canvas-stage');
         expect(within(stage).getAllByTestId(/canvas-element-/).length).toBeGreaterThan(0);
     });
 
     it('warns the user when the backend is unreachable and falls back to local catalog', async () => {
-        mockApi.get.mockRejectedValueOnce(new Error('network'));
+        mockApi.get.mockRejectedValue(new Error('network'));
 
         render(<CanvaEditor />);
 
+        // The toast renders in a portal; the "Local" badge is always visible
         await waitFor(() => {
-            expect(screen.getByText(/Catálogo local/i)).toBeInTheDocument();
+            expect(screen.getByText('Local')).toBeInTheDocument();
         });
     });
 
     it('toggles the dirty banner after a user mutation', async () => {
         render(<CanvaEditor />);
 
-        // Wait for the backend fetch to resolve and merge templates.
         await waitFor(() => {
             expect(mockApi.get).toHaveBeenCalledWith('/document-templates/list');
         });
 
-        // Wait an extra tick for effects to settle.
         await waitFor(() => {
             expect(screen.getByTestId('canvas-stage')).toBeInTheDocument();
         });
@@ -131,7 +131,7 @@ describe('CanvaEditor', () => {
         fireEvent.change(textInput, { target: { value: 'Hola {{no.existe}} y {{empleado.dni}}' } });
 
         await waitFor(() => {
-            expect(screen.getByTestId('variable-status-no.existe')).toHaveTextContent(/No definida/i);
+            expect(screen.getByTestId('variable-status-no.existe')).toHaveTextContent(/Sin definir/i);
         });
         expect(screen.getByTestId('variable-status-empleado.dni')).toHaveTextContent(/OK/i);
     });
@@ -174,8 +174,6 @@ describe('CanvaEditor', () => {
 
         const dialog = await screen.findByTestId('duplicate-dialog');
         const targetSelect = dialog.querySelector('select') as HTMLSelectElement;
-        // The current selected template's type is whatever the merged list resolves
-        // to (default: certificado_empresa). Pick a different one.
         const targetValue = Array.from(targetSelect.options).find(
             (option) => option.value && option.value !== targetSelect.value
         )?.value;

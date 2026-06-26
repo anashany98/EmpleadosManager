@@ -3,7 +3,6 @@ import { Image as ImageIcon } from 'lucide-react';
 import type { CanvasElement } from './types';
 
 const SNAP_GRID = 10;
-const SNAP_THRESHOLD = 5;
 
 function snap(value: number, gridSize: number, enabled: boolean): number {
     if (!enabled) return value;
@@ -43,7 +42,6 @@ export function CanvasStage({
 }: CanvasStageProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const dragRef = useRef<DragState | null>(null);
-    const [isDragging, setIsDragging] = useState(false);
 
     useEffect(() => {
         const handlePointerMove = (event: PointerEvent) => {
@@ -61,18 +59,16 @@ export function CanvasStage({
                 let x = drag.originX;
                 let y = drag.originY;
                 const handle = drag.handle;
-
                 if (handle.includes('e')) w = Math.max(20, drag.originWidth! + dx);
                 if (handle.includes('w')) { w = Math.max(20, drag.originWidth! - dx); x = drag.originX + (drag.originWidth! - w); }
                 if (handle.includes('s')) h = Math.max(10, drag.originHeight! + dy);
                 if (handle.includes('n')) { h = Math.max(10, drag.originHeight! - dy); y = drag.originY + (drag.originHeight! - h); }
-
                 onResizeElement(drag.id, snap(w, SNAP_GRID, showGrid), snap(h, SNAP_GRID, showGrid), x, y);
             }
         };
 
         const handlePointerUp = () => {
-            if (dragRef.current) { onMoveEnd?.(); setIsDragging(false); }
+            if (dragRef.current) { onMoveEnd?.(); }
             dragRef.current = null;
         };
 
@@ -91,7 +87,6 @@ export function CanvasStage({
         onSelectElement(element.id);
         if (mode === 'move') onMoveStart?.();
         if (mode === 'resize') { event.preventDefault(); onMoveStart?.(); }
-        setIsDragging(true);
         dragRef.current = {
             id: element.id, startX: event.clientX, startY: event.clientY,
             originX: element.x, originY: element.y, zoom, mode, handle,
@@ -104,7 +99,7 @@ export function CanvasStage({
 
     return (
         <main
-            className="flex-1 overflow-auto bg-[#1a1a2e]"
+            className="flex-1 overflow-auto bg-[#e8ecf1]"
             data-testid="canvas-stage"
             onClick={(e) => {
                 if (e.target === containerRef.current || (e.target as HTMLElement).dataset.canvas === 'true') {
@@ -112,23 +107,28 @@ export function CanvasStage({
                 }
             }}
         >
-            <div ref={containerRef} className="min-h-full p-8" data-canvas="true">
+            <div ref={containerRef} className="min-h-full flex items-start justify-center p-10" data-canvas="true">
                 <div
-                    className="relative mx-auto origin-top-left bg-white shadow-2xl"
+                    className="relative origin-top-left bg-white"
                     data-canvas="true"
                     style={{
-                        width: '210mm', height: '297mm',
+                        width: '210mm',
+                        height: '297mm',
                         transform: `scale(${zoom / 100})`,
-                        transformOrigin: 'top left',
-                        backgroundImage: showGrid ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)' : undefined,
-                        backgroundSize: '20px 20px'
+                        transformOrigin: 'top center',
+                        boxShadow: '0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)',
+                        borderRadius: '4px',
+                        backgroundImage: showGrid
+                            ? 'radial-gradient(circle, #d1d5db 0.8px, transparent 0.8px)'
+                            : undefined,
+                        backgroundSize: '16px 16px'
                     }}
                     onClick={(e) => {
                         if ((e.target as HTMLElement).dataset.canvas === 'true') onSelectElement(null);
                     }}
                 >
                     {logoUrl && (
-                        <div className="absolute flex items-center justify-center overflow-hidden rounded border border-dashed border-slate-200" style={{ left: 40, top: 40, width: 100, height: 60 }}>
+                        <div className="absolute flex items-center justify-center overflow-hidden rounded border border-dashed border-gray-300" style={{ left: 40, top: 40, width: 100, height: 60 }}>
                             <img src={logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
                         </div>
                     )}
@@ -153,28 +153,29 @@ export function CanvasStage({
 function SelectionOverlay({ element }: { element: CanvasElement }) {
     const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'] as const;
     const positions: Record<string, React.CSSProperties> = {
-        nw: { top: -4, left: -4, cursor: 'nwse-resize' },
-        ne: { top: -4, right: -4, cursor: 'nesw-resize' },
-        sw: { bottom: -4, left: -4, cursor: 'nesw-resize' },
-        se: { bottom: -4, right: -4, cursor: 'nwse-resize' },
-        n: { top: -4, left: '50%', cursor: 'ns-resize' },
-        s: { bottom: -4, left: '50%', cursor: 'ns-resize' },
-        e: { top: '50%', right: -4, cursor: 'ew-resize' },
-        w: { top: '50%', left: -4, cursor: 'ew-resize' }
+        nw: { top: -5, left: -5, cursor: 'nwse-resize' },
+        ne: { top: -5, right: -5, cursor: 'nesw-resize' },
+        sw: { bottom: -5, left: -5, cursor: 'nesw-resize' },
+        se: { bottom: -5, right: -5, cursor: 'nwse-resize' },
+        n: { top: -5, left: '50%', cursor: 'ns-resize' },
+        s: { bottom: -5, left: '50%', cursor: 'ns-resize' },
+        e: { top: '50%', right: -5, cursor: 'ew-resize' },
+        w: { top: '50%', left: -5, cursor: 'ew-resize' }
     };
 
     return (
-        <div className="pointer-events-none absolute border-2 border-blue-500" style={{ left: element.x - 1, top: element.y - 1, width: element.width + 2, height: element.height + 2 }}>
+        <div className="pointer-events-none absolute" style={{ left: element.x - 1, top: element.y - 1, width: element.width + 2, height: element.height + 2, border: '2px solid #6366f1', borderRadius: '2px' }}>
             {handles.map((handle) => (
                 <div
                     key={handle}
                     className="pointer-events-auto absolute z-10"
                     style={{
                         ...positions[handle],
-                        width: 8, height: 8,
-                        backgroundColor: '#3b82f6',
-                        border: '1.5px solid white',
-                        borderRadius: 2,
+                        width: 10, height: 10,
+                        backgroundColor: '#6366f1',
+                        border: '2px solid white',
+                        borderRadius: '3px',
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                         transform: handle.length === 1 ? 'translate(-50%, -50%)' : undefined
                     }}
                 />
@@ -213,7 +214,7 @@ function CanvasItem({
                 {element.src ? (
                     <img src={element.src} alt="" className="h-full w-full object-cover" />
                 ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400"><ImageIcon size={32} /></div>
+                    <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400"><ImageIcon size={32} /></div>
                 )}
             </div>
         );
@@ -232,7 +233,7 @@ function CanvasItem({
                 borderColor: element.borderColor,
                 borderWidth: element.type === 'box' && element.borderWidth ? `${element.borderWidth}px` : undefined,
                 borderStyle: element.type === 'box' ? 'solid' : undefined,
-                borderRadius: element.type === 'box' ? '0px' : undefined,
+                borderRadius: element.type === 'box' ? '2px' : undefined,
                 alignItems: 'center', padding: '0 8px',
                 textAlign: element.textAlign || 'left',
                 justifyContent: element.textAlign === 'center' ? 'center' : element.textAlign === 'right' ? 'flex-end' : 'flex-start',
@@ -240,7 +241,7 @@ function CanvasItem({
             }}
             data-testid={`canvas-element-${element.id}`}
         >
-            {isTextLike && <span className="pointer-events-none">{element.content}</span>}
+            {isTextLike && <span className="pointer-events-none leading-tight">{element.content}</span>}
         </div>
     );
 }
