@@ -106,6 +106,7 @@ export const updateEmployeeVacationBalanceSchema = z.object({
         year: z.coerce.number().int().min(2000).max(2100),
         annualQuotaDays: z.coerce.number().min(0).max(366),
         carriedOverDays: z.coerce.number().min(0).max(1000),
-        importedUsedDays: z.coerce.number().min(0).max(1000)
+        importedUsedDays: z.coerce.number().min(0).max(1000),
+        advancedDays: z.coerce.number().min(0).max(366).optional()
     })
 });

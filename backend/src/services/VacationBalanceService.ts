@@ -23,6 +23,7 @@ type VacationBalanceRecord = {
     annualQuotaDays: number | Decimal;
     carriedOverDays: number | Decimal;
     importedUsedDays: number | Decimal;
+    advancedDays?: number | Decimal;
 };
 
 type VacationRecord = {
@@ -43,6 +44,7 @@ export interface VacationBalanceSummary {
     annualQuotaDays: number;
     carriedOverDays: number;
     importedUsedDays: number;
+    advancedDays: number;
     totalEntitledDays: number;
     approvedUsedDays: number;
     pendingDays: number;
@@ -137,7 +139,8 @@ function buildDefaultVacationBalance(employee: EmployeeBalanceEmployee, year: nu
         year,
         annualQuotaDays,
         carriedOverDays: 0,
-        importedUsedDays: 0
+        importedUsedDays: 0,
+        advancedDays: 0
     };
 }
 
@@ -184,14 +187,16 @@ export function summarizeVacationBalance(
     }, 0);
 
     const totalEntitledDays = roundVacationValue(Number(balance.annualQuotaDays) + Number(balance.carriedOverDays));
+    const advancedDays = roundVacationValue(balance.advancedDays ?? 0);
     const availableDays = roundVacationValue(totalEntitledDays - Number(balance.importedUsedDays) - approvedUsedDays);
-    const projectedAvailableDays = roundVacationValue(availableDays - pendingDays);
+    const projectedAvailableDays = roundVacationValue(availableDays - pendingDays + advancedDays);
 
     return {
         year,
         annualQuotaDays: roundVacationValue(balance.annualQuotaDays),
         carriedOverDays: roundVacationValue(balance.carriedOverDays),
         importedUsedDays: roundVacationValue(balance.importedUsedDays),
+        advancedDays,
         totalEntitledDays,
         approvedUsedDays: roundVacationValue(approvedUsedDays),
         pendingDays: roundVacationValue(pendingDays),
@@ -245,7 +250,8 @@ async function getVacationBalanceState(
                 year,
                 annualQuotaDays: explicitBalance.annualQuotaDays,
                 carriedOverDays: explicitBalance.carriedOverDays,
-                importedUsedDays: explicitBalance.importedUsedDays
+                importedUsedDays: explicitBalance.importedUsedDays,
+                advancedDays: explicitBalance.advancedDays
             }
             : buildDefaultVacationBalance(employee, year);
         let anchored = Boolean(explicitBalance);
@@ -332,7 +338,8 @@ export async function materializeEmployeeVacationBalance(
                 year,
                 annualQuotaDays: roundVacationValue(state.summary.annualQuotaDays),
                 carriedOverDays: roundVacationValue(state.summary.carriedOverDays),
-                importedUsedDays: roundVacationValue(state.summary.importedUsedDays)
+                importedUsedDays: roundVacationValue(state.summary.importedUsedDays),
+                advancedDays: roundVacationValue(state.summary.advancedDays)
             }
         });
     } catch (error) {
@@ -401,6 +408,7 @@ export async function upsertEmployeeVacationBalance(
         annualQuotaDays?: number | null;
         carriedOverDays?: number | null;
         importedUsedDays?: number | null;
+        advancedDays?: number | null;
     },
     tx?: Prisma.TransactionClient
 ) {
@@ -418,6 +426,7 @@ export async function upsertEmployeeVacationBalance(
     const annualQuotaDays = roundVacationValue(values.annualQuotaDays ?? existing?.annualQuotaDays ?? fallback.annualQuotaDays);
     const carriedOverDays = roundVacationValue(values.carriedOverDays ?? existing?.carriedOverDays ?? 0);
     const importedUsedDays = roundVacationValue(values.importedUsedDays ?? existing?.importedUsedDays ?? 0);
+    const advancedDays = roundVacationValue(values.advancedDays ?? existing?.advancedDays ?? 0);
 
     return db.employeeVacationBalance.upsert({
         where: {
@@ -431,12 +440,14 @@ export async function upsertEmployeeVacationBalance(
             year,
             annualQuotaDays,
             carriedOverDays,
-            importedUsedDays
+            importedUsedDays,
+            advancedDays
         },
         update: {
             annualQuotaDays,
             carriedOverDays,
-            importedUsedDays
+            importedUsedDays,
+            advancedDays
         }
     });
 }
