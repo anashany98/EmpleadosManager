@@ -11,10 +11,13 @@ import {
     Gift,
     MapPin,
     Plus,
+    Repeat,
     Search,
     Trash2,
     User,
-    X
+    X,
+    Download,
+    Bell
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { hasModuleAccess, normalizeActor } from '@shared/authz';
@@ -186,11 +189,15 @@ export default function CalendarPage() {
     const [absenceNotes, setAbsenceNotes] = useState('');
     const [savingAbsence, setSavingAbsence] = useState(false);
 
+    const [eventRecurrence, setEventRecurrence] = useState('NONE');
+    const [eventRecurrenceEnd, setEventRecurrenceEnd] = useState('');
+    const [conflicts, setConflicts] = useState<Array<{ department: string; absentCount: number; totalCount: number; percentage: number }>>([]);
+    const [reminders, setReminders] = useState<any[]>([]);
+    const [showReminders, setShowReminders] = useState(false);
+
     useEffect(() => {
         if (canManageCalendarEvents) {
             api.get('/employees?limit=999').then((res: any) => {
-                // The API returns { success, data: { data: [...], meta } } (paginated)
-                // or { success, data: [...] } (flat). Handle both shapes.
                 const raw = res?.data ?? res;
                 const employees = Array.isArray(raw) ? raw : (raw?.data ?? []);
                 if (Array.isArray(employees)) {
@@ -202,6 +209,44 @@ export default function CalendarPage() {
             }).catch(console.error);
         }
     }, [canManageCalendarEvents]);
+
+    // Fetch reminders
+    useEffect(() => {
+        api.get('/calendar/reminders').then((res: any) => {
+            const data = res?.data ?? res;
+            if (Array.isArray(data)) setReminders(data);
+        }).catch(() => {});
+    }, []);
+
+    // Fetch conflicts for each day in current month
+    useEffect(() => {
+        const fetchConflicts = async () => {
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const allConflicts: Array<{ date: string; department: string; absentCount: number; totalCount: number; percentage: number }> = [];
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                try {
+                    const res = await api.get(`/calendar/conflicts?date=${dateStr}`) as any;
+                    const data = res?.data ?? res;
+                    if (data?.conflicts?.length > 0) {
+                        data.conflicts.forEach((c: any) => allConflicts.push({ date: dateStr, ...c }));
+                    }
+                } catch { /* ignore */ }
+            }
+            setConflicts(allConflicts);
+        };
+        void fetchConflicts();
+    }, [currentDate]);
+
+    const getConflictsForDay = useCallback((day: number) => {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return conflicts.filter(c => c.date === dateStr);
+    }, [conflicts, currentDate]);
 
     const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
     const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
@@ -215,6 +260,8 @@ export default function CalendarPage() {
         setEventType('EVENT');
         setEventStartDate(normalizedDate);
         setEventEndDate(normalizedDate);
+        setEventRecurrence('NONE');
+        setEventRecurrenceEnd('');
     };
 
     const fetchData = useCallback(async () => {
@@ -329,7 +376,9 @@ export default function CalendarPage() {
                 endDate: new Date(eventEndDate).toISOString(),
                 type: eventType,
                 allDay: true,
-                isPublic: true
+                isPublic: true,
+                recurrence: eventRecurrence,
+                recurrenceEnd: eventRecurrenceEnd ? new Date(eventRecurrenceEnd).toISOString() : undefined
             });
 
             toast.success(response.message || 'Evento guardado');
@@ -414,7 +463,30 @@ export default function CalendarPage() {
             }
         } catch (error) {
             console.error(error);
-            toast.error('No se pudo generar el enlace de sincronización');
+            toast.error('No se pudo generar el enlace de sincronizacion');
+        }
+    };
+
+    const handleExportIcs = async () => {
+        try {
+            const start = format(startOfMonth(currentDate), 'yyyy-MM-dd');
+            const end = format(endOfMonth(currentDate), 'yyyy-MM-dd');
+            const response = await fetch(`${api.defaults?.baseURL || ''}/calendar/export/ics?start=${start}&end=${end}`, {
+                credentials: 'include'
+            });
+            if (!response.ok) throw new Error('Error al exportar');
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `calendario_${start}.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            toast.success('Calendario exportado');
+        } catch {
+            toast.error('Error al exportar calendario');
         }
     };
 
@@ -433,6 +505,19 @@ export default function CalendarPage() {
                         <button onClick={fetchCalendarLink} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
                             <Clock size={16} className="text-indigo-500" />
                             Sincronizar mis vacaciones
+                        </button>
+                    )}
+
+                    <button onClick={handleExportIcs} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                        <Download size={16} className="text-emerald-500" />
+                        Exportar ICS
+                    </button>
+
+                    {reminders.length > 0 && (
+                        <button onClick={() => setShowReminders(!showReminders)} className="relative inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                            <Bell size={16} className="text-amber-500" />
+                            Recordatorios
+                            <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">{reminders.length}</span>
                         </button>
                     )}
 
@@ -543,7 +628,7 @@ export default function CalendarPage() {
                                     const weekdayPosition = offset + day;
                                     const isWeekend = weekdayPosition % 7 === 0 || weekdayPosition % 7 === 6;
 
-                                    return (
+                                        return (
                                         <button
                                             key={day}
                                             type="button"
@@ -552,6 +637,12 @@ export default function CalendarPage() {
                                         >
                                             <div className="flex items-center justify-between">
                                                 <span className={`text-sm font-bold ${isToday ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-700 dark:text-slate-200'}`}>{day}</span>
+                                                {getConflictsForDay(day).length > 0 && (
+                                                    <span className="flex items-center gap-0.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-600" title={getConflictsForDay(day).map(c => `${c.department}: ${c.percentage}%`).join(', ')}>
+                                                        <AlertTriangle size={10} />
+                                                        {getConflictsForDay(day).length}
+                                                    </span>
+                                                )}
                                                 {canManageCalendarEvents && (
                                                     <span className="rounded-full bg-slate-100 p-1 text-slate-400 dark:bg-slate-800">
                                                         <Plus size={12} />
@@ -584,12 +675,12 @@ export default function CalendarPage() {
                     <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl">
                         <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
                             <CalendarIcon size={18} className="text-indigo-500" />
-                            Próximos eventos
+                            Proximos eventos
                         </h3>
 
                         <div className="mt-4 space-y-3">
                             {upcomingEvents.length === 0 ? (
-                                <p className="text-sm text-slate-400 italic">No hay eventos próximos.</p>
+                                <p className="text-sm text-slate-400 italic">No hay eventos proximos.</p>
                             ) : (
                                 upcomingEvents.map((eventItem) => {
                                     const appearance = EVENT_APPEARANCE[eventItem.type] || EVENT_APPEARANCE.event;
@@ -621,6 +712,28 @@ export default function CalendarPage() {
                             )}
                         </div>
                     </div>
+
+                    {reminders.length > 0 && (
+                        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl">
+                            <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                <Bell size={18} className="text-amber-500" />
+                                Recordatorios
+                            </h3>
+                            <div className="mt-4 space-y-2">
+                                {reminders.slice(0, 5).map((r, idx) => (
+                                    <div key={idx} className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20">
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                                            <Bell size={14} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium text-slate-900 truncate">{r.title}</p>
+                                            <p className="text-xs text-slate-500">{r.daysUntil === 0 ? 'Hoy' : r.daysUntil === 1 ? 'Manana' : `En ${r.daysUntil} dias`}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl">
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Leyenda</h3>
@@ -779,13 +892,37 @@ export default function CalendarPage() {
                                 </div>
 
                                 <div>
-                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Descripción</label>
+                                    <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Descripcion</label>
                                     <textarea
                                         value={eventDescription}
                                         onChange={(inputEvent) => setEventDescription(inputEvent.target.value)}
                                         className="h-28 w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-800"
-                                        placeholder="Información adicional para el equipo"
+                                        placeholder="Informacion adicional para el equipo"
                                     />
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div>
+                                        <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Repetir</label>
+                                        <div className="relative">
+                                            <Repeat size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                                            <select
+                                                value={eventRecurrence}
+                                                onChange={(e) => setEventRecurrence(e.target.value)}
+                                                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-medium focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                                            >
+                                                <option value="NONE">No repetir</option>
+                                                <option value="WEEKLY">Semanal</option>
+                                                <option value="MONTHLY">Mensual</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    {eventRecurrence !== 'NONE' && (
+                                        <div>
+                                            <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Repetir hasta</label>
+                                            <input type="date" value={eventRecurrenceEnd} onChange={(e) => setEventRecurrenceEnd(e.target.value)} className="w-full rounded-xl bg-slate-50 px-4 py-3 text-sm font-medium outline-none transition focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:bg-slate-800" />
+                                        </div>
+                                    )}
                                 </div>
 
                                 <button type="submit" disabled={savingEvent} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50">

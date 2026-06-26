@@ -21,6 +21,15 @@ router.get('/unified', protect, CalendarController.getUnifiedEvents);
 // Get birthdays for month
 router.get('/birthdays', protect, CalendarController.getBirthdays);
 
+// Conflict detection (same department)
+router.get('/conflicts', protect, CalendarController.getConflicts);
+
+// ICS export
+router.get('/export/ics', protect, CalendarController.exportIcs);
+
+// Reminders for upcoming events
+router.get('/reminders', protect, CalendarController.getReminders);
+
 // CRUD operations for calendar events (admin/HR only)
 router.get('/events', protect, CalendarController.getAllEvents);
 router.post('/events', protect, CalendarController.createEvent);
