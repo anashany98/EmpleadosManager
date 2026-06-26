@@ -30,13 +30,7 @@ export function PropertiesPanel({ element, onUpdate, onDelete }: PropertiesPanel
                 <span className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-indigo-600">
                     {element.type}
                 </span>
-                <button
-                    type="button"
-                    onClick={() => onDelete(element.id)}
-                    className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                    title="Eliminar"
-                    data-testid="delete-element"
-                >
+                <button type="button" onClick={() => onDelete(element.id)} className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500" title="Eliminar" data-testid="delete-element">
                     <Trash2 size={14} />
                 </button>
             </div>
@@ -51,10 +45,8 @@ export function PropertiesPanel({ element, onUpdate, onDelete }: PropertiesPanel
                             data-testid="variable-select"
                         >
                             <option value="">Seleccionar...</option>
-                            {AVAILABLE_VARIABLES.map((variable) => (
-                                <option key={variable} value={variable}>
-                                    {variable}
-                                </option>
+                            {AVAILABLE_VARIABLES.map((v) => (
+                                <option key={v} value={v}>{v}</option>
                             ))}
                         </select>
                     ) : (
@@ -69,14 +61,14 @@ export function PropertiesPanel({ element, onUpdate, onDelete }: PropertiesPanel
                 </FieldGroup>
             )}
 
-            <FieldGroup label="Posición">
+            <FieldGroup label="Posicion">
                 <div className="grid grid-cols-2 gap-2">
                     <NumberField label="X" value={Math.round(element.x)} onChange={(v) => onUpdate(element.id, { x: v })} />
                     <NumberField label="Y" value={Math.round(element.y)} onChange={(v) => onUpdate(element.id, { y: v })} />
                 </div>
             </FieldGroup>
 
-            <FieldGroup label="Tamaño">
+            <FieldGroup label="Tamano">
                 <div className="grid grid-cols-2 gap-2">
                     <NumberField label="Ancho" value={element.width} onChange={(v) => onUpdate(element.id, { width: v })} />
                     <NumberField label="Alto" value={element.height} onChange={(v) => onUpdate(element.id, { height: v })} />
@@ -87,37 +79,19 @@ export function PropertiesPanel({ element, onUpdate, onDelete }: PropertiesPanel
                 <>
                     <FieldGroup label="Fuente">
                         <div className="flex items-center gap-2">
-                            <NumberField
-                                label="Tamaño"
-                                value={element.fontSize || 16}
-                                onChange={(v) => onUpdate(element.id, { fontSize: v })}
-                                compact
-                            />
+                            <NumberField label="Tamano" value={element.fontSize || 16} onChange={(v) => onUpdate(element.id, { fontSize: v })} compact />
                             <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-                                <button
-                                    type="button"
-                                    onClick={() => onUpdate(element.id, { textAlign: 'left' })}
-                                    className={`rounded-md p-1.5 transition-colors ${element.textAlign === 'left' ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                                    title="Izquierda"
-                                >
-                                    <AlignLeft size={13} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => onUpdate(element.id, { textAlign: 'center' })}
-                                    className={`rounded-md p-1.5 transition-colors ${element.textAlign === 'center' ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                                    title="Centro"
-                                >
-                                    <AlignCenter size={13} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => onUpdate(element.id, { textAlign: 'right' })}
-                                    className={`rounded-md p-1.5 transition-colors ${element.textAlign === 'right' ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                                    title="Derecha"
-                                >
-                                    <AlignRight size={13} />
-                                </button>
+                                {(['left', 'center', 'right'] as const).map((align) => (
+                                    <button
+                                        key={align}
+                                        type="button"
+                                        onClick={() => onUpdate(element.id, { textAlign: align })}
+                                        className={`rounded-md p-1.5 transition-colors ${element.textAlign === align ? 'bg-indigo-100 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+                                        title={align === 'left' ? 'Izquierda' : align === 'center' ? 'Centro' : 'Derecha'}
+                                    >
+                                        {align === 'left' ? <AlignLeft size={13} /> : align === 'center' ? <AlignCenter size={13} /> : <AlignRight size={13} />}
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     </FieldGroup>
@@ -130,11 +104,7 @@ export function PropertiesPanel({ element, onUpdate, onDelete }: PropertiesPanel
                             >
                                 B
                             </button>
-                            <ColorField
-                                label="Color"
-                                value={element.color || '#1e293b'}
-                                onChange={(v) => onUpdate(element.id, { color: v })}
-                            />
+                            <ColorField label="Color" value={element.color || '#1e293b'} onChange={(v) => onUpdate(element.id, { color: v })} />
                         </div>
                     </FieldGroup>
                 </>
@@ -143,32 +113,16 @@ export function PropertiesPanel({ element, onUpdate, onDelete }: PropertiesPanel
             {element.type === 'box' && (
                 <FieldGroup label="Apariencia">
                     <div className="space-y-2">
-                        <ColorField
-                            label="Relleno"
-                            value={element.backgroundColor || '#ffffff'}
-                            onChange={(v) => onUpdate(element.id, { backgroundColor: v })}
-                        />
-                        <ColorField
-                            label="Borde"
-                            value={element.borderColor || '#1e293b'}
-                            onChange={(v) => onUpdate(element.id, { borderColor: v })}
-                        />
-                        <NumberField
-                            label="Grosor borde"
-                            value={element.borderWidth || 1}
-                            onChange={(v) => onUpdate(element.id, { borderWidth: v })}
-                        />
+                        <ColorField label="Relleno" value={element.backgroundColor || '#ffffff'} onChange={(v) => onUpdate(element.id, { backgroundColor: v })} />
+                        <ColorField label="Borde" value={element.borderColor || '#1e293b'} onChange={(v) => onUpdate(element.id, { borderColor: v })} />
+                        <NumberField label="Grosor borde" value={element.borderWidth || 1} onChange={(v) => onUpdate(element.id, { borderWidth: v })} />
                     </div>
                 </FieldGroup>
             )}
 
             {element.type === 'line' && (
                 <FieldGroup label="Color">
-                    <ColorField
-                        label="Línea"
-                        value={element.borderColor || element.color || '#1e293b'}
-                        onChange={(v) => onUpdate(element.id, { borderColor: v, color: v })}
-                    />
+                    <ColorField label="Linea" value={element.borderColor || element.color || '#1e293b'} onChange={(v) => onUpdate(element.id, { borderColor: v, color: v })} />
                 </FieldGroup>
             )}
         </div>
@@ -188,12 +142,7 @@ function NumberField({ label, value, onChange, compact }: { label: string; value
     return (
         <div className={compact ? 'flex-1' : ''}>
             {!compact && <label className="mb-0.5 block text-[10px] font-medium text-slate-500">{label}</label>}
-            <input
-                type="number"
-                value={value}
-                onChange={(e) => onChange(Number(e.target.value))}
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
+            <input type="number" value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
         </div>
     );
 }
@@ -201,18 +150,8 @@ function NumberField({ label, value, onChange, compact }: { label: string; value
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
     return (
         <div className="flex items-center gap-2">
-            <input
-                type="color"
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                className="h-7 w-7 cursor-pointer rounded-md border border-slate-200"
-            />
-            <input
-                type="text"
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-[11px] text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
+            <input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="h-7 w-7 cursor-pointer rounded-md border border-slate-200" />
+            <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 font-mono text-[11px] text-slate-600 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500" />
         </div>
     );
 }

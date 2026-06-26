@@ -2,18 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import type { CanvasElement } from './types';
 
-interface CanvasStageProps {
-    elements: CanvasElement[];
-    selectedId: string | null;
-    zoom: number;
-    showGrid: boolean;
-    logoUrl: string | null;
-    onSelectElement: (id: string | null) => void;
-    onMoveElement: (id: string, x: number, y: number) => void;
-    onResizeElement: (id: string, width: number, height: number, x?: number, y?: number) => void;
-    onMoveStart?: () => void;
-    onMoveEnd?: () => void;
-    innerRef?: React.MutableRefObject<HTMLDivElement | null>;
+const SNAP_GRID = 10;
+const SNAP_THRESHOLD = 5;
+
+function snap(value: number, gridSize: number, enabled: boolean): number {
+    if (!enabled) return value;
+    const half = gridSize / 2;
+    return Math.round((value + half) / gridSize) * gridSize - half;
 }
 
 interface DragState {
@@ -29,85 +24,56 @@ interface DragState {
     originHeight?: number;
 }
 
-const SNAP_THRESHOLD = 5;
-
-function snapToGrid(value: number, gridSize: number, enabled: boolean): number {
-    if (!enabled) return value;
-    const half = gridSize / 2;
-    return Math.round((value + half) / gridSize) * gridSize - half;
+interface CanvasStageProps {
+    elements: CanvasElement[];
+    selectedId: string | null;
+    zoom: number;
+    showGrid: boolean;
+    logoUrl: string | null;
+    onSelectElement: (id: string | null) => void;
+    onMoveElement: (id: string, x: number, y: number) => void;
+    onResizeElement: (id: string, width: number, height: number, x?: number, y?: number) => void;
+    onMoveStart?: () => void;
+    onMoveEnd?: () => void;
 }
 
 export function CanvasStage({
-    elements,
-    selectedId,
-    zoom,
-    showGrid,
-    logoUrl,
-    onSelectElement,
-    onMoveElement,
-    onResizeElement,
-    onMoveStart,
-    onMoveEnd,
-    innerRef
+    elements, selectedId, zoom, showGrid, logoUrl,
+    onSelectElement, onMoveElement, onResizeElement, onMoveStart, onMoveEnd
 }: CanvasStageProps) {
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const dragStateRef = useRef<DragState | null>(null);
+    const dragRef = useRef<DragState | null>(null);
     const [isDragging, setIsDragging] = useState(false);
-
-    const setRefs = useCallback(
-        (node: HTMLDivElement | null) => {
-            containerRef.current = node;
-            if (innerRef) innerRef.current = node;
-        },
-        [innerRef]
-    );
 
     useEffect(() => {
         const handlePointerMove = (event: PointerEvent) => {
-            const drag = dragStateRef.current;
+            const drag = dragRef.current;
             if (!drag) return;
-
-            const zoomFactor = drag.zoom / 100;
-            const deltaX = (event.clientX - drag.startX) / zoomFactor;
-            const deltaY = (event.clientY - drag.startY) / zoomFactor;
+            const factor = drag.zoom / 100;
+            const dx = (event.clientX - drag.startX) / factor;
+            const dy = (event.clientY - drag.startY) / factor;
 
             if (drag.mode === 'move') {
-                let newX = drag.originX + deltaX;
-                let newY = drag.originY + deltaY;
-                newX = snapToGrid(newX, 10, showGrid);
-                newY = snapToGrid(newY, 10, showGrid);
-                onMoveElement(drag.id, newX, newY);
+                onMoveElement(drag.id, snap(drag.originX + dx, SNAP_GRID, showGrid), snap(drag.originY + dy, SNAP_GRID, showGrid));
             } else if (drag.mode === 'resize' && drag.handle) {
-                let newW = drag.originWidth || 0;
-                let newH = drag.originHeight || 0;
-                let newX = drag.originX;
-                let newY = drag.originY;
-
+                let w = drag.originWidth || 0;
+                let h = drag.originHeight || 0;
+                let x = drag.originX;
+                let y = drag.originY;
                 const handle = drag.handle;
-                if (handle.includes('e')) newW = Math.max(20, drag.originWidth! + deltaX);
-                if (handle.includes('w')) {
-                    newW = Math.max(20, drag.originWidth! - deltaX);
-                    newX = drag.originX + (drag.originWidth! - newW);
-                }
-                if (handle.includes('s')) newH = Math.max(10, drag.originHeight! + deltaY);
-                if (handle.includes('n')) {
-                    newH = Math.max(10, drag.originHeight! - deltaY);
-                    newY = drag.originY + (drag.originHeight! - newH);
-                }
 
-                newW = snapToGrid(newW, 10, showGrid);
-                newH = snapToGrid(newH, 10, showGrid);
+                if (handle.includes('e')) w = Math.max(20, drag.originWidth! + dx);
+                if (handle.includes('w')) { w = Math.max(20, drag.originWidth! - dx); x = drag.originX + (drag.originWidth! - w); }
+                if (handle.includes('s')) h = Math.max(10, drag.originHeight! + dy);
+                if (handle.includes('n')) { h = Math.max(10, drag.originHeight! - dy); y = drag.originY + (drag.originHeight! - h); }
 
-                onResizeElement(drag.id, newW, newH, newX, newY);
+                onResizeElement(drag.id, snap(w, SNAP_GRID, showGrid), snap(h, SNAP_GRID, showGrid), x, y);
             }
         };
 
         const handlePointerUp = () => {
-            if (dragStateRef.current) {
-                onMoveEnd?.();
-                setIsDragging(false);
-            }
-            dragStateRef.current = null;
+            if (dragRef.current) { onMoveEnd?.(); setIsDragging(false); }
+            dragRef.current = null;
         };
 
         window.addEventListener('pointermove', handlePointerMove);
@@ -120,40 +86,19 @@ export function CanvasStage({
         };
     }, [onMoveElement, onResizeElement, onMoveEnd, showGrid]);
 
-    const handleElementPointerDown = (element: CanvasElement, event: React.PointerEvent<HTMLDivElement>) => {
+    const startDrag = useCallback((element: CanvasElement, event: React.PointerEvent<HTMLDivElement>, mode: 'move' | 'resize', handle?: string) => {
         event.stopPropagation();
         onSelectElement(element.id);
-        onMoveStart?.();
+        if (mode === 'move') onMoveStart?.();
+        if (mode === 'resize') { event.preventDefault(); onMoveStart?.(); }
         setIsDragging(true);
-        dragStateRef.current = {
-            id: element.id,
-            startX: event.clientX,
-            startY: event.clientY,
-            originX: element.x,
-            originY: element.y,
-            zoom,
-            mode: 'move'
+        dragRef.current = {
+            id: element.id, startX: event.clientX, startY: event.clientY,
+            originX: element.x, originY: element.y, zoom, mode, handle,
+            originWidth: mode === 'resize' ? element.width : undefined,
+            originHeight: mode === 'resize' ? element.height : undefined
         };
-    };
-
-    const handleResizePointerDown = (element: CanvasElement, handle: string, event: React.PointerEvent<HTMLDivElement>) => {
-        event.stopPropagation();
-        event.preventDefault();
-        onMoveStart?.();
-        setIsDragging(true);
-        dragStateRef.current = {
-            id: element.id,
-            startX: event.clientX,
-            startY: event.clientY,
-            originX: element.x,
-            originY: element.y,
-            zoom,
-            mode: 'resize',
-            handle,
-            originWidth: element.width,
-            originHeight: element.height
-        };
-    };
+    }, [onSelectElement, onMoveStart, zoom]);
 
     const selectedElement = elements.find((el) => el.id === selectedId);
 
@@ -167,22 +112,15 @@ export function CanvasStage({
                 }
             }}
         >
-            <div
-                ref={setRefs}
-                className="min-h-full p-8"
-                data-canvas="true"
-            >
+            <div ref={containerRef} className="min-h-full p-8" data-canvas="true">
                 <div
                     className="relative mx-auto origin-top-left bg-white shadow-2xl"
                     data-canvas="true"
                     style={{
-                        width: '210mm',
-                        height: '297mm',
+                        width: '210mm', height: '297mm',
                         transform: `scale(${zoom / 100})`,
                         transformOrigin: 'top left',
-                        backgroundImage: showGrid
-                            ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)'
-                            : undefined,
+                        backgroundImage: showGrid ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)' : undefined,
                         backgroundSize: '20px 20px'
                     }}
                     onClick={(e) => {
@@ -190,26 +128,22 @@ export function CanvasStage({
                     }}
                 >
                     {logoUrl && (
-                        <div
-                            className="absolute flex items-center justify-center overflow-hidden rounded border border-dashed border-slate-200"
-                            style={{ left: 40, top: 40, width: 100, height: 60 }}
-                        >
+                        <div className="absolute flex items-center justify-center overflow-hidden rounded border border-dashed border-slate-200" style={{ left: 40, top: 40, width: 100, height: 60 }}>
                             <img src={logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
                         </div>
                     )}
+
                     {elements.map((element) => (
                         <CanvasItem
                             key={element.id}
                             element={element}
                             selected={selectedId === element.id}
-                            onPointerDown={(e) => handleElementPointerDown(element, e)}
-                            onResizePointerDown={(handle, e) => handleResizePointerDown(element, handle, e)}
+                            onPointerDown={(e) => startDrag(element, e, 'move')}
+                            onResizePointerDown={(handle, e) => startDrag(element, e, 'resize', handle)}
                         />
                     ))}
 
-                    {selectedElement && (
-                        <SelectionOverlay element={selectedElement} />
-                    )}
+                    {selectedElement && <SelectionOverlay element={selectedElement} />}
                 </div>
             </div>
         </main>
@@ -217,74 +151,52 @@ export function CanvasStage({
 }
 
 function SelectionOverlay({ element }: { element: CanvasElement }) {
-    const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
-    const handlePositions: Record<string, { top?: string; bottom?: string; left?: string; right?: string; cursor: string }> = {
-        nw: { top: '-4px', left: '-4px', cursor: 'nwse-resize' },
-        ne: { top: '-4px', right: '-4px', cursor: 'nesw-resize' },
-        sw: { bottom: '-4px', left: '-4px', cursor: 'nesw-resize' },
-        se: { bottom: '-4px', right: '-4px', cursor: 'nwse-resize' },
-        n: { top: '-4px', left: '50%', cursor: 'ns-resize' },
-        s: { bottom: '-4px', left: '50%', cursor: 'ns-resize' },
-        e: { top: '50%', right: '-4px', cursor: 'ew-resize' },
-        w: { top: '50%', left: '-4px', cursor: 'ew-resize' },
+    const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'] as const;
+    const positions: Record<string, React.CSSProperties> = {
+        nw: { top: -4, left: -4, cursor: 'nwse-resize' },
+        ne: { top: -4, right: -4, cursor: 'nesw-resize' },
+        sw: { bottom: -4, left: -4, cursor: 'nesw-resize' },
+        se: { bottom: -4, right: -4, cursor: 'nwse-resize' },
+        n: { top: -4, left: '50%', cursor: 'ns-resize' },
+        s: { bottom: -4, left: '50%', cursor: 'ns-resize' },
+        e: { top: '50%', right: -4, cursor: 'ew-resize' },
+        w: { top: '50%', left: -4, cursor: 'ew-resize' }
     };
 
     return (
-        <div
-            className="pointer-events-none absolute border-2 border-blue-500"
-            style={{
-                left: element.x - 1,
-                top: element.y - 1,
-                width: element.width + 2,
-                height: element.height + 2,
-            }}
-        >
-            {handles.map((handle) => {
-                const pos = handlePositions[handle];
-                return (
-                    <div
-                        key={handle}
-                        className="pointer-events-auto absolute z-10"
-                        style={{
-                            ...pos,
-                            width: '8px',
-                            height: '8px',
-                            backgroundColor: '#3b82f6',
-                            border: '1.5px solid white',
-                            borderRadius: '2px',
-                            cursor: pos.cursor,
-                            transform: handle.length === 1 ? 'translate(-50%, -50%)' : undefined,
-                        }}
-                    />
-                );
-            })}
+        <div className="pointer-events-none absolute border-2 border-blue-500" style={{ left: element.x - 1, top: element.y - 1, width: element.width + 2, height: element.height + 2 }}>
+            {handles.map((handle) => (
+                <div
+                    key={handle}
+                    className="pointer-events-auto absolute z-10"
+                    style={{
+                        ...positions[handle],
+                        width: 8, height: 8,
+                        backgroundColor: '#3b82f6',
+                        border: '1.5px solid white',
+                        borderRadius: 2,
+                        transform: handle.length === 1 ? 'translate(-50%, -50%)' : undefined
+                    }}
+                />
+            ))}
         </div>
     );
 }
 
 function CanvasItem({
-    element,
-    selected,
-    onPointerDown,
-    onResizePointerDown
+    element, selected, onPointerDown, onResizePointerDown
 }: {
     element: CanvasElement;
     selected: boolean;
-    onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
-    onResizePointerDown: (handle: string, event: React.PointerEvent<HTMLDivElement>) => void;
+    onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+    onResizePointerDown: (handle: string, e: React.PointerEvent<HTMLDivElement>) => void;
 }) {
     if (element.type === 'line') {
         return (
             <div
                 onPointerDown={onPointerDown}
                 className="absolute cursor-grab active:cursor-grabbing"
-                style={{
-                    left: element.x,
-                    top: element.y,
-                    width: element.width,
-                    height: Math.max(2, element.height),
-                    backgroundColor: element.borderColor || element.color || '#1e293b'
-                }}
+                style={{ left: element.x, top: element.y, width: element.width, height: Math.max(2, element.height), backgroundColor: element.borderColor || element.color || '#1e293b' }}
                 data-testid={`canvas-element-${element.id}`}
             />
         );
@@ -295,22 +207,13 @@ function CanvasItem({
             <div
                 onPointerDown={onPointerDown}
                 className="absolute flex cursor-grab items-center justify-center overflow-hidden active:cursor-grabbing"
-                style={{
-                    left: element.x,
-                    top: element.y,
-                    width: element.width,
-                    height: element.height,
-                    backgroundColor: element.backgroundColor,
-                    border: selected ? undefined : '1px solid transparent'
-                }}
+                style={{ left: element.x, top: element.y, width: element.width, height: element.height, backgroundColor: element.backgroundColor, border: selected ? undefined : '1px solid transparent' }}
                 data-testid={`canvas-element-${element.id}`}
             >
                 {element.src ? (
                     <img src={element.src} alt="" className="h-full w-full object-cover" />
                 ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400">
-                        <ImageIcon size={32} />
-                    </div>
+                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-slate-400"><ImageIcon size={32} /></div>
                 )}
             </div>
         );
@@ -322,27 +225,17 @@ function CanvasItem({
             onPointerDown={onPointerDown}
             className="absolute flex cursor-grab active:cursor-grabbing"
             style={{
-                left: element.x,
-                top: element.y,
-                width: element.width,
-                height: element.height,
+                left: element.x, top: element.y, width: element.width, height: element.height,
                 fontSize: element.fontSize,
                 fontWeight: element.fontWeight as 'normal' | 'bold' | undefined,
-                color: element.color,
-                backgroundColor: element.backgroundColor,
+                color: element.color, backgroundColor: element.backgroundColor,
                 borderColor: element.borderColor,
                 borderWidth: element.type === 'box' && element.borderWidth ? `${element.borderWidth}px` : undefined,
                 borderStyle: element.type === 'box' ? 'solid' : undefined,
                 borderRadius: element.type === 'box' ? '0px' : undefined,
-                alignItems: 'center',
-                padding: '0 8px',
+                alignItems: 'center', padding: '0 8px',
                 textAlign: element.textAlign || 'left',
-                justifyContent:
-                    element.textAlign === 'center'
-                        ? 'center'
-                        : element.textAlign === 'right'
-                          ? 'flex-end'
-                          : 'flex-start',
+                justifyContent: element.textAlign === 'center' ? 'center' : element.textAlign === 'right' ? 'flex-end' : 'flex-start',
                 userSelect: 'none'
             }}
             data-testid={`canvas-element-${element.id}`}

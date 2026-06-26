@@ -3,6 +3,9 @@ import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { resolveTemplateContent, EMPTY_PREVIEW_CONTEXT } from '../templateVariables';
 import type { CanvasElement } from './types';
 
+const A4_WIDTH = 794;
+const A4_HEIGHT = 1123;
+
 interface PreviewPaneProps {
     elements: CanvasElement[];
     variableContext: Record<string, unknown>;
@@ -20,12 +23,7 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
 
     if (collapsed) {
         return (
-            <button
-                type="button"
-                onClick={() => setCollapsed(false)}
-                className="flex h-full w-10 items-center justify-center border-l border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
-                title="Mostrar previsualización"
-            >
+            <button type="button" onClick={() => setCollapsed(false)} className="flex h-full w-10 items-center justify-center border-l border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors" title="Mostrar previsualizacion">
                 <ChevronLeft size={16} />
             </button>
         );
@@ -38,11 +36,7 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
                     <Eye size={13} className="text-slate-400" />
                     <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Vista previa</span>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => setCollapsed(true)}
-                    className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                >
+                <button type="button" onClick={() => setCollapsed(true)} className="rounded p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors">
                     <ChevronRight size={14} />
                 </button>
             </div>
@@ -50,16 +44,22 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
                 <div
                     className="relative mx-auto origin-top bg-white shadow-md rounded-sm overflow-hidden"
                     style={{
-                        width: '210mm',
-                        maxWidth: '100%',
-                        aspectRatio: '210 / 297',
-                        backgroundImage: showGrid
-                            ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)'
-                            : undefined,
+                        width: '210mm', maxWidth: '100%', aspectRatio: '210 / 297',
+                        backgroundImage: showGrid ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)' : undefined,
                         backgroundSize: '20px 20px'
                     }}
                 >
-                    <PreviewElements elements={elements} context={context} />
+                    {elements.length === 0 && (
+                        <div className="absolute inset-0 flex items-center justify-center text-slate-300">
+                            <div className="text-center">
+                                <EyeOff size={28} className="mx-auto mb-1 opacity-50" />
+                                <p className="text-[10px]">Vacio</p>
+                            </div>
+                        </div>
+                    )}
+                    {elements.map((element) => (
+                        <PreviewElement key={element.id} element={element} context={context} />
+                    ))}
                 </div>
                 {!employeeId && (
                     <p className="mt-2 px-1 text-[10px] text-slate-400 leading-tight">
@@ -71,72 +71,26 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
     );
 }
 
-function PreviewElements({
-    elements,
-    context
-}: {
-    elements: CanvasElement[];
-    context: Record<string, unknown>;
-}) {
-    return (
-        <>
-            {elements.length === 0 && (
-                <div className="absolute inset-0 flex items-center justify-center text-slate-300">
-                    <div className="text-center">
-                        <EyeOff size={28} className="mx-auto mb-1 opacity-50" />
-                        <p className="text-[10px]">Vacío</p>
-                    </div>
-                </div>
-            )}
-            {elements.map((element) => (
-                <PreviewElement key={element.id} element={element} context={context} />
-            ))}
-        </>
-    );
-}
-
-function PreviewElement({
-    element,
-    context
-}: {
-    element: CanvasElement;
-    context: Record<string, unknown>;
-}) {
+function PreviewElement({ element, context }: { element: CanvasElement; context: Record<string, unknown> }) {
     const isTextLike = element.type === 'text' || element.type === 'variable';
+    const pctX = `${(element.x / A4_WIDTH) * 100}%`;
+    const pctY = `${(element.y / A4_HEIGHT) * 100}%`;
+    const pctW = `${(element.width / A4_WIDTH) * 100}%`;
+    const pctH = `${(element.height / A4_HEIGHT) * 100}%`;
 
     if (element.type === 'line') {
         return (
-            <div
-                style={{
-                    position: 'absolute',
-                    left: `${(element.x / 794) * 100}%`,
-                    top: `${(element.y / 1123) * 100}%`,
-                    width: `${(element.width / 794) * 100}%`,
-                    height: Math.max(1, element.height),
-                    backgroundColor: element.borderColor || element.color || '#1e293b'
-                }}
-            />
+            <div style={{ position: 'absolute', left: pctX, top: pctY, width: pctW, height: Math.max(1, element.height), backgroundColor: element.borderColor || element.color || '#1e293b' }} />
         );
     }
 
     if (element.type === 'image') {
         return (
-            <div
-                style={{
-                    position: 'absolute',
-                    left: `${(element.x / 794) * 100}%`,
-                    top: `${(element.y / 1123) * 100}%`,
-                    width: `${(element.width / 794) * 100}%`,
-                    height: `${(element.height / 1123) * 100}%`,
-                    overflow: 'hidden'
-                }}
-            >
+            <div style={{ position: 'absolute', left: pctX, top: pctY, width: pctW, height: pctH, overflow: 'hidden' }}>
                 {element.src ? (
                     <img src={element.src} alt="" className="h-full w-full object-cover" />
                 ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-[8px] text-slate-400">
-                        Imagen
-                    </div>
+                    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-[8px] text-slate-400">Imagen</div>
                 )}
             </div>
         );
@@ -145,30 +99,17 @@ function PreviewElement({
     return (
         <div
             style={{
-                position: 'absolute',
-                left: `${(element.x / 794) * 100}%`,
-                top: `${(element.y / 1123) * 100}%`,
-                width: `${(element.width / 794) * 100}%`,
-                height: `${(element.height / 1123) * 100}%`,
+                position: 'absolute', left: pctX, top: pctY, width: pctW, height: pctH,
                 fontSize: element.fontSize,
                 fontWeight: element.fontWeight as 'normal' | 'bold' | undefined,
-                color: element.color,
-                backgroundColor: element.backgroundColor,
+                color: element.color, backgroundColor: element.backgroundColor,
                 borderColor: element.borderColor,
                 borderWidth: element.type === 'box' && element.borderWidth ? `${element.borderWidth}px` : undefined,
                 borderStyle: element.type === 'box' ? 'solid' : undefined,
-                display: 'flex',
-                alignItems: 'center',
-                padding: '0 4px',
+                display: 'flex', alignItems: 'center', padding: '0 4px',
                 textAlign: element.textAlign || 'left',
-                justifyContent:
-                    element.textAlign === 'center'
-                        ? 'center'
-                        : element.textAlign === 'right'
-                          ? 'flex-end'
-                          : 'flex-start',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word'
+                justifyContent: element.textAlign === 'center' ? 'center' : element.textAlign === 'right' ? 'flex-end' : 'flex-start',
+                whiteSpace: 'pre-wrap', wordBreak: 'break-word'
             }}
         >
             {isTextLike ? resolveTemplateContent(element.content, context) : ''}
