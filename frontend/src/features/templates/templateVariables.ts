@@ -12,27 +12,13 @@ const matchVariables = (content: string): RegExpExecArray[] => {
     return matches;
 };
 
-/**
- * Resolves `{{dot.path}}` placeholders against a context object.
- *
- * Behaviour matches the existing renderer in `templateBases.ts` and
- * `CanvaEditor.tsx`: missing values render as the literal `{{path}}` so
- * editors immediately spot broken references.
- */
-export function resolveTemplateContent(
-    content: string,
-    context: Record<string, unknown>
-): string {
+export function resolveTemplateContent(content: string, context: Record<string, unknown>): string {
     if (!content) return '';
     const matches = matchVariables(content);
     if (matches.length === 0) return content;
 
     const lookup = (key: string): unknown => {
-        // 1) Try the flat key exactly as written (`empleado.nombreCompleto`).
-        if (Object.prototype.hasOwnProperty.call(context, key)) {
-            return context[key];
-        }
-        // 2) Walk nested path (`empleado.nombreCompleto` -> context.empleado.nombreCompleto).
+        if (Object.prototype.hasOwnProperty.call(context, key)) return context[key];
         const segments = key.split('.');
         let current: unknown = context;
         for (const segment of segments) {
@@ -49,23 +35,13 @@ export function resolveTemplateContent(
     let cursor = 0;
     for (const match of matches) {
         result += content.slice(cursor, match.index);
-        const key = match[1];
-        const value = lookup(key);
-        if (value !== undefined && value !== null) {
-            result += String(value);
-        } else {
-            result += `{{${key}}}`;
-        }
+        const value = lookup(match[1]);
+        result += (value !== undefined && value !== null) ? String(value) : `{{${match[1]}}}`;
         cursor = match.index + match[0].length;
     }
-    result += content.slice(cursor);
-    return result;
+    return result + content.slice(cursor);
 }
 
-/**
- * Returns the list of variables referenced in a template content string.
- * Each entry is the raw `dot.path` (without the curly braces).
- */
 export function extractTemplateVariables(content: string): string[] {
     if (!content) return [];
     const matches = matchVariables(content);
@@ -74,23 +50,13 @@ export function extractTemplateVariables(content: string): string[] {
     return Array.from(unique);
 }
 
-/**
- * Splits the variables referenced in `content` into known and unknown,
- * so the UI can highlight broken references without breaking the render.
- */
-export function partitionVariables(content: string): {
-    known: string[];
-    unknown: string[];
-} {
+export function partitionVariables(content: string): { known: string[]; unknown: string[] } {
     const all = extractTemplateVariables(content);
     const known: string[] = [];
     const unknown: string[] = [];
-    all.forEach((variable) => {
-        if ((AVAILABLE_VARIABLES as readonly string[]).includes(variable)) {
-            known.push(variable);
-        } else {
-            unknown.push(variable);
-        }
+    all.forEach((v) => {
+        if ((AVAILABLE_VARIABLES as readonly string[]).includes(v)) known.push(v);
+        else unknown.push(v);
     });
     return { known, unknown };
 }
@@ -99,11 +65,6 @@ export function isKnownVariable(variable: string): boolean {
     return (AVAILABLE_VARIABLES as readonly string[]).includes(variable);
 }
 
-/**
- * Stable context used by the editor preview when the user has not yet
- * picked an employee. Values are intentionally obvious placeholders so
- * the editor can spot what is and is not bound.
- */
 export const EMPTY_PREVIEW_CONTEXT: Record<string, string> = {
     'empleado.nombreCompleto': 'Nombre Apellido Apellido',
     'empleado.nombre': 'Nombre',
@@ -117,8 +78,8 @@ export const EMPTY_PREVIEW_CONTEXT: Record<string, string> = {
     'empleado.tipoContrato': 'Indefinido',
     'empleado.nss': '00 0000000000',
     'empleado.iban': 'ES00 0000 0000 0000 0000 0000',
-    'empleado.salarioBrutoAnual': '24.000,00 €',
-    'empleado.salarioBrutoMensual': '2.000,00 €',
+    'empleado.salarioBrutoAnual': '24.000,00 EUR',
+    'empleado.salarioBrutoMensual': '2.000,00 EUR',
     'empresa.nombre': 'Empresa Demo S.L.',
     'empresa.cif': 'B12345678',
     'empresa.representanteLegal': 'Representante Legal',
