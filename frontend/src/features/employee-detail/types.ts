@@ -88,6 +88,7 @@ export interface EmployeeVacationBalanceSummary {
     annualQuotaDays: number;
     carriedOverDays: number;
     importedUsedDays: number;
+    advancedDays: number;
     totalEntitledDays: number;
     approvedUsedDays: number;
     pendingDays: number;

@@ -47,7 +47,8 @@ export default function AbsenceTypesPage() {
     const fetchTypes = useCallback(async () => {
         try {
             const res = await api.get('/absence-types');
-            setTypes(res.data.data);
+            const list = Array.isArray(res.data) ? res.data : res.data?.data ?? [];
+            setTypes(list);
         } catch {
             toast.error('Error al cargar los tipos de ausencia');
         } finally {

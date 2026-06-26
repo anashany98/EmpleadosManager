@@ -37,6 +37,7 @@ type VacationBalanceFormState = {
     annualQuotaDays: string;
     carriedOverDays: string;
     importedUsedDays: string;
+    advancedDays: string;
 };
 
 function extractResponseData<T>(response: T | ApiResponse<T>): T | undefined {
@@ -50,7 +51,8 @@ function toFormState(balance?: EmployeeVacationBalanceSummary | null): VacationB
     return {
         annualQuotaDays: balance ? String(balance.annualQuotaDays) : '30',
         carriedOverDays: balance ? String(balance.carriedOverDays) : '0',
-        importedUsedDays: balance ? String(balance.importedUsedDays) : '0'
+        importedUsedDays: balance ? String(balance.importedUsedDays) : '0',
+        advancedDays: balance ? String(balance.advancedDays) : '0'
     };
 }
 
@@ -172,7 +174,8 @@ export function EmployeeVacationSection({ employeeId, employeeView, onVacationBa
                 year: selectedYear,
                 annualQuotaDays: Number(formState.annualQuotaDays || 0),
                 carriedOverDays: Number(formState.carriedOverDays || 0),
-                importedUsedDays: Number(formState.importedUsedDays || 0)
+                importedUsedDays: Number(formState.importedUsedDays || 0),
+                advancedDays: Number(formState.advancedDays || 0)
             });
             const nextBalance = extractResponseData<EmployeeVacationBalanceSummary>(response);
             if (!nextBalance) {
@@ -298,6 +301,14 @@ export function EmployeeVacationSection({ employeeId, employeeView, onVacationBa
                     iconColor="text-amber-600 dark:text-amber-300"
                 />
                 <KpiCard
+                    label="Adelantados"
+                    value={`${balance?.advancedDays ?? 0}`}
+                    icon={TrendingUp}
+                    gradient="bg-gradient-to-br from-violet-50 to-purple-50 dark:from-violet-900/20 dark:to-purple-900/20"
+                    iconBg="bg-violet-100 dark:bg-violet-800/40"
+                    iconColor="text-violet-600 dark:text-violet-300"
+                />
+                <KpiCard
                     label="Días usados"
                     value={`${used}`}
                     icon={Plane}
@@ -399,6 +410,12 @@ export function EmployeeVacationSection({ employeeId, employeeView, onVacationBa
                                     value={formState.importedUsedDays}
                                     disabled={!isEditing || !canEditBalance}
                                     onChange={(value) => setFormState((current) => ({ ...current, importedUsedDays: value }))}
+                                />
+                                <FieldInput
+                                    label="Días adelantados (préstamo)"
+                                    value={formState.advancedDays}
+                                    disabled={!isEditing || !canEditBalance}
+                                    onChange={(value) => setFormState((current) => ({ ...current, advancedDays: value }))}
                                 />
 
                                 {canEditBalance && (

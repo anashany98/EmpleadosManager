@@ -53,7 +53,8 @@ describe('VacationBalanceService', () => {
                     year: 2026,
                     annualQuotaDays: 30,
                     carriedOverDays: 0,
-                    importedUsedDays: 5
+                    importedUsedDays: 5,
+                    advancedDays: 0
                 };
             }
 
@@ -100,7 +101,8 @@ describe('VacationBalanceService', () => {
                     year: 2026,
                     annualQuotaDays: 30,
                     carriedOverDays: 0,
-                    importedUsedDays: 5
+                    importedUsedDays: 5,
+                    advancedDays: 0
                 };
             }
 
@@ -136,7 +138,8 @@ describe('VacationBalanceService', () => {
                 year: 2027,
                 annualQuotaDays: 30,
                 carriedOverDays: 15,
-                importedUsedDays: 0
+                importedUsedDays: 0,
+                advancedDays: 0
             }
         });
     });
@@ -154,7 +157,8 @@ describe('VacationBalanceService', () => {
             year: 2027,
             annualQuotaDays: 30,
             carriedOverDays: 3,
-            importedUsedDays: 1
+            importedUsedDays: 1,
+            advancedDays: 0
         });
         (prisma.vacation.findMany as any).mockResolvedValue([]);
 
@@ -209,7 +213,8 @@ describe('VacationBalanceService', () => {
             year: 2026,
             annualQuotaDays: 30,
             carriedOverDays: 0,
-            importedUsedDays: 0
+            importedUsedDays: 0,
+            advancedDays: 0
         });
         (prisma.vacation.findMany as any).mockResolvedValue([
             { type: 'VACATION', startDate: new Date('2026-08-01'), endDate: new Date('2026-08-05'), status: 'APPROVED' },
@@ -238,7 +243,8 @@ describe('VacationBalanceService', () => {
             year: 2026,
             annualQuotaDays: 30,
             carriedOverDays: 0,
-            importedUsedDays: 10 // 10 days already used before migration
+            importedUsedDays: 10,
+            advancedDays: 0
         });
         (prisma.vacation.findMany as any).mockResolvedValue([]);
 
@@ -260,7 +266,8 @@ describe('VacationBalanceService', () => {
                     year: 2026,
                     annualQuotaDays: 30,
                     carriedOverDays: 0,
-                    importedUsedDays: 20 // used all 30, only 10 left
+                    importedUsedDays: 20,
+                    advancedDays: 0
                 };
             }
             return null;
@@ -286,7 +293,8 @@ describe('VacationBalanceService', () => {
             year: 2026,
             annualQuotaDays: 30,
             carriedOverDays: 0,
-            importedUsedDays: 0
+            importedUsedDays: 0,
+            advancedDays: 0
         });
         (prisma.vacation.findMany as any).mockResolvedValue([
             { type: 'VACATION', startDate: new Date('2026-07-01'), endDate: new Date('2026-07-15'), status: 'PENDING' }
@@ -311,7 +319,8 @@ describe('VacationBalanceService', () => {
             year: 2026,
             annualQuotaDays: 30,
             carriedOverDays: 0,
-            importedUsedDays: 0
+            importedUsedDays: 0,
+            advancedDays: 0
         });
         (prisma.vacation.findMany as any).mockResolvedValue([
             { type: 'VACATION', startDate: new Date('2026-08-01'), endDate: new Date('2026-08-10'), status: 'REJECTED' }
@@ -334,7 +343,8 @@ describe('VacationBalanceService', () => {
             year: 2026,
             annualQuotaDays: 30,
             carriedOverDays: 0,
-            importedUsedDays: 0
+            importedUsedDays: 0,
+            advancedDays: 0
         });
         // MATERNITY is in VACATION_TYPES_FOR_BALANCE (maternity leave IS a
         // vacation-like entitlement in Spain), so it should reduce the

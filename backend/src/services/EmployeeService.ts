@@ -692,7 +692,7 @@ export class EmployeeVacationService {
         return getEmployeeVacationBalanceSummary(employeeId, targetYear);
     }
 
-    static async updateBalance(user: AuthenticatedRequest['user'], employeeId: string, data: { year?: number; annualQuotaDays?: number; carriedOverDays?: number; importedUsedDays?: number }) {
+    static async updateBalance(user: AuthenticatedRequest['user'], employeeId: string, data: { year?: number; annualQuotaDays?: number; carriedOverDays?: number; importedUsedDays?: number; advancedDays?: number }) {
         const targetEmployee = await prisma.employee.findUnique({
             where: { id: employeeId },
             select: { id: true, companyId: true, entryDate: true, createdAt: true }
@@ -712,7 +712,8 @@ export class EmployeeVacationService {
         await upsertEmployeeVacationBalance(targetEmployee, data.year || new Date().getFullYear(), {
             annualQuotaDays: data.annualQuotaDays,
             carriedOverDays: data.carriedOverDays,
-            importedUsedDays: data.importedUsedDays
+            importedUsedDays: data.importedUsedDays,
+            advancedDays: data.advancedDays
         });
 
         return getEmployeeVacationBalanceSummary(employeeId, data.year || new Date().getFullYear());

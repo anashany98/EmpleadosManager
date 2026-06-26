@@ -7,7 +7,8 @@ import { EmailService } from './EmailService';
 import {
     calculateVacationRequestDays,
     getEmployeeVacationBalanceSummary,
-    isVacationType
+    isVacationType,
+    upsertEmployeeVacationBalance
 } from './VacationBalanceService';
 
 export async function validateVacationRequest(employeeId: string, start: Date, end: Date, type?: string, tx?: Prisma.TransactionClient) {
@@ -75,7 +76,20 @@ export async function validateVacationRequest(employeeId: string, start: Date, e
     }
 
     if (balance.projectedAvailableDays < requestedDays) {
-        throw new AppError(`Excede cupo. Disponibles: ${balance.projectedAvailableDays}, Solicitados: ${requestedDays}.`, 400);
+        const deficit = requestedDays - balance.projectedAvailableDays;
+        const nextYear = currentYear + 1;
+        const nextYearBalance = await getEmployeeVacationBalanceSummary(employeeId, nextYear, tx);
+
+        if (!nextYearBalance || nextYearBalance.projectedAvailableDays < deficit) {
+            throw new AppError(`Excede cupo. Disponibles: ${balance.projectedAvailableDays}, Solicitados: ${requestedDays}.`, 400);
+        }
+
+        await upsertEmployeeVacationBalance(
+            employee,
+            currentYear,
+            { advancedDays: (balance.advancedDays || 0) + deficit },
+            tx
+        );
     }
 
     return { requestedDays };
