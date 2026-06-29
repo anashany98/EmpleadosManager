@@ -186,7 +186,10 @@ export const authorize = (policyKey: DomainPolicyKey, resolveTarget?: PolicyTarg
 
         const target = resolveTarget ? await resolveTarget(authReq) : undefined;
 
-        if (!canAccessPolicy(policyKey, user, target)) {
+        const allowed = canAccessPolicy(policyKey, user, target);
+        console.log(`[AUTHZ DEBUG] policy=${policyKey} userId=${user.id} role=${user.role} companyId=${user.companyId} target=${JSON.stringify(target)} allowed=${allowed}`);
+
+        if (!allowed) {
             return next(new AppError('No tienes permiso para realizar esta acción.', 403));
         }
 
