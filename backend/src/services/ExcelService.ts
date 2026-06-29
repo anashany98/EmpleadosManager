@@ -173,10 +173,10 @@ function addReportBanner(
     sheet.getCell(2, 1).alignment = { vertical: 'middle', horizontal: 'left' };
     sheet.getRow(2).height = 20;
 
-    const cardsPerRow = Math.min(4, Math.max(metrics.length, 1));
+    const cardsPerRow = Math.min(4, metrics.length);
     const baseCardWidth = Math.max(2, Math.floor(finalColumn / cardsPerRow));
 
-    metrics.forEach((metric, index) => {
+    metrics.slice(0, cardsPerRow).forEach((metric, index) => {
         const startColumn = index * baseCardWidth + 1;
         const endColumn = index === cardsPerRow - 1 ? finalColumn : Math.min(finalColumn, startColumn + baseCardWidth - 1);
 
