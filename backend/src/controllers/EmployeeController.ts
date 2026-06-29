@@ -18,9 +18,7 @@ export const EmployeeController = {
     getAll: async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthenticatedRequest;
-            log.info({ userId: user?.id, role: user?.role, companyId: user?.companyId, employeeId: user?.employeeId, query: req.query }, 'DEBUG getAll called');
             const result = await EmployeeService.getAll(user, req.query);
-            log.info({ count: result.data.length, total: result.meta.total }, 'DEBUG getAll result');
             return ApiResponse.paginated(res, result.data, result.meta);
         } catch (error: any) {
             log.error({ error }, 'Error fetching employees');

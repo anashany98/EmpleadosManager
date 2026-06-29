@@ -76,8 +76,6 @@ export class EmployeeService {
             })
         ]);
 
-        log.info({ whereClause, total, returned: employees.length, skip: prismaPagination.skip, take: prismaPagination.take }, 'DEBUG getAll query');
-
         const safeEmployees = employees.map((employee) => sanitizeEmployeeListItem(employee));
 
         return {
