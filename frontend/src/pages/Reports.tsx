@@ -597,11 +597,24 @@ export default function Reports() {
     const handleExportExcel = async () => {
         try {
             toast.info('Preparando Excel...');
-            const queryString = toQueryString({
-                ...buildRequestParams(activeTab, filters),
-                format: 'xlsx'
-            });
-            window.open(`${API_URL}${activeReport.endpoint}?${queryString}`, '_blank');
+            const params = buildRequestParams(activeTab, filters);
+            params.format = 'xlsx';
+            const queryString = toQueryString(params);
+            const res = await fetch(`${API_URL}${activeReport.endpoint}?${queryString}`, { credentials: 'include' });
+            if (!res.ok) throw new Error('Error al generar Excel');
+            const blob = await res.blob();
+            const disposition = res.headers.get('Content-Disposition') || '';
+            const match = disposition.match(/filename=(.+)/);
+            const filename = match ? match[1] : `Reporte_${activeTab}.xlsx`;
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success('Excel descargado');
         } catch (error) {
             toast.error('Error al exportar Excel');
         }
