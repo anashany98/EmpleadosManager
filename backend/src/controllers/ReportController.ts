@@ -261,7 +261,6 @@ export class ReportController {
             }
             res.json(result.data);
         } catch (error) {
-            console.error('[REPORT ERROR] vacations:', error);
             log.error({ error }, 'Vacation Report Error');
             const { status, body } = getErrorResponse(error, 'Failed to generate vacation report');
             res.status(status).json(body);
