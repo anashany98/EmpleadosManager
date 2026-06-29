@@ -330,11 +330,13 @@ export function getEffectivePermissions(actor: AuthActor): PermissionMap {
         return getDefaultPermissionsForRole('admin');
     }
 
+    const defaults = getDefaultPermissionsForRole(role);
+
     if (Object.keys(overrides).length > 0) {
-        return { ...overrides };
+        return { ...defaults, ...overrides };
     }
 
-    return getDefaultPermissionsForRole(role);
+    return defaults;
 }
 
 export function normalizeActor(actor: AuthActor | null | undefined): NormalizedAuthActor | null {
