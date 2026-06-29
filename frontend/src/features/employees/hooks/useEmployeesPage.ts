@@ -15,18 +15,12 @@ interface PaginatedMeta {
     totalPages: number;
 }
 
-interface EmployeesResponse {
-    data: Employee[];
-    meta: PaginatedMeta;
-}
-
 const fetchEmployees = async (page: number, limit: number, status: string = 'active', search: string = ''): Promise<{ employees: Employee[]; meta: PaginatedMeta }> => {
     const params: Record<string, string | number> = { page, limit, status };
     if (search.trim()) params.search = search.trim();
-    const res = await api.get<EmployeesResponse>('/employees', { params });
-    const payload = res.data?.data ? res.data : (res.data || { data: [], meta: { total: 0, page: 1, limit, totalPages: 1 } });
-    const employees: Employee[] = Array.isArray(payload.data) ? payload.data : [];
-    const meta: PaginatedMeta = payload.meta || { total: 0, page: 1, limit, totalPages: 1 };
+    const res = await api.get<{ success: boolean; data: Employee[]; meta: PaginatedMeta }>('/employees', { params });
+    const employees: Employee[] = Array.isArray(res.data) ? res.data : [];
+    const meta: PaginatedMeta = res.meta || { total: 0, page: 1, limit, totalPages: 1 };
     return { employees, meta };
 };
 
