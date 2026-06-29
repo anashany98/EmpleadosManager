@@ -8,6 +8,7 @@ import { EmployeeImportController } from '../controllers/EmployeeImportControlle
 import { ContractController } from '../controllers/ContractController';
 import { TimelineController } from '../controllers/TimelineController';
 import { prisma } from '../lib/prisma';
+import { AuthenticatedRequest } from '../types/express';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -48,13 +49,17 @@ const importLimiter = rateLimit({
 });
 
 // Admin / HR Access
-router.get('/', authorize('employee.read.list'), EmployeeController.getAll);
-router.get('/departments', authorize('employee.read.list'), EmployeeController.getDepartments);
-router.get('/options', authorize('employee.read.list'), EmployeeController.getFieldOptions);
-router.get('/hierarchy', authorize('employee.read.list'), EmployeeController.getHierarchy);
+const resolveCompanyTarget = async (req: any) => {
+    const { user } = req as AuthenticatedRequest;
+    return { employeeId: user?.employeeId, companyId: user?.companyId };
+};
+router.get('/', authorize('employee.read.list', resolveCompanyTarget), EmployeeController.getAll);
+router.get('/departments', authorize('employee.read.list', resolveCompanyTarget), EmployeeController.getDepartments);
+router.get('/options', authorize('employee.read.list', resolveCompanyTarget), EmployeeController.getFieldOptions);
+router.get('/hierarchy', authorize('employee.read.list', resolveCompanyTarget), EmployeeController.getHierarchy);
 router.post('/import/preview', importLimiter, checkPermission('employees', 'write'), upload.single('file'), EmployeeImportController.previewImport);
 router.post('/import', importLimiter, checkPermission('employees', 'write'), upload.single('file'), EmployeeImportController.importEmployees);
-router.get('/template', authorize('employee.read.list'), EmployeeImportController.downloadTemplate);
+router.get('/template', authorize('employee.read.list', resolveCompanyTarget), EmployeeImportController.downloadTemplate);
 
 // Self-Service Capable Routes
 router.get('/:id', validateResource(idParamSchema), authorize('employee.read.detail', resolveEmployeeTarget), EmployeeController.getById);
