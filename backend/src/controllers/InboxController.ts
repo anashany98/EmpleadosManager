@@ -12,11 +12,37 @@ const log = createLogger('InboxController');
 export const InboxController = {
     getAllPending: async (req: Request, res: Response) => {
         try {
-            const pending = await prisma.inboxDocument.findMany({
-                where: { processed: false },
-                orderBy: { receivedAt: 'desc' }
+            const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 500);
+            const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+            const skip = (page - 1) * limit;
+
+            const user = (req as any).user;
+            const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
+
+            const where: any = { processed: false };
+            if (!isGlobalAdmin) {
+                where.OR = [
+                    { companyId: user?.companyId || null },
+                    { companyId: null }
+                ];
+            }
+
+            const [pending, total] = await Promise.all([
+                prisma.inboxDocument.findMany({
+                    where,
+                    orderBy: { receivedAt: 'desc' },
+                    take: limit,
+                    skip
+                }),
+                prisma.inboxDocument.count({ where })
+            ]);
+
+            return ApiResponse.paginated(res, pending, {
+                total,
+                page,
+                limit,
+                totalPages: Math.ceil(total / limit)
             });
-            return ApiResponse.success(res, pending);
         } catch (error) {
             log.error({ error }, 'Error getting pending documents');
             return ApiResponse.error(res, 'Error al obtener documentos pendientes');
@@ -58,21 +84,23 @@ export const InboxController = {
             }
 
             // Move file from temp to inbox
-            const inboxPath = path.join(__dirname, '../../data/inbox'); // Ensure this matches InboxService watched folder
+            const inboxPath = path.join(process.cwd(), 'data', 'inbox');
 
             if (!fs.existsSync(inboxPath)) {
                 fs.mkdirSync(inboxPath, { recursive: true });
             }
 
-            const safeName = path.basename(req.file.originalname);
+            const ext = path.extname(req.file.originalname);
+            const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
             const targetPath = path.join(inboxPath, safeName);
             fs.renameSync(req.file.path, targetPath);
+
+            const companyId = (req as any).user?.companyId || null;
 
             // InboxService watcher should pick it up automatically
             // But we can trigger a sync manually to be faster
             try {
-                // Don't await this to avoid blocking the response if it takes too long or fails
-                inboxService.syncFolder().catch(err => log.error({ err }, 'Sync error in background'));
+                inboxService.processFile(targetPath, companyId).catch(err => log.error({ err }, 'Sync error in background'));
             } catch (syncError) {
                 log.warn({ syncError }, 'Sync warning after upload');
             }
@@ -88,12 +116,24 @@ export const InboxController = {
         const { id } = req.params;
         try {
             const doc = await prisma.inboxDocument.findUnique({ where: { id } });
-            if (doc?.fileUrl) {
-                await StorageService.deleteFile(doc.fileUrl);
+            if (!doc) return ApiResponse.error(res, 'Documento no encontrado', 404);
+
+            const user = (req as any).user;
+            const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
+            if (!isGlobalAdmin && doc.companyId && doc.companyId !== user?.companyId) {
+                return ApiResponse.error(res, 'No tienes acceso a este documento', 403);
             }
+
             await prisma.inboxDocument.delete({ where: { id } });
+
+            if (doc.fileUrl) {
+                StorageService.deleteFile(doc.fileUrl).catch(err =>
+                    log.warn({ err, fileUrl: doc.fileUrl }, 'Failed to delete file from storage after DB delete')
+                );
+            }
             return ApiResponse.success(res, null, 'Documento descartado');
         } catch (error) {
+            log.error({ error, id }, 'Error deleting inbox document');
             return ApiResponse.error(res, 'Error al eliminar documento');
         }
     },
@@ -103,6 +143,12 @@ export const InboxController = {
         try {
             const doc = await prisma.inboxDocument.findUnique({ where: { id } });
             if (!doc || !doc.fileUrl) return ApiResponse.error(res, 'Documento no encontrado', 404);
+
+            const user = (req as any).user;
+            const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
+            if (!isGlobalAdmin && doc.companyId && doc.companyId !== user?.companyId) {
+                return ApiResponse.error(res, 'No tienes acceso a este documento', 403);
+            }
 
             if (StorageService.provider === 'local') {
                 const filePath = path.join(process.cwd(), 'uploads', doc.fileUrl);
@@ -114,6 +160,7 @@ export const InboxController = {
             if (!signedUrl) return ApiResponse.error(res, 'No se pudo generar URL', 500);
             return res.redirect(signedUrl);
         } catch (error: any) {
+            log.error({ error, id }, 'Error downloading inbox document');
             return ApiResponse.error(res, error.message || 'Error al descargar documento', 500);
         }
     }

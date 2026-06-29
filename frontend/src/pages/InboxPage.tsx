@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api, API_URL } from '../api/client';
+import { api } from '../api/client';
 import { toast } from 'sonner';
 import { Inbox, FileText, User as UserIcon, Calendar, CheckCircle, Trash2, Tag } from 'lucide-react';
 import { useConfirm } from '../context/ConfirmContext';
@@ -28,6 +28,7 @@ export default function InboxPage() {
     const [employees, setEmployees] = useState<Employee[]>([]);
     const [loading, setLoading] = useState(true);
     const [processing, setProcessing] = useState(false);
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
     // Form state
     const [employeeId, setEmployeeId] = useState('');
@@ -38,6 +39,36 @@ export default function InboxPage() {
     useEffect(() => {
         fetchData();
     }, []);
+
+    useEffect(() => {
+        if (!selectedDoc) {
+            setPreviewUrl(null);
+            return;
+        }
+        let cancelled = false;
+        const docId = selectedDoc.id;
+        const fetchPreview = async () => {
+            try {
+                const blob = await api.get<Blob>(`/inbox/${docId}/download`, { responseType: 'blob' });
+                if (cancelled) return;
+                const url = URL.createObjectURL(blob);
+                setPreviewUrl(url);
+            } catch (error) {
+                if (!cancelled) {
+                    setPreviewUrl(null);
+                    toast.error('No se pudo cargar la vista previa');
+                }
+            }
+        };
+        fetchPreview();
+        return () => {
+            cancelled = true;
+            setPreviewUrl(prev => {
+                if (prev) URL.revokeObjectURL(prev);
+                return null;
+            });
+        };
+    }, [selectedDoc]);
 
     const fetchData = async () => {
         setLoading(true);
@@ -118,8 +149,27 @@ export default function InboxPage() {
         try {
             await api.post('/inbox/upload', formData);
             toast.success('Archivo subido. Procesando...', { id: toastId });
-            // Wait a bit for the watcher to pick it up
-            setTimeout(fetchData, 2000);
+
+            const initialCount = documents.length;
+            const pollUpload = async (attemptsLeft: number): Promise<void> => {
+                if (attemptsLeft <= 0) {
+                    fetchData();
+                    return;
+                }
+                await new Promise(r => setTimeout(r, 1000));
+                try {
+                    const res = await api.get<InboxDocument[]>('/inbox/pending');
+                    const newDocs = res.data || [];
+                    if (newDocs.length > initialCount) {
+                        setDocuments(newDocs);
+                        return;
+                    }
+                } catch {
+                    // fall through to retry
+                }
+                return pollUpload(attemptsLeft - 1);
+            };
+            pollUpload(10);
         } catch (error) {
             toast.error('Error al subir el archivo', { id: toastId });
         }
@@ -228,11 +278,17 @@ export default function InboxPage() {
                                 </button>
                             </div>
                             <div className="flex-1 min-h-0 relative">
-                                <iframe
-                                    src={`${API_URL.replace(/\/+$/, '')}/inbox/${selectedDoc.id}/download`}
-                                    className="w-full h-full border-none"
-                                    title="Vista previa del documento"
-                                />
+                                {previewUrl ? (
+                                    <iframe
+                                        src={previewUrl}
+                                        className="w-full h-full border-none"
+                                        title="Vista previa del documento"
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full text-slate-400 text-sm">
+                                        Cargando vista previa...
+                                    </div>
+                                )}
                             </div>
                         </div>
 

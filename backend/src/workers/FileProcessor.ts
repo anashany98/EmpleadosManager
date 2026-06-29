@@ -84,10 +84,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 export const FileProcessor = async (job: Job) => {
-    const { filePath } = job.data;
+    const { filePath, companyId } = job.data;
     const filename = path.basename(filePath);
 
-    log.info({ jobId: job.id, filename }, 'Processing file job started');
+    log.info({ jobId: job.id, filename, companyId }, 'Processing file job started');
 
     try {
         if (!fs.existsSync(filePath)) {
@@ -174,7 +174,8 @@ export const FileProcessor = async (job: Job) => {
                 source: 'SCANNER',
                 fileUrl: key,
                 content: extractedText || null,
-                ocrStatus: extractedText ? 'COMPLETED' : 'PENDING'
+                ocrStatus: extractedText ? 'COMPLETED' : 'PENDING',
+                companyId: companyId || null
             }
         });
 
@@ -203,7 +204,6 @@ export const FileProcessor = async (job: Job) => {
             }
 
             log.info({ employeeId, category, name }, 'QR/Meta Found! Auto-assigning document');
-            log.info({ employeeId, category, name }, 'QR/Meta Found! Auto-assigning document');
             await inboxService.assignDocument(inboxDoc.id, employeeId, category, name);
 
             // Notify via DB
@@ -221,15 +221,25 @@ export const FileProcessor = async (job: Job) => {
             );
         }
 
-        // 5. Cleanup local file (if configured/needed)
-        // If we are using S3, we can delete the local file.
-        // For now, let's keep it safe or maybe delete it?
-        // The previous code had a comment about it.
-        // In a queue system, once processed, we should probably delete the temporary file if it was transient.
-        // But since we are watching 'data/inbox', deleting it might be what we want to avoid re-reading?
-        // Actually, if we delete it, chokidar sees 'unlink'.
-        // Let's assume we delete it to keep the inbox clean.
-        // fs.unlinkSync(filePath); 
+        // 5. Move processed file out of the watched folder so the watcher
+        // does not re-pick it up. In local-storage mode the file IS the
+        // master copy (StorageService.saveBuffer has already read it into
+        // `uploads/` under its storage key), so we move it to `processed/`
+        // rather than deleting it — keeping a local audit trail without
+        // accumulating files in the active inbox folder.
+        try {
+            const inboxDir = path.dirname(filePath);
+            const processedDir = path.join(inboxDir, 'processed');
+            if (!fs.existsSync(processedDir)) {
+                fs.mkdirSync(processedDir, { recursive: true });
+            }
+            const dest = path.join(processedDir, filename);
+            if (fs.existsSync(filePath)) {
+                fs.renameSync(filePath, dest);
+            }
+        } catch (cleanupErr) {
+            log.warn({ filename, error: cleanupErr }, 'Could not move processed file to processed/');
+        } 
 
     } catch (error) {
         log.error({ filename, error }, 'Error processing file job');

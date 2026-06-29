@@ -80,7 +80,12 @@ export class InboxService {
         // For now, ignoreInitial: true to avoid reprocessing old files every restart unless we want to retry failed ones.
         // Better: ignoreInitial: true, and have a separate 'retryPending' method if needed.
         this.watcher = chokidar.watch(this.inboxDir, {
-            ignored: /(^|[/\\])\./, // ignore dotfiles
+            ignored: (p: string) => {
+                const base = path.basename(p);
+                if (base.startsWith('.')) return true;
+                if (base === 'processed') return true;
+                return false;
+            },
             persistent: true,
             ignoreInitial: true,
             awaitWriteFinish: {
@@ -106,27 +111,27 @@ export class InboxService {
         try {
             const files = fs.readdirSync(this.inboxDir);
             for (const file of files) {
-                if (fs.statSync(path.join(this.inboxDir, file)).isDirectory() || file.startsWith('.')) continue;
+                if (fs.statSync(path.join(this.inboxDir, file)).isDirectory() || file.startsWith('.') || file === 'processed') continue;
                 await this.processFile(path.join(this.inboxDir, file));
             }
-        } catch (_) {
-            log.error({ error: _ }, 'Error syncing folder');
+        } catch (err) {
+            log.error({ error: err }, 'Error syncing folder');
         }
     }
 
-    async processFile(filePath: string) {
+    async processFile(filePath: string, companyId?: string | null) {
         const filename = path.basename(filePath);
         if (this.processing.has(filename)) return;
         this.processing.add(filename);
 
         try {
-            log.info({ filename }, 'Enqueuing file for processing');
-            await queueService.addJob(QUEUES.INGESTION, 'process-file', { filePath }, {
+            log.info({ filename, companyId }, 'Enqueuing file for processing');
+            await queueService.addJob(QUEUES.INGESTION, 'process-file', { filePath, companyId: companyId || null }, {
                 removeOnComplete: true,
                 removeOnFail: 100 // Keep last 100 failed jobs
             });
-        } catch (_) {
-            log.error({ error: _, filename }, 'Error enqueuing file');
+        } catch (err) {
+            log.error({ error: err, filename }, 'Error enqueuing file');
         } finally {
             this.processing.delete(filename);
         }

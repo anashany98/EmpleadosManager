@@ -8,26 +8,26 @@ datasource db {
 }
 
 model User {
-  id                    String               @id @default(uuid())
-  email                 String               @unique
-  dni                   String?              @unique // Login alternative
-  employeeId            String?              // Link to specific employee record
-  password              String
-  role                  String               @default("user")
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
-  permissions           String?
-  isActive              Boolean              @default(true)
-  sessionVersion        Int                  @default(0)
-  failedLoginAttempts   Int                  @default(0)
-  lockedUntil           DateTime?
-  auditLogs             AuditLog[]
-  exports               Export[]
-  batches               PayrollImportBatch[]
-  refreshTokens         RefreshToken[]
-  notifications         Notification[]
-  employee              Employee?            @relation(fields: [employeeId], references: [id])
-  createdEvents         CalendarEvent[]      @relation("EventCreator")
+  id                  String               @id @default(uuid())
+  email               String               @unique
+  dni                 String?              @unique // Login alternative
+  employeeId          String? // Link to specific employee record
+  password            String
+  role                String               @default("user")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  permissions         String?
+  isActive            Boolean              @default(true)
+  sessionVersion      Int                  @default(0)
+  failedLoginAttempts Int                  @default(0)
+  lockedUntil         DateTime?
+  auditLogs           AuditLog[]
+  exports             Export[]
+  batches             PayrollImportBatch[]
+  refreshTokens       RefreshToken[]
+  notifications       Notification[]
+  employee            Employee?            @relation(fields: [employeeId], references: [id])
+  createdEvents       CalendarEvent[]      @relation("EventCreator")
 }
 
 model RefreshToken {
@@ -43,44 +43,44 @@ model RefreshToken {
 }
 
 model PasswordResetToken {
-  id          String    @id @default(uuid())
-  tokenHash   String    @unique
-  employeeId  String
-  purpose     String    @default("PASSWORD_RESET")
-  expiresAt   DateTime
-  usedAt      DateTime?
-  createdAt   DateTime  @default(now())
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
+  id         String    @id @default(uuid())
+  tokenHash  String    @unique
+  employeeId String
+  purpose    String    @default("PASSWORD_RESET")
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@index([employeeId, purpose, usedAt])
   @@index([expiresAt])
 }
 
 model Company {
-  id        String     @id @default(uuid())
-  name      String
-  cif       String     @unique
-  logoUrl   String?
-  legalRep    String?    // Apoderado
-  address     String?
-  postalCode  String?
-  city        String?
-  province    String?
-  country     String?
-  email       String?
-  phone       String?
-  officeLatitude  Float?
-  officeLongitude Float?
-  allowedRadius   Int?       @default(100) // Meters
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  employees Employee[]
+  id                  String               @id @default(uuid())
+  name                String
+  cif                 String               @unique
+  logoUrl             String?
+  legalRep            String? // Apoderado
+  address             String?
+  postalCode          String?
+  city                String?
+  province            String?
+  country             String?
+  email               String?
+  phone               String?
+  officeLatitude      Float?
+  officeLongitude     Float?
+  allowedRadius       Int?                 @default(100) // Meters
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  employees           Employee[]
   onboardingTemplates OnboardingTemplate[]
-  documentTemplates DocumentTemplate[]
-  vehicles    Vehicle[]
-  cards       Card[]
-  fileMappings FileMapping[]
-  calendarEvents CalendarEvent[]
+  documentTemplates   DocumentTemplate[]
+  vehicles            Vehicle[]
+  cards               Card[]
+  fileMappings        FileMapping[]
+  calendarEvents      CalendarEvent[]
 }
 
 model PermissionProfile {
@@ -92,8 +92,8 @@ model PermissionProfile {
 }
 
 model Employee {
-  id                       String                @id @default(uuid())
-  dni                      String                @unique
+  id                       String    @id @default(uuid())
+  dni                      String    @unique
   name                     String
   firstName                String?
   lastName                 String?
@@ -106,8 +106,8 @@ model Employee {
   registeredIn             String?
   birthDate                DateTime?
   gender                   String?
-  subaccount465            String?               @unique
-  active                   Boolean               @default(true)
+  subaccount465            String?   @unique
+  active                   Boolean   @default(true)
   // Soft-delete: GDPR right-to-be-forgotten. When set, the row is
   // hidden from all reads and excluded from FK joins. The data is
   // physically purged by a scheduled job after the configured
@@ -118,7 +118,7 @@ model Employee {
   socialSecurityNumber     String?
   iban                     String?
   dniExpiration            DateTime?
-  drivingLicense           Boolean               @default(false)
+  drivingLicense           Boolean   @default(false)
   drivingLicenseType       String?
   drivingLicenseExpiration DateTime?
 
@@ -127,12 +127,12 @@ model Employee {
   // empty for new rows) for ad-hoc SQL queries, but the application layer MUST
   // use these `*Enc` fields and decrypt via EncryptionService. Stored as
   // `gcm:iv:authTag:ciphertext` (AES-256-GCM).
-  dniEnc                   String? @db.Text
-  socialSecurityNumberEnc  String? @db.Text
-  ibanEnc                  String? @db.Text
+  dniEnc                   String?                   @db.Text
+  socialSecurityNumberEnc  String?                   @db.Text
+  ibanEnc                  String?                   @db.Text
   companyPhone             String?
   companyId                String?
-  company                  Company?              @relation(fields: [companyId], references: [id])
+  company                  Company?                  @relation(fields: [companyId], references: [id])
   onboadings               EmployeeOnboarding[]
   department               String?
   category                 String?
@@ -147,36 +147,36 @@ model Employee {
   contractInterruptionDate DateTime?
   lowDate                  DateTime?
   lowReason                String?
-  vacationDaysTotal        Int                   @default(30)
+  vacationDaysTotal        Int                       @default(30)
   workingDayType           String?
   weeklyHours              Float?
-  createdAt                DateTime              @default(now())
-  updatedAt                DateTime              @updatedAt
-  country                  String?               @default("España")
-  annualGrossSalary    Decimal?  @db.Decimal(15,2) @default(0)
-  monthlyGrossSalary  Decimal?  @db.Decimal(15,2) @default(0)
-  annualTotalSalary   Decimal?  @db.Decimal(15,2) @default(0)
-  monthlyTotalSalary  Decimal?  @db.Decimal(15,2) @default(0)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  country                  String?                   @default("España")
+  annualGrossSalary        Decimal?                  @default(0) @db.Decimal(15, 2)
+  monthlyGrossSalary       Decimal?                  @default(0) @db.Decimal(15, 2)
+  annualTotalSalary        Decimal?                  @default(0) @db.Decimal(15, 2)
+  monthlyTotalSalary       Decimal?                  @default(0) @db.Decimal(15, 2)
   // Encrypted-at-rest salary fields. These are the SOURCE OF TRUTH.
   // The `Decimal` columns above stay at 0 (or with the same value for
   // backward-compat reads inside the same query); the application
   // layer MUST use the `Enc` fields and decrypt via EncryptionService.
   // Stored as `gcm:iv:authTag:ciphertext` (AES-256-GCM).
-  annualGrossSalaryEnc   String? @db.Text
-  monthlyGrossSalaryEnc  String? @db.Text
-  annualTotalSalaryEnc   String? @db.Text
-  monthlyTotalSalaryEnc  String? @db.Text
-  companyShortPhone String?
+  annualGrossSalaryEnc     String?                   @db.Text
+  monthlyGrossSalaryEnc    String?                   @db.Text
+  annualTotalSalaryEnc     String?                   @db.Text
+  monthlyTotalSalaryEnc    String?                   @db.Text
+  companyShortPhone        String?
   privateNotes             String?
   accountingEntries        AccountingEntry[]
   alerts                   Alert[]
   assets                   Asset[]
-  targetAuditLogs          AuditLog[]            @relation("TargetEmployee")
+  targetAuditLogs          AuditLog[]                @relation("TargetEmployee")
   checklistTasks           ChecklistTask[]
   contractExtensions       ContractExtension[]
   documents                Document[]
-  manager                  Employee?             @relation("Hierarchy", fields: [managerId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so subordinates stay with managerId=null when manager is deleted
-  subordinates             Employee[]            @relation("Hierarchy")
+  manager                  Employee?                 @relation("Hierarchy", fields: [managerId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so subordinates stay with managerId=null when manager is deleted
+  subordinates             Employee[]                @relation("Hierarchy")
   projectWork              EmployeeProjectWork[]
   expenses                 Expense[]
   medicalReviews           MedicalReview[]
@@ -187,18 +187,18 @@ model Employee {
   vacations                Vacation[]
   vacationBalances         EmployeeVacationBalance[]
   emergencyContacts        EmergencyContact[]
-  consents                Consent[]
+  consents                 Consent[]
   anomalies                AnomalyEvent[]
 
-  vehicles                 Vehicle[]
-  cards                    Card[]
-  users                    User[]
-  passwordResetTokens      PasswordResetToken[]
-  evaluations              Evaluation[]           @relation("EvaluationEmployee")
-  evaluationsAsEvaluator   Evaluation[]           @relation("EvaluationEvaluator")
-  peerReviews              PeerReview[]
-  objectives               Objective[]
-  pdis                     PDI[]
+  vehicles               Vehicle[]
+  cards                  Card[]
+  users                  User[]
+  passwordResetTokens    PasswordResetToken[]
+  evaluations            Evaluation[]         @relation("EvaluationEmployee")
+  evaluationsAsEvaluator Evaluation[]         @relation("EvaluationEvaluator")
+  peerReviews            PeerReview[]
+  objectives             Objective[]
+  pdis                   PDI[]
 
   @@index([companyId])
   @@index([active])
@@ -222,7 +222,7 @@ model EmployeeVacationBalance {
   annualQuotaDays  Decimal  @default(30)
   carriedOverDays  Decimal  @default(0)
   importedUsedDays Decimal  @default(0)
-  advancedDays     Decimal  @default(0)  // Días tomados por adelantado del año siguiente
+  advancedDays     Decimal  @default(0) // Días tomados por adelantado del año siguiente
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   employee         Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
@@ -236,7 +236,7 @@ model EmergencyContact {
   employeeId   String
   name         String
   phone        String
-  relationship String?  // Padre, Madre, Pareja...
+  relationship String? // Padre, Madre, Pareja...
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
@@ -304,7 +304,7 @@ model ChecklistTask {
   deadline    DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
 
   @@index([employeeId, type])
 }
@@ -314,7 +314,7 @@ model Expense {
   employeeId    String
   date          DateTime @default(now())
   category      String
-  amount        Decimal  @db.Decimal(15,2)
+  amount        Decimal  @db.Decimal(15, 2)
   description   String?
   receiptUrl    String?
   status        String   @default("PENDING")
@@ -341,7 +341,7 @@ model Document {
   expiryDate DateTime?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
 
   @@index([employeeId])
   @@index([category])
@@ -359,7 +359,7 @@ model MedicalReview {
   fileUrl        String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
 }
 
 model Training {
@@ -376,23 +376,23 @@ model Training {
 }
 
 model Vacation {
-  id              String       @id @default(uuid())
+  id              String      @id @default(uuid())
   employeeId      String
   startDate       DateTime
   endDate         DateTime
-  type            String       @default("VACATION")
-  absenceType     AbsenceType  @default(VACATION)
-  days            Int          @default(0)
+  type            String      @default("VACATION")
+  absenceType     AbsenceType @default(VACATION)
+  days            Int         @default(0)
   reason          String?
   fileUrl         String?
-  status          String       @default("PENDING")
+  status          String      @default("PENDING")
   rejectionReason String?
   managerComment  String?
   approvedBy      String?
   approvedAt      DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @default(now()) @updatedAt
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @default(now()) @updatedAt
+  employee        Employee    @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@index([employeeId, status])
   @@index([startDate, endDate])
@@ -400,24 +400,24 @@ model Vacation {
 }
 
 model VacationArchive {
-  id              String       @id @default(uuid())
+  id              String      @id @default(uuid())
   employeeId      String
   startDate       DateTime
   endDate         DateTime
-  type            String       @default("VACATION")
-  absenceType     AbsenceType  @default(VACATION)
-  days            Int          @default(0)
+  type            String      @default("VACATION")
+  absenceType     AbsenceType @default(VACATION)
+  days            Int         @default(0)
   reason          String?
   fileUrl         String?
-  status          String       @default("PENDING")
+  status          String      @default("PENDING")
   rejectionReason String?
   managerComment  String?
   approvedBy      String?
   approvedAt      DateTime?
   createdAt       DateTime
   updatedAt       DateTime
-  archivedAt      DateTime     @default(now())
-  archiveReason  String?
+  archivedAt      DateTime    @default(now())
+  archiveReason   String?
 }
 
 enum AbsenceType {
@@ -455,17 +455,17 @@ model AbsenceTypeConfig {
 }
 
 model DocumentTemplate {
-  id          String   @id @default(uuid())
-  companyId   String?
-  company     Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  type        String   // NDA, RGPD, MODEL_145, UNIFORM, EPI, TECH_DEVICE, PAYROLL, CONTRACT
-  name        String   // Nombre descriptivo
-  content     String   // Contenido HTML/Markdown con variables {{variable}}
-  variables   String   // JSON con lista de variables soportadas
-  isActive    Boolean  @default(true)
-  isDefault   Boolean  @default(false) // Si es el default para empresas sin template específico
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type      String // NDA, RGPD, MODEL_145, UNIFORM, EPI, TECH_DEVICE, PAYROLL, CONTRACT
+  name      String // Nombre descriptivo
+  content   String // Contenido HTML/Markdown con variables {{variable}}
+  variables String // JSON con lista de variables soportadas
+  isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false) // Si es el default para empresas sin template específico
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([companyId, type])
   @@index([companyId])
@@ -520,14 +520,14 @@ model PayrollRow {
 }
 
 model PayrollItem {
-  id           String      @id @default(uuid())
+  id           String     @id @default(uuid())
   payrollRowId String
   concept      String
   amount       Decimal
-  type         String      // "EARNING", "DEDUCTION"
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  payrollRow   PayrollRow  @relation(fields: [payrollRowId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so payroll items are deleted when payroll row is deleted
+  type         String // "EARNING", "DEDUCTION"
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  payrollRow   PayrollRow @relation(fields: [payrollRowId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so payroll items are deleted when payroll row is deleted
 
   @@index([payrollRowId])
 }
@@ -593,17 +593,17 @@ model AuditLog {
 model CategoryRate {
   id                  String   @id @default(uuid())
   category            String   @unique
-  overtimeRate        Decimal  @db.Decimal(6,4) @default(0)
-  holidayOvertimeRate Decimal  @db.Decimal(6,4) @default(0)
+  overtimeRate        Decimal  @default(0) @db.Decimal(6, 4)
+  holidayOvertimeRate Decimal  @default(0) @db.Decimal(6, 4)
   updatedAt           DateTime @updatedAt
 }
 
 model OvertimeEntry {
   id         String   @id @default(uuid())
   employeeId String
-  hours      Decimal  @db.Decimal(8,2)
-  rate       Decimal  @db.Decimal(10,4)
-  total      Decimal  @db.Decimal(15,2)
+  hours      Decimal  @db.Decimal(8, 2)
+  rate       Decimal  @db.Decimal(10, 4)
+  total      Decimal  @db.Decimal(15, 2)
   date       DateTime @default(now())
   status     String   @default("PENDING")
   createdAt  DateTime @default(now())
@@ -628,8 +628,6 @@ model ContractExtension {
 
   @@index([employeeId])
 }
-
-
 
 model Alert {
   id          String    @id @default(uuid())
@@ -657,19 +655,19 @@ model InventoryItem {
   size              String?
   quantity          Int                 @default(0)
   minQuantity       Int                 @default(5)
-  description      String?
-  entryDate        DateTime?
-  unitPrice        Decimal?            @default(0)
-  type             String?
-  brand            String?
-  sku              String?
-  supplier         String?
+  description       String?
+  entryDate         DateTime?
+  unitPrice         Decimal?            @default(0)
+  type              String?
+  brand             String?
+  sku               String?
+  supplier          String?
   warehouseLocation String?
   imageUrl          String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  assets           Asset[]
-  movements        InventoryMovement[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  assets            Asset[]
+  movements         InventoryMovement[]
 
   @@unique([name, size])
 }
@@ -699,11 +697,13 @@ model InboxDocument {
   ocrStatus    String    @default("PENDING") // PENDING, COMPLETED, FAILED
   processed    Boolean   @default(false)
   processedAt  DateTime?
+  companyId    String?
 
   @@index([processed])
   @@index([source])
   @@index([receivedAt])
   @@index([ocrStatus])
+  @@index([companyId])
 }
 
 model Configuration {
@@ -713,17 +713,17 @@ model Configuration {
 }
 
 model TimeEntry {
-  id         String   @id @default(uuid())
-  employeeId String
-  clientRequestId String? @unique
-  type       String   // IN, OUT, BREAK_START, BREAK_END, LUNCH_START, LUNCH_END
-  timestamp  DateTime @default(now())
-  latitude   Float?
-  longitude  Float?
-  location   String?
-  device     String?
-  
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
+  id              String   @id @default(uuid())
+  employeeId      String
+  clientRequestId String?  @unique
+  type            String // IN, OUT, BREAK_START, BREAK_END, LUNCH_START, LUNCH_END
+  timestamp       DateTime @default(now())
+  latitude        Float?
+  longitude       Float?
+  location        String?
+  device          String?
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict) // GDPR: restrict to force soft-delete
 
   @@index([employeeId, timestamp])
   @@index([timestamp])
@@ -741,15 +741,15 @@ model Notification {
   link      String?
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Dashboard customization
 model DashboardConfig {
   id        String   @id @default(uuid())
   userId    String   @unique
-  layout    String   // JSON: array of widget positions { id, x, y, w, h, config }
-  widgets   String   // JSON: available widgets list with visibility
+  layout    String // JSON: array of widget positions { id, x, y, w, h, config }
+  widgets   String // JSON: available widgets list with visibility
   tab       String   @default("overview") // overview, hr, financial
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -757,19 +757,19 @@ model DashboardConfig {
 
 // Scheduled reports
 model ReportSchedule {
-  id          String   @id @default(uuid())
-  name        String
-  reportType  String   // attendance, overtime, vacation, costs, absences, kpis, genderGap, custom
-  params      String   // JSON: filter parameters
-  frequency   String   // DAILY, WEEKLY, MONTHLY
-  sendEmail   Boolean  @default(false)
-  recipients  String   // JSON: email addresses array
-  isActive    Boolean  @default(true)
-  lastRunAt   DateTime?
-  nextRunAt   DateTime
-  companyId   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(uuid())
+  name       String
+  reportType String // attendance, overtime, vacation, costs, absences, kpis, genderGap, custom
+  params     String // JSON: filter parameters
+  frequency  String // DAILY, WEEKLY, MONTHLY
+  sendEmail  Boolean   @default(false)
+  recipients String // JSON: email addresses array
+  isActive   Boolean   @default(true)
+  lastRunAt  DateTime?
+  nextRunAt  DateTime
+  companyId  String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([isActive, nextRunAt])
 }
@@ -777,7 +777,7 @@ model ReportSchedule {
 // Notification categories for proactive alerts
 model NotificationCategory {
   id          String   @id @default(uuid())
-  name        String   // CONTRACT_EXPIRY, VACATION_REMINDER, PAYROLL_READY, etc.
+  name        String // CONTRACT_EXPIRY, VACATION_REMINDER, PAYROLL_READY, etc.
   description String?
   isActive    Boolean  @default(true)
   delayDays   Int      @default(0) // days before event to send notification
@@ -788,7 +788,7 @@ model OnboardingTemplate {
   id          String   @id @default(uuid())
   title       String
   description String?
-  items       String   // JSON: string[] (List of tasks)
+  items       String // JSON: string[] (List of tasks)
   isActive    Boolean  @default(true)
   companyId   String?
   company     Company? @relation(fields: [companyId], references: [id])
@@ -797,15 +797,15 @@ model OnboardingTemplate {
 }
 
 model EmployeeOnboarding {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   employeeId  String
-  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete
   title       String
-  items       String   // JSON: { text: string, completed: boolean }[]
-  status      String   @default("PENDING") // PENDING, COMPLETED, IN_PROGRESS
-  progress    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  items       String // JSON: { text: string, completed: boolean }[]
+  status      String    @default("PENDING") // PENDING, COMPLETED, IN_PROGRESS
+  progress    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   completedAt DateTime?
 }
 
@@ -815,12 +815,12 @@ model AnomalyEvent {
   entityId   String
   employeeId String?
   score      Int      @default(0)
-  reasons    String   // JSON array of strings or objects
+  reasons    String // JSON array of strings or objects
   status     String   @default("OPEN") // OPEN, REVIEWED, RESOLVED, FALSE_POSITIVE
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  employee   Employee? @relation(fields: [employeeId], references: [id])
+  employee Employee? @relation(fields: [employeeId], references: [id])
 
   @@unique([entityType, entityId])
   @@index([status])
@@ -828,15 +828,15 @@ model AnomalyEvent {
 }
 
 model Vehicle {
-  id                  String    @id @default(uuid())
-  plate               String    @unique // Matrícula
-  make                String    // Marca
-  model               String    // Modelo
-  year                Int?
-  vin                 String?   // Bastidor
-  type                String    @default("CAR") // CAR, VAN, MOTORCYCLE, TRUCK
-  status              String    @default("ACTIVE") // ACTIVE, MAINTENANCE, INACTIVE
-  
+  id     String  @id @default(uuid())
+  plate  String  @unique // Matrícula
+  make   String // Marca
+  model  String // Modelo
+  year   Int?
+  vin    String? // Bastidor
+  type   String  @default("CAR") // CAR, VAN, MOTORCYCLE, TRUCK
+  status String  @default("ACTIVE") // ACTIVE, MAINTENANCE, INACTIVE
+
   // Dates
   purchaseDate        DateTime?
   nextITVDate         DateTime?
@@ -845,59 +845,59 @@ model Vehicle {
   nextMaintenanceKm   Int?
 
   // Current State
-  currentMileage      Int       @default(0)
+  currentMileage Int @default(0)
 
   // Assignment
-  employeeId          String?
-  employee            Employee? @relation(fields: [employeeId], references: [id])
-  
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
   // Relation to Company (Ownership)
-  companyId           String?
-  company             Company?  @relation(fields: [companyId], references: [id])
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
 
   // Images or Documents
-  image               String?
-  logs                VehicleLog[]
-  documents           VehicleDocument[]
-  
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  image     String?
+  logs      VehicleLog[]
+  documents VehicleDocument[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([employeeId])
   @@index([companyId])
 }
 
 model VehicleDocument {
-  id          String   @id @default(uuid())
-  vehicleId   String
-  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  type        String   // INSURANCE, REGISTRATION, ITV, INVOICE, OTHER
-  name        String
-  fileUrl     String
-  expiryDate  DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String    @id @default(uuid())
+  vehicleId  String
+  vehicle    Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  type       String // INSURANCE, REGISTRATION, ITV, INVOICE, OTHER
+  name       String
+  fileUrl    String
+  expiryDate DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@index([vehicleId])
 }
 
 model VehicleLog {
-  id             String   @id @default(uuid())
+  id             String    @id @default(uuid())
   vehicleId      String
-  vehicle        Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  type           String   // WORKSHOP_REVIEW, MAINTENANCE, ALERT, DAMAGE, NOTE
+  vehicle        Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  type           String // WORKSHOP_REVIEW, MAINTENANCE, ALERT, DAMAGE, NOTE
   title          String
   description    String?
-  eventDate      DateTime @default(now())
+  eventDate      DateTime  @default(now())
   mileage        Int?
-  cost           Decimal? @default(0)
+  cost           Decimal?  @default(0)
   workshop       String?
-  severity       String?  // LOW, MEDIUM, HIGH, CRITICAL
-  status         String?  // OPEN, IN_PROGRESS, RESOLVED
+  severity       String? // LOW, MEDIUM, HIGH, CRITICAL
+  status         String? // OPEN, IN_PROGRESS, RESOLVED
   nextActionDate DateTime?
   resolvedAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([vehicleId])
   @@index([eventDate])
@@ -905,33 +905,33 @@ model VehicleLog {
 }
 
 model Card {
-  id              String    @id @default(uuid())
-  alias           String?   // "Visa Repsol Juan"
-  panLast4        String    // Security: only store last 4
-  encryptedPan    String?   // Optional: if we need full pan (encrypted!)
-  provider        String    // VISA, MASTERCARD, AMEX, SOLRED, CEPSA
-  type            String    @default("CREDIT") // CREDIT, DEBIT, FUEL, TOLL
-  
+  id           String  @id @default(uuid())
+  alias        String? // "Visa Repsol Juan"
+  panLast4     String // Security: only store last 4
+  encryptedPan String? // Optional: if we need full pan (encrypted!)
+  provider     String // VISA, MASTERCARD, AMEX, SOLRED, CEPSA
+  type         String  @default("CREDIT") // CREDIT, DEBIT, FUEL, TOLL
+
   // Limits
-  limit           Decimal?   @default(0)
-  currency        String    @default("EUR")
-  
+  limit    Decimal? @default(0)
+  currency String   @default("EUR")
+
   // Dates
-  expiryDate      DateTime? // MM/YY usually, store as Date (end of month)
-  
+  expiryDate DateTime? // MM/YY usually, store as Date (end of month)
+
   // Assignment
-  employeeId      String?
-  employee        Employee? @relation(fields: [employeeId], references: [id])
-  
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
   // Relation to Company (Ownership)
-  companyId       String?
-  company         Company?  @relation(fields: [companyId], references: [id])
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
 
-  status          String    @default("ACTIVE") // ACTIVE, BLOCKED, CANCELLED
-  pin             String?   // Encrypted PIN if needed (risky, avoid if possible)
+  status String  @default("ACTIVE") // ACTIVE, BLOCKED, CANCELLED
+  pin    String? // Encrypted PIN if needed (risky, avoid if possible)
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([employeeId])
 }
@@ -939,9 +939,9 @@ model Card {
 model FileMapping {
   id          String   @id @default(uuid())
   qrType      String   @unique // e.g. VACATION, EPI
-  category    String   // e.g. "Justificante Ausencia"
-  namePattern String   // e.g. "Justificante Auto {date}"
-  companyId   String?  // Optional: Global vs Company specific overrides
+  category    String // e.g. "Justificante Ausencia"
+  namePattern String // e.g. "Justificante Auto {date}"
+  companyId   String? // Optional: Global vs Company specific overrides
   company     Company? @relation(fields: [companyId], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -955,76 +955,76 @@ model FileMapping {
 
 // Plantilla de evaluación (configurable por empresa)
 model EvaluationTemplate {
-  id              String              @id @default(uuid())
-  name            String
-  description     String?
-  type            String              // ANNUAL, PROBATION, PROJECT, CUSTOM
-  version         Int                 @default(1)
-  active          Boolean             @default(true)
-  
+  id          String  @id @default(uuid())
+  name        String
+  description String?
+  type        String // ANNUAL, PROBATION, PROJECT, CUSTOM
+  version     Int     @default(1)
+  active      Boolean @default(true)
+
   // Competencias y criterios (JSON)
-  competencies    Json                // Array de {name, description, weight, levels: [{score, description}]}
-  scaleConfig     Json                // {min: 1, max: 5, labels: {1: "Insuficiente", ...}}
-  
+  competencies Json // Array de {name, description, weight, levels: [{score, description}]}
+  scaleConfig  Json // {min: 1, max: 5, labels: {1: "Insuficiente", ...}}
+
   // Configuración
-  selfAssessment  Boolean             @default(true)
-  managerAssessment Boolean           @default(true)
-  peerAssessment  Boolean             @default(false)
-  peerCount       Int                 @default(0)
-  
+  selfAssessment    Boolean @default(true)
+  managerAssessment Boolean @default(true)
+  peerAssessment    Boolean @default(false)
+  peerCount         Int     @default(0)
+
   // Fechas
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  
-  evaluations     Evaluation[]
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evaluations Evaluation[]
+
   @@index([type, active])
 }
 
 // Evaluación individual
 model Evaluation {
-  id                  String              @id @default(uuid())
-  templateId          String
-  template            EvaluationTemplate  @relation(fields: [templateId], references: [id])
-  
+  id         String             @id @default(uuid())
+  templateId String
+  template   EvaluationTemplate @relation(fields: [templateId], references: [id])
+
   // Sujetos de la evaluación
-  employeeId          String
-  employee            Employee            @relation("EvaluationEmployee", fields: [employeeId], references: [id])
-  evaluatorId         String              // Manager o evaluador principal
-  evaluator           Employee            @relation("EvaluationEvaluator", fields: [evaluatorId], references: [id])
-  
+  employeeId  String
+  employee    Employee @relation("EvaluationEmployee", fields: [employeeId], references: [id])
+  evaluatorId String // Manager o evaluador principal
+  evaluator   Employee @relation("EvaluationEvaluator", fields: [evaluatorId], references: [id])
+
   // Período
-  periodStart         DateTime
-  periodEnd           DateTime
-  dueDate             DateTime
-  
+  periodStart DateTime
+  periodEnd   DateTime
+  dueDate     DateTime
+
   // Estado
-  status              String              @default("DRAFT") // DRAFT, SELF_IN_PROGRESS, MANAGER_IN_PROGRESS, COMPLETED, ACKNOWLEDGED
-  selfSubmittedAt     DateTime?
-  managerSubmittedAt  DateTime?
-  acknowledgedAt      DateTime?
-  
+  status             String    @default("DRAFT") // DRAFT, SELF_IN_PROGRESS, MANAGER_IN_PROGRESS, COMPLETED, ACKNOWLEDGED
+  selfSubmittedAt    DateTime?
+  managerSubmittedAt DateTime?
+  acknowledgedAt     DateTime?
+
   // Resultados
-  selfScores          Json?               // {competencyId: score, ...}
-  managerScores       Json?               // {competencyId: score, ...}
-  peerScores          Json?               // {competencyId: {avgScore, count}, ...}
-  finalScore          Decimal?
-  strengths           String?             // Texto libre
-  improvements        String?             // Texto libre
-  managerComments     String?
-  
+  selfScores      Json? // {competencyId: score, ...}
+  managerScores   Json? // {competencyId: score, ...}
+  peerScores      Json? // {competencyId: {avgScore, count}, ...}
+  finalScore      Decimal?
+  strengths       String? // Texto libre
+  improvements    String? // Texto libre
+  managerComments String?
+
   // Calibración (opcional)
-  calibratedScore     Decimal?
-  calibratedBy        String?
-  calibratedAt        DateTime?
-  
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  
-  peerReviews         PeerReview[]
-  objectives          Objective[]
-  pdis                PDI[]
-  
+  calibratedScore Decimal?
+  calibratedBy    String?
+  calibratedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  peerReviews PeerReview[]
+  objectives  Objective[]
+  pdis        PDI[]
+
   @@index([employeeId])
   @@index([evaluatorId])
   @@index([status, dueDate])
@@ -1032,102 +1032,102 @@ model Evaluation {
 
 // Evaluación de pares (360°)
 model PeerReview {
-  id              String      @id @default(uuid())
-  evaluationId    String
-  evaluation      Evaluation  @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
-  
-  reviewerId      String
-  reviewer        Employee    @relation(fields: [reviewerId], references: [id])
-  
-  status          String      @default("PENDING") // PENDING, COMPLETED, DECLINED
-  scores          Json?       // {competencyId: score, ...}
-  comments        String?
-  
-  submittedAt     DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
+  id           String     @id @default(uuid())
+  evaluationId String
+  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+
+  reviewerId String
+  reviewer   Employee @relation(fields: [reviewerId], references: [id])
+
+  status   String  @default("PENDING") // PENDING, COMPLETED, DECLINED
+  scores   Json? // {competencyId: score, ...}
+  comments String?
+
+  submittedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
   @@unique([evaluationId, reviewerId])
   @@index([reviewerId])
 }
 
 // Objetivos individuales
 model Objective {
-  id              String      @id @default(uuid())
-  evaluationId    String?
-  evaluation      Evaluation? @relation(fields: [evaluationId], references: [id])
-  
-  employeeId      String
-  employee        Employee    @relation(fields: [employeeId], references: [id])
-  
+  id           String      @id @default(uuid())
+  evaluationId String?
+  evaluation   Evaluation? @relation(fields: [evaluationId], references: [id])
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
   // Detalles del objetivo
-  title           String
-  description     String?
-  category        String?     // PERFORMANCE, DEVELOPMENT, PROJECT, BEHAVIORAL
-  
+  title       String
+  description String?
+  category    String? // PERFORMANCE, DEVELOPMENT, PROJECT, BEHAVIORAL
+
   // Métricas
-  targetValue     Decimal?
-  actualValue     Decimal?
-  unit            String?     // %, €, unidades, etc.
-  weight          Decimal?    @default(1.0) // Peso en la evaluación final
-  
+  targetValue Decimal?
+  actualValue Decimal?
+  unit        String? // %, €, unidades, etc.
+  weight      Decimal? @default(1.0) // Peso en la evaluación final
+
   // Fechas
-  startDate       DateTime
-  dueDate         DateTime
-  completedAt     DateTime?
-  
+  startDate   DateTime
+  dueDate     DateTime
+  completedAt DateTime?
+
   // Estado y progreso
-  status          String      @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED, CANCELLED
-  progress        Int         @default(0) // 0-100
-  
+  status   String @default("NOT_STARTED") // NOT_STARTED, IN_PROGRESS, COMPLETED, CANCELLED
+  progress Int    @default(0) // 0-100
+
   // Evaluación del objetivo
-  achievementScore Decimal?   // 0-100 o según escala
-  managerComments String?
-  
+  achievementScore Decimal? // 0-100 o según escala
+  managerComments  String?
+
   // Cascada
   parentObjectiveId String?
-  parentObjective  Objective? @relation("ObjectiveCascade", fields: [parentObjectiveId], references: [id])
-  childObjectives  Objective[] @relation("ObjectiveCascade")
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
+  parentObjective   Objective?  @relation("ObjectiveCascade", fields: [parentObjectiveId], references: [id])
+  childObjectives   Objective[] @relation("ObjectiveCascade")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([employeeId, status])
   @@index([dueDate])
 }
 
 // Plan de Desarrollo Individual
 model PDI {
-  id              String      @id @default(uuid())
-  evaluationId    String?
-  evaluation      Evaluation? @relation(fields: [evaluationId], references: [id])
-  
-  employeeId      String
-  employee        Employee    @relation(fields: [employeeId], references: [id])
-  
+  id           String      @id @default(uuid())
+  evaluationId String?
+  evaluation   Evaluation? @relation(fields: [evaluationId], references: [id])
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
   // Estado
-  status          String      @default("DRAFT") // DRAFT, ACTIVE, COMPLETED, CANCELLED
-  startDate       DateTime
-  endDate         DateTime?
-  
+  status    String    @default("DRAFT") // DRAFT, ACTIVE, COMPLETED, CANCELLED
+  startDate DateTime
+  endDate   DateTime?
+
   // Contenido
-  goals           Json?       // Array de {goal, actions, resources, targetDate, status}
-  skills          Json?       // Array de {skill, currentLevel, targetLevel, actions}
-  training        Json?       // Array de {course, provider, date, status, cost}
-  mentoring       Json?       // {mentorId, frequency, goals}
-  
+  goals     Json? // Array de {goal, actions, resources, targetDate, status}
+  skills    Json? // Array de {skill, currentLevel, targetLevel, actions}
+  training  Json? // Array de {course, provider, date, status, cost}
+  mentoring Json? // {mentorId, frequency, goals}
+
   // Seguimiento
-  progress        Int         @default(0)
-  managerComments String?
+  progress         Int     @default(0)
+  managerComments  String?
   employeeComments String?
-  
+
   // Aprobación
-  approvedBy      String?
-  approvedAt      DateTime?
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  
+  approvedBy String?
+  approvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([employeeId, status])
 }
 
@@ -1136,26 +1136,26 @@ model PDI {
 // ============================================
 
 model CalendarEvent {
-  id          String   @id @default(uuid())
-  title       String
-  description String?
-  location    String?
-  startDate   DateTime
-  endDate     DateTime
-  allDay      Boolean  @default(true)
-  type        String   // EVENT, HOLIDAY, BIRTHDAY, CORPORATE
-  color       String?
-  companyId   String?
-  createdBy   String?
-  isPublic    Boolean  @default(true)
-  recurrence  String   @default("NONE") // NONE, WEEKLY, MONTHLY
+  id            String    @id @default(uuid())
+  title         String
+  description   String?
+  location      String?
+  startDate     DateTime
+  endDate       DateTime
+  allDay        Boolean   @default(true)
+  type          String // EVENT, HOLIDAY, BIRTHDAY, CORPORATE
+  color         String?
+  companyId     String?
+  createdBy     String?
+  isPublic      Boolean   @default(true)
+  recurrence    String    @default("NONE") // NONE, WEEKLY, MONTHLY
   recurrenceEnd DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
   company Company? @relation(fields: [companyId], references: [id])
   creator User?    @relation("EventCreator", fields: [createdBy], references: [id])
-  
+
   @@index([companyId, startDate])
   @@index([type])
   @@index([startDate, endDate])
@@ -1166,14 +1166,14 @@ model CalendarEvent {
 // ============================================
 
 model EmployeeLockAudit {
-  id          String   @id @default(uuid())
-  employeeId  String
-  userId      String
-  userEmail   String
-  userName    String
-  action      String   // LockAction enum values: ACQUIRED, RELEASED, EXPIRED, FORCE_RELEASED, REFRESHED
-  timestamp   DateTime @default(now())
-  metadata    String?  // JSON string for additional context
+  id         String   @id @default(uuid())
+  employeeId String
+  userId     String
+  userEmail  String
+  userName   String
+  action     String // LockAction enum values: ACQUIRED, RELEASED, EXPIRED, FORCE_RELEASED, REFRESHED
+  timestamp  DateTime @default(now())
+  metadata   String? // JSON string for additional context
 
   @@index([employeeId])
   @@index([userId])
@@ -1203,20 +1203,20 @@ enum LockAction {
 // (anonymising the user_id) is also acceptable but we keep the
 // record for the legally-required retention period.
 model Consent {
-  id          String    @id @default(uuid())
-  employeeId  String
-  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  purpose     String    // see comment above
-  granted     Boolean   // true = consent given, false = consent withdrawn
-  grantedAt   DateTime  @default(now())
-  withdrawnAt DateTime?
-  ipAddress   String?
-  userAgent   String?
-  legalBasis  String    @default("CONSENT") // CONSENT | CONTRACT | LEGAL_OBLIGATION | VITAL_INTEREST | PUBLIC_TASK | LEGITIMATE_INTEREST
+  id            String    @id @default(uuid())
+  employeeId    String
+  employee      Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  purpose       String // see comment above
+  granted       Boolean // true = consent given, false = consent withdrawn
+  grantedAt     DateTime  @default(now())
+  withdrawnAt   DateTime?
+  ipAddress     String?
+  userAgent     String?
+  legalBasis    String    @default("CONSENT") // CONSENT | CONTRACT | LEGAL_OBLIGATION | VITAL_INTEREST | PUBLIC_TASK | LEGITIMATE_INTEREST
   // Free-text policy version the user consented to. GDPR Art. 7(1)
   // requires demonstrable evidence of what the user agreed to.
-  policyVersion String  @default("1.0.0")
-  notes       String?
+  policyVersion String    @default("1.0.0")
+  notes         String?
 
   @@index([employeeId])
   @@index([purpose])
