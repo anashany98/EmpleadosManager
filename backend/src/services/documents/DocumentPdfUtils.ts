@@ -2,6 +2,9 @@ import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
+import { createLogger } from '../../services/LoggerService';
+
+const logger = createLogger('DocumentPdfUtils');
 
 /**
  * Returns the path to the company logo if it exists, otherwise null.
@@ -38,7 +41,7 @@ export const addQRCodeToPDF = async (doc: typeof PDFDocument, data: any, employe
         // Actually, we'll try to set the 'Subject' info field.
         doc.info['Subject'] = qrDataString;
     } catch (err) {
-        console.error('Error adding QR code to PDF:', err);
+        logger.error({ err }, 'Error adding QR code to PDF:');
     }
 };
 

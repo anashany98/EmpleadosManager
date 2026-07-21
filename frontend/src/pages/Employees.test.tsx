@@ -37,15 +37,20 @@ beforeEach(() => {
                 e.dni.toLowerCase().includes(search)
             );
         }
+        // El backend retorna el sobre `paginated` directo:
+        //   { success: true, message, data: [...], meta: {...} }
+        // (ver `ApiResponse.paginated` en el backend). El
+        // `customFetch` del cliente lo devuelve tal cual, sin
+        // envolver en `data` adicional estilo axios.
         return {
-            data: {
-                data: filtered,
-                meta: {
-                    total: filtered.length,
-                    page: params?.page || 1,
-                    limit: params?.limit || 20,
-                    totalPages: Math.ceil(filtered.length / (params?.limit || 20))
-                }
+            success: true,
+            message: 'OK',
+            data: filtered,
+            meta: {
+                total: filtered.length,
+                page: params?.page || 1,
+                limit: params?.limit || 20,
+                totalPages: Math.ceil(filtered.length / (params?.limit || 20))
             }
         } as never;
     });

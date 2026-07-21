@@ -9,10 +9,15 @@ vi.mock('../lib/prisma', () => ({
     prisma: {
         inboxDocument: {
             findUnique: vi.fn(),
-            update: vi.fn()
+            findFirst: vi.fn(),
+            update: vi.fn(),
+            updateMany: vi.fn()
         },
         document: {
             create: vi.fn()
+        },
+        employee: {
+            findUnique: vi.fn()
         },
         configuration: {
             findUnique: vi.fn()
@@ -26,7 +31,8 @@ vi.mock('../lib/prisma', () => ({
                 create: vi.fn((args) => prisma.document.create(args))
             },
             inboxDocument: {
-                update: vi.fn((args) => prisma.inboxDocument.update(args))
+                update: vi.fn((args) => prisma.inboxDocument.update(args)),
+                updateMany: vi.fn((args) => prisma.inboxDocument.updateMany(args))
             }
         }))
     }
@@ -81,7 +87,7 @@ describe('InboxService', () => {
         expect(queueService.addJob).toHaveBeenCalledWith(
             QUEUES.INGESTION,
             'process-file',
-            { filePath },
+            expect.objectContaining({ filePath }),
             expect.objectContaining({
                 removeOnComplete: true,
                 removeOnFail: 100
@@ -95,12 +101,24 @@ describe('InboxService', () => {
             originalName: 'test.pdf',
             fileUrl: 'mock-s3-key',
             content: 'contenido OCR',
+            companyId: 'company-A',
             processed: false
         } as never);
+        vi.mocked(prisma.employee.findUnique).mockResolvedValue({
+            id: 'emp-123',
+            companyId: 'company-A'
+        } as never);
+        vi.mocked(prisma.inboxDocument.updateMany).mockResolvedValue({ count: 1 } as never);
         vi.mocked(prisma.document.create).mockResolvedValue({ id: 'doc-1' } as never);
-        vi.mocked(prisma.inboxDocument.update).mockResolvedValue({ id: 'inbox-1', processed: true } as never);
 
-        const result = await service.assignDocument('inbox-1', 'emp-123', 'Justificante Ausencia', 'Documento Auto 2026-03-13');
+        const result = await service.assignDocument(
+            'inbox-1',
+            'emp-123',
+            'Justificante Ausencia',
+            'Documento Auto 2026-03-13',
+            undefined,
+            { id: 'u-1', role: 'admin', companyId: 'company-A' }
+        );
 
         expect(prisma.document.create).toHaveBeenCalledWith(expect.objectContaining({
             data: expect.objectContaining({
@@ -109,8 +127,8 @@ describe('InboxService', () => {
                 fileUrl: 'mock-s3-key'
             })
         }));
-        expect(prisma.inboxDocument.update).toHaveBeenCalledWith(expect.objectContaining({
-            where: { id: 'inbox-1' },
+        expect(prisma.inboxDocument.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+            where: { id: 'inbox-1', processed: false },
             data: expect.objectContaining({ processed: true })
         }));
         expect(result).toEqual({ id: 'doc-1' });

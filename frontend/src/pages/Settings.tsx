@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { api } from '../api/client';
+import { api, getErrorMessage } from '../api/client';
 import { toast } from 'sonner';
 import { Settings, DollarSign, Upload, AlertCircle, Folder, Mail, Save, Send } from 'lucide-react';
 import ChecklistManager from '../components/onboarding/ChecklistManager';
@@ -119,8 +119,8 @@ export default function SettingsPage() {
             } else {
                 toast.success('Correo enviado correctamente');
             }
-        } catch (error: any) {
-            toast.error(error.response?.data?.message || 'Error al enviar prueba');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'Error al enviar prueba'));
         } finally {
             setSendingTest(false);
         }

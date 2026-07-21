@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import crypto from 'crypto';
 import { AuthenticatedRequest } from '../types/express';
 import { ApiResponse } from '../utils/ApiResponse';
+import { assertSameTenantOrGlobal } from '../utils/actorContext';
 import { CalendarService } from '../services/CalendarService';
 import { hasModuleAccess } from '../../../shared/authz';
 import { createLogger } from '../services/LoggerService';
@@ -62,7 +63,7 @@ export const CalendarController = {
         // de nginx / proxies / Referer. Avisamos para que el cliente migre a header.
         if (!headerSignature && querySignature) {
             log.warn(
-                { employeeId, requestId: (req as any).requestId },
+                { employeeId, requestId: res.locals.requestId },
                 'Calendar feed accessed with signature in query string; recommend X-Calendar-Signature header'
             );
         }
@@ -355,6 +356,20 @@ export const CalendarController = {
             }
 
             const { id } = req.params;
+
+            // HIGH-002: verificamos tenant antes de actualizar
+            const existing = await prisma.calendarEvent.findUnique({
+                where: { id },
+                select: { companyId: true }
+            });
+            if (!existing) {
+                return ApiResponse.error(res, 'Evento no encontrado', 404);
+            }
+            if (!assertSameTenantOrGlobal(user, existing.companyId)) {
+                log.warn({ id, userId: user.id }, 'Cross-tenant calendar event update blocked');
+                return ApiResponse.error(res, 'Evento no encontrado', 404);
+            }
+
             const { title, description, location, startDate, endDate, allDay, type, color, isPublic } = req.body;
 
             const updateData: any = {};
@@ -393,6 +408,19 @@ export const CalendarController = {
             }
 
             const { id } = req.params;
+
+            // HIGH-002: verificamos tenant antes de eliminar
+            const existing = await prisma.calendarEvent.findUnique({
+                where: { id },
+                select: { companyId: true }
+            });
+            if (!existing) {
+                return ApiResponse.error(res, 'Evento no encontrado', 404);
+            }
+            if (!assertSameTenantOrGlobal(user, existing.companyId)) {
+                log.warn({ id, userId: user.id }, 'Cross-tenant calendar event delete blocked');
+                return ApiResponse.error(res, 'Evento no encontrado', 404);
+            }
 
             await CalendarService.deleteEvent(id);
 

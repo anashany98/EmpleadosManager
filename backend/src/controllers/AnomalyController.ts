@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { createLogger } from '../services/LoggerService';
+import { AuthenticatedRequest } from '../types/express';
+import { isGlobalAdmin, getActorCompanyFilter, assertSameTenantOrGlobal } from '../utils/actorContext';
 
 const log = createLogger('AnomalyController');
 
@@ -17,15 +19,28 @@ const parseReasons = (reasons: string | null) => {
 export const AnomalyController = {
     getAll: async (req: Request, res: Response) => {
         try {
+            const user = (req as AuthenticatedRequest).user;
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 50;
             const skip = (page - 1) * limit;
             const status = req.query.status as string | undefined;
             const entityType = req.query.entityType as string | undefined;
 
+            // HIGH-002: scoping por tenant. Antes, el where no
+            // incluía companyId, lo que permitía a un admin de A
+            // listar anomalías de B. Ahora filtramos por
+            // `employee.companyId` cuando el actor no es global.
+            const companyFilter = getActorCompanyFilter(user);
+            if (!companyFilter && !isGlobalAdmin(user)) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
+
             const where: any = {};
             if (status) where.status = status;
             if (entityType) where.entityType = entityType;
+            if (companyFilter) {
+                where.employee = { companyId: companyFilter };
+            }
 
             const [total, rows] = await Promise.all([
                 prisma.anomalyEvent.count({ where }),
@@ -36,7 +51,7 @@ export const AnomalyController = {
                     take: limit,
                     include: {
                         employee: {
-                            select: { id: true, name: true, firstName: true, lastName: true }
+                            select: { id: true, name: true, firstName: true, lastName: true, companyId: true }
                         }
                     }
                 })
@@ -64,8 +79,23 @@ export const AnomalyController = {
 
     getByEmployee: async (req: Request, res: Response) => {
         try {
+            const user = (req as AuthenticatedRequest).user;
             const { employeeId } = req.params;
             const status = req.query.status as string | undefined;
+
+            // HIGH-002: verificamos que el empleado pertenece al
+            // tenant del actor antes de devolver sus anomalías.
+            const target = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { companyId: true }
+            });
+            if (!target) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+            if (!assertSameTenantOrGlobal(user, target.companyId)) {
+                log.warn({ employeeId, userId: user?.id }, 'Cross-tenant anomaly access blocked');
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
 
             const where: any = { employeeId };
             if (status) where.status = status;
@@ -89,11 +119,25 @@ export const AnomalyController = {
 
     updateStatus: async (req: Request, res: Response) => {
         try {
+            const user = (req as AuthenticatedRequest).user;
             const { id } = req.params;
             const { status } = req.body;
 
             if (!['OPEN', 'REVIEWED', 'RESOLVED', 'FALSE_POSITIVE'].includes(status)) {
                 return ApiResponse.error(res, 'Estado inválido', 400);
+            }
+
+            // HIGH-002: verificamos tenant antes de mutar
+            const anomaly = await prisma.anomalyEvent.findUnique({
+                where: { id },
+                select: { employee: { select: { companyId: true } } }
+            });
+            if (!anomaly) {
+                return ApiResponse.error(res, 'Anomalía no encontrada', 404);
+            }
+            if (!assertSameTenantOrGlobal(user, anomaly.employee?.companyId)) {
+                log.warn({ id, userId: user?.id }, 'Cross-tenant anomaly update blocked');
+                return ApiResponse.error(res, 'Anomalía no encontrada', 404);
             }
 
             const updated = await prisma.anomalyEvent.update({

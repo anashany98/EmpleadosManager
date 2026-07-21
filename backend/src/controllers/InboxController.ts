@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/express';
 import * as fs from 'fs';
 import * as path from 'path';
 import { prisma } from '../lib/prisma';
@@ -16,15 +17,24 @@ export const InboxController = {
             const page = Math.max(parseInt(req.query.page as string) || 1, 1);
             const skip = (page - 1) * limit;
 
-            const user = (req as any).user;
+            const user = (req as AuthenticatedRequest).user;
             const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
 
+            // CRIT-002: los documentos con companyId:null (huérfanos)
+            // SOLO son visibles al admin global. Cualquier usuario de
+            // tenant solo ve los documentos de SU empresa. El bug
+            // original usaba `OR: [{companyId: user.companyId}, {companyId: null}]`,
+            // que filtraba los null como visibles para todos.
             const where: any = { processed: false };
-            if (!isGlobalAdmin) {
-                where.OR = [
-                    { companyId: user?.companyId || null },
-                    { companyId: null }
-                ];
+            if (isGlobalAdmin) {
+                // Sin filtro adicional: ve todo.
+            } else if (user?.companyId) {
+                where.companyId = user.companyId;
+            } else {
+                // Usuario autenticado sin empresa asignada y sin rol
+                // global: no debería ver nada. Forzamos un filtro que
+                // nunca matchea.
+                where.companyId = '__none__';
             }
 
             const [pending, total] = await Promise.all([
@@ -63,17 +73,24 @@ export const InboxController = {
     assign: async (req: Request, res: Response) => {
         const { id } = req.params;
         const { employeeId, category, name, expiryDate } = req.body;
+        const user = (req as AuthenticatedRequest).user;
 
         if (!employeeId || !category) {
             return ApiResponse.error(res, 'Faltan datos obligatorios');
         }
 
         try {
-            const document = await inboxService.assignDocument(id, employeeId, category, name, expiryDate);
+            // CRIT-002: pasamos el actor para que el servicio valide
+            // explícitamente que el inbox doc Y el empleado destino
+            // pertenecen al tenant del actor.
+            const document = await inboxService.assignDocument(id, employeeId, category, name, expiryDate, user);
             return ApiResponse.success(res, document, 'Documento asignado correctamente');
-        } catch (error: any) {
+        } catch (error: unknown) {
             log.error({ error }, 'Error assigning document');
-            return ApiResponse.error(res, error.message || 'Error al asignar documento');
+            const message = error instanceof Error ? error.message : 'Error al asignar documento';
+            // 404 cuando es cross-tenant para no enumerar IDs ajenos
+            const status = /otro tenant|ya fue procesado|sin empresa|ya procesado|no encontrad/i.test(message) ? 404 : 500;
+            return ApiResponse.error(res, message, status);
         }
     },
 
@@ -95,7 +112,7 @@ export const InboxController = {
             const targetPath = path.join(inboxPath, safeName);
             fs.renameSync(req.file.path, targetPath);
 
-            const companyId = (req as any).user?.companyId || null;
+            const companyId = (req as AuthenticatedRequest).user?.companyId || null;
 
             // InboxService watcher should pick it up automatically
             // But we can trigger a sync manually to be faster
@@ -106,9 +123,9 @@ export const InboxController = {
             }
 
             return ApiResponse.success(res, { filename: req.file.originalname }, 'Archivo subido a la bandeja de entrada');
-        } catch (error: any) {
+        } catch (error: unknown) {
             log.error({ error }, 'Error uploading file');
-            return ApiResponse.error(res, error.message || 'Error al subir el archivo', 500);
+            return ApiResponse.error(res, error instanceof Error ? error.message : 'Error al subir el archivo', 500);
         }
     },
 
@@ -118,10 +135,17 @@ export const InboxController = {
             const doc = await prisma.inboxDocument.findUnique({ where: { id } });
             if (!doc) return ApiResponse.error(res, 'Documento no encontrado', 404);
 
-            const user = (req as any).user;
+            const user = (req as AuthenticatedRequest).user;
             const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
-            if (!isGlobalAdmin && doc.companyId && doc.companyId !== user?.companyId) {
-                return ApiResponse.error(res, 'No tienes acceso a este documento', 403);
+
+            // CRIT-002: el bug original era `if (... && doc.companyId && doc.companyId !== user.companyId)`,
+            // que dejaba pasar docs con companyId:null. Ahora exigimos
+            // ownership explícito: o el doc pertenece a mi tenant, o
+            // soy admin global.
+            const belongsToTenant = doc.companyId && doc.companyId === user?.companyId;
+            if (!isGlobalAdmin && !belongsToTenant) {
+                log.warn({ id, userId: user?.id, docCompanyId: doc.companyId }, 'Cross-tenant inbox delete blocked');
+                return ApiResponse.error(res, 'Documento no encontrado', 404);
             }
 
             await prisma.inboxDocument.delete({ where: { id } });
@@ -144,10 +168,16 @@ export const InboxController = {
             const doc = await prisma.inboxDocument.findUnique({ where: { id } });
             if (!doc || !doc.fileUrl) return ApiResponse.error(res, 'Documento no encontrado', 404);
 
-            const user = (req as any).user;
+            const user = (req as AuthenticatedRequest).user;
             const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
-            if (!isGlobalAdmin && doc.companyId && doc.companyId !== user?.companyId) {
-                return ApiResponse.error(res, 'No tienes acceso a este documento', 403);
+
+            // CRIT-002: mismo fix que en delete. Sin companyId
+            // coincidente o sin global admin, el doc no existe para
+            // este actor.
+            const belongsToTenant = doc.companyId && doc.companyId === user?.companyId;
+            if (!isGlobalAdmin && !belongsToTenant) {
+                log.warn({ id, userId: user?.id, docCompanyId: doc.companyId }, 'Cross-tenant inbox download blocked');
+                return ApiResponse.error(res, 'Documento no encontrado', 404);
             }
 
             if (StorageService.provider === 'local') {
@@ -159,9 +189,9 @@ export const InboxController = {
             const signedUrl = await StorageService.getSignedDownloadUrl(doc.fileUrl);
             if (!signedUrl) return ApiResponse.error(res, 'No se pudo generar URL', 500);
             return res.redirect(signedUrl);
-        } catch (error: any) {
+        } catch (error: unknown) {
             log.error({ error, id }, 'Error downloading inbox document');
-            return ApiResponse.error(res, error.message || 'Error al descargar documento', 500);
+            return ApiResponse.error(res, error instanceof Error ? error.message : 'Error al descargar documento', 500);
         }
     }
 };

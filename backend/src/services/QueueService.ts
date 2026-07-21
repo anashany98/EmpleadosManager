@@ -35,9 +35,21 @@ export class QueueService {
     private queues: Record<string, Queue> = {};
     private workers: Record<string, Worker> = {};
     private queueEvents: Record<string, QueueEvents> = {};
+    private readonly enabled: boolean;
 
     constructor() {
-        this.initQueues();
+        // Cuando REDIS_MOCK=true (suite de tests), no inicializamos
+        // BullMQ: MockRedis no es un IORedis y BullMQ intentaría
+        // conectar a localhost:6379, reventando la suite con
+        // ECONNREFUSED. Los tests de MED-001 ya no dependen de
+        // BullMQ para verificar el rate limit; los tests que sí
+        // (QueueService.test.ts) mockean ioredis directamente.
+        this.enabled = process.env.REDIS_MOCK !== 'true';
+        if (this.enabled) {
+            this.initQueues();
+        } else {
+            log.info('QueueService disabled (REDIS_MOCK=true)');
+        }
     }
 
     private initQueues() {

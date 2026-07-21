@@ -2,20 +2,20 @@
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main, develop ]
+    branches: [main, develop]
 
 jobs:
   # Job 1: Lint and Type Check (frontend & backend)
   lint-and-typecheck:
     name: Lint & Type Check
     runs-on: ubuntu-latest
-    
+
     strategy:
       matrix:
         component: [backend, frontend]
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -63,7 +63,7 @@ jobs:
   backend-tests:
     name: Backend Tests
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15-alpine
@@ -78,7 +78,7 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      
+
       redis:
         image: redis:7-alpine
         ports:
@@ -106,14 +106,26 @@ jobs:
           npm ci
 
       - name: Generate Prisma Client
+        # MED-003: usar el script npm `prisma:generate` (que pasa
+        # `--schema=../database/prisma/schema.prisma` y compone la
+        # DATABASE_URL desde el .env) en vez de `npx prisma`
+        # directo, que busca el schema en `./prisma/schema.prisma`
+        # y falla con "Could not find Prisma Schema" desde
+        # `backend/`.
         run: |
           cd backend
-          npx prisma generate --schema=../database/prisma/schema.prisma
+          npm run prisma:generate
 
       - name: Setup test database
+        # MED-003: aplicar migraciones con el script npm
+        # `prisma:migrate:deploy` (que pasa `--schema` y la URL).
+        # `validate` y `migrate status` confirman que el schema es
+        # coherente y que no hay drift.
         run: |
           cd backend
-          npx prisma migrate deploy
+          npm run prisma:validate
+          npm run prisma:migrate:deploy
+          npm run prisma:status
         env:
           DATABASE_URL: postgresql://test_user:test_pass@localhost:5432/test_db
 
@@ -144,7 +156,7 @@ jobs:
   frontend-tests:
     name: Frontend Tests
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -176,12 +188,42 @@ jobs:
           name: frontend-coverage
           fail_ci_if_error: false
 
-  # Job 4: Build Docker Images
+  # Job 4: Frontend Build (HIGH-006)
+  # Antes solo había `tsc --noEmit` y los tests. Vite puede
+  # detectar problemas que tsc no (resolución de exports,
+  # tree-shaking, etc.). Si esto falla, el artefacto desplegable
+  # no se puede generar.
+  frontend-build:
+    name: Frontend Build (HIGH-006)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build (vite)
+        run: |
+          cd frontend
+          npm run build
+
+  # Job 5: Build Docker Images
   build:
     name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, backend-tests, frontend-tests]
-    
+    needs: [lint-and-typecheck, backend-tests, frontend-tests, security-guardrails, frontend-build]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -217,17 +259,49 @@ jobs:
           docker build -f backend/Dockerfile -t rrhh-backend:${{ github.sha }} .
           docker build -f frontend/Dockerfile -t rrhh-frontend:${{ github.sha }} .
 
+  security-guardrails:
+    name: Security Guardrails (HIGH-011 et al.)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Block seed-admin-inline.js reintroduction (HIGH-011)
+        run: |
+          if [ -f scripts/seed-admin-inline.js ]; then
+            echo "::error::HIGH-011: scripts/seed-admin-inline.js reintroduced. Use backend/src/scripts/seed-admin.ts with SEED_ADMIN_PASSWORD env var instead."
+            exit 1
+          fi
+
+      - name: Scan for hardcoded password fallbacks (HIGH-011)
+        run: |
+          # Detecta patrones peligrosos: literal de contraseña (>=6 chars
+          # de letras/dígitos/símbolos) encadenado con || o ?? a una
+          # variable de entorno. Excluye sentinels explícitos.
+          PATTERN='(CHANGE_ME|REPLACE_ME|YOUR_PASSWORD|EXAMPLE|SET_ME|PLACEHOLDER)'
+          DANGEROUS='\|\|\s*['\''"][A-Za-z0-9!@#$%^&*()_+=\-]{6,}['\''"]|\?\?\s*['\''"][A-Za-z0-9!@#$%^&*()_+=\-]{6,}['\''"]'
+          HITS=$(grep -rEn --include='*.js' --include='*.ts' "$DANGEROUS" scripts/ backend/src/scripts/ 2>/dev/null \
+            | grep -viE "$PATTERN" || true)
+          if [ -n "$HITS" ]; then
+            echo "::error::HIGH-011: scripts inseguros con fallback de contraseña hardcodeado detectado"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "OK: ningún script con fallback de contraseña hardcodeado"
+
   # Job 5: Security Scanning
   security:
     name: Security Scan
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -242,7 +316,7 @@ jobs:
         continue-on-error: true
 
       - name: Check for secrets
-        uses: trufflesecurity/trufflehog@main
+        uses: trufflesecurity/trufflehog@27b0417c16317ca9a472a9a8092acce143b49c55 # v3.95.9
         with:
           path: ./
           base: ${{ github.event.repository.default_branch }}
@@ -274,7 +348,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build, security]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -284,4 +358,3 @@ jobs:
           curl -X POST ${{ secrets.COOLIFY_WEBHOOK_URL }}
         env:
           COOLIFY_WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
-

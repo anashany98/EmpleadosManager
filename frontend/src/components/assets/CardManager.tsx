@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../api/client';
+import { api, getErrorMessage } from '../../api/client';
 import { toast } from 'sonner';
 import { CreditCard, Plus, Trash2, PenSquare, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -137,7 +137,7 @@ function CardModal({ card, onClose, onSuccess }: { card: Card | null, onClose: (
             toast.success(`Tarjeta ${isEdit ? 'actualizada' : 'creada'}`);
             onSuccess();
         },
-        onError: (err: any) => toast.error(err.response?.data?.message || 'Error al guardar')
+        onError: (err: unknown) => toast.error(getErrorMessage(err, 'Error al guardar'))
     });
 
     const { data: employees = [] } = useQuery({

@@ -6,51 +6,67 @@ import { InventoryService } from '../InventoryService';
 import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
 import { CompanyDocumentTemplateService } from './DocumentTemplateService';
 import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
+import { createLogger } from '../../services/LoggerService';
+
+const logger = createLogger('TechDeviceService');
 
 export const generateTechDevice = async (employeeId: string, deviceName: string, serialNumber: string, authorName?: string, itemId?: string): Promise<any> => {
+    // --- PHASE 1: pre-validate stock (only if itemId provided).
+    let resolvedItemId: string | null = itemId || null;
+    if (!resolvedItemId) {
+        const inventoryItem = await prisma.inventoryItem.findFirst({ where: { name: deviceName } });
+        resolvedItemId = inventoryItem?.id || null;
+    }
+    if (resolvedItemId) {
+        await InventoryService.assertStockForItems([
+            { itemId: resolvedItemId, quantity: 1 }
+        ]);
+    }
+
+    // --- PHASE 2: generate PDF + save document.
     const doc = await generateTechDeviceInternal(employeeId, deviceName, serialNumber, authorName);
 
-    // --- INVENTORY AUTOMATION ---
-    try {
-        if (itemId) {
-            await InventoryService.recordMovement({
-                itemId,
-                type: 'ASSIGNMENT',
-                quantity: 1,
-                userId: authorName || 'SYSTEM',
-                employeeId,
-                notes: `Acta Material Tecnológico: ${deviceName}`
-            });
-        } else {
-            const inventoryItem = await prisma.inventoryItem.findFirst({ where: { name: deviceName } });
-            if (inventoryItem) {
-                await InventoryService.recordMovement({
-                    itemId: inventoryItem.id,
+    // --- PHASE 3: atomic commit (inventory + asset). Both in one
+    // transaction so the document row, the stock decrement, and the
+    // asset creation are all-or-nothing.
+    if (resolvedItemId) {
+        try {
+            await prisma.$transaction(async (tx) => {
+                await InventoryService.recordMovementInTx(tx, {
+                    itemId: resolvedItemId!,
                     type: 'ASSIGNMENT',
                     quantity: 1,
                     userId: authorName || 'SYSTEM',
                     employeeId,
-                    notes: `Acta Material Tecnológico (Legacy): ${deviceName}`
+                    notes: `Acta Material Tecnológico: ${deviceName}`
+                });
+                await tx.asset.create({
+                    data: {
+                        employeeId,
+                        category: 'TECH',
+                        name: deviceName,
+                        serialNumber,
+                        status: 'ASSIGNED',
+                        inventoryItemId: resolvedItemId,
+                        assignedDate: new Date(),
+                        notes: 'Generado automáticamente al crear Acta de Entrega Material Tecnológico'
+                    }
+                });
+            });
+        } catch (err) {
+            if (doc?.fileUrl) {
+                await StorageService.deleteFile(doc.fileUrl).catch((delErr) => {
+                    logger.warn({ err: delErr, fileUrl: doc.fileUrl }, 'Failed to delete orphan PDF after transaction rollback');
                 });
             }
-        }
-    } catch (err) { console.warn('Could not deduct stock for Tech Device:', err); }
-
-    try {
-        await prisma.asset.create({
-            data: {
-                employeeId,
-                category: 'TECH',
-                name: deviceName,
-                serialNumber,
-                status: 'ASSIGNED',
-                inventoryItemId: itemId || null,
-                assignedDate: new Date(),
-                notes: 'Generado automáticamente al crear Acta de Entrega Material Tecnológico'
+            if (doc?.id) {
+                await prisma.document.delete({ where: { id: doc.id } }).catch((delErr) => {
+                    logger.warn({ err: delErr, docId: doc.id }, 'Failed to delete document row after transaction rollback');
+                });
             }
-        });
-    } catch (err) { console.error('Error creating asset for Tech Device:', err); }
-
+            throw err;
+        }
+    }
     return doc;
 };
 

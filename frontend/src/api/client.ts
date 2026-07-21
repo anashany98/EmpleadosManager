@@ -39,6 +39,19 @@ export class ApiError extends Error {
     }
 }
 
+/**
+ * F1: Extract a user-friendly error message from any error type.
+ * Replaces the broken `error.response?.data?.error` pattern (axios shape)
+ * that no longer works with the native fetch client.
+ */
+export function getErrorMessage(err: unknown, fallback = 'Error inesperado'): string {
+    if (err instanceof ApiError) return err.message;
+    if (err instanceof TimeoutError) return 'La petición ha expirado. Inténtalo de nuevo.';
+    if (err instanceof NetworkError) return 'Error de red. Comprueba tu conexión.';
+    if (err instanceof Error) return err.message;
+    return fallback;
+}
+
 export interface RequestOptions {
     params?: Record<string, string | number | boolean | undefined | null>;
     responseType?: 'blob' | 'json';
@@ -49,6 +62,12 @@ export interface RequestOptions {
      * - 5 minutes for FormData uploads (Excel/CSV)
      */
     timeoutMs?: number;
+    /**
+     * H1: AbortSignal for request cancellation. When the signal fires,
+     * the request is aborted and a DOMException with name 'AbortError'
+     * is thrown (retried or converted to TimeoutError by the retry loop).
+     */
+    signal?: AbortSignal;
 }
 
 const buildUrlWithParams = (url: string, params?: Record<string, string | number | boolean | undefined | null>): string => {
@@ -113,8 +132,18 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
     let attempt = 0;
 
     while (attempt <= MAX_RETRIES) {
+        // H1: Merge external signal with timeout controller
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
+
+        // If caller provides an external signal, abort our controller when it fires
+        if (options.signal) {
+            if (options.signal.aborted) {
+                controller.abort();
+            } else {
+                options.signal.addEventListener('abort', () => controller.abort(), { once: true });
+            }
+        }
 
         try {
             const config: RequestInit = {

@@ -4,6 +4,13 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from './AuditService';
 import { queueService, QUEUES } from './QueueService';
 import { createLogger } from './LoggerService';
+import {
+    PayrollRulesService,
+    getRulesForDate,
+    ruleSetToDecimals,
+    roundToCents,
+    type PayrollRuleSet
+} from './PayrollRulesService';
 
 const log = createLogger('PayrollAutomationService');
 
@@ -58,8 +65,24 @@ export class PayrollAutomationService {
      * BullMQ worker processor. Performs the actual attendance → payroll
      * calculation. Runs off the HTTP request path so event loop is
      * not blocked.
+     *
+     * Reglas de cálculo (HIGH-009 cerrado):
+     *
+     *   - Todos los importes monetarios se manipulan como
+     *     `Prisma.Decimal` desde el string del salario hasta el
+     *     redondeo final. NO hay `Number()` ni `parseFloat()` en
+     *     medio.
+     *   - Las horas trabajadas se mantienen como `Prisma.Decimal`
+     *     (no como `number`) para que la división horas / esperadas
+     *     tampoco pase por binary64.
+     *   - Las tasas (SS, IRPF) se cargan de la regla versionada
+     *     correspondiente a la fecha del periodo de nómina. La
+     *     versión usada se persiste en `PayrollRow.ruleSetVersion`
+     *     para reproducibilidad histórica.
+     *   - El redondeo se aplica al resultado final de cada
+     *     magnitud, con banker's rounding al céntimo.
      */
-    static async processPayrollGenerationJob(job: Job): Promise<{ batchId: string; employeeCount: number }> {
+    static async processPayrollGenerationJob(job: Job): Promise<{ batchId: string; employeeCount: number; ruleSetVersion: string }> {
         const { batchId, year, month, companyId, createdById } = job.data as {
             batchId: string;
             year: number;
@@ -72,6 +95,10 @@ export class PayrollAutomationService {
 
         const start = new Date(year, month - 1, 1);
         const end = new Date(year, month, 0, 23, 59, 59);
+
+        // Regla activa para el periodo de nómina.
+        const rule: PayrollRuleSet = getRulesForDate(start);
+        const rates = ruleSetToDecimals(rule);
 
         const employees = await prisma.employee.findMany({
             where: {
@@ -112,7 +139,10 @@ export class PayrollAutomationService {
                 byDay[day].push(e);
             });
 
-            let totalHoursWorked = 0;
+            // totalHoursWorked como Prisma.Decimal (no number) para
+            // que la división por expectedHours tampoco pase por
+            // binary64.
+            let totalHoursWorked = new Prisma.Decimal(0);
             for (const day in byDay) {
                 const dayEntries = byDay[day];
                 let lastIn: Date | null = null;
@@ -120,39 +150,81 @@ export class PayrollAutomationService {
                     if (e.type === 'IN' || e.type === 'BREAK_END' || e.type === 'LUNCH_END') {
                         lastIn = e.timestamp;
                     } else if ((e.type === 'OUT' || e.type === 'BREAK_START' || e.type === 'LUNCH_START') && lastIn) {
-                        totalHoursWorked += (e.timestamp.getTime() - lastIn.getTime()) / (1000 * 60 * 60);
+                        const hours = new Prisma.Decimal(e.timestamp.getTime() - lastIn.getTime())
+                            .dividedBy(new Prisma.Decimal(1000 * 60 * 60));
+                        totalHoursWorked = totalHoursWorked.plus(hours);
                         lastIn = null;
                     }
                 });
             }
 
-            const expectedHours = (employee.weeklyHours ? employee.weeklyHours * 4.33 : 160) || 160;
-            const monthlySalary = Number(employee.monthlyGrossSalary) || (Number(employee.annualGrossSalary) / 12) || 0;
-            const proportion = totalHoursWorked > 0 ? totalHoursWorked / expectedHours : 0;
-            const salaryFactor = proportion > 1.1 ? 1.1 : proportion;
-            const bruto = new Prisma.Decimal(monthlySalary * salaryFactor);
+            // expectedHours como Decimal.
+            const weeklyHours = employee.weeklyHours
+                ? new Prisma.Decimal(employee.weeklyHours).times(new Prisma.Decimal('4.33'))
+                : new Prisma.Decimal(160);
+            const expectedHours = weeklyHours.greaterThan(0) ? weeklyHours : new Prisma.Decimal(160);
 
-            const SS_WORKER_RATE = 0.0635;
-            const IRPF_RATE = 0.15;
-            const SS_COMPANY_RATE = 0.236;
+            // Salario mensual como Decimal desde el string del
+            // campo de BD. Prisma entrega los Decimal como objetos
+            // Decimal, no number — pero la propiedad `toFixed()` nos
+            // da una representación exacta para reconstruir uno
+            // nuevo y evitar el round-trip por Number.
+            const monthlySalarySource = employee.monthlyGrossSalary ?? employee.annualGrossSalary ?? new Prisma.Decimal(0);
+            const monthlySalary = monthlySalarySource instanceof Prisma.Decimal
+                ? monthlySalarySource
+                : new Prisma.Decimal(monthlySalarySource);
+            const monthlySalaryDecimal = (employee.annualGrossSalary && !employee.monthlyGrossSalary)
+                ? monthlySalary.dividedBy(new Prisma.Decimal(12))
+                : monthlySalary;
 
-            const ssTrabajador = bruto.mul(SS_WORKER_RATE);
-            const irpf = bruto.mul(IRPF_RATE);
-            const neto = bruto.sub(ssTrabajador).sub(irpf);
-            const ssEmpresa = bruto.mul(SS_COMPANY_RATE);
+            // proportion = totalHoursWorked / expectedHours (Decimal).
+            // proportion se limita a rates.maxProportion (1.1) si lo
+            // supera.
+            const proportion = totalHoursWorked.greaterThan(0)
+                ? totalHoursWorked.dividedBy(expectedHours)
+                : new Prisma.Decimal(0);
+            const salaryFactor = proportion.greaterThan(rates.maxProportion)
+                ? rates.maxProportion
+                : proportion;
+
+            // bruto en Decimal (sin redondeo intermedio).
+            const bruto = monthlySalaryDecimal.times(salaryFactor);
+
+            // Tasas como Decimal — todo en Decimal hasta el final.
+            const ssTrabajador = bruto.times(rates.ssWorkerRate);
+            const irpf = bruto.times(rates.irpfRate);
+            const ssEmpresa = bruto.times(rates.ssCompanyRate);
+
+            // Redondeo al céntimo (banker's rounding) en cada línea
+            // ANTES de combinarlas. Esto es la práctica contable
+            // estándar: cada magnitud se redondea al céntimo y la
+            // suma/resta se hace sobre los valores ya redondeados.
+            // Si redondeáramos solo al final, el neto no coincidiría
+            // con la suma de las líneas (drift de 1-2 céntimos por
+            // nómina). Ver HIGH-009.
+            const brutoRounded = roundToCents(bruto);
+            const ssTrabajadorRounded = roundToCents(ssTrabajador);
+            const irpfRounded = roundToCents(irpf);
+            const ssEmpresaRounded = roundToCents(ssEmpresa);
+            const netoRounded = brutoRounded.minus(ssTrabajadorRounded).minus(irpfRounded);
+
+            // Proporción como string para la nota de validación (es
+            // un ratio, no moneda: 4 decimales bastan).
+            const proportionStr = proportion.toDecimalPlaces(4).toString();
 
             payrollRows.push({
                 batchId,
                 employeeId: employee.id,
                 rawEmployeeName: employee.name,
-                bruto,
-                neto,
-                ssEmpresa,
-                ssTrabajador,
-                irpf,
-                status: proportion < 0.8 ? 'WARNING' : 'VALID',
-                validationNotes: proportion < 0.8
-                    ? `Horas trabajadas (${totalHoursWorked.toFixed(1)}) inferiores a lo esperado (${expectedHours.toFixed(1)})`
+                bruto: brutoRounded,
+                neto: netoRounded,
+                ssEmpresa: ssEmpresaRounded,
+                ssTrabajador: ssTrabajadorRounded,
+                irpf: irpfRounded,
+                ruleSetVersion: rule.version,
+                status: proportion.lessThan(rates.minProportionForNoWarning) ? 'WARNING' : 'VALID',
+                validationNotes: proportion.lessThan(rates.minProportionForNoWarning)
+                    ? `Horas trabajadas (${totalHoursWorked.toFixed(2)}) inferiores a lo esperado (${expectedHours.toFixed(2)}) (proporción ${proportionStr})`
                     : null
             });
         }
@@ -169,12 +241,13 @@ export class PayrollAutomationService {
         await AuditService.log('GENERATE_AUTO_PAYROLL', 'PAYROLL_BATCH', batchId, {
             employeeCount: employees.length,
             year,
-            month
+            month,
+            ruleSetVersion: rule.version
         }, createdById);
 
-        log.info({ batchId, employeeCount: employees.length }, 'Payroll generation job completed');
+        log.info({ batchId, employeeCount: employees.length, ruleSetVersion: rule.version }, 'Payroll generation job completed');
 
-        return { batchId, employeeCount: employees.length };
+        return { batchId, employeeCount: employees.length, ruleSetVersion: rule.version };
     }
 
     /**
@@ -203,3 +276,6 @@ export class PayrollAutomationService {
         return batch;
     }
 }
+
+// Re-export para tests y callers.
+export { PayrollRulesService };

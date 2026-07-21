@@ -19,6 +19,9 @@ import assetRoutes from '../routes/assetRoutes';
 import checklistRoutes from '../routes/checklistRoutes';
 import projectRoutes from '../routes/projectRoutes';
 import employeeProjectWorkRoutes from '../routes/employeeProjectWorkRoutes';
+import obraRoutes from '../routes/obraRoutes';
+import obraExpenseRoutes from '../routes/obraExpenseRoutes';
+import obraImportRoutes from '../routes/obraImportRoutes';
 import authRoutes from '../routes/authRoutes';
 import userRoutes from '../routes/userRoutes';
 import permissionProfileRoutes from '../routes/permissionProfileRoutes';
@@ -29,7 +32,11 @@ import { inventoryRoutes } from '../routes/inventoryRoutes';
 import notificationRoutes from '../routes/notificationRoutes';
 import onboardingRoutes from '../routes/onboardingRoutes';
 import anomalyRoutes from '../routes/anomalyRoutes';
-import kioskRoutes from '../routes/kioskRoutes';
+// HIGH-004: el módulo Kiosco está desactivado (decisión funcional
+// 2026-07-20). Montamos un stub que devuelve 410 Gone en lugar del
+// router original, sin tocar el código de KioskController para
+// conservar trazabilidad histórica.
+import kioskRoutes from '../routes/kioskDisabledRoutes';
 import offboardingRoutes from '../routes/offboardingRoutes';
 import vehicleRoutes from '../routes/vehicleRoutes';
 import cardRoutes from '../routes/cardRoutes';
@@ -79,6 +86,9 @@ export function registerRoutes(app: Express): void {
     app.use('/api/checklists', protect, checkPermission('employees', 'read'), checklistRoutes);
     app.use('/api/projects', protect, checkPermission('projects', 'read'), projectRoutes);
     app.use('/api/employee-project-work', protect, checkPermission('projects', 'read'), employeeProjectWorkRoutes);
+    app.use('/api/obras', protect, checkPermission('projects', 'read'), obraRoutes);
+    app.use('/api/obra-expenses', protect, checkPermission('projects', 'read'), obraExpenseRoutes);
+    app.use('/api/obra-imports', protect, checkPermission('projects', 'read'), obraImportRoutes);
     app.use('/api/performance', protect, performanceRoutes);
     app.use('/api/locks', protect, lockRoutes);
     app.use('/api/consents', protect, consentRoutes);

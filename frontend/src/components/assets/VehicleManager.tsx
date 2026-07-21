@@ -1,7 +1,7 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../api/client';
+import { api, getErrorMessage } from '../../api/client';
 import { toast } from 'sonner';
 import { Car, Plus, Trash2, PenSquare, Calendar, Activity, FileText, Download, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -207,7 +207,7 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
             }
             onSuccess();
         },
-        onError: (err: any) => toast.error(err.response?.data?.message || err.message || 'Error al guardar')
+        onError: (err: unknown) => toast.error(getErrorMessage(err, 'Error al guardar'))
     });
 
     const { data: employees = [] } = useQuery({

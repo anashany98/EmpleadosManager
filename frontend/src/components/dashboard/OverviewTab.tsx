@@ -25,13 +25,17 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
     const [insights, setInsights] = useState<any[]>([]);
     const [currentInsightIndex, setCurrentInsightIndex] = useState(0);
     const [auditLogs, setAuditLogs] = useState<any[]>([]);
-    const [kioskActivity, setKioskActivity] = useState<any[]>([]);
+    // HIGH-004: kioskActivity eliminado porque el módulo Kiosco está desactivado
+    // (decisión funcional 2026-07-20).
+    // const [kioskActivity, setKioskActivity] = useState<any[]>([]);
 
 
     const [recentBatches, setRecentBatches] = useState<any[]>([]);
     const [attendanceSummary, setAttendanceSummary] = useState<any[]>([]);
     const [celebrations, setCelebrations] = useState<any[]>([]);
-    const [activityTab, setActivityTab] = useState<'BATCHES' | 'AUDIT' | 'KIOSK' | 'ANOMALIES'>('BATCHES');
+    // HIGH-004: 'KIOSK' eliminado de la unión de activityTab porque el módulo
+    // Kiosco está desactivado.
+    const [activityTab, setActivityTab] = useState<'BATCHES' | 'AUDIT' | 'ANOMALIES'>('BATCHES');
 
     // Derived state from metrics
     const absencesData = metrics?.attendance?.onLeaveToday && typeof metrics.attendance.onLeaveToday === 'object'
@@ -67,18 +71,18 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
 
             const query = selectedCompany ? `?companyId=${selectedCompany}` : '';
             try {
-                const [insRes, celRes, audRes, kioskRes, summaryRes, batchesRes] = await Promise.all([
+                // HIGH-004: el fetch a /kiosk/activity se ha eliminado
+            // porque el módulo Kiosco está desactivado.
+            const [insRes, celRes, audRes, summaryRes, batchesRes] = await Promise.all([
                     api.get(`/dashboard/insights${query}`).catch(() => ({ data: [] })),
                     api.get('/dashboard/celebrations').catch(() => ({ data: [] })),
                     api.get('/dashboard/audit').catch(() => ({ data: [] })),
-                    api.get('/kiosk/activity').catch(() => ({ data: [] })),
                     api.get(`/reports/attendance-summary?start=${new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()}&end=${new Date().toISOString()}${selectedCompany ? `&companyId=${selectedCompany}` : ''}`).catch(() => ({ data: [] })),
                     api.get('/payroll?limit=5').catch(() => ({ data: [] }))
                 ]);
                 setInsights(insRes.data || []);
                 setCelebrations(celRes.data || []);
                 setAuditLogs(audRes.data || []);
-                setKioskActivity(kioskRes.data || []);
                 setAttendanceSummary(summaryRes.data || []);
                 setRecentBatches(batchesRes.data || []);
             } catch (e) {
@@ -186,12 +190,6 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                                     Actividad
                                 </button>
                                 <button
-                                    onClick={() => setActivityTab('KIOSK')}
-                                    className={`pb-2 -mb-2.5 border-b-2 transition-colors ${activityTab === 'KIOSK' ? 'border-amber-500 text-amber-600' : 'border-transparent hover:text-slate-700'}`}
-                                >
-                                    Kiosco Pulse
-                                </button>
-                                <button
                                     onClick={() => setActivityTab('ANOMALIES')}
                                     className={`pb-2 -mb-2.5 border-b-2 transition-colors ${activityTab === 'ANOMALIES' ? 'border-red-500 text-red-600' : 'border-transparent hover:text-slate-700'}`}
                                 >
@@ -243,32 +241,6 @@ export default function OverviewTab({ selectedCompany, metrics }: OverviewTabPro
                                             </div>
                                         </div>
                                     ))}
-                                </div>
-                            ) : activityTab === 'KIOSK' ? (
-                                <div className="p-4 space-y-4">
-                                    {kioskActivity.length === 0 ? (
-                                        <div className="text-center py-10 text-slate-400 text-xs italic">
-                                            Sin actividad reciente en el Kiosco
-                                        </div>
-                                    ) : (
-                                        kioskActivity.map((item, idx) => (
-                                            <div key={idx} className="flex items-center gap-4 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 relative overflow-hidden group">
-                                                <div className={`w-1 h-full absolute left-0 top-0 ${item.type === 'IN' ? 'bg-green-500' : 'bg-rose-500'}`}></div>
-                                                <div className="p-2 bg-white dark:bg-slate-900 rounded-lg shadow-sm">
-                                                    <Clock size={16} className={item.type === 'IN' ? 'text-green-500' : 'text-rose-500'} />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{item.employeeName}</p>
-                                                    <p className="text-[10px] text-slate-500">
-                                                        {item.type === 'IN' ? 'Entrada' : 'Salida'} • {new Date(item.timestamp).toLocaleTimeString()} • {item.method}
-                                                    </p>
-                                                </div>
-                                                <div className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 transition-colors uppercase">
-                                                    Kiosco
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
                                 </div>
                             ) : (
                                 <div className="p-4 space-y-4">

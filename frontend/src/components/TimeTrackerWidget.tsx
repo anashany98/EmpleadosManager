@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../api/client';
+import { api, getErrorMessage } from '../api/client';
 import { toast } from 'sonner';
 import { Play, Square, Coffee, Utensils, MapPin, Loader2, Clock } from 'lucide-react';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
@@ -75,8 +75,7 @@ function getErrorMessage(error: unknown): string {
         return error.message;
     }
 
-    const apiError = error as ApiErrorLike | undefined;
-    return apiError?.response?.data?.message || 'Error al fichar';
+    return getErrorMessage(error, 'Error al fichar');
 }
 
 function isNetworkError(error: unknown): boolean {

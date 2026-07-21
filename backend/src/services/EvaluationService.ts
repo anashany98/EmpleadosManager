@@ -1,5 +1,8 @@
 import { prisma } from '../lib/prisma';
 import { Decimal } from '@prisma/client/runtime/library';
+import { createLogger } from './LoggerService';
+
+const logger = createLogger('EvaluationService');
 
 // Types
 interface CreateEvaluationData {
@@ -37,12 +40,17 @@ interface EvaluationWithDetails {
         email: string | null;
         jobTitle: string | null;
         department: string | null;
+        companyId: string | null;
     };
     evaluator: {
         id: string;
         name: string;
         firstName: string | null;
         lastName: string | null;
+        email: string | null;
+        jobTitle: string | null;
+        department: string | null;
+        companyId: string | null;
     };
     periodStart: Date;
     periodEnd: Date;
@@ -114,8 +122,11 @@ export class EvaluationService {
             where: { id },
             include: {
                 template: true,
-                employee: true,
-                evaluator: true,
+                // HIGH-001: el controller necesita `companyId` del
+                // empleado para autorizar por tenant. Lo añadimos
+                // al include (también evita N+1 al validar).
+                employee: { select: { id: true, name: true, firstName: true, lastName: true, email: true, jobTitle: true, department: true, companyId: true } },
+                evaluator: { select: { id: true, name: true, firstName: true, lastName: true, email: true, jobTitle: true, department: true, companyId: true } },
                 peerReviews: {
                     include: {
                         reviewer: {
@@ -343,7 +354,7 @@ export class EvaluationService {
                 });
                 evaluations.push(evaluation);
             } catch (error) {
-                console.error(`Error creating evaluation for employee ${employee.id}:`, error);
+                logger.error({ err: error }, `Error creating evaluation for employee ${employee.id}:`);
             }
         }
 

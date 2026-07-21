@@ -6,6 +6,9 @@ import { InventoryService } from '../InventoryService';
 import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
 import { CompanyDocumentTemplateService } from './DocumentTemplateService';
 import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
+import { createLogger } from '../../services/LoggerService';
+
+const logger = createLogger('MaterialDeliveryService');
 
 export interface MaterialDeliveryItemInput {
     id?: string;
@@ -41,13 +44,24 @@ export const generateMaterialDelivery = async (
     authorName?: string
 ): Promise<any> => {
     const normalizedItems = normalizeItems(items);
+
+    // --- PHASE 1: pre-validate stock for items with known IDs.
+    const itemsWithId = normalizedItems.filter((it): it is { id: string; name: string; quantity: number; detail: string } => Boolean(it.id));
+    if (itemsWithId.length > 0) {
+        await InventoryService.assertStockForItems(
+            itemsWithId.map((it) => ({ itemId: it.id, quantity: it.quantity }))
+        );
+    }
+
+    // --- PHASE 2: generate PDF + save document.
     const doc = await generateMaterialDeliveryInternal(employeeId, normalizedItems, authorName);
 
-    if (normalizedItems.length > 0) {
-        await Promise.all(normalizedItems.map(async (item) => {
-            try {
-                if (item.id) {
-                    await InventoryService.recordMovement({
+    // --- PHASE 3: atomic commit (inventory movements in one tx).
+    if (itemsWithId.length > 0) {
+        try {
+            await prisma.$transaction(async (tx) => {
+                for (const item of itemsWithId) {
+                    await InventoryService.recordMovementInTx(tx, {
                         itemId: item.id,
                         type: 'ASSIGNMENT',
                         quantity: item.quantity,
@@ -55,12 +69,29 @@ export const generateMaterialDelivery = async (
                         employeeId,
                         notes: `Entrega material: ${item.name}${item.detail ? ` (${item.detail})` : ''}`
                     });
-                    return;
                 }
-
-                const inventoryItem = await prisma.inventoryItem.findFirst({ where: { name: item.name.trim() } });
-                if (inventoryItem) {
-                    await InventoryService.recordMovement({
+            });
+        } catch (err) {
+            if (doc?.fileUrl) {
+                await StorageService.deleteFile(doc.fileUrl).catch((delErr) => {
+                    logger.warn({ err: delErr, fileUrl: doc.fileUrl }, 'Failed to delete orphan PDF after transaction rollback');
+                });
+            }
+            if (doc?.id) {
+                await prisma.document.delete({ where: { id: doc.id } }).catch((delErr) => {
+                    logger.warn({ err: delErr, docId: doc.id }, 'Failed to delete document row after transaction rollback');
+                });
+            }
+            throw err;
+        }
+    } else if (normalizedItems.length > 0) {
+        // Legacy fallback: items without IDs, matched by name.
+        for (const item of normalizedItems) {
+            const inventoryItem = await prisma.inventoryItem.findFirst({ where: { name: item.name.trim() } });
+            if (!inventoryItem) continue;
+            try {
+                await prisma.$transaction(async (tx) => {
+                    await InventoryService.recordMovementInTx(tx, {
                         itemId: inventoryItem.id,
                         type: 'ASSIGNMENT',
                         quantity: item.quantity,
@@ -68,11 +99,11 @@ export const generateMaterialDelivery = async (
                         employeeId,
                         notes: `Entrega material (legacy): ${item.name}${item.detail ? ` (${item.detail})` : ''}`
                     });
-                }
-            } catch (error) {
-                console.warn(`Stock error for ${item.name}`, error);
+                });
+            } catch (err) {
+                logger.warn({ err, itemName: item.name }, 'Legacy stock deduction failed; document already created');
             }
-        }));
+        }
     }
 
     return doc;

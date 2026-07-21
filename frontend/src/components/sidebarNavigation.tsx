@@ -14,7 +14,7 @@ import {
     UserPlus,
     LayoutDashboard,
     Activity,
- Monitor
+    FileUp
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { AppFeatureKey } from '@shared/authz';
@@ -69,6 +69,15 @@ export const navCategories: NavCategory[] = [
         icon: <Building2 size={20} />,
         items: [
             { path: '/companies', label: 'Empresas', icon: <Building2 size={18} />, feature: 'companies' }
+        ]
+    },
+    {
+        id: 'obras',
+        label: 'Obras',
+        icon: <Briefcase size={20} />,
+        items: [
+            { path: '/obras', label: 'Obras', icon: <Briefcase size={18} />, feature: 'projects' },
+            { path: '/obras/imports', label: 'Importar Gastos', icon: <FileUp size={18} />, feature: 'projects' }
         ]
     },
     {

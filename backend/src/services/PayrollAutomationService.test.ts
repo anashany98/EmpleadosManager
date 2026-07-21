@@ -136,7 +136,10 @@ describe('PayrollAutomationService', () => {
     });
 
     it('should use Decimal precision for financial calculations', async () => {
-        const year = 2024;
+        // HIGH-009: las tasas se cargan de PayrollRulesService
+        // (versionadas por fecha), no de constantes hardcoded.
+        // Usamos 2023 → regla 2020-01-01 (ssWorker=0.0635).
+        const year = 2023;
         const month = 1;
         const companyId = 'comp-1';
         const userId = 'user-1';
@@ -171,11 +174,16 @@ describe('PayrollAutomationService', () => {
         const expectedBruto = 1500.75 * expectedProportion;
         expect(Number(createdRow.bruto)).toBeCloseTo(expectedBruto, 1);
 
+        // Regla 2020-01-01: ssWorker=0.0635 (lo que se usaba antes
+        // como constante hardcoded).
         expect(Number(createdRow.ssTrabajador)).toBeCloseTo(expectedBruto * 0.0635, 2);
         expect(Number(createdRow.irpf)).toBeCloseTo(expectedBruto * 0.15, 2);
 
         const expectedNeto = expectedBruto - (expectedBruto * 0.0635) - (expectedBruto * 0.15);
         expect(Number(createdRow.neto)).toBeCloseTo(expectedNeto, 2);
+
+        // La regla usada debe quedar registrada para reproducibilidad.
+        expect(createdRow.ruleSetVersion).toBe('2020-01-01');
     });
 
     // ------------------------------------------------------------------

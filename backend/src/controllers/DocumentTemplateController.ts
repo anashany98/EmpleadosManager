@@ -185,13 +185,13 @@ export const DocumentTemplateController = {
         if (!employeeId) {
             throw new AppError('employeeId es obligatorio', 400);
         }
-        const user = (req as any).user;
+        const user = (req as AuthenticatedRequest).user;
         const authorName = req.body.authorName || user?.name || 'Administrador';
 
         try {
             const doc = await DocumentTemplateService.generateEPI(employeeId, items || [], authorName);
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
-        } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
+        } catch (error: unknown) { throw new AppError(error instanceof Error ? error.message : 'Error al generar documento', 500); }
     },
 
     generateMaterial: async (req: Request, res: Response) => {
@@ -199,13 +199,13 @@ export const DocumentTemplateController = {
         if (!employeeId) {
             throw new AppError('employeeId es obligatorio', 400);
         }
-        const user = (req as any).user;
+        const user = (req as AuthenticatedRequest).user;
         const authorName = req.body.authorName || user?.name || 'Administrador';
 
         try {
             const doc = await DocumentTemplateService.generateMaterialDelivery(employeeId, items || [], authorName);
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
-        } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
+        } catch (error: unknown) { throw new AppError(error instanceof Error ? error.message : 'Error al generar documento', 500); }
     },
 
     generateTech: async (req: Request, res: Response) => {
@@ -213,13 +213,13 @@ export const DocumentTemplateController = {
         if (!employeeId) {
             throw new AppError('employeeId es obligatorio', 400);
         }
-        const user = (req as any).user;
+        const user = (req as AuthenticatedRequest).user;
         const authorName = req.body.authorName || user?.name || 'Administrador';
 
         try {
             const doc = await DocumentTemplateService.generateTechDevice(employeeId, deviceName, serialNumber, authorName, itemId);
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
-        } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
+        } catch (error: unknown) { throw new AppError(error instanceof Error ? error.message : 'Error al generar documento', 500); }
     },
 
     generate145: async (req: Request, res: Response) => {
@@ -227,13 +227,13 @@ export const DocumentTemplateController = {
         if (!employeeId) {
             throw new AppError('employeeId es obligatorio', 400);
         }
-        const user = (req as any).user;
+        const user = (req as AuthenticatedRequest).user;
         const authorName = req.body.authorName || user?.name || 'Administrador';
 
         try {
             const doc = await DocumentTemplateService.generateModel145(employeeId, authorName);
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: `/documents/${doc.id}/download` });
-        } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
+        } catch (error: unknown) { throw new AppError(error instanceof Error ? error.message : 'Error al generar documento', 500); }
     },
 
     generateNDA: async (req: Request, res: Response) => {
@@ -241,13 +241,13 @@ export const DocumentTemplateController = {
         if (!employeeId) {
             throw new AppError('employeeId es obligatorio', 400);
         }
-        const user = (req as any).user;
+        const user = (req as AuthenticatedRequest).user;
         const authorName = req.body.authorName || user?.name || 'Administrador';
 
         try {
             const doc = await DocumentTemplateService.generateNDA(employeeId, authorName);
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
-        } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
+        } catch (error: unknown) { throw new AppError(error instanceof Error ? error.message : 'Error al generar documento', 500); }
     },
 
     generateRGPD: async (req: Request, res: Response) => {
@@ -255,20 +255,20 @@ export const DocumentTemplateController = {
         if (!employeeId) {
             throw new AppError('employeeId es obligatorio', 400);
         }
-        const user = (req as any).user;
+        const user = (req as AuthenticatedRequest).user;
         const authorName = req.body.authorName || user?.name || 'Administrador';
 
         try {
             const doc = await DocumentTemplateService.generateRGPD(employeeId, authorName);
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
-        } catch (error: any) { throw new AppError(error.message || 'Error al generar documento', 500); }
+        } catch (error: unknown) { throw new AppError(error instanceof Error ? error.message : 'Error al generar documento', 500); }
     },
 
     generateGeneric: async (req: Request, res: Response) => {
         const { employeeId, templateId, templateType, type, data } = req.body;
         if (!employeeId) throw new AppError('employeeId es obligatorio', 400);
 
-        const user = (req as any).user;
+        const user = (req as AuthenticatedRequest).user;
         const authorName = req.body.authorName || user?.name || 'Administrador';
         const requestedType = templateType || type || templateId;
 
@@ -300,25 +300,38 @@ export const DocumentTemplateController = {
                 extraContext: data
             });
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
-        } catch (error: any) {
+        } catch (error: unknown) {
             log.error({ error }, 'Error generating document');
             if (error instanceof AppError) {
                 throw error;
             }
-            throw new AppError(error.message || 'Error al generar documento', 500);
+            throw new AppError(error instanceof Error ? error.message : 'Error al generar documento', 500);
         }
     },
 
     sign: async (req: Request, res: Response) => {
         const { documentId, signatureDataUrl } = req.body;
-        if (!documentId || !signatureDataUrl) throw new AppError('documentId y signatureDataUrl requeridos', 400);
+        const user = (req as AuthenticatedRequest).user;
+
+        if (!documentId || !signatureDataUrl) {
+            throw new AppError('documentId y signatureDataUrl requeridos', 400);
+        }
 
         try {
-            const document = await DocumentTemplateService.signDocument(documentId, signatureDataUrl);
+            // CRIT-004: pasamos el actor para que el servicio valide
+            // tenant y autorización. La ruta /sign YA está protegida
+            // por `authorize('document.write', resolveSignTarget)`, así
+            // que aquí ya sabemos que el usuario puede actuar sobre el
+            // doc. Pero el servicio mantiene su propia verificación
+            // (defense in depth) por si se llama desde otros puntos.
+            const document = await DocumentTemplateService.signDocument(documentId, signatureDataUrl, user);
             return ApiResponse.success(res, document, 'Documento firmado correctamente');
-        } catch (error: any) {
-            log.error({ error }, 'Error signing document');
-            throw new AppError(error.message || 'Error al firmar documento', 500);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Error al firmar documento';
+            // 404 uniforme para no enumerar IDs ajenos
+            const status = /no encontrad|otro tenant|sin empresa|forbidden|not found|traversal|clave|png|formato|tamañ/i.test(message) ? 404 : 500;
+            log.error({ error, status }, 'Error signing document');
+            throw new AppError(message, status);
         }
     },
 
@@ -335,9 +348,9 @@ export const DocumentTemplateController = {
 
             const logoUrl = `/uploads/template-logos/${req.file.filename}`;
             return ApiResponse.success(res, { logoUrl, fileName: req.file.filename }, 'Logo subido correctamente', 201);
-        } catch (error: any) {
+        } catch (error: unknown) {
             log.error({ error }, 'Error uploading logo');
-            return ApiResponse.error(res, error.message || 'Error al subir el logo', 500);
+            return ApiResponse.error(res, error instanceof Error ? error.message : 'Error al subir el logo', 500);
         }
     }
 };

@@ -273,11 +273,19 @@ export class ReportController {
     static async getCosts(req: Request, res: Response) {
         try {
             const { year, month, format } = req.query;
+            const user = (req as AuthenticatedRequest).user;
             const companyId = getCompanyScope(req);
+            const isGlobalAdmin = !user?.companyId && user?.role === 'admin';
             const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
             const targetMonth = month ? parseInt(month as string) : undefined;
 
-            const data = await ReportService.getCompanyCostData(targetYear, targetMonth, { companyId });
+            // CRIT-001: pasamos el flag isGlobalAdmin explícito para que
+            // el servicio use una cache key separada y NO aplique el
+            // filtro de empresa al admin global.
+            const data = await ReportService.getCompanyCostData(targetYear, targetMonth, {
+                companyId: companyId ?? null,
+                isGlobalAdmin
+            });
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             await auditReportAccess(req, 'costs', {
@@ -446,6 +454,89 @@ export class ReportController {
         } catch (error) {
             log.error({ error }, 'Vacation Usage By Department Error');
             const { status, body } = getErrorResponse(error, 'Failed to generate vacation usage by department report');
+            res.status(status).json(body);
+        }
+    }
+
+    /**
+     * GET /api/reports/obras
+     * Aggregated hours + expenses per obra with budget consumption.
+     * Filters: status, from, to, format
+     */
+    static async getObras(req: Request, res: Response) {
+        try {
+            const { status, from, to, format } = req.query;
+            const companyId = getCompanyScope(req);
+            const filters: any = {
+                status: status ? String(status) : undefined,
+                from: from ? new Date(String(from)) : undefined,
+                to: to ? new Date(String(to)) : undefined
+            };
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            const data = await ReportService.getObraSummary(filters);
+
+            await auditReportAccess(req, 'obras', {
+                status, from, to, companyId, format: requestedFormat
+            });
+
+            if (format === 'xlsx') {
+                const buffer = await ExcelService.generateObraSummaryReport(data, buildExcelContext({
+                    title: 'Resumen de obras',
+                    subtitle: 'Horas, gastos y consumo de presupuesto por obra.',
+                    periodLabel: filters.from && filters.to ? `Del ${String(from)} al ${String(to)}` : 'Histórico completo',
+                    companyId
+                }));
+                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                res.setHeader('Content-Disposition', 'attachment; filename=Reporte_Obras.xlsx');
+                return res.send(buffer);
+            }
+
+            res.json(data);
+        } catch (error) {
+            log.error({ error }, 'Obras Report Error');
+            const { status, body } = getErrorResponse(error, 'Failed to generate obras report');
+            res.status(status).json(body);
+        }
+    }
+
+    /**
+     * GET /api/reports/obras/employees
+     * Per-employee breakdown of hours + expenses across obras.
+     * Filters: from, to, format
+     */
+    static async getObraEmployees(req: Request, res: Response) {
+        try {
+            const { from, to, format } = req.query;
+            const companyId = getCompanyScope(req);
+            const filters: any = {
+                from: from ? new Date(String(from)) : undefined,
+                to: to ? new Date(String(to)) : undefined
+            };
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            const data = await ReportService.getObraEmployeeBreakdown(filters);
+
+            await auditReportAccess(req, 'obras-employees', {
+                from, to, companyId, format: requestedFormat
+            });
+
+            if (format === 'xlsx') {
+                const buffer = await ExcelService.generateObraEmployeeReport(data, buildExcelContext({
+                    title: 'Gastos de obra por empleado',
+                    subtitle: 'Horas y gastos imputados por empleado dentro de las obras.',
+                    periodLabel: filters.from && filters.to ? `Del ${String(from)} al ${String(to)}` : 'Histórico completo',
+                    companyId
+                }));
+                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                res.setHeader('Content-Disposition', 'attachment; filename=Reporte_Obras_Por_Empleado.xlsx');
+                return res.send(buffer);
+            }
+
+            res.json(data);
+        } catch (error) {
+            log.error({ error }, 'Obra Employees Report Error');
+            const { status, body } = getErrorResponse(error, 'Failed to generate obra-employees report');
             res.status(status).json(body);
         }
     }

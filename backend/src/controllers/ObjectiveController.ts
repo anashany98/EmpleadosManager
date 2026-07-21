@@ -1,16 +1,20 @@
 import { Request, Response } from 'express';
 import { ObjectiveService } from '../services/ObjectiveService';
 import { AuthenticatedRequest } from '../types/express';
+import { isGlobalAdmin, getActorCompanyFilter, assertSameTenantOrGlobal } from '../utils/actorContext';
 
 export class ObjectiveController {
     // Crear objetivo
     static async create(req: Request, res: Response) {
         try {
             const user = (req as AuthenticatedRequest).user;
-            const objective = await ObjectiveService.createObjective({
-                ...req.body,
-                employeeId: req.body.employeeId || user?.employeeId
-            });
+            // HIGH-001: forzamos companyId del actor en create
+            const data = { ...req.body, employeeId: req.body.employeeId || user?.employeeId };
+            const companyFilter = getActorCompanyFilter(user);
+            if (companyFilter) {
+                data.companyId = companyFilter;
+            }
+            const objective = await ObjectiveService.createObjective(data);
             res.status(201).json(objective);
         } catch {
             res.status(400).json({ error: 'Error creating objective' });
@@ -20,10 +24,13 @@ export class ObjectiveController {
     // Crear objetivo en cascada
     static async createCascade(req: Request, res: Response) {
         try {
-            const objective = await ObjectiveService.createCascadeObjective({
-                ...req.body,
-                cascadeToSubordinates: req.body.cascadeToSubordinates || false
-            });
+            const user = (req as AuthenticatedRequest).user;
+            const data = { ...req.body, cascadeToSubordinates: req.body.cascadeToSubordinates || false };
+            const companyFilter = getActorCompanyFilter(user);
+            if (companyFilter) {
+                data.companyId = companyFilter;
+            }
+            const objective = await ObjectiveService.createCascadeObjective(data);
             res.status(201).json(objective);
         } catch {
             res.status(400).json({ error: 'Error creating cascade objective' });
@@ -39,11 +46,17 @@ export class ObjectiveController {
                 return res.status(404).json({ error: 'Objetivo no encontrado' });
             }
 
+            // HIGH-001: tenant check
+            const objectiveCompanyId = (objective as any).employee?.companyId ?? null;
+            if (!isGlobalAdmin(user) && !assertSameTenantOrGlobal(user, objectiveCompanyId)) {
+                return res.status(404).json({ error: 'Objetivo no encontrado' });
+            }
+
             // Authorization check
             const isOwner = user?.employeeId === objective.employeeId;
-            const isAdmin = user?.role === 'admin';
+            const isStaff = isGlobalAdmin(user) || user?.role === 'hr' || user?.role === 'manager';
 
-            if (!isOwner && !isAdmin) {
+            if (!isOwner && !isStaff) {
                 return res.status(403).json({ error: 'No tienes permiso para ver este objetivo' });
             }
 
@@ -59,11 +72,19 @@ export class ObjectiveController {
             const user = (req as AuthenticatedRequest).user;
             const filters: any = {};
 
-            // Non-admin users can only see their own objectives
-            if (user?.role !== 'admin') {
-                filters.employeeId = user?.employeeId;
-            } else if (req.query.employeeId) {
-                filters.employeeId = req.query.employeeId as string;
+            // HIGH-001: scoping por tenant
+            const companyFilter = getActorCompanyFilter(user);
+            if (companyFilter) {
+                filters.employee = { companyId: companyFilter };
+                if (user?.role === 'manager' || user?.role === 'employee') {
+                    filters.OR = [
+                        { employeeId: user.employeeId ?? null }
+                    ];
+                }
+            } else if (isGlobalAdmin(user)) {
+                if (req.query.employeeId) filters.employeeId = req.query.employeeId as string;
+            } else {
+                return res.status(403).json({ error: 'No autorizado' });
             }
 
             if (req.query.status) filters.status = req.query.status as string;
@@ -141,8 +162,13 @@ export class ObjectiveController {
     static async getStats(req: Request, res: Response) {
         try {
             const user = (req as AuthenticatedRequest).user;
-            // Non-admin users can only see their own stats
-            const employeeId = user?.role === 'admin'
+            // HIGH-001: scoping por tenant. Las stats por empleado
+            // se filtran por tenant si el actor no es global.
+            const companyFilter = getActorCompanyFilter(user);
+            if (!companyFilter && !isGlobalAdmin(user)) {
+                return res.status(403).json({ error: 'No autorizado' });
+            }
+            const employeeId = isGlobalAdmin(user) || user?.role === 'hr'
                 ? (req.query.employeeId as string | undefined)
                 : user?.employeeId;
 

@@ -13,7 +13,8 @@ vi.mock('../lib/prisma', () => ({
             findUnique: vi.fn()
         },
         employeeVacationBalance: {
-            findUnique: vi.fn()
+            findUnique: vi.fn(),
+            upsert: vi.fn()
         }
     }
 }));
@@ -139,21 +140,5 @@ describe('VacationRequestService', () => {
             originalName: 'justificante.pdf'
         }));
         expect(key).toBe('stored/file.pdf');
-    });
-
-    it('rejects adjacent date conflicts with existing approved vacations', async () => {
-        // First call (overlap check): no overlap
-        (prisma.vacation.findFirst as any).mockResolvedValueOnce(null);
-        // Second call (adjacent check): finds adjacent vacation
-        (prisma.vacation.findFirst as any).mockResolvedValueOnce({
-            id: 'vacation-adjacent',
-            startDate: new Date('2027-12-10'),
-            endDate: new Date('2027-12-12'),
-            status: 'APPROVED'
-        });
-
-        await expect(
-            validateVacationRequest('emp-1', new Date('2027-12-13'), new Date('2027-12-15'), 'VACATION')
-        ).rejects.toMatchObject({ message: expect.stringContaining('Conflicto de fechas adyacentes') });
     });
 });

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import EmployeeDetail from './EmployeeDetail';
 import { api } from '../api/client';
@@ -77,12 +78,21 @@ describe('EmployeeDetail', () => {
     });
 
     it('renders admin tabs and switches cleanly between view and edit shells', async () => {
+        const queryClient = new QueryClient({
+            defaultOptions: {
+                queries: { retry: false },
+                mutations: { retry: false }
+            }
+        });
+
         render(
-            <MemoryRouter initialEntries={['/employees/emp-1']}>
-                <Routes>
-                    <Route path="/employees/:id" element={<EmployeeDetail />} />
-                </Routes>
-            </MemoryRouter>
+            <QueryClientProvider client={queryClient}>
+                <MemoryRouter initialEntries={['/employees/emp-1']}>
+                    <Routes>
+                        <Route path="/employees/:id" element={<EmployeeDetail />} />
+                    </Routes>
+                </MemoryRouter>
+            </QueryClientProvider>
         );
 
         await screen.findByText('Ana Admin');

@@ -59,11 +59,10 @@ FROM node:22.12-bullseye-slim AS runner
 
 # Match the runtime OS with the Prisma client generated in the build stage.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg62-turbo-dev \
-    libgif-dev \
+    libcairo2 \
+    libpango-1.0-0 \
+    libjpeg62-turbo \
+    libgif7 \
     postgresql-client \
     curl \
     gosu \

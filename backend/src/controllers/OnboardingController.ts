@@ -16,7 +16,7 @@ export const OnboardingController = {
                 return ApiResponse.error(res, 'Faltan datos requeridos (employeeId, options)', 400);
             }
 
-            const user = (req as any).user;
+            const user = (req as AuthenticatedRequest).user;
             // Inject author name into options if not present
             options.authorName = user?.name || 'RRHH / Admin';
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api, API_URL } from '../api/client';
+import { api, API_URL, getErrorMessage } from '../api/client';
 import { toast } from 'sonner';
 import { FileText, Upload, Trash2, Download, Filter, Calendar, AlertTriangle, Loader2, Eye } from 'lucide-react';
 import DocumentPreview from './DocumentPreview';
@@ -101,9 +101,8 @@ export default function DocumentArchive({ employeeId }: { employeeId: string }) 
             setNewName('');
             setNewExpiry('');
             fetchDocuments();
-        } catch (error: any) {
-            const message = error?.response?.data?.message || error?.message || 'Error desconocido';
-            toast.error(`Error al subir el archivo: ${message}`);
+        } catch (error: unknown) {
+            toast.error(`Error al subir el archivo: ${getErrorMessage(error, 'Error desconocido')}`);
             console.error('Upload error:', error);
         } finally {
             setUploading(false);

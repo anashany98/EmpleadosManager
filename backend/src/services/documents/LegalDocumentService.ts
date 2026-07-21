@@ -7,6 +7,9 @@ import { StorageService } from '../StorageService';
 import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
 import { CompanyDocumentTemplateService } from './DocumentTemplateService';
 import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
+import { createLogger } from '../../services/LoggerService';
+
+const logger = createLogger('LegalDocumentService');
 
 export const generateNDA = async (employeeId: string, authorName?: string): Promise<any> => {
     const employee = await prisma.employee.findUnique({ where: { id: employeeId }, include: { company: true } });
@@ -172,7 +175,7 @@ export const generateModel145 = async (employeeId: string, authorName?: string):
             });
         });
 
-    } catch (_) { console.warn('Error filling some fields:', _); }
+    } catch (_) { logger.warn({ err: _ }, 'Error filling some fields:'); }
 
     const pdfBytes = await pdfDoc.save();
 

@@ -26,6 +26,8 @@ model User {
   batches             PayrollImportBatch[]
   refreshTokens       RefreshToken[]
   notifications       Notification[]
+  obraExpensesCreated ObraExpense[]
+  obraImportsCreated  ObraImportBatch[]
   employee            Employee?            @relation(fields: [employeeId], references: [id])
   createdEvents       CalendarEvent[]      @relation("EventCreator")
 }
@@ -179,7 +181,9 @@ model Employee {
   subordinates             Employee[]                @relation("Hierarchy")
   projectWork              EmployeeProjectWork[]
   expenses                 Expense[]
-  medicalReviews           MedicalReview[]
+  obraExpenses             ObraExpense[] 
+  managedObras             Project[]              @relation("ObraManager")
+  medicalReviews           MedicalReview[] 
   overtimeEntries          OvertimeEntry[]
   payrollRows              PayrollRow[]
   timeEntries              TimeEntry[]
@@ -249,10 +253,23 @@ model Project {
   code         String                @unique
   name         String
   destination  String?
+  description  String?
+  clientName   String?
+  startDate    DateTime?
+  endDate      DateTime?
+  budget       Decimal?  @db.Decimal(15, 2)
+  managerId    String?
+  status       String   @default("ACTIVE")
   active       Boolean               @default(true)
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
   employeeWork EmployeeProjectWork[]
+  expenses     ObraExpense[]
+  imports      ObraImportBatch[]
+  manager      Employee? @relation("ObraManager", fields: [managerId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([managerId])
 }
 
 model EmployeeProjectWork {
@@ -271,6 +288,57 @@ model EmployeeProjectWork {
   @@index([employeeId])
   @@index([projectId])
   @@index([startDate, endDate])
+}
+
+model ObraExpense {
+  id            String   @id @default(uuid())
+  obraId        String
+  employeeId    String?
+  type          String
+  date          DateTime
+  amount        Decimal  @db.Decimal(15, 2)
+  currency      String   @default("EUR")
+  description   String?
+  vendor        String?
+  reference     String?
+  origin        String?
+  destination   String?
+  receiptUrl    String?
+  status        String   @default("APPROVED")
+  importBatchId String?
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  obra          Project  @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  employee      Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  importBatch   ObraImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  createdBy     User    @relation(fields: [createdById], references: [id], onDelete: NoAction)
+
+  @@index([obraId, type])
+  @@index([obraId, date])
+  @@index([employeeId])
+  @@index([status])
+  @@index([importBatchId])
+}
+
+model ObraImportBatch {
+  id             String   @id @default(uuid())
+  obraId         String?
+  sourceFilename String
+  sourceFileUrl  String?
+  status         String   @default("UPLOADED")
+  resultSummary  String?
+  mappingRules   String?
+  warnings       String?
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  obra           Project? @relation(fields: [obraId], references: [id], onDelete: SetNull)
+  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: NoAction)
+  expenses       ObraExpense[]
+
+  @@index([status])
+  @@index([obraId])
 }
 
 model Asset {
@@ -514,6 +582,10 @@ model PayrollRow {
   extraData       String?
   status          String             @default("PENDING")
   validationNotes String?
+  /// Versión del rule set fiscal usado para calcular esta fila.
+  /// Permite reproducir nóminas históricas aunque cambien las
+  /// tasas. Ver PayrollRulesService. Cerrado HIGH-009.
+  ruleSetVersion  String?
   employee        Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull, onUpdate: NoAction) // FIX: SetNull so payroll rows persist with employeeId=null when employee is deleted
   batch           PayrollImportBatch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: NoAction) // FIX: Cascade so payroll rows are deleted when batch is deleted
   items           PayrollItem[]
@@ -698,7 +770,14 @@ model InboxDocument {
   processed    Boolean   @default(false)
   processedAt  DateTime?
   companyId    String?
+  /// SHA-256 del contenido del archivo. Permite deduplicar por
+  /// contenido (no por filename) y se usa para prevenir que
+  /// workers concurrentes creen dos `InboxDocument` con el mismo
+  /// archivo. La unicidad se delega al índice único del schema
+  /// (ver MED-004).
+  contentHash  String?   @db.Text
 
+  @@unique([contentHash])
   @@index([processed])
   @@index([source])
   @@index([receivedAt])

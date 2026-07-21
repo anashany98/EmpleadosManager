@@ -1,528 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-    AlertTriangle,
+    Briefcase,
     Building2,
     Calendar,
     ChevronRight,
-    Clock,
     Download,
     FileText,
     Filter,
-    LineChart,
-    TrendingUp,
-    Users
+    LineChart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router-dom';
 import { api, API_URL } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import ReportScheduleModal from '../components/reports/ReportScheduleModal';
 
-type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS' | 'GENDER_GAP';
-type ReportTone = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
-
-interface CompanyOption {
-    id: string;
-    name: string;
-}
-
-interface DepartmentOptionsResponse {
-    departments?: string[];
-}
-
-interface SummaryCardData {
-    label: string;
-    value: string;
-    helper: string;
-    tone: ReportTone;
-}
-
-interface ReportDefinition {
-    id: ReportType;
-    name: string;
-    description: string;
-    tone: ReportTone;
-    endpoint: string;
-    icon: typeof Clock;
-}
-
-const euroFormatter = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' });
-const numberFormatter = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-
-const reportsCatalog: ReportDefinition[] = [
-    {
-        id: 'ATTENDANCE',
-        name: 'Asistencia y jornadas',
-        description: 'Resumen diario con horas trabajadas, segmentos y jornadas incompletas.',
-        tone: 'blue',
-        endpoint: '/reports/attendance-summary',
-        icon: Clock
-    },
-    {
-        id: 'OVERTIME',
-        name: 'Horas extra y coste',
-        description: 'Horas adicionales, tarifas aplicadas y coste generado por periodo.',
-        tone: 'emerald',
-        endpoint: '/reports/overtime',
-        icon: TrendingUp
-    },
-    {
-        id: 'VACATIONS',
-        name: 'Vacaciones y saldos',
-        description: 'Cuota anual, consumo, peticiones registradas y riesgo de agotamiento.',
-        tone: 'amber',
-        endpoint: '/reports/vacations',
-        icon: Calendar
-    },
-    {
-        id: 'COSTS',
-        name: 'Coste empresa',
-        description: 'Bruto, seguridad social, IRPF y coste total por persona o departamento.',
-        tone: 'violet',
-        endpoint: '/reports/costs',
-        icon: Building2
-    },
-    {
-        id: 'ABSENCES_DETAILED',
-        name: 'Bajas y ausencias',
-        description: 'Casos detallados con duración, motivo y seguimiento por empleado.',
-        tone: 'rose',
-        endpoint: '/reports/absences-detailed',
-        icon: AlertTriangle
-    },
-    {
-        id: 'KPIS',
-        name: 'KPIs de organización',
-        description: 'Rotación, absentismo y foco departamental para dirección y RRHH.',
-        tone: 'blue',
-        endpoint: '/reports/kpis',
-        icon: LineChart
-    },
-    {
-        id: 'GENDER_GAP',
-        name: 'Igualdad y diversidad',
-        description: 'Plantilla, medias salariales y brecha estimada por departamento.',
-        tone: 'rose',
-        endpoint: '/reports/gender-gap',
-        icon: Users
-    }
-];
-
-function extractResponseData<T>(response: unknown): T {
-    if (response && typeof response === 'object' && 'data' in (response as Record<string, unknown>)) {
-        return (response as { data: T }).data;
-    }
-
-    return response as T;
-}
-
-function formatCurrency(value: number) {
-    return euroFormatter.format(value || 0);
-}
-
-function formatNumber(value: number, suffix = '') {
-    return `${numberFormatter.format(value || 0)}${suffix}`;
-}
-
-function formatPercent(value: number) {
-    return `${numberFormatter.format(value || 0)}%`;
-}
-
-function formatDate(value?: string | null) {
-    if (!value) return '-';
-    return new Date(value).toLocaleDateString('es-ES');
-}
-
-function formatTime(value?: string | null) {
-    if (!value) return '-';
-    return new Date(value).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-}
-
-function getReportDefinition(type: ReportType) {
-    return reportsCatalog.find((report) => report.id === type) || reportsCatalog[0];
-}
-
-function buildRequestParams(activeTab: ReportType, filters: Record<string, string>) {
-    const params: Record<string, string> = {};
-
-    if (filters.companyId) params.companyId = filters.companyId;
-    if (filters.department && activeTab !== 'GENDER_GAP') params.department = filters.department;
-
-    if (activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED') {
-        params.start = filters.start;
-        params.end = filters.end;
-    } else if (activeTab === 'VACATIONS') {
-        params.year = filters.year;
-    } else if (activeTab === 'COSTS' || activeTab === 'KPIS') {
-        params.year = filters.year;
-        if (filters.month) params.month = filters.month;
-    } else if (activeTab === 'GENDER_GAP') {
-        params.year = filters.year;
-    }
-
-    return params;
-}
-
-function toQueryString(params: Record<string, string>) {
-    return new URLSearchParams(
-        Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
-    ).toString();
-}
-
-function getAttendanceWindow(segments: Array<{ start: string; end: string | null; type: string }> = []) {
-    if (segments.length === 0) {
-        return {
-            firstSegment: '-',
-            lastSegment: '-',
-            segmentsText: '-'
-        };
-    }
-
-    const firstSegment = formatTime(segments[0].start);
-    const lastClosedSegment = [...segments].reverse().find((segment) => segment.end);
-
-    return {
-        firstSegment,
-        lastSegment: lastClosedSegment ? formatTime(lastClosedSegment.end) : 'Abierto',
-        segmentsText: segments
-            .map((segment) => `${formatTime(segment.start)} - ${segment.end ? formatTime(segment.end) : 'Abierto'} (${segment.type})`)
-            .join(' | ')
-    };
-}
-
-function getNormalizedRows(activeTab: ReportType, data: any) {
-    if (activeTab === 'KPIS') {
-        return (data?.deptStats || []).map((item: any) => ({
-            department: item.department || 'Sin asignar',
-            employees: item.employees || 0,
-            absenceDays: item.absenceDays || 0,
-            potentialDays: item.potentialDays || 0,
-            rate: item.rate || 0
-        }));
-    }
-
-    if (activeTab === 'GENDER_GAP') {
-        return (data?.rows || []).map((item: any) => ({
-            department: item.department || 'Sin asignar',
-            maleCount: item.maleCount || 0,
-            femaleCount: item.femaleCount || 0,
-            maleAvg: item.maleAvg || 0,
-            femaleAvg: item.femaleAvg || 0,
-            gap: item.gap || 0
-        }));
-    }
-
-    const rows = Array.isArray(data) ? data : [];
-
-    if (activeTab === 'ATTENDANCE') {
-        return rows.map((item: any) => {
-            const attendanceWindow = getAttendanceWindow(item.segments || []);
-            return {
-                employee: item.employeeName || 'N/A',
-                dni: item.employeeDni || '-',
-                department: item.department || 'Sin asignar',
-                date: item.date,
-                totalHours: item.totalHours || 0,
-                status: item.status || 'INCOMPLETE',
-                firstSegment: attendanceWindow.firstSegment,
-                lastSegment: attendanceWindow.lastSegment,
-                segmentsText: attendanceWindow.segmentsText
-            };
-        });
-    }
-
-    if (activeTab === 'OVERTIME') {
-        return rows.map((item: any) => ({
-            employee: item.employee?.name || 'N/A',
-            dni: item.employee?.dni || '-',
-            department: item.employee?.department || 'Sin asignar',
-            date: item.date,
-            hours: item.hours || 0,
-            rate: item.rate || 0,
-            totalCost: item.totalCost || 0,
-            type: item.type || 'STANDARD'
-        }));
-    }
-
-    if (activeTab === 'VACATIONS') {
-        return rows.map((item: any) => ({
-            employee: item.name,
-            department: item.department || 'Sin asignar',
-            totalQuota: item.totalQuota || 0,
-            annualQuotaDays: item.annualQuotaDays || 0,
-            carriedOverDays: item.carriedOverDays || 0,
-            importedUsedDays: item.importedUsedDays || 0,
-            approvedUsedDays: item.approvedUsedDays || 0,
-            pendingDays: item.pendingDays || 0,
-            usedDays: item.usedDays || 0,
-            remainingDays: item.remainingDays || 0,
-            projectedRemainingDays: item.projectedRemainingDays || item.remainingDays || 0,
-            usageRate: item.totalQuota ? ((item.usedDays || 0) / item.totalQuota) * 100 : 0,
-            requests: item.requests || item.vacations?.length || 0
-        }));
-    }
-
-    if (activeTab === 'COSTS') {
-        return rows.map((item: any) => ({
-            employee: item.name,
-            dni: item.dni || '-',
-            department: item.department || 'Sin asignar',
-            bruto: item.bruto || 0,
-            ssEmpresa: item.ssEmpresa || 0,
-            irpf: item.irpf || 0,
-            neto: item.neto || 0,
-            totalCost: item.totalCost || 0
-        }));
-    }
-
-    return rows.map((item: any) => ({
-        employee: item.employee?.name || 'N/A',
-        dni: item.employee?.dni || '-',
-        department: item.employee?.department || 'Sin asignar',
-        startDate: item.startDate,
-        endDate: item.endDate,
-        days: item.days || 0,
-        type: item.type || '-',
-        reason: item.reason || '-'
-    }));
-}
-
-function buildSummaryCards(activeTab: ReportType, rows: any[], data: any): SummaryCardData[] {
-    if (activeTab === 'ATTENDANCE') {
-        const totalHours = rows.reduce((sum, row) => sum + (row.totalHours || 0), 0);
-        return [
-            { label: 'Jornadas', value: formatNumber(rows.length), helper: 'Días consolidados en el rango', tone: 'blue' },
-            { label: 'Personas', value: formatNumber(new Set(rows.map((row) => row.employee)).size), helper: 'Empleados con marcajes', tone: 'blue' },
-            { label: 'Horas', value: formatNumber(totalHours, ' h'), helper: 'Horas trabajadas acumuladas', tone: 'emerald' },
-            { label: 'Incompletas', value: formatNumber(rows.filter((row) => row.status === 'INCOMPLETE').length), helper: 'Jornadas para revisar', tone: 'rose' }
-        ];
-    }
-
-    if (activeTab === 'OVERTIME') {
-        const totalHours = rows.reduce((sum, row) => sum + (row.hours || 0), 0);
-        const totalCost = rows.reduce((sum, row) => sum + (row.totalCost || 0), 0);
-        const averageRate = rows.length > 0 ? rows.reduce((sum, row) => sum + (row.rate || 0), 0) / rows.length : 0;
-        return [
-            { label: 'Registros', value: formatNumber(rows.length), helper: 'Apuntes de extra liquidados', tone: 'emerald' },
-            { label: 'Horas', value: formatNumber(totalHours, ' h'), helper: 'Volumen total de extra', tone: 'emerald' },
-            { label: 'Coste', value: formatCurrency(totalCost), helper: 'Impacto económico estimado', tone: 'violet' },
-            { label: 'Tarifa media', value: formatCurrency(averageRate), helper: 'Precio medio por hora', tone: 'blue' }
-        ];
-    }
-
-    if (activeTab === 'VACATIONS') {
-        const totalQuota = rows.reduce((sum, row) => sum + (row.totalQuota || 0), 0);
-        const carryOverDays = rows.reduce((sum, row) => sum + (row.carriedOverDays || 0), 0);
-        const usedDays = rows.reduce((sum, row) => sum + (row.usedDays || 0), 0);
-        const projectedRemainingDays = rows.reduce((sum, row) => sum + (row.projectedRemainingDays || 0), 0);
-        return [
-            { label: 'Plantilla', value: formatNumber(rows.length), helper: 'Empleados con saldo calculado', tone: 'amber' },
-            { label: 'Cupo total', value: formatNumber(totalQuota, ' días'), helper: 'Anuales más arrastradas', tone: 'blue' },
-            { label: 'Arrastradas', value: formatNumber(carryOverDays, ' días'), helper: 'Saldo heredado del año previo', tone: 'amber' },
-            { label: 'Consumidos', value: formatNumber(usedDays, ' días'), helper: 'Importadas y aprobadas', tone: 'rose' },
-            { label: 'Saldo proj.', value: formatNumber(projectedRemainingDays, ' días'), helper: 'Después de pendientes', tone: 'emerald' }
-        ];
-    }
-
-    if (activeTab === 'COSTS') {
-        const totalCost = rows.reduce((sum, row) => sum + (row.totalCost || 0), 0);
-        const totalBruto = rows.reduce((sum, row) => sum + (row.bruto || 0), 0);
-        const totalSS = rows.reduce((sum, row) => sum + (row.ssEmpresa || 0), 0);
-        return [
-            { label: 'Personas', value: formatNumber(rows.length), helper: 'Nóminas agregadas', tone: 'violet' },
-            { label: 'Coste total', value: formatCurrency(totalCost), helper: 'Coste empresa consolidado', tone: 'violet' },
-            { label: 'Bruto', value: formatCurrency(totalBruto), helper: 'Retribución bruta agregada', tone: 'blue' },
-            { label: 'SS empresa', value: formatCurrency(totalSS), helper: 'Carga social patronal', tone: 'amber' }
-        ];
-    }
-
-    if (activeTab === 'ABSENCES_DETAILED') {
-        const totalDays = rows.reduce((sum, row) => sum + (row.days || 0), 0);
-        const maxDays = Math.max(...rows.map((row) => row.days || 0), 0);
-        return [
-            { label: 'Casos', value: formatNumber(rows.length), helper: 'Ausencias registradas', tone: 'rose' },
-            { label: 'Personas', value: formatNumber(new Set(rows.map((row) => row.employee)).size), helper: 'Empleados afectados', tone: 'blue' },
-            { label: 'Días', value: formatNumber(totalDays, ' días'), helper: 'Impacto acumulado', tone: 'amber' },
-            { label: 'Mayor caso', value: formatNumber(maxDays, ' días'), helper: 'Ausencia más larga', tone: 'rose' }
-        ];
-    }
-
-    if (activeTab === 'KPIS') {
-        const summary = data?.summary || {};
-        return [
-            { label: 'Plantilla', value: formatNumber(summary.headcount || 0), helper: 'Personas activas en el periodo', tone: 'blue' },
-            { label: 'Altas / Bajas', value: `${summary.hires || 0} / ${summary.exits || 0}`, helper: 'Movimientos del periodo', tone: 'violet' },
-            { label: 'Rotación', value: formatPercent(summary.turnoverRate || 0), helper: 'Presión de reemplazo', tone: 'amber' },
-            { label: 'Absentismo', value: formatPercent(summary.absenteeismRate || 0), helper: 'Tasa consolidada', tone: 'rose' }
-        ];
-    }
-
-    const summary = data?.summary || {};
-    return [
-        { label: 'Brecha', value: formatPercent(summary.gapPercentage || 0), helper: 'Gap salarial medio estimado', tone: 'rose' },
-        { label: 'Hombres', value: formatNumber(summary.maleCount || 0), helper: 'Plantilla masculina', tone: 'blue' },
-        { label: 'Mujeres', value: formatNumber(summary.femaleCount || 0), helper: 'Plantilla femenina', tone: 'rose' },
-        { label: 'Media femenina', value: formatCurrency(summary.femaleAvgBruto || 0), helper: 'Bruto medio de mujeres', tone: 'emerald' }
-    ];
-}
-
-function buildInsight(activeTab: ReportType, rows: any[], data: any) {
-    if (activeTab === 'ATTENDANCE') {
-        const incomplete = rows.filter((row) => row.status === 'INCOMPLETE').length;
-        if (incomplete === 0) return 'No se detectan jornadas incompletas en el periodo consultado.';
-        return `${incomplete} jornada(s) requieren revisión. Prioriza las personas con segmentos abiertos o sin cierre.`;
-    }
-
-    if (activeTab === 'OVERTIME') {
-        const topEmployee = [...rows].sort((left, right) => (right.totalCost || 0) - (left.totalCost || 0))[0];
-        return topEmployee
-            ? `${topEmployee.employee} concentra el mayor coste de extra con ${formatCurrency(topEmployee.totalCost || 0)}.`
-            : 'No hay horas extra registradas en el periodo.';
-    }
-
-    if (activeTab === 'VACATIONS') {
-        const lowBalance = rows.filter((row) => (row.projectedRemainingDays || 0) <= 5).length;
-        return lowBalance > 0
-            ? `${lowBalance} empleado(s) tienen 5 días o menos de saldo disponible. Conviene revisar cobertura y planificación.`
-            : 'La plantilla mantiene un saldo razonable de vacaciones disponible.';
-    }
-
-    if (activeTab === 'COSTS') {
-        const topDepartment = rows.reduce((best, row) => (!best || row.totalCost > best.totalCost ? row : best), null as any);
-        return topDepartment
-            ? `${topDepartment.employee} representa el coste individual más alto con ${formatCurrency(topDepartment.totalCost || 0)}.`
-            : 'Todavía no hay costes consolidados para el periodo filtrado.';
-    }
-
-    if (activeTab === 'ABSENCES_DETAILED') {
-        const byType = rows.reduce<Record<string, number>>((accumulator, row) => {
-            accumulator[row.type] = (accumulator[row.type] || 0) + (row.days || 0);
-            return accumulator;
-        }, {});
-        const dominantType = Object.entries(byType).sort((left, right) => right[1] - left[1])[0];
-        return dominantType
-            ? `La tipología dominante es ${dominantType[0]} con ${formatNumber(dominantType[1], ' días')} acumulados.`
-            : 'No se registran ausencias en el rango actual.';
-    }
-
-    if (activeTab === 'KPIS') {
-        const topDepartment = [...rows].sort((left, right) => (right.rate || 0) - (left.rate || 0))[0];
-        return topDepartment
-            ? `${topDepartment.department} presenta la mayor tasa de absentismo con ${formatPercent(topDepartment.rate || 0)}.`
-            : 'No hay suficiente información departamental para calcular absentismo.';
-    }
-
-    const highestGapDepartment = [...rows].sort((left, right) => (right.gap || 0) - (left.gap || 0))[0];
-    return highestGapDepartment
-        ? `${highestGapDepartment.department} muestra la mayor brecha departamental con ${formatPercent(highestGapDepartment.gap || 0)}.`
-        : 'Todavía no hay masa crítica suficiente para calcular la brecha departamental.';
-}
-
-function buildPdfTable(activeTab: ReportType, rows: any[], data: any) {
-    if (activeTab === 'ATTENDANCE') {
-        return {
-            headers: ['Empleado', 'Fecha', 'Depto', 'Horas', 'Estado'],
-            body: rows.map((row) => [row.employee, formatDate(row.date), row.department, formatNumber(row.totalHours, ' h'), row.status === 'COMPLETE' ? 'Completa' : 'Incompleta'])
-        };
-    }
-
-    if (activeTab === 'OVERTIME') {
-        return {
-            headers: ['Empleado', 'Fecha', 'Horas', 'Tarifa', 'Coste'],
-            body: rows.map((row) => [row.employee, formatDate(row.date), formatNumber(row.hours, ' h'), formatCurrency(row.rate), formatCurrency(row.totalCost)])
-        };
-    }
-
-    if (activeTab === 'VACATIONS') {
-        return {
-            headers: ['Empleado', 'Depto', 'Cupo', 'Arrastre', 'Consumido', 'Pend.', 'Saldo proj.'],
-            body: rows.map((row) => [
-                row.employee,
-                row.department,
-                formatNumber(row.totalQuota),
-                formatNumber(row.carriedOverDays),
-                formatNumber(row.usedDays),
-                formatNumber(row.pendingDays),
-                formatNumber(row.projectedRemainingDays)
-            ])
-        };
-    }
-
-    if (activeTab === 'COSTS') {
-        return {
-            headers: ['Empleado', 'Bruto', 'SS Empresa', 'IRPF', 'Coste total'],
-            body: rows.map((row) => [row.employee, formatCurrency(row.bruto), formatCurrency(row.ssEmpresa), formatCurrency(row.irpf), formatCurrency(row.totalCost)])
-        };
-    }
-
-    if (activeTab === 'KPIS') {
-        return {
-            headers: ['Departamento', 'Empleados', 'Días ausencia', 'Tasa'],
-            body: rows.map((row) => [row.department, row.employees, formatNumber(row.absenceDays), formatPercent(row.rate)])
-        };
-    }
-
-    if (activeTab === 'GENDER_GAP') {
-        const summary = data?.summary || {};
-        return {
-            headers: ['Departamento', 'Hombres', 'Mujeres', 'Gap'],
-            body: [
-                ['GLOBAL', summary.maleCount || 0, summary.femaleCount || 0, formatPercent(summary.gapPercentage || 0)],
-                ...rows.map((row) => [row.department, row.maleCount, row.femaleCount, formatPercent(row.gap)])
-            ]
-        };
-    }
-
-    return {
-        headers: ['Empleado', 'Inicio', 'Fin', 'Días', 'Tipo'],
-        body: rows.map((row) => [row.employee, formatDate(row.startDate), formatDate(row.endDate), formatNumber(row.days), row.type])
-    };
-}
-
-function getToneClasses(tone: ReportTone) {
-    if (tone === 'emerald') {
-        return {
-            border: 'border-emerald-200 dark:border-emerald-500/20',
-            soft: 'bg-emerald-50 dark:bg-emerald-500/10',
-            text: 'text-emerald-600 dark:text-emerald-300'
-        };
-    }
-
-    if (tone === 'amber') {
-        return {
-            border: 'border-amber-200 dark:border-amber-500/20',
-            soft: 'bg-amber-50 dark:bg-amber-500/10',
-            text: 'text-amber-600 dark:text-amber-300'
-        };
-    }
-
-    if (tone === 'rose') {
-        return {
-            border: 'border-rose-200 dark:border-rose-500/20',
-            soft: 'bg-rose-50 dark:bg-rose-500/10',
-            text: 'text-rose-600 dark:text-rose-300'
-        };
-    }
-
-    if (tone === 'violet') {
-        return {
-            border: 'border-violet-200 dark:border-violet-500/20',
-            soft: 'bg-violet-50 dark:bg-violet-500/10',
-            text: 'text-violet-600 dark:text-violet-300'
-        };
-    }
-
-    return {
-        border: 'border-blue-200 dark:border-blue-500/20',
-        soft: 'bg-blue-50 dark:bg-blue-500/10',
-        text: 'text-blue-600 dark:text-blue-300'
-    };
-}
+import type { ReportType, CompanyOption, DepartmentOptionsResponse } from '../features/reports/reportTypes';
+import { reportsCatalog, getReportDefinition, getToneClasses } from '../features/reports/reportTypes';
+import { extractResponseData, buildRequestParams, toQueryString, getPeriodLabel } from '../features/reports/reportHelpers';
+import { getNormalizedRows, buildSummaryCards, buildInsight, buildPdfTable } from '../features/reports/reportDataProcessing';
+import { FilterSelect, SummaryCard, ReportTableHead, ReportTableBody } from '../features/reports/reportTableComponents';
 
 export default function Reports() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
 
     const [activeTab, setActiveTab] = useState<ReportType>('ATTENDANCE');
@@ -533,6 +35,7 @@ export default function Reports() {
     const [filters, setFilters] = useState({
         companyId: '',
         department: '',
+        status: '',
         month: (new Date().getMonth() + 1).toString(),
         start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
         end: new Date().toISOString().split('T')[0],
@@ -558,7 +61,7 @@ export default function Reports() {
 
     useEffect(() => {
         void fetchData();
-    }, [activeTab, filters.companyId, filters.department, filters.start, filters.end, filters.year, filters.month]);
+    }, [activeTab, filters.companyId, filters.department, filters.start, filters.end, filters.year, filters.month, filters.status]);
 
     const fetchCompanies = async () => {
         try {
@@ -609,6 +112,12 @@ export default function Reports() {
         try {
             const report = reportsCatalog.find(r => r.id === activeTab);
             if (!report) return;
+
+            // H4: Lazy-import jspdf (~350KB) only when user clicks export
+            const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+                import('jspdf'),
+                import('jspdf-autotable')
+            ]);
 
             const pdfTable = buildPdfTable(activeTab, normalizedRows, data);
 
@@ -728,6 +237,33 @@ export default function Reports() {
                                     className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
                                 />
                             </div>
+                        ) : activeTab === 'OBRA_SUMMARY' || activeTab === 'OBRA_EMPLOYEES' ? (
+                            <div className="flex flex-wrap items-center gap-2">
+                                {(activeTab === 'OBRA_SUMMARY') && (
+                                    <select
+                                        value={filters.status}
+                                        onChange={(event) => setFilters({ ...filters, status: event.target.value })}
+                                        className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
+                                    >
+                                        <option value="">Todas (activas y cerradas)</option>
+                                        <option value="ACTIVE">Solo activas</option>
+                                        <option value="INACTIVE">Solo cerradas</option>
+                                    </select>
+                                )}
+                                <input
+                                    type="date"
+                                    value={filters.start}
+                                    onChange={(event) => setFilters({ ...filters, start: event.target.value })}
+                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
+                                />
+                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">a</span>
+                                <input
+                                    type="date"
+                                    value={filters.end}
+                                    onChange={(event) => setFilters({ ...filters, end: event.target.value })}
+                                    className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
+                                />
+                            </div>
                         ) : (
                             <div className="flex flex-wrap items-center gap-3">
                                 <input
@@ -776,8 +312,16 @@ export default function Reports() {
                                 </div>
                                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-3 max-w-3xl">{activeReport.description}</p>
                             </div>
-                            <div className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                            <div className="text-sm font-medium text-slate-500 dark:text-slate-400 flex items-center gap-2">
                                 {normalizedRows.length} registro(s) visibles · {getPeriodLabel(activeTab, filters)}
+                                {(activeTab === 'OBRA_SUMMARY' || activeTab === 'OBRA_EMPLOYEES') && (
+                                    <button
+                                        onClick={() => navigate('/obras')}
+                                        className="ml-2 inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-500/20"
+                                    >
+                                        <Briefcase size={12} /> Ir a Obras
+                                    </button>
+                                )}
                             </div>
                         </div>
 
@@ -815,268 +359,5 @@ export default function Reports() {
             </div>
         </div>
 
-    );
-}
-
-function getPeriodLabel(activeTab: ReportType, filters: Record<string, string>) {
-    if (activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED') {
-        return `${filters.start} · ${filters.end}`;
-    }
-
-    if (activeTab === 'VACATIONS') {
-        return `Año ${filters.year}`;
-    }
-
-    if (activeTab === 'GENDER_GAP') {
-        return `Año ${filters.year}`;
-    }
-
-    return filters.month ? `${filters.month}/${filters.year}` : `Año ${filters.year}`;
-}
-
-function HeroBadge({ label, value }: { label: string; value: string }) {
-    return (
-        <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur-sm">
-            <div className="text-[10px] uppercase tracking-[0.2em] text-slate-300 font-black">{label}</div>
-            <div className="text-sm font-bold text-white mt-1 leading-5">{value}</div>
-        </div>
-    );
-}
-
-function FilterSelect({
-    icon: Icon,
-    value,
-    onChange,
-    options
-}: {
-    icon: typeof Filter;
-    value: string;
-    onChange: (value: string) => void;
-    options: Array<{ value: string; label: string }>;
-}) {
-    return (
-        <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-            <Icon size={16} className="text-slate-400" />
-            <select
-                value={value}
-                onChange={(event) => onChange(event.target.value)}
-                className="bg-transparent text-sm font-medium outline-none text-slate-700 dark:text-slate-200"
-            >
-                {options.map((option) => (
-                    <option key={`${option.value}-${option.label}`} value={option.value}>{option.label}</option>
-                ))}
-            </select>
-        </div>
-    );
-}
-
-function SummaryCard({ data }: { data: SummaryCardData }) {
-  const toneClasses = getToneClasses(data.tone);
-  return (
-    <div className={`rounded-2xl sm:rounded-3xl border bg-white dark:bg-slate-900 p-4 sm:p-5 shadow-sm ${toneClasses.border}`}>
-      <div className={`inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-[0.2em] ${toneClasses.soft} ${toneClasses.text}`}>
-        {data.label}
-      </div>
-      <div className="text-xl sm:text-3xl font-black text-slate-900 dark:text-white mt-3 sm:mt-4 tracking-tight">{data.value}</div>
-      <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-1.5 sm:mt-2 leading-4 sm:leading-5">{data.helper}</p>
-    </div>
-  );
-}
-
-function ReportTableHead({ activeTab }: { activeTab: ReportType }) {
-    if (activeTab === 'ATTENDANCE') {
-        return (
-            <tr>
-                <th className="px-6 py-4 font-bold">Empleado</th>
-                <th className="px-6 py-4 font-bold">Depto.</th>
-                <th className="px-6 py-4 font-bold text-center">Fecha</th>
-                <th className="px-6 py-4 font-bold text-center">Primer fichaje</th>
-                <th className="px-6 py-4 font-bold text-center">Último fichaje</th>
-                <th className="px-6 py-4 font-bold text-right">Horas</th>
-                <th className="px-6 py-4 font-bold text-center">Estado</th>
-                <th className="px-6 py-4 font-bold">Segmentos</th>
-            </tr>
-        );
-    }
-
-    if (activeTab === 'OVERTIME') {
-        return (
-            <tr>
-                <th className="px-6 py-4 font-bold">Empleado</th>
-                <th className="px-6 py-4 font-bold">Depto.</th>
-                <th className="px-6 py-4 font-bold text-center">Fecha</th>
-                <th className="px-6 py-4 font-bold text-center">Tipo</th>
-                <th className="px-6 py-4 font-bold text-right">Horas</th>
-                <th className="px-6 py-4 font-bold text-right">Tarifa</th>
-                <th className="px-6 py-4 font-bold text-right">Coste</th>
-            </tr>
-        );
-    }
-
-    if (activeTab === 'VACATIONS') {
-        return (
-            <tr>
-                <th className="px-6 py-4 font-bold">Empleado</th>
-                <th className="px-6 py-4 font-bold">Departamento</th>
-                <th className="px-6 py-4 font-bold text-right">Anuales</th>
-                <th className="px-6 py-4 font-bold text-right">Arrastre</th>
-                <th className="px-6 py-4 font-bold text-right">Consumido</th>
-                <th className="px-6 py-4 font-bold text-right">Pend.</th>
-                <th className="px-6 py-4 font-bold text-right">Saldo</th>
-                <th className="px-6 py-4 font-bold text-right">Saldo proj.</th>
-                <th className="px-6 py-4 font-bold text-right">Uso %</th>
-                <th className="px-6 py-4 font-bold text-center">Solicitudes</th>
-            </tr>
-        );
-    }
-
-    if (activeTab === 'COSTS') {
-        return (
-            <tr>
-                <th className="px-6 py-4 font-bold">Empleado</th>
-                <th className="px-6 py-4 font-bold">Departamento</th>
-                <th className="px-6 py-4 font-bold text-right">Bruto</th>
-                <th className="px-6 py-4 font-bold text-right">SS Empresa</th>
-                <th className="px-6 py-4 font-bold text-right">IRPF</th>
-                <th className="px-6 py-4 font-bold text-right">Neto</th>
-                <th className="px-6 py-4 font-bold text-right">Coste total</th>
-            </tr>
-        );
-    }
-
-    if (activeTab === 'ABSENCES_DETAILED') {
-        return (
-            <tr>
-                <th className="px-6 py-4 font-bold">Empleado</th>
-                <th className="px-6 py-4 font-bold">Depto.</th>
-                <th className="px-6 py-4 font-bold text-center">Inicio</th>
-                <th className="px-6 py-4 font-bold text-center">Fin</th>
-                <th className="px-6 py-4 font-bold text-right">Días</th>
-                <th className="px-6 py-4 font-bold text-center">Tipo</th>
-                <th className="px-6 py-4 font-bold">Motivo</th>
-            </tr>
-        );
-    }
-
-    if (activeTab === 'KPIS') {
-        return (
-            <tr>
-                <th className="px-6 py-4 font-bold">Departamento</th>
-                <th className="px-6 py-4 font-bold text-center">Empleados</th>
-                <th className="px-6 py-4 font-bold text-right">Días ausencia</th>
-                <th className="px-6 py-4 font-bold text-right">Días potenciales</th>
-                <th className="px-6 py-4 font-bold text-right">Tasa</th>
-            </tr>
-        );
-    }
-
-    return (
-        <tr>
-            <th className="px-6 py-4 font-bold">Departamento</th>
-            <th className="px-6 py-4 font-bold text-center">Hombres</th>
-            <th className="px-6 py-4 font-bold text-center">Mujeres</th>
-            <th className="px-6 py-4 font-bold text-right">Media H</th>
-            <th className="px-6 py-4 font-bold text-right">Media M</th>
-            <th className="px-6 py-4 font-bold text-right">Gap</th>
-        </tr>
-    );
-}
-
-function ReportTableBody({ activeTab, rows }: { activeTab: ReportType; rows: any[] }) {
-    return (
-        <>
-            {rows.map((row, index) => (
-                <tr key={`${activeTab}-${index}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors align-top">
-                    {activeTab === 'ATTENDANCE' ? (
-                        <>
-                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
-                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
-                            <td className="px-6 py-4 text-center text-slate-500">{formatDate(row.date)}</td>
-                            <td className="px-6 py-4 text-center font-mono text-emerald-600">{row.firstSegment}</td>
-                            <td className="px-6 py-4 text-center font-mono text-rose-600">{row.lastSegment}</td>
-                            <td className="px-6 py-4 text-right font-bold text-slate-900 dark:text-white">{formatNumber(row.totalHours, ' h')}</td>
-                            <td className="px-6 py-4 text-center">
-                                <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide ${row.status === 'COMPLETE' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'}`}>
-                                    {row.status === 'COMPLETE' ? 'Completa' : 'Incompleta'}
-                                </span>
-                            </td>
-                            <td className="px-6 py-4 text-xs leading-6 text-slate-500 max-w-[440px]">{row.segmentsText}</td>
-                        </>
-                    ) : null}
-
-                    {activeTab === 'OVERTIME' ? (
-                        <>
-                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
-                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
-                            <td className="px-6 py-4 text-center">{formatDate(row.date)}</td>
-                            <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase">{row.type}</span></td>
-                            <td className="px-6 py-4 text-right font-semibold">{formatNumber(row.hours, ' h')}</td>
-                            <td className="px-6 py-4 text-right">{formatCurrency(row.rate)}</td>
-                            <td className="px-6 py-4 text-right font-black text-emerald-600 dark:text-emerald-300">{formatCurrency(row.totalCost)}</td>
-                        </>
-                    ) : null}
-
-                    {activeTab === 'VACATIONS' ? (
-                        <>
-                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
-                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
-                            <td className="px-6 py-4 text-right font-semibold">{formatNumber(row.annualQuotaDays)}</td>
-                            <td className="px-6 py-4 text-right text-amber-600 font-semibold">{formatNumber(row.carriedOverDays)}</td>
-                            <td className="px-6 py-4 text-right text-rose-500 font-semibold">{formatNumber(row.usedDays)}</td>
-                            <td className="px-6 py-4 text-right text-amber-500 font-semibold">{formatNumber(row.pendingDays)}</td>
-                            <td className="px-6 py-4 text-right text-emerald-600 font-semibold">{formatNumber(row.remainingDays)}</td>
-                            <td className="px-6 py-4 text-right text-emerald-700 font-black">{formatNumber(row.projectedRemainingDays)}</td>
-                            <td className="px-6 py-4 text-right">{formatPercent(row.usageRate)}</td>
-                            <td className="px-6 py-4 text-center">{row.requests}</td>
-                        </>
-                    ) : null}
-
-                    {activeTab === 'COSTS' ? (
-                        <>
-                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
-                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
-                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.bruto)}</td>
-                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.ssEmpresa)}</td>
-                            <td className="px-6 py-4 text-right font-mono text-amber-600">{formatCurrency(row.irpf)}</td>
-                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.neto)}</td>
-                            <td className="px-6 py-4 text-right font-black text-violet-600 dark:text-violet-300">{formatCurrency(row.totalCost)}</td>
-                        </>
-                    ) : null}
-
-                    {activeTab === 'ABSENCES_DETAILED' ? (
-                        <>
-                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
-                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
-                            <td className="px-6 py-4 text-center">{formatDate(row.startDate)}</td>
-                            <td className="px-6 py-4 text-center">{formatDate(row.endDate)}</td>
-                            <td className="px-6 py-4 text-right font-bold text-rose-500">{formatNumber(row.days)}</td>
-                            <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase">{row.type}</span></td>
-                            <td className="px-6 py-4 text-slate-500 max-w-[360px]">{row.reason}</td>
-                        </>
-                    ) : null}
-
-                    {activeTab === 'KPIS' ? (
-                        <>
-                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.department}</td>
-                            <td className="px-6 py-4 text-center">{row.employees}</td>
-                            <td className="px-6 py-4 text-right text-rose-500 font-semibold">{formatNumber(row.absenceDays)}</td>
-                            <td className="px-6 py-4 text-right text-slate-500">{formatNumber(row.potentialDays)}</td>
-                            <td className="px-6 py-4 text-right font-black text-indigo-600 dark:text-indigo-300">{formatPercent(row.rate)}</td>
-                        </>
-                    ) : null}
-
-                    {activeTab === 'GENDER_GAP' ? (
-                        <>
-                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white uppercase tracking-tight text-xs">{row.department}</td>
-                            <td className="px-6 py-4 text-center">{row.maleCount}</td>
-                            <td className="px-6 py-4 text-center">{row.femaleCount}</td>
-                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.maleAvg)}</td>
-                            <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.femaleAvg)}</td>
-                            <td className={`px-6 py-4 text-right font-black ${row.gap > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>{formatPercent(row.gap)}</td>
-                        </>
-                    ) : null}
-                </tr>
-            ))}
-        </>
     );
 }

@@ -3,6 +3,9 @@ import path from 'path';
 import crypto from 'crypto';
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createLogger } from './LoggerService';
+
+const logger = createLogger('StorageService');
 
 type StorageProvider = 's3' | 'local';
 
@@ -56,7 +59,7 @@ export const StorageService = {
                     try {
                         await fs.promises.mkdir(dir, { recursive: true, mode: 0o777 });
                     } catch (fallbackErr) {
-                        console.error(`Failed to create directory ${dir}:`, fallbackErr);
+                        logger.error({ err: fallbackErr }, `Failed to create directory ${dir}:`);
                         const err = new Error(`No se pudo crear el directorio de almacenamiento: ${dir}`);
                         (err as any).cause = fallbackErr;
                         throw err;

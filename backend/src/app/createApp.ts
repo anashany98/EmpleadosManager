@@ -4,6 +4,8 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import RedisStore from 'rate-limit-redis';
+import { redis } from '../config/redis';
 import path from 'path';
 import { Server } from 'socket.io';
 import { errorMiddleware } from '../middlewares/errorMiddleware';
@@ -94,12 +96,17 @@ function configureSecurity(app: Express): void {
         }
     }));
 
+    // Shared Redis store for all rate limiters (fail-open if Redis unavailable)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const redisStoreOpts = { sendCommand: (...args: any[]) => (redis as any).call(...args) };
+
     const intranetLimiter = rateLimit({
         windowMs: 60 * 1000,
         max: 200,
         standardHeaders: true,
         legacyHeaders: false,
-        message: 'Too many requests from this IP, please try again after 1 minute'
+        message: 'Too many requests from this IP, please try again after 1 minute',
+        store: new RedisStore(redisStoreOpts)
     });
 
     const employeeLimiter = rateLimit({
@@ -107,7 +114,8 @@ function configureSecurity(app: Express): void {
         max: 100,
         standardHeaders: true,
         legacyHeaders: false,
-        message: 'Too many employee requests, please try again after 1 minute'
+        message: 'Too many employee requests, please try again after 1 minute',
+        store: new RedisStore(redisStoreOpts)
     });
 
     const payrollLimiter = rateLimit({
@@ -115,7 +123,8 @@ function configureSecurity(app: Express): void {
         max: 50,
         standardHeaders: true,
         legacyHeaders: false,
-        message: 'Too many payroll requests, please try again after 1 minute'
+        message: 'Too many payroll requests, please try again after 1 minute',
+        store: new RedisStore(redisStoreOpts)
     });
 
     const importLimiter = rateLimit({
@@ -123,7 +132,8 @@ function configureSecurity(app: Express): void {
         max: 3,
         standardHeaders: true,
         legacyHeaders: false,
-        message: 'Too many import requests. Please wait before trying again.'
+        message: 'Too many import requests. Please wait before trying again.',
+        store: new RedisStore(redisStoreOpts)
     });
 
     const exportLimiter = rateLimit({
@@ -131,7 +141,8 @@ function configureSecurity(app: Express): void {
         max: 5,
         standardHeaders: true,
         legacyHeaders: false,
-        message: 'Too many export requests. Please wait before trying again.'
+        message: 'Too many export requests. Please wait before trying again.',
+        store: new RedisStore(redisStoreOpts)
     });
 
     app.use(intranetLimiter);

@@ -176,7 +176,8 @@ export const APP_FEATURES = {
     users: { module: 'users', level: 'read', roles: ['admin'] as const },
     settings: { module: 'settings', level: 'read', roles: ['admin'] as const },
     analytics: { module: 'analytics', level: 'read', roles: COMPANY_STAFF_ROLES },
-    performance: { module: 'performance', level: 'read', roles: COMPANY_STAFF_ROLES }
+    performance: { module: 'performance', level: 'read', roles: COMPANY_STAFF_ROLES },
+    projects: { module: 'projects', level: 'read', roles: ['admin'] as const }
 } as const satisfies Record<string, FeatureAccess>;
 
 export type AppFeatureKey = keyof typeof APP_FEATURES;

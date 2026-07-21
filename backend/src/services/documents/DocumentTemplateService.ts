@@ -8,6 +8,9 @@ import { addQRCodeToPDF, buildPdfBuffer, getLogoPath, writeTemplateText } from '
 import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { createLogger } from '../../services/LoggerService';
+
+const logger = createLogger('DocumentTemplateService');
 
 export interface TemplateContext {
     empleado: {
@@ -592,7 +595,7 @@ export const CompanyDocumentTemplateService = {
                             return format(dateValue, dateFormat, { locale: es });
                         } catch (err) {
                             // If date formatting fails, fall back to default format
-                            console.warn(`Date formatting failed for format "${dateFormat}":`, err);
+                            logger.warn({ err }, `Date formatting failed for format "${dateFormat}":`);
                             return formatValue(value);
                         }
                     }
@@ -609,7 +612,7 @@ export const CompanyDocumentTemplateService = {
                 try {
                     return format(new Date(), dateFormat, { locale: es });
                 } catch (err) {
-                    console.warn(`Date formatting failed for format "${dateFormat}":`, err);
+                    logger.warn({ err }, `Date formatting failed for format "${dateFormat}":`);
                     return format(new Date(), 'dd/MM/yyyy');
                 }
             }
