@@ -56,6 +56,10 @@ const mockRes = () => {
     const res: Partial<Response> = {
         status: vi.fn().mockReturnThis(),
         json: vi.fn().mockReturnThis(),
+        // MED-007: handleControllerError añade X-Request-Id
+        // para correlación de errores en producción. El mock
+        // necesita el método aunque el test no lo inspeccione.
+        setHeader: vi.fn().mockReturnThis(),
     };
     return res as Response;
 };

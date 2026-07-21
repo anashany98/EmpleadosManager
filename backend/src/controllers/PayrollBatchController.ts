@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { ExcelParser } from '../services/ExcelParser';
 import { MappingService } from '../services/MappingService';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { AuditService } from '../services/AuditService';
 import { StorageService } from '../services/StorageService';
 import { AuthenticatedRequest } from '../types/express';
@@ -70,7 +71,7 @@ export const PayrollBatchController = {
 
         } catch (error: any) {
             log.error({ error }, 'Error processing payroll upload');
-            return ApiResponse.error(res, error.message || 'Error al procesar el archivo Excel', 500);
+            return handleControllerError(res, error, 'Error al procesar el archivo Excel');
         }
     },
 
@@ -139,7 +140,7 @@ export const PayrollBatchController = {
 
         } catch (error: any) {
             log.error({ error }, 'Error applying mapping');
-            return ApiResponse.error(res, error.message || 'Error al aplicar el mapeo', 500);
+            return handleControllerError(res, error, 'Error al aplicar el mapeo');
         }
     },
 

@@ -2,6 +2,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { AuthenticatedRequest } from '../types/express';
 import { AppError } from '../utils/AppError';
 import { assertCompanyAccess, isGlobalAdmin } from '../utils/companyAccess';
@@ -72,7 +73,7 @@ export const CardController = {
             });
             return ApiResponse.success(res, cards);
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al obtener tarjetas', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al obtener tarjetas');
         }
     },
 
@@ -93,7 +94,7 @@ export const CardController = {
 
             return ApiResponse.success(res, card);
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al obtener tarjeta', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al obtener tarjeta');
         }
     },
 
@@ -147,7 +148,7 @@ export const CardController = {
             });
             return ApiResponse.success(res, card, 'Tarjeta creada correctamente');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al crear tarjeta', 500);
+            return handleControllerError(res, error, 'Error al crear tarjeta');
         }
     },
 
@@ -195,7 +196,7 @@ export const CardController = {
             });
             return ApiResponse.success(res, card, 'Tarjeta actualizada');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al actualizar tarjeta', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al actualizar tarjeta');
         }
     },
 
@@ -221,7 +222,7 @@ export const CardController = {
             await prisma.card.delete({ where: { id } });
             return ApiResponse.success(res, null, 'Tarjeta eliminada');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al eliminar tarjeta', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al eliminar tarjeta');
         }
     }
 };

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import * as ExcelJS from 'exceljs';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
@@ -22,7 +23,7 @@ export const EmployeeController = {
             return ApiResponse.paginated(res, result.data, result.meta);
         } catch (error: any) {
             log.error({ error }, 'Error fetching employees');
-            return ApiResponse.error(res, error.message || 'Error al obtener empleados', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al obtener empleados');
         }
     },
 
@@ -32,7 +33,7 @@ export const EmployeeController = {
             const departments = await EmployeeService.getDepartments(user);
             return ApiResponse.success(res, departments);
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al obtener departamentos', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al obtener departamentos');
         }
     },
 
@@ -43,7 +44,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, hierarchy);
         } catch (error: any) {
             log.error({ error }, 'Error fetching hierarchy');
-            return ApiResponse.error(res, error.message || 'Error al obtener jerarquía', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al obtener jerarquía');
         }
     },
 
@@ -75,7 +76,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, result, `Importación completada. ${result.importedCount} empleados procesados.`);
         } catch (error: any) {
             log.error({ error }, 'Error importing employees');
-            return ApiResponse.error(res, error.message || 'Error procesando el archivo de empleados', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error procesando el archivo de empleados');
         }
     },
 
@@ -93,7 +94,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, employee);
         } catch (error: any) {
             log.error({ error }, 'Error getting employee by id');
-            return ApiResponse.error(res, error.message || 'Error al obtener el empleado', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al obtener el empleado');
         }
     },
 
@@ -104,7 +105,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, employee, 'Empleado creado correctamente', 201);
         } catch (error: any) {
             log.error({ error }, 'Error creating employee');
-            return ApiResponse.error(res, error.message || 'Error al criar el empleado', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al criar el empleado');
         }
     },
 
@@ -116,7 +117,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, employee, 'Empleado actualizado correctamente');
         } catch (error: any) {
             log.error({ error }, 'Error updating employee');
-            return ApiResponse.error(res, error.message || 'Error al actualizar el empleado', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al actualizar el empleado');
         }
     },
 
@@ -128,7 +129,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, { count }, `${count} empleados actualizados correctamente`);
         } catch (error: any) {
             log.error({ error }, 'Bulk update error');
-            return ApiResponse.error(res, error.message || 'Error en la actualización masiva', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error en la actualización masiva');
         }
     },
 
@@ -191,7 +192,7 @@ export const EmployeeController = {
             return res.send(Buffer.from(excelBuffer));
         } catch (error: any) {
             log.error({ error }, 'Error generating Excel template');
-            return ApiResponse.error(res, error.message || 'Error al generar la plantilla', 500);
+            return handleControllerError(res, error, 'Error al generar la plantilla');
         }
     },
 
@@ -202,7 +203,7 @@ export const EmployeeController = {
             const reviews = await EmployeeMedicalService.getReviews(user, id);
             return ApiResponse.success(res, reviews);
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al obtener revisiones médicas', 500);
+            return handleControllerError(res, error, 'Error al obtener revisiones médicas');
         }
     },
 
@@ -213,7 +214,7 @@ export const EmployeeController = {
             const review = await EmployeeMedicalService.createReview(user, id, req.body);
             return ApiResponse.success(res, review, 'Revisión médica creada correctamente', 201);
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al crear la revisión médica', 500);
+            return handleControllerError(res, error, 'Error al crear la revisión médica');
         }
     },
 
@@ -224,7 +225,7 @@ export const EmployeeController = {
             const trainings = await EmployeeTrainingService.getTrainings(user, id);
             return ApiResponse.success(res, trainings);
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al obtener formaciones', 500);
+            return handleControllerError(res, error, 'Error al obtener formaciones');
         }
     },
 
@@ -235,7 +236,7 @@ export const EmployeeController = {
             const training = await EmployeeTrainingService.createTraining(user, id, req.body);
             return ApiResponse.success(res, training, 'Formación creada correctamente', 201);
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al crear la formación', 500);
+            return handleControllerError(res, error, 'Error al crear la formación');
         }
     },
 
@@ -246,7 +247,7 @@ export const EmployeeController = {
             await EmployeeMedicalService.deleteReview(user, reviewId);
             return ApiResponse.success(res, null, 'Revisión eliminada');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al eliminar revisión', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al eliminar revisión');
         }
     },
 
@@ -257,7 +258,7 @@ export const EmployeeController = {
             await EmployeeTrainingService.deleteTraining(user, trainingId);
             return ApiResponse.success(res, null, 'Formación eliminada');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al eliminar formación', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al eliminar formación');
         }
     },
 
@@ -269,7 +270,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, null, 'Empleado desactivado correctamente');
         } catch (error: any) {
             log.error({ error }, 'Error deactivating employee');
-            return ApiResponse.error(res, error.message || 'Error al dar de baja al empleado', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al dar de baja al empleado');
         }
     },
 
@@ -280,7 +281,7 @@ export const EmployeeController = {
             return res.json(reportData);
         } catch (error: any) {
             log.error({ error }, 'Error generating portability report');
-            return ApiResponse.error(res, error.message || 'Error al generar reporte de portabilidad', 500);
+            return handleControllerError(res, error, 'Error al generar reporte de portabilidad');
         }
     },
 
@@ -291,7 +292,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, options);
         } catch (error: any) {
             log.error({ error }, 'Error fetching field options');
-            return ApiResponse.error(res, error.message || 'Error al obtener opciones', 500);
+            return handleControllerError(res, error, 'Error al obtener opciones');
         }
     },
 
@@ -309,7 +310,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, summary);
         } catch (error: any) {
             log.error({ error }, 'Error fetching vacation balance');
-            return ApiResponse.error(res, error.message || 'Error al obtener saldo de vacaciones', 500);
+            return handleControllerError(res, error, 'Error al obtener saldo de vacaciones');
         }
     },
 
@@ -321,7 +322,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, summary, 'Saldo de vacaciones actualizado');
         } catch (error: any) {
             log.error({ error }, 'Error updating vacation balance');
-            return ApiResponse.error(res, error.message || 'Error al actualizar saldo de vacaciones', 500);
+            return handleControllerError(res, error, 'Error al actualizar saldo de vacaciones');
         }
     },
 
@@ -334,7 +335,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, result, 'Notas privadas actualizadas');
         } catch (error: any) {
             log.error({ error }, 'Error updating private notes');
-            return ApiResponse.error(res, error.message || 'Error al actualizar notas privadas', 500);
+            return handleControllerError(res, error, 'Error al actualizar notas privadas');
         }
     },
 
@@ -346,7 +347,7 @@ export const EmployeeController = {
             return ApiResponse.success(res, entries);
         } catch (error: any) {
             log.error({ error }, 'Error fetching private notes history');
-            return ApiResponse.error(res, error.message || 'Error al obtener historial de notas', 500);
+            return handleControllerError(res, error, 'Error al obtener historial de notas');
         }
     }
 };

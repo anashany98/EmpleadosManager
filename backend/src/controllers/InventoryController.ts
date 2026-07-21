@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import fs from 'fs';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { AppError } from '../utils/AppError';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
@@ -118,7 +119,7 @@ export const InventoryController = {
       return ApiResponse.success(res, item);
     } catch (error: any) {
       log.error({ error }, 'Error updating inventory item');
-      return ApiResponse.error(res, error.message || 'Error al actualizar el producto', 500);
+      return handleControllerError(res, error, 'Error al actualizar el producto');
     }
   },
 

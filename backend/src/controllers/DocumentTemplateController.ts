@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { DocumentTemplateService } from '../services/DocumentTemplateService';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { AppError } from '../utils/AppError';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
@@ -350,7 +351,7 @@ export const DocumentTemplateController = {
             return ApiResponse.success(res, { logoUrl, fileName: req.file.filename }, 'Logo subido correctamente', 201);
         } catch (error: unknown) {
             log.error({ error }, 'Error uploading logo');
-            return ApiResponse.error(res, error instanceof Error ? error.message : 'Error al subir el logo', 500);
+            return handleControllerError(res, error, 'Error al subir el logo');
         }
     }
 };

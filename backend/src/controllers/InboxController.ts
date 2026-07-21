@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { inboxService } from '../services/InboxService';
 import { StorageService } from '../services/StorageService';
 import { createLogger } from '../services/LoggerService';
@@ -126,7 +127,7 @@ export const InboxController = {
             return ApiResponse.success(res, { filename: req.file.originalname }, 'Archivo subido a la bandeja de entrada');
         } catch (error: unknown) {
             log.error({ error }, 'Error uploading file');
-            return ApiResponse.error(res, error instanceof Error ? error.message : 'Error al subir el archivo', 500);
+            return handleControllerError(res, error, 'Error al subir el archivo');
         }
     },
 
@@ -198,7 +199,7 @@ export const InboxController = {
             return res.redirect(signedUrl);
         } catch (error: unknown) {
             log.error({ error, id }, 'Error downloading inbox document');
-            return ApiResponse.error(res, error instanceof Error ? error.message : 'Error al descargar documento', 500);
+            return handleControllerError(res, error, 'Error al descargar documento');
         }
     }
 };
