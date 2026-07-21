@@ -89,6 +89,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Logout error', error);
         }
         setUser(null);
+        // MED-011: pedir al service worker que borre su cache
+        // antes de redirigir a /login. Sin esto, el shell
+        // cacheado podría incluir restos de la sesión
+        // anterior (HTML personalizado, headers de respuesta
+        // cacheados, etc.). El SW hace `caches.delete()` sobre
+        // todos los caches y luego `unregister()`.
+        if ('serviceWorker' in navigator) {
+            try {
+                const registration = await navigator.serviceWorker.ready;
+                registration.active?.postMessage({ type: 'CLEAR_CACHES' });
+            } catch (swError) {
+                console.warn('[AuthContext] could not reach service worker', swError);
+            }
+        }
         window.location.href = '/login';
     }, []);
 
