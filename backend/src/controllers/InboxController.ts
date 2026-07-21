@@ -7,6 +7,7 @@ import { ApiResponse } from '../utils/ApiResponse';
 import { inboxService } from '../services/InboxService';
 import { StorageService } from '../services/StorageService';
 import { createLogger } from '../services/LoggerService';
+import { serveLocalUploadFile } from '../utils/fileDownload';
 
 const log = createLogger('InboxController');
 
@@ -181,9 +182,15 @@ export const InboxController = {
             }
 
             if (StorageService.provider === 'local') {
-                const filePath = path.join(process.cwd(), 'uploads', doc.fileUrl);
-                if (!fs.existsSync(filePath)) return ApiResponse.error(res, 'Archivo no encontrado', 404);
-                return res.sendFile(filePath);
+                // MED-007/barrido: usar el helper compartido que
+                // valida contención de path (defense-in-depth
+                // contra path traversal), sanitiza el nombre de
+                // descarga y maneja errores de stream con callback
+                // explícito (404 en ENOENT, 500 controlado en
+                // otros casos).
+                return serveLocalUploadFile(res, doc.fileUrl, {
+                    downloadName: doc.originalName ?? undefined
+                });
             }
 
             const signedUrl = await StorageService.getSignedDownloadUrl(doc.fileUrl);

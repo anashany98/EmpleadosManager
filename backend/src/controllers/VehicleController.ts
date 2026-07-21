@@ -1,61 +1,12 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
-import fs from 'fs';
-import path from 'path';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AuthenticatedRequest } from '../types/express';
 import { AppError } from '../utils/AppError';
 import { assertCompanyAccess, isGlobalAdmin } from '../utils/companyAccess';
 import { AuditService } from '../services/AuditService';
-import { createLogger } from '../services/LoggerService';
-
-const log = createLogger('VehicleController');
-
-/**
- * Sanitiza un nombre de archivo para usarlo en el header
- * `Content-Disposition`. Devuelve dos versiones:
- *
- *   - `ascii`: versión "limpia" solo con caracteres ASCII, que
- *     metemos en el parámetro `filename=` (compatible con clientes
- *     antiguos que no entienden RFC 5987).
- *   - `utf8`: versión UTF-8 completa, lista para
- *     `encodeURIComponent` en el parámetro `filename*=UTF-8''...`
- *     (RFC 6266 + RFC 5987).
- *
- * Esto evita header injection cuando el nombre del documento
- * contiene comillas, saltos de línea o caracteres no-ASCII
- * (típico en nombres reales: "seguro \"coche\" 2024.pdf",
- * "factura Müller.pdf", etc.).
- *
- * Si el nombre está vacío, solo tiene caracteres de control o
- * queda visualmente inútil tras la sanitización (p.ej. solo
- * underscores), devuelve un fallback seguro ("documento").
- */
-function sanitizeContentDispositionFilename(raw: string | null | undefined): { ascii: string; utf8: string } {
-    const fallback = { ascii: 'documento', utf8: 'documento' };
-    if (!raw) return fallback;
-    const trimmed = raw.trim();
-    if (!trimmed) return fallback;
-
-    // Quitar caracteres de control (0x00-0x1F, 0x7F) y comillas
-    // que romperían el header. Mantener tildes, eñes, etc.
-    const utf8 = trimmed.replace(/[\x00-\x1F\x7F"\\]/g, '_');
-
-    // Versión ASCII: solo letras/dígitos/espacios/puntos/guion/
-    // guion_bajo. Si queda vacía o solo underscores/puntos,
-    // fallback.
-    const ascii = utf8
-        .replace(/[^\x20-\x7E]/g, '_')
-        .replace(/["\\]/g, '_')
-        .trim();
-    const isAsciiEmpty = !ascii;
-    const isAsciiUseless = /^[_.\s]+$/.test(ascii);
-    if (isAsciiEmpty || isAsciiUseless) {
-        return fallback;
-    }
-    return { ascii, utf8 };
-}
+import { serveLocalUploadFile } from '../utils/fileDownload';
 
 function cleanText(value: unknown): string {
     if (value === null || value === undefined) return '';
@@ -516,48 +467,17 @@ export const VehicleController = {
                 throw new AppError('Documento no encontrado', 404);
             }
 
-            const documentsDir = path.resolve(process.cwd(), 'uploads', 'vehicle-documents');
-            const fileName = path.basename(existing.fileUrl);
-            const filePath = path.resolve(documentsDir, fileName);
-
-            // Defense-in-depth contra path traversal. Aunque
-            // `path.basename` neutraliza los `..`, mantenemos el
-            // `startsWith` por si el `fileUrl` se contaminara en
-            // el futuro (p.ej. alguien almacena un fileUrl con
-            // caracteres nulos). Si no estamos dentro del
-            // directorio de uploads, rechazar.
-            if (!filePath.startsWith(`${documentsDir}${path.sep}`) || !fs.existsSync(filePath)) {
-                throw new AppError('Archivo no encontrado', 404);
-            }
-
-            // El nombre de descarga es el `existing.name` (lo que
-            // escribió el usuario en el formulario), saneado para
-            // evitar header injection. RFC 6266: si el nombre tiene
-            // comillas o caracteres no-ASCII, lo movemos al
-            // `filename*` (RFC 5987 encoded).
-            const safeName = sanitizeContentDispositionFilename(existing.name);
-            res.setHeader('Content-Disposition', `attachment; filename="${safeName.ascii}"; filename*=UTF-8''${encodeURIComponent(safeName.utf8)}"`);
-
-            // `res.sendFile` con callback explícito: sin callback,
-            // los errores de stream se propagan a `next()` y el
-            // usuario ve un 500 genérico. Con callback, podemos
-            // devolver un 404 claro cuando el archivo desaparece
-            // entre el `fs.existsSync` y el stream real (race
-            // condition con un delete concurrente).
-            return res.sendFile(filePath, (err: NodeJS.ErrnoException | null) => {
-                if (!err) return;
-                log.warn({ docId, filePath, err }, 'sendFile failed during vehicle document download');
-                if (res.headersSent) {
-                    // Ya no podemos cambiar el status; abortamos
-                    // la respuesta. El cliente verá un corte
-                    // abrupto y reintentará.
-                    return res.destroy();
-                }
-                if (err.code === 'ENOENT') {
-                    return ApiResponse.error(res, 'Archivo no encontrado', 404);
-                }
-                return handleControllerError(res, err, 'Error al descargar documento');
-            });
+            // MED-007/SSRF-barrido: la descarga usa el helper
+            // compartido `serveLocalUploadFile` que aplica
+            // defense-in-depth contra path traversal (verifica
+            // que la ruta resuelta está dentro de `uploads/`),
+            // sanitiza el nombre de descarga (RFC 6266 + 5987, sin
+            // header injection) y maneja los errores de stream con
+            // callback explícito (404 en ENOENT, 500 genérico en
+            // otros casos). `existing.name` es el nombre que el
+            // usuario introdujo al subir; `existing.fileUrl` es la
+            // key almacenada (típicamente `vehicle-documents/<uuid>`).
+            return serveLocalUploadFile(res, existing.fileUrl, { downloadName: existing.name });
         } catch (error) {
             return handleControllerError(res, error, 'Error al descargar documento');
         }
