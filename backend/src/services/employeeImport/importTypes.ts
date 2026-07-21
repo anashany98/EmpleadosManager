@@ -305,8 +305,22 @@ export const IMPORT_FIELDS: ImportFieldDefinition[] = [
         key: 'entryDate',
         label: 'Fecha de entrada',
         group: 'Fechas',
-        aliases: ['fecha entrada', 'fecha antig', 'fecha antig.', 'antiguedad', 'antigüedad', 'fecha alta'],
-        valueType: 'date'
+        aliases: [
+              'fecha entrada',
+              'fecha antig',
+              'fecha antig.',
+              'antiguedad',
+              'antigüedad',
+              'fecha alta',
+              // LOW-003: alias adicional para CSVs en inglés
+              // (típicos en ERPs europeos multi-idioma).
+              'start date',
+              'fecha inicio',
+              'fecha de inicio',
+              'fecha incorporacion',
+              'fecha de incorporacion'
+          ],
+          valueType: 'date'
     },
     {
         key: 'birthDate',
