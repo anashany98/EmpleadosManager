@@ -1,4 +1,5 @@
 ﻿import { PrismaClient } from '@prisma/client';
+import v8 from 'v8';
 import { createLogger } from './LoggerService';
 import { queueService } from './QueueService';
 import { redis as redisConnection } from '../config/redis';
@@ -260,21 +261,52 @@ export class HealthChecker {
         }
     }
 
-    private checkMemory(): ServiceHealth & { usedMB: number; totalMB: number; freeMB: number } {
+    /**
+     * Memory health check. MED-009: expuesto como público (no
+     * private) para que los tests puedan inyectar valores
+     * concretos de `v8.getHeapStatistics()` y verificar que
+     * los tres estados (ok / degraded / error) son
+     * alcanzables. Antes el orden de umbrales hacía `error`
+     * inalcanzable.
+     */
+    public checkMemory(): ServiceHealth & { usedMB: number; totalMB: number; freeMB: number } {
         try {
-            process.memoryUsage();
-            const totalMB = Math.round(process.memoryUsage().heapTotal / (1024 * 1024));
-            const usedMB = Math.round(process.memoryUsage().heapUsed / (1024 * 1024));
-            // Approximate free memory (system level) - requires OS call,Node doesn't provide directly
-            // For simplicity, we report process memory only
-            const freeMB = 0; // Not easily available in Node without native modules
+            // MED-009: usar `v8.getHeapStatistics().heap_size_limit`
+            // (límite duro configurable vía --max-old-space-size) en
+            // vez de `heapTotal`, que es el tamaño actual del heap
+            // V8 y crece dinámicamente. Sin este cambio, el %
+            // calculado es engañoso: un proceso con 200MB usados de
+            // 256MB totales reporta 78% aunque el límite real sea
+            // 4GB. Con el límite duro, 200MB / 4GB = 5% es la
+            // medida correcta para "qué tan cerca del OOM estoy".
+            const heapStats = v8.getHeapStatistics();
+            const heapLimitBytes = heapStats.heap_size_limit;
+            const heapLimitMB = Math.round(heapLimitBytes / (1024 * 1024));
+            const usedMB = Math.round(heapStats.used_heap_size / (1024 * 1024));
+            // `heapTotal` se sigue reportando para diagnóstico
+            // (cuánto V8 ha reservado realmente ahora).
+            const totalMB = Math.round(heapStats.total_heap_size / (1024 * 1024));
+            // El "free" en el límite duro es trivial: limit - used.
+            // No reportamos memoria del sistema porque Node no
+            // expone `free` de forma portable sin módulos nativos.
+            const freeMB = Math.max(0, heapLimitMB - usedMB);
 
-            const usagePercent = (usedMB / totalMB) * 100;
-            const status = usagePercent > 90 ? 'degraded' : usagePercent > 95 ? 'error' : 'ok';
-            
+            const usagePercent = (usedMB / heapLimitMB) * 100;
+            // MED-009: el bug original era
+            //   `usage>90 ? degraded : usage>95 ? error : ok`
+            // que hace `error` inalcanzable (si usage>95 entonces
+            // usage>90 es true y la primera rama gana). Invertir
+            // el orden para que el umbral más alto se evalúe
+            // primero.
+            const status = usagePercent > 95
+                ? 'error'
+                : usagePercent > 90
+                    ? 'degraded'
+                    : 'ok';
+
             let message: string | undefined;
             if (status !== 'ok') {
-                message = `High memory usage: ${usagePercent.toFixed(1)}%`;
+                message = `High memory usage: ${usagePercent.toFixed(1)}% (${usedMB}MB / ${heapLimitMB}MB heap limit)`;
             }
 
             return {
