@@ -13,8 +13,19 @@ const DEFAULT_REQUEST_TIMEOUT = 30000;
 // file with ~5000 rows on the deployed Coolify instance.
 const UPLOAD_REQUEST_TIMEOUT = 5 * 60 * 1000;
 const MAX_RETRIES = 3;
-const RETRY_DELAYS = [1000, 2000, 4000];
-const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
+const RETRY_BASE_DELAYS = [1000, 2000, 4000];
+const RETRY_JITTER_MAX_MS = 250;
+const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
+// HTTP methods that are safe to retry without explicit
+// idempotency. POST and PATCH are NOT safe by default because
+// retrying them can duplicate the side-effect (create two
+// resources, double-charge, etc.). Callers must opt-in via
+// `idempotent: true` or set an `Idempotency-Key` header.
+const SAFE_TO_RETRY_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE']);
+// Cap for `Retry-After` (RFC 7231 allows the header to be
+// arbitrary; 30s is a sane upper bound so a hostile or buggy
+// server can't pin a client retrying for hours).
+const MAX_RETRY_AFTER_MS = 30_000;
 
 export class NetworkError extends Error {
     constructor(message: string) {
@@ -65,9 +76,25 @@ export interface RequestOptions {
     /**
      * H1: AbortSignal for request cancellation. When the signal fires,
      * the request is aborted and a DOMException with name 'AbortError'
-     * is thrown (retried or converted to TimeoutError by the retry loop).
+     * is thrown. The retry loop will NOT retry if this signal was the
+     * one that aborted (caller explicitly cancelled).
      */
     signal?: AbortSignal;
+    /**
+     * MED-006: Mark an unsafe HTTP method (POST, PATCH) as safe to
+     * retry. The caller is asserting that the endpoint is
+     * idempotent (no duplicate side-effects on retry) OR has its
+     * own idempotency mechanism. Without this flag, POST/PATCH
+     * requests are NEVER retried, even on 5xx/429/408, because
+     * re-trying a non-idempotent mutation can duplicate the
+     * operation (e.g. create two payroll entries).
+     *
+     * If `idempotencyKey` is provided, the request is also
+     * considered safe to retry and the key is forwarded as a
+     * header.
+     */
+    idempotent?: boolean;
+    idempotencyKey?: string;
 }
 
 const buildUrlWithParams = (url: string, params?: Record<string, string | number | boolean | undefined | null>): string => {
@@ -115,10 +142,62 @@ const processQueue = (error: Error | null, token: string | null = null): void =>
     failedQueue = [];
 };
 
-const isRetryableStatus = (status: number, attempt: number): boolean => {
-    if (attempt === 0 && status >= 500) return false;
-    if (status >= 400 && status < 500 && status !== 408 && status !== 429) return false;
-    return RETRYABLE_STATUS_CODES.includes(status);
+const isRetryableStatus = (status: number): boolean => {
+    return RETRYABLE_STATUS_CODES.has(status);
+};
+
+/**
+ * Decide whether a failed request of `method` can be safely retried.
+ *
+ * - Safe methods (GET/HEAD/OPTIONS/PUT/DELETE) are always retried
+ *   on retryable status codes.
+ * - Unsafe methods (POST/PATCH) are only retried when the caller
+ *   explicitly opts in via `idempotent: true` or by providing an
+ *   `Idempotency-Key` header. Re-trying a non-idempotent POST
+ *   can duplicate side effects (e.g. double-charge a customer,
+ *   create two payroll entries).
+ */
+const isMethodSafeToRetry = (method: string, options: { idempotent?: boolean; idempotencyKey?: string }): boolean => {
+    if (SAFE_TO_RETRY_METHODS.has(method.toUpperCase())) return true;
+    if (options.idempotent === true) return true;
+    if (typeof options.idempotencyKey === 'string' && options.idempotencyKey.length > 0) return true;
+    return false;
+};
+
+/**
+ * Compute the delay (ms) before the next retry attempt.
+ *
+ * - If `retryAfterMs` is set (server-supplied Retry-After), use it
+ *   (clamped to MAX_RETRY_AFTER_MS).
+ * - Otherwise use an exponential backoff based on the attempt
+ *   number, with a small random jitter to prevent thundering herd.
+ */
+const computeBackoff = (attempt: number, retryAfterMs?: number): number => {
+    if (retryAfterMs !== undefined) {
+        return Math.max(0, Math.min(retryAfterMs, MAX_RETRY_AFTER_MS));
+    }
+    const base = RETRY_BASE_DELAYS[Math.min(attempt, RETRY_BASE_DELAYS.length - 1)];
+    const jitter = Math.floor(Math.random() * RETRY_JITTER_MAX_MS);
+    return base + jitter;
+};
+
+/**
+ * Read the `Retry-After` header (RFC 7231 §7.1.3) and return the
+ * delay in milliseconds, or `undefined` if the header is missing
+ * or malformed. Supports both `delta-seconds` (numeric) and
+ * `HTTP-date` formats; only the numeric form is honoured here
+ * because HTTP-date handling requires a date library we don't
+ * want to pull in for this corner case.
+ */
+const parseRetryAfter = (response: Response): number | undefined => {
+    if (response.status !== 429) return undefined;
+    const raw = response.headers.get('retry-after');
+    if (!raw) return undefined;
+    const seconds = Number.parseFloat(raw);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+        return seconds * 1000;
+    }
+    return undefined;
 };
 
 const customFetch = async <T>(endpoint: string, options: RequestOptions & { method?: string; body?: unknown } = {}): Promise<T> => {
@@ -126,24 +205,29 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
     const method = options.method || 'GET';
     const isFormData = options.body instanceof FormData;
     const headers = getHeaders(isFormData, method);
+    if (options.idempotencyKey) {
+        headers['Idempotency-Key'] = options.idempotencyKey;
+    }
     const body = isFormData ? options.body : (options.body ? JSON.stringify(options.body) : undefined);
     const effectiveTimeout = options.timeoutMs ?? (isFormData ? UPLOAD_REQUEST_TIMEOUT : DEFAULT_REQUEST_TIMEOUT);
+    const methodRetryable = isMethodSafeToRetry(method, options);
 
     let attempt = 0;
 
     while (attempt <= MAX_RETRIES) {
-        // H1: Merge external signal with timeout controller
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
-
-        // If caller provides an external signal, abort our controller when it fires
-        if (options.signal) {
-            if (options.signal.aborted) {
-                controller.abort();
-            } else {
-                options.signal.addEventListener('abort', () => controller.abort(), { once: true });
-            }
-        }
+        // MED-006: combine the internal timeout signal with the
+        // caller's external signal using `AbortSignal.any()`. This
+        // avoids the manual `addEventListener` that previously
+        // accumulated listeners per attempt (leak) and triggered
+        // a re-retry on every AbortError regardless of who fired
+        // it. `AbortSignal.any` is available in Node 20+ and
+        // modern browsers (Chromium 116+, Firefox 124+, Safari
+        // 17.4+).
+        const timeoutController = new AbortController();
+        const timeoutId = setTimeout(() => timeoutController.abort(), effectiveTimeout);
+        const combinedSignal = options.signal
+            ? AbortSignal.any([timeoutController.signal, options.signal])
+            : timeoutController.signal;
 
         try {
             const config: RequestInit = {
@@ -151,7 +235,7 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
                 headers,
                 body,
                 credentials: 'include',
-                signal: controller.signal
+                signal: combinedSignal
             };
 
             const res = await fetch(url, config);
@@ -167,7 +251,7 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
                 isRefreshing = true;
                 let refreshAttempts = 0;
                 const maxRefreshAttempts = 2;
-                
+
                 while (refreshAttempts < maxRefreshAttempts) {
                     try {
                         const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
@@ -212,9 +296,15 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
             }
 
             if (!res.ok) {
-                if (attempt < MAX_RETRIES && isRetryableStatus(res.status, attempt)) {
+                // MED-006: previously the predicate short-circuited
+                // 5xx on `attempt === 0`, so the first 5xx never
+                // triggered a retry — exactly the opposite of what
+                // the retry loop is for. Now we just check the
+                // status code AND that the method is safe to retry.
+                if (methodRetryable && attempt < MAX_RETRIES && isRetryableStatus(res.status)) {
                     attempt++;
-                    const delay = RETRY_DELAYS[attempt - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                    const retryAfterMs = parseRetryAfter(res);
+                    const delay = computeBackoff(attempt - 1, retryAfterMs);
                     await new Promise(r => setTimeout(r, delay));
                     continue;
                 }
@@ -250,21 +340,28 @@ const customFetch = async <T>(endpoint: string, options: RequestOptions & { meth
 
         } catch (error) {
             clearTimeout(timeoutId);
-            
+
+            // MED-006: differentiate caller-initiated abort from
+            // internal timeout abort. If the caller's signal was
+            // the one that fired, do NOT retry — the user
+            // explicitly cancelled, we must propagate that.
             if (error instanceof DOMException && error.name === 'AbortError') {
-                if (attempt < MAX_RETRIES) {
+                if (options.signal?.aborted) {
+                    throw error;
+                }
+                if (methodRetryable && attempt < MAX_RETRIES) {
                     attempt++;
-                    const delay = RETRY_DELAYS[attempt - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                    const delay = computeBackoff(attempt - 1);
                     await new Promise(r => setTimeout(r, delay));
                     continue;
                 }
                 throw new TimeoutError();
             }
-            
+
             if (error instanceof TypeError && error.message.includes('fetch')) {
-                if (attempt < MAX_RETRIES) {
+                if (methodRetryable && attempt < MAX_RETRIES) {
                     attempt++;
-                    const delay = RETRY_DELAYS[attempt - 1] || RETRY_DELAYS[RETRY_DELAYS.length - 1];
+                    const delay = computeBackoff(attempt - 1);
                     await new Promise(r => setTimeout(r, delay));
                     continue;
                 }
