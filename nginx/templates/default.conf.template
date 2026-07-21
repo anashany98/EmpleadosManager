@@ -1,9 +1,29 @@
 # =============================================================
+# Reverse proxy with SSL for the dev/local compose stack.
+# Rendered by `envsubst` from the official nginx Docker image's
+# entrypoint: any `*.conf.template` in /etc/nginx/templates/ is
+# processed and written to /etc/nginx/conf.d/ on container start.
+#
+# Required env var:
+#   DOMAIN_NAME — fully qualified domain name (e.g. "rrhh.example.com").
+#                 Used for `server_name` (line ~6 and ~32) and
+#                 for the ACME HTTP-01 challenge. If unset,
+#                 `envsubst` substitutes an empty string and
+#                 `nginx -t` will fail, surfacing the misconfig
+#                 loudly instead of silently breaking TLS.
+#
+# Note on nginx variables: `$host`, `$remote_addr`, `$scheme`,
+# `$request_uri`, `$http_upgrade`, `$proxy_add_x_forwarded_for`
+# are nginx variables, NOT env vars. envsubst will skip them
+# (no matching env var). Safe to leave as-is.
+# =============================================================
+
+# =============================================================
 # HTTP Server - Redirect to HTTPS in production
 # =============================================================
 server {
     listen 80;
-    server_name ${DOMAIN_NAME:-localhost};
+    server_name $DOMAIN_NAME;
 
     # Rate limiting for HTTP (before redirect)
     limit_req zone=api burst=10 nodelay;
@@ -12,6 +32,7 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
     # Allow ACME challenges for Let's Encrypt
     location /.well-known/acme-challenge/ {
@@ -30,7 +51,7 @@ server {
 server {
     listen 443 ssl;
     http2 on;
-    server_name ${DOMAIN_NAME:-localhost};
+    server_name $DOMAIN_NAME;
 
     # --- SSL Configuration ---
     ssl_certificate /etc/nginx/ssl/fullchain.pem;
@@ -59,6 +80,12 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
     add_header Permissions-Policy "camera=(), microphone=(), geolocation=(self)" always;
+    # MED-008: CSP para una SPA HR. Vite/React en dev usa eval +
+    # estilos inline, pero el build de producción hashea los
+    # filenames. Esta política es deliberadamente permisiva
+    # (self + inline styles). Apriétala si la app crece con un
+    # backend-for-frontend que necesite más aislamiento.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
 
     # --- Frontend (React static files) ---
     location / {

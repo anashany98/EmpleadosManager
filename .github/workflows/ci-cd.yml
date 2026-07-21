@@ -223,7 +223,15 @@ jobs:
   build:
     name: Build Docker Images
     runs-on: ubuntu-latest
-    needs: [lint-and-typecheck, backend-tests, frontend-tests, security-guardrails, frontend-build]
+    needs:
+      [
+        lint-and-typecheck,
+        backend-tests,
+        frontend-tests,
+        security-guardrails,
+        frontend-build,
+        nginx-config-validate,
+      ]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -290,6 +298,119 @@ jobs:
             exit 1
           fi
           echo "OK: ningún script con fallback de contraseña hardcodeado"
+
+  # MED-008: validar que la config de nginx se renderiza
+  # correctamente y que pasa `nginx -t` en AMBAS topologías
+  # (proxy con SSL + frontend con reverse proxy a /api). Antes
+  # el conf montado tenía `${DOMAIN_NAME:-localhost}` (sintaxis
+  # bash) que nginx no entiende y rompía server_name en silencio.
+  # Ahora el template usa `$DOMAIN_NAME` (estándar de envsubst) y
+  # se procesa con el entrypoint oficial de la imagen
+  # `nginx:1.25-alpine`.
+  nginx-config-validate:
+    name: Nginx Config Validate (MED-008)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Render the reverse proxy template with envsubst
+        env:
+          DOMAIN_NAME: test.example.com
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/nginx-test/conf.d
+          # Renderizar el template con un DOMAIN_NAME de prueba
+          # (debe ser sintácticamente válido aunque no resuelva
+          # en DNS). En el contenedor oficial, envsubst hace
+          # exactamente lo mismo.
+          envsubst < nginx/templates/default.conf.template \
+            > /tmp/nginx-test/conf.d/default.conf
+          echo "--- Rendered default.conf (head) ---"
+          head -30 /tmp/nginx-test/conf.d/default.conf
+          echo "--- server_name lines (should be 2 with DOMAIN_NAME) ---"
+          grep -nE 'server_name' /tmp/nginx-test/conf.d/default.conf
+          # Sanity check: el template NO debe contener la
+          # sintaxis bash `${VAR:-default}` (que nginx no
+          # entiende y rompería el render).
+          if grep -qE '\$\{[A-Z_]+\:-' /tmp/nginx-test/conf.d/default.conf; then
+            echo "::error::MED-008: el template renderizado contiene '\${VAR:-default}' (sintaxis bash no soportada por nginx)"
+            exit 1
+          fi
+          echo "OK: el render no contiene sintaxis bash"
+
+      - name: Validate the rendered reverse proxy config with nginx -t
+        run: |
+          set -euo pipefail
+          # Crear un nginx.conf minimalista + certs dummy para
+          # que `nginx -t` solo falle por syntax errors, no por
+          # cosas de runtime (bind, SSL handshake, etc.).
+          mkdir -p /tmp/nginx-test/ssl
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout /tmp/nginx-test/ssl/privkey.pem \
+            -out /tmp/nginx-test/ssl/fullchain.pem \
+            -days 1 -subj '/CN=test' 2>/dev/null
+          # Renderizar el conf principal del repo (rate limits,
+          # gzip, etc.) tal como quedaría montado.
+          cat > /tmp/nginx-test/nginx.conf <<'EOF'
+          user  nginx;
+          worker_processes  1;
+          error_log  /tmp/nginx-test/error.log warn;
+          pid        /tmp/nginx-test/nginx.pid;
+          events {
+              worker_connections  1024;
+          }
+          http {
+              include       /etc/nginx/mime.types;
+              default_type  application/octet-stream;
+              sendfile      on;
+              keepalive_timeout  65;
+              limit_req_status 429;
+              limit_req_zone $binary_remote_addr zone=api:1m rate=10r/s;
+              limit_req_zone $binary_remote_addr zone=login:1m rate=3r/s;
+              include /tmp/nginx-test/conf.d/*.conf;
+          }
+          EOF
+          # Usar un container efímero de nginx:alpine para
+          # validar (la imagen ya trae envsubst, gettext, etc.).
+          docker run --rm \
+            -v /tmp/nginx-test:/tmp/nginx-test:ro \
+            -v /tmp/nginx-test/conf.d:/etc/nginx/conf.d:ro \
+            nginx:1.25-alpine \
+            sh -c 'nginx -t -c /tmp/nginx-test/nginx.conf'
+          echo "OK: nginx -t pasó sobre el template renderizado"
+
+      - name: Validate the frontend nginx.conf (static SPA, no SSL)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/nginx-frontend-test/conf.d /tmp/nginx-frontend-test/html
+          cp frontend/nginx.conf /tmp/nginx-frontend-test/conf.d/frontend.conf
+          # frontend/nginx.conf referencia `http://backend:3000`
+          # en producción; para `nginx -t` no hace falta que
+          # resuelva (es solo un upstream name literal), pero
+          # si el parse falla lo veríamos.
+          cat > /tmp/nginx-frontend-test/nginx.conf <<'EOF'
+          user  nginx;
+          worker_processes  1;
+          error_log  /tmp/nginx-frontend-test/error.log warn;
+          pid        /tmp/nginx-frontend-test/nginx.pid;
+          events {
+              worker_connections  1024;
+          }
+          http {
+              include       /etc/nginx/mime.types;
+              default_type  application/octet-stream;
+              sendfile      on;
+              keepalive_timeout  65;
+              include /tmp/nginx-frontend-test/conf.d/*.conf;
+          }
+          EOF
+          docker run --rm \
+            -v /tmp/nginx-frontend-test:/tmp/nginx-frontend-test:ro \
+            -v /tmp/nginx-frontend-test/conf.d:/etc/nginx/conf.d:ro \
+            nginx:1.25-alpine \
+            sh -c 'nginx -t -c /tmp/nginx-frontend-test/nginx.conf'
+          echo "OK: frontend nginx.conf válido"
 
   # Job 5: Security Scanning
   security:
