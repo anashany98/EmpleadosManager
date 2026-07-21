@@ -319,6 +319,14 @@ model ObraExpense {
   @@index([employeeId])
   @@index([status])
   @@index([importBatchId])
+  // MED-010: unicidad (obraId, reference) para que dos imports
+  // concurrentes del mismo archivo NO creen gastos duplicados
+  // (gasto inflado / fraude contable). En PostgreSQL, los
+  // NULLs son distintos en UNIQUE, así que múltiples filas
+  // con `reference IS NULL` siguen siendo válidas. El
+  // controller usa `createMany({ skipDuplicates: true })`
+  // para convertir el P2002 en warning idempotente.
+  @@unique([obraId, reference])
 }
 
 model ObraImportBatch {
