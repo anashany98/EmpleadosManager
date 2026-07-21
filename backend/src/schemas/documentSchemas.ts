@@ -41,7 +41,7 @@ const variablePathSchema = z
     .string()
     .min(1)
     .max(120)
-    .regex(/^[a-zA-Z][\w.\-]*$/, "variable inválida");
+    .regex(/^[a-zA-Z][\w.-]*$/, "variable inválida");
 
 const layoutElementSchema = z
     .object({

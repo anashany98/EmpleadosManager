@@ -199,26 +199,32 @@ export const validateUploadFromPath = (file: Express.Multer.File): void => {
  * o `upload.array(...)` en routes que usan diskStorage. Valida cada
  * archivo recibido y borra los inválidos del disco.
  */
+function runValidateUpload(
+    req: any,
+    _res: any,
+    next: any,
+    fieldName?: string
+): void {
+    try {
+        if (fieldName && req.file?.fieldname === fieldName) {
+            validateUploadFromPath(req.file);
+            return next();
+        }
+        if (!fieldName && req.file) {
+            validateUploadFromPath(req.file);
+            return next();
+        }
+        if (Array.isArray(req.files) && req.files.length > 0) {
+            req.files.forEach(validateUploadFromPath);
+            return next();
+        }
+        next();
+    } catch (err) {
+        next(err);
+    }
+}
+
 export const validateDiskUploadMiddleware = (
     fieldName?: string
-): ((req: any, res: any, next: any) => void) => {
-    return (req, _res, next) => {
-        try {
-            if (fieldName && req.file?.fieldname === fieldName) {
-                validateUploadFromPath(req.file);
-                return next();
-            }
-            if (!fieldName && req.file) {
-                validateUploadFromPath(req.file);
-                return next();
-            }
-            if (Array.isArray(req.files) && req.files.length > 0) {
-                req.files.forEach(validateUploadFromPath);
-                return next();
-            }
-            next();
-        } catch (err) {
-            next(err);
-        }
-    };
-};
+): ((req: any, res: any, next: any) => void) => (req, res, next) =>
+    runValidateUpload(req, res, next, fieldName);

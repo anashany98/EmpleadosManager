@@ -114,9 +114,7 @@ function buildSpies() {
         assetCreate: vi.fn(async ({ data }: any) => ({ id: 'asset-new', ...data })),
         alertCreate: vi.fn(async ({ data }: any) => ({ id: 'alert-1', ...data })),
         documentCreate: vi.fn(async ({ data }: any) => ({ id: 'doc-1', ...data })),
-        transaction: vi.fn(async (_arg: any) => {
-            return undefined; // se reconfigura en vi.mock
-        })
+        transaction: vi.fn(async (_arg: any) => undefined) // se reconfigura en vi.mock
     };
 }
 

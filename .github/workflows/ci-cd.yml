@@ -39,7 +39,11 @@ jobs:
         if: matrix.component == 'backend'
         run: |
           cd backend
-          npm run lint
+          # LOW-001 (audit): lint:strict falla si hay más de
+          # 1100 warnings (margen sobre el conteo actual de
+          # 1029). Cualquier subida del contador rompe el
+          # build. Reducción por fases: 1029 → 800 → 500 → 0.
+          npm run lint:strict
 
       - name: Run ESLint
         if: matrix.component == 'frontend'

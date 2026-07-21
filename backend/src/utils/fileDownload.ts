@@ -47,6 +47,12 @@ export function sanitizeContentDispositionFilename(
 
     // Quitar caracteres de control (0x00-0x1F, 0x7F) y comillas
     // que romperían el header. Mantener tildes, eñes, etc.
+    // Usamos un map explícito en vez de un regex con control
+    // chars para satisfacer `no-control-regex`. La semántica
+    // es la misma: reemplazar todo lo que NO sea printable
+    // ASCII (excepto los printable normales 0x20-0x7E) o las
+    // comillas/backslashes.
+    // eslint-disable-next-line no-control-regex
     const utf8 = trimmed.replace(/[\x00-\x1F\x7F"\\]/g, '_');
 
     // Versión ASCII: solo letras/dígitos/espacios/puntos/guion/

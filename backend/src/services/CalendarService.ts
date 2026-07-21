@@ -191,7 +191,7 @@ export const CalendarService = {
         const recEnd = event.recurrenceEnd ? new Date(event.recurrenceEnd) : endDate;
         const effectiveEnd = recEnd < endDate ? recEnd : endDate;
 
-        let currentStart = new Date(originalStart);
+        const currentStart = new Date(originalStart);
         let instanceCount = 0;
         const MAX_INSTANCES = 100;
 

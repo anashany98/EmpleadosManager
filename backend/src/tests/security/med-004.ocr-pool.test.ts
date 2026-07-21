@@ -78,7 +78,7 @@ vi.mock('pdf-lib', () => ({
     }
 }));
 vi.mock('pngjs', () => ({
-    PNG: function () { /* noop */ }
+    PNG() { /* noop */ }
 }));
 vi.mock('jpeg-js', () => ({
     default: { decode: () => null }
