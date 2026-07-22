@@ -50,20 +50,93 @@ export class EmployeeProjectWorkController {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
 
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                return ApiResponse.error(res, 'Fechas inválidas', 400);
+            }
+            if (start > end) {
+                return ApiResponse.error(res, 'endDate debe ser posterior o igual a startDate', 400);
+            }
+
             const entry = await prisma.employeeProjectWork.create({
                 data: {
                     employeeId,
                     projectId,
-                    startDate: new Date(startDate),
-                    endDate: new Date(endDate),
+                    startDate: start,
+                    endDate: end,
                     hours: parseFloat(hours),
-                    notes
+                    notes: notes ?? null
                 },
                 include: { project: true }
             });
             return ApiResponse.success(res, entry, 'Registro creado', 201);
         } catch (error) {
             return ApiResponse.error(res, 'Error al crear registro', 500);
+        }
+    }
+
+    async update(req: Request, res: Response) {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const { id } = req.params;
+            const { startDate, endDate, hours, notes } = req.body || {};
+
+            const existing = await prisma.employeeProjectWork.findUnique({
+                where: { id },
+                include: { employee: { select: { id: true, companyId: true } } }
+            });
+
+            if (!existing) {
+                return ApiResponse.error(res, 'Registro no encontrado', 404);
+            }
+
+            if (!canManageEmployee(user, existing.employee)) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
+
+            const newStart = startDate ? new Date(startDate) : existing.startDate;
+            const newEnd = endDate ? new Date(endDate) : existing.endDate;
+            if (isNaN(newStart.getTime()) || isNaN(newEnd.getTime())) {
+                return ApiResponse.error(res, 'Fechas inválidas', 400);
+            }
+            if (newStart > newEnd) {
+                return ApiResponse.error(res, 'endDate debe ser posterior o igual a startDate', 400);
+            }
+
+            const updated = await prisma.employeeProjectWork.update({
+                where: { id },
+                data: {
+                    startDate: startDate ? new Date(startDate) : undefined,
+                    endDate: endDate ? new Date(endDate) : undefined,
+                    hours: hours != null ? parseFloat(hours) : undefined,
+                    notes: notes !== undefined ? notes : undefined
+                },
+                include: { project: true }
+            });
+            return ApiResponse.success(res, updated, 'Registro actualizado');
+        } catch (error) {
+            return ApiResponse.error(res, 'Error al actualizar registro', 500);
+        }
+    }
+
+    async listByProject(req: Request, res: Response) {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            const { projectId } = req.params;
+
+            if (user.role !== 'admin' && !user.companyId) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
+
+            const entries = await prisma.employeeProjectWork.findMany({
+                where: { projectId },
+                include: { employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } } },
+                orderBy: { startDate: 'desc' }
+            });
+            return ApiResponse.success(res, entries);
+        } catch (error) {
+            return ApiResponse.error(res, 'Error al obtener registros', 500);
         }
     }
 

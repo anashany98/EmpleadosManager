@@ -39,7 +39,7 @@ export const EmployeeMedicalController = {
 
     create: async (req: Request, res: Response) => {
         const { employeeId } = req.params;
-        const { date, notes, result, nextReviewDate } = req.body;
+        const { date, notes, result, nextReviewDate, declined, declineReason } = req.body;
         const { user } = req as AuthenticatedRequest;
 
         if (!user.companyId && user.role !== 'admin') {
@@ -64,8 +64,10 @@ export const EmployeeMedicalController = {
         data: {
           employeeId,
           date: new Date(date),
-          result: result || notes,
-          nextReviewDate: nextReviewDate ? new Date(nextReviewDate) : null
+          result: declined ? null : (result || notes || null),
+          nextReviewDate: declined ? null : (nextReviewDate ? new Date(nextReviewDate) : null),
+          declined: Boolean(declined),
+          declineReason: declined ? (declineReason || null) : null
         }
             });
 
@@ -73,6 +75,56 @@ export const EmployeeMedicalController = {
         } catch (error) {
             log.error({ error }, 'Error creating medical review');
             return ApiResponse.error(res, 'Error al crear revisión médica');
+        }
+    },
+
+    update: async (req: Request, res: Response) => {
+        const { employeeId, id } = req.params;
+        const { date, notes, result, nextReviewDate, declined, declineReason } = req.body;
+        const { user } = req as AuthenticatedRequest;
+
+        if (!user.companyId && user.role !== 'admin') {
+            return ApiResponse.error(res, 'No autorizado', 403);
+        }
+
+        try {
+            const existing = await prisma.medicalReview.findUnique({
+                where: { id },
+                include: { employee: { select: { companyId: true } } as any }
+            });
+
+            if (!existing) {
+                return ApiResponse.error(res, 'Revisión no encontrada', 404);
+            }
+            if (existing.employeeId !== employeeId) {
+                return ApiResponse.error(res, 'La revisión no pertenece a este empleado', 400);
+            }
+            if (user.companyId && existing.employee?.companyId !== user.companyId) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
+
+            const isDeclined = declined === true;
+            const review = await prisma.medicalReview.update({
+                where: { id },
+                data: {
+                    date: date ? new Date(date) : existing.date,
+                    result: isDeclined ? null : (result !== undefined ? (result || notes || null) : existing.result),
+                    nextReviewDate: isDeclined
+                        ? null
+                        : (nextReviewDate !== undefined
+                            ? (nextReviewDate ? new Date(nextReviewDate) : null)
+                            : existing.nextReviewDate),
+                    declined: isDeclined,
+                    declineReason: isDeclined
+                        ? (declineReason || null)
+                        : null
+                }
+            });
+
+            return ApiResponse.success(res, review, 'Revisión médica actualizada');
+        } catch (error) {
+            log.error({ error }, 'Error updating medical review');
+            return ApiResponse.error(res, 'Error al actualizar revisión médica');
         }
     },
 

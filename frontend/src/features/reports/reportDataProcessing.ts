@@ -21,6 +21,9 @@ export function buildRequestParams(activeTab: ReportType, filters: Record<string
         if (filters.status) params.status = filters.status;
         if (filters.start) params.from = filters.start;
         if (filters.end) params.to = filters.end;
+    } else if (activeTab === 'PRL_MEDICAL' || activeTab === 'PRL_TRAINING') {
+        if (filters.start) params.from = filters.start;
+        if (filters.end) params.to = filters.end;
     }
 
     return params;
@@ -165,6 +168,42 @@ export function getNormalizedRows(activeTab: ReportType, data: any) {
         type: item.type || '-',
         reason: item.reason || '-'
     }));
+
+    if (activeTab === 'PRL_MEDICAL') {
+        const list = Array.isArray(data?.rows) ? data.rows : [];
+        return list.map((r: any, idx: number) => ({
+            idx,
+            employee: r.employee || '-',
+            dni: r.dni || '-',
+            department: r.department || 'Sin asignar',
+            position: r.position || '-',
+            date: r.date,
+            result: r.declined ? 'RENUNCIA' : (r.result || 'PENDIENTE'),
+            declined: Boolean(r.declined),
+            declineReason: r.declineReason || null,
+            nextReviewDate: r.nextReviewDate,
+            daysToExpire: r.daysToExpire ?? null,
+            expired: Boolean(r.expired),
+            status: r.expired ? 'CADUCADA' : (r.declined ? 'DECLINADA' : 'VIGENTE')
+        }));
+    }
+
+    if (activeTab === 'PRL_TRAINING') {
+        const list = Array.isArray(data?.rows) ? data.rows : [];
+        return list.map((r: any, idx: number) => ({
+            idx,
+            employee: r.employee || '-',
+            dni: r.dni || '-',
+            department: r.department || 'Sin asignar',
+            position: r.position || '-',
+            name: r.name || '-',
+            type: r.type || '-',
+            date: r.date,
+            hours: Number(r.hours || 0)
+        }));
+    }
+
+    return rows;
 }
 
 export function buildSummaryCards(activeTab: ReportType, rows: any[], data: any): SummaryCardData[] {
@@ -266,6 +305,26 @@ export function buildSummaryCards(activeTab: ReportType, rows: any[], data: any)
         ];
     }
 
+    if (activeTab === 'PRL_MEDICAL') {
+        const s = data?.summary || {};
+        return [
+            { label: 'Revisiones', value: formatNumber(s.totalReviews || 0), helper: 'Total registradas en el rango', tone: 'rose' },
+            { label: 'Aptos', value: formatNumber(s.aptoCount || 0), helper: 'Resultado APTO', tone: 'emerald' },
+            { label: 'Renuncias', value: formatNumber(s.declinedCount || 0), helper: 'Empleados que declinaron', tone: 'amber' },
+            { label: 'Caducadas', value: formatNumber(s.expiredCount || 0), helper: 'Próxima revisión vencida', tone: 'rose' }
+        ];
+    }
+
+    if (activeTab === 'PRL_TRAINING') {
+        const s = data?.summary || {};
+        return [
+            { label: 'Cursos', value: formatNumber(s.totalTrainings || 0), helper: 'Total impartidos', tone: 'violet' },
+            { label: 'Horas', value: formatNumber(s.totalHours || 0, ' h'), helper: 'Horas de formación acumuladas', tone: 'emerald' },
+            { label: 'Empleados', value: formatNumber(s.uniqueEmployees || 0), helper: 'Plantilla formada', tone: 'blue' },
+            { label: 'Media h/empleado', value: formatNumber(s.averageHoursPerEmployee || 0, ' h'), helper: 'Promedio de horas por persona', tone: 'amber' }
+        ];
+    }
+
     const summary = data?.summary || {};
     return [
         { label: 'Brecha', value: formatPercent(summary.gapPercentage || 0), helper: 'Gap salarial medio estimado', tone: 'rose' },
@@ -345,6 +404,32 @@ export function buildInsight(activeTab: ReportType, rows: any[], data: any) {
         return top
             ? `${top.employee} es el empleado con mayor actividad en obras (${formatNumber(top.hours || 0, ' h')} + ${formatCurrency(top.total || 0)}).`
             : 'No hay datos suficientes.';
+    }
+
+    if (activeTab === 'PRL_MEDICAL') {
+        const s = data?.summary || {};
+        if ((s.totalReviews || 0) === 0) return 'No hay revisiones médicas registradas en el rango seleccionado.';
+        if ((s.expiredCount || 0) > 0) {
+            return `${s.expiredCount} revisión(es) tiene(n) la próxima cita vencida. Programar nuevos reconocimientos a la mayor brevedad.`;
+        }
+        if ((s.declinedCount || 0) > 0) {
+            return `${s.declinedCount} empleado(s) declinaron pasar la prueba médica. Conviene documentar el motivo y conservar el justificante.`;
+        }
+        if ((s.dueSoonCount || 0) > 0) {
+            return `${s.dueSoonCount} revisión(es) caducan en los próximos 30 días. Anticipa la convocatoria.`;
+        }
+        return 'Todas las revisiones están vigentes y sin declinaciones pendientes.';
+    }
+
+    if (activeTab === 'PRL_TRAINING') {
+        const s = data?.summary || {};
+        if ((s.totalTrainings || 0) === 0) return 'No hay cursos registrados en el rango seleccionado.';
+        const topCourse = Object.entries(data?.distributionByCourse || {})
+            .sort((a: any, b: any) => Number(b[1]?.count || 0) - Number(a[1]?.count || 0))[0];
+        if (topCourse) {
+            return `"${topCourse[0]}" es el curso con más imparticiones (${topCourse[1]?.count || 0}). Total acumulado: ${formatNumber(s.totalHours || 0, ' h')}.`;
+        }
+        return `Se han registrado ${s.totalTrainings} curso(s) y ${formatNumber(s.totalHours || 0, ' h')} de formación.`;
     }
 
     const highestGapDepartment = [...rows].sort((left, right) => (right.gap || 0) - (left.gap || 0))[0];
@@ -441,6 +526,35 @@ export function buildPdfTable(activeTab: ReportType, rows: any[], data: any) {
                 formatCurrency(row.transport),
                 formatCurrency(row.other),
                 formatCurrency(row.total)
+            ])
+        };
+    }
+
+    if (activeTab === 'PRL_MEDICAL') {
+        return {
+            headers: ['Empleado', 'Depto', 'Fecha', 'Resultado', 'Próx. revisión', 'Días', 'Estado'],
+            body: rows.map((row) => [
+                row.employee,
+                row.department,
+                formatDate(row.date),
+                row.result,
+                row.nextReviewDate ? formatDate(row.nextReviewDate) : '-',
+                row.daysToExpire == null ? '-' : row.daysToExpire,
+                row.status
+            ])
+        };
+    }
+
+    if (activeTab === 'PRL_TRAINING') {
+        return {
+            headers: ['Empleado', 'Depto', 'Curso', 'Tipo', 'Fecha', 'Horas'],
+            body: rows.map((row) => [
+                row.employee,
+                row.department,
+                row.name,
+                row.type,
+                formatDate(row.date),
+                formatNumber(row.hours, ' h')
             ])
         };
     }

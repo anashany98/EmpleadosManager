@@ -165,6 +165,33 @@ export function ReportTableHead({ activeTab }: { activeTab: ReportType }) {
         );
     }
 
+    if (activeTab === 'PRL_MEDICAL') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Empleado</th>
+                <th className="px-6 py-4 font-bold">Departamento</th>
+                <th className="px-6 py-4 font-bold text-center">Fecha revisión</th>
+                <th className="px-6 py-4 font-bold text-center">Resultado</th>
+                <th className="px-6 py-4 font-bold text-center">Próx. revisión</th>
+                <th className="px-6 py-4 font-bold text-center">Días</th>
+                <th className="px-6 py-4 font-bold text-center">Estado</th>
+            </tr>
+        );
+    }
+
+    if (activeTab === 'PRL_TRAINING') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Empleado</th>
+                <th className="px-6 py-4 font-bold">Departamento</th>
+                <th className="px-6 py-4 font-bold">Curso</th>
+                <th className="px-6 py-4 font-bold text-center">Tipo</th>
+                <th className="px-6 py-4 font-bold text-center">Fecha</th>
+                <th className="px-6 py-4 font-bold text-right">Horas</th>
+            </tr>
+        );
+    }
+
     return (
         <tr>
             <th className="px-6 py-4 font-bold">Departamento</th>
@@ -308,6 +335,51 @@ export function ReportTableBody({ activeTab, rows }: { activeTab: ReportType; ro
                             <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.transport)}</td>
                             <td className="px-6 py-4 text-right font-mono">{formatCurrency(row.other)}</td>
                             <td className="px-6 py-4 text-right font-black text-violet-600 dark:text-violet-300">{formatCurrency(row.total)}</td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'PRL_MEDICAL' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
+                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
+                            <td className="px-6 py-4 text-center text-slate-500">{formatDate(row.date)}</td>
+                            <td className="px-6 py-4 text-center">
+                                <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide ${
+                                    row.declined
+                                        ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+                                        : row.result === 'APTO'
+                                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                            : row.result === 'NO APTO'
+                                                ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+                                                : 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+                                }`}>
+                                    {row.result}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-center text-slate-500">{row.nextReviewDate ? formatDate(row.nextReviewDate) : '—'}</td>
+                            <td className="px-6 py-4 text-right font-mono text-slate-500">
+                                {row.daysToExpire == null ? '—' : row.daysToExpire}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                                <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wide ${
+                                    row.expired
+                                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+                                        : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                }`}>
+                                    {row.status}
+                                </span>
+                            </td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'PRL_TRAINING' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
+                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
+                            <td className="px-6 py-4 text-slate-900 dark:text-white">{row.name}</td>
+                            <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase">{row.type}</span></td>
+                            <td className="px-6 py-4 text-center text-slate-500">{formatDate(row.date)}</td>
+                            <td className="px-6 py-4 text-right font-bold text-indigo-600 dark:text-indigo-300">{formatNumber(row.hours, ' h')}</td>
                         </>
                     ) : null}
                 </tr>

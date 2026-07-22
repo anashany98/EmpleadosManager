@@ -432,10 +432,19 @@ model MedicalReview {
   date           DateTime
   result         String?
   nextReviewDate DateTime?
+  /// Empleado renuncia / declina pasar la prueba médica (semánticamente distinto del resultado médico).
+  /// Cuando es true, el resultado del médico puede no existir.
+  declined       Boolean   @default(false)
+  /// Motivo o notas cuando el empleado declina (ej. "renuncia expresa", "causa religiosa", etc.)
+  declineReason  String?
   fileUrl        String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Restrict, onUpdate: NoAction) // GDPR: restrict to force soft-delete; hard delete must purge explicitly
+
+  @@index([employeeId])
+  @@index([date])
+  @@index([declined])
 }
 
 model Training {

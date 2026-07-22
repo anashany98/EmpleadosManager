@@ -78,6 +78,49 @@ export const EmployeeTrainingController = {
         }
     },
 
+    update: async (req: Request, res: Response) => {
+        const { employeeId, id } = req.params;
+        const { courseName, name, date, hours, certificateUrl, type } = req.body;
+        const { user } = req as AuthenticatedRequest;
+
+        if (!user.companyId && user.role !== 'admin') {
+            return ApiResponse.error(res, 'No autorizado', 403);
+        }
+
+        try {
+            const existing = await prisma.training.findUnique({
+                where: { id },
+                include: { employee: { select: { companyId: true } } as any }
+            });
+
+            if (!existing) {
+                return ApiResponse.error(res, 'Formación no encontrada', 404);
+            }
+            if (existing.employeeId !== employeeId) {
+                return ApiResponse.error(res, 'La formación no pertenece a este empleado', 400);
+            }
+            if (user.companyId && existing.employee?.companyId !== user.companyId) {
+                return ApiResponse.error(res, 'No autorizado', 403);
+            }
+
+            const training = await prisma.training.update({
+                where: { id },
+                data: {
+                    type: type !== undefined ? (type || 'COURSE') : existing.type,
+                    name: (courseName || name) ?? existing.name,
+                    date: date ? new Date(date) : existing.date,
+                    hours: hours !== undefined ? (hours ? parseInt(hours) : null) : existing.hours,
+                    fileUrl: certificateUrl !== undefined ? (certificateUrl || null) : existing.fileUrl
+                }
+            });
+
+            return ApiResponse.success(res, training, 'Formación actualizada');
+        } catch (error) {
+            log.error({ error }, 'Error updating training');
+            return ApiResponse.error(res, 'Error al actualizar formación');
+        }
+    },
+
     delete: async (req: Request, res: Response) => {
         const { id } = req.params;
         const { user } = req as AuthenticatedRequest;

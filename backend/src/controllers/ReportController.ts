@@ -540,4 +540,95 @@ export class ReportController {
             res.status(status).json(body);
         }
     }
+
+    /**
+     * GET /api/reports/prl/medical-reviews
+     * Reporte de revisiones médicas (PRL).
+     * Filters: from, to, department, employeeId, format
+     */
+    static async getMedicalReviews(req: Request, res: Response) {
+        try {
+            const { from, to, department, employeeId, format } = req.query;
+            const companyId = getCompanyScope(req);
+            const filters: any = {
+                from: from ? new Date(String(from)) : undefined,
+                to: to ? new Date(String(to)) : undefined,
+                companyId: companyId || undefined,
+                department: department ? String(department) : undefined,
+                employeeId: employeeId ? String(employeeId) : undefined
+            };
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            const data = await ReportService.getMedicalReviewsReport(filters);
+
+            await auditReportAccess(req, 'prl-medical-reviews', {
+                from, to, department, employeeId, companyId, format: requestedFormat
+            });
+
+            if (format === 'xlsx') {
+                const buffer = await ExcelService.generateMedicalReviewsReport(data, buildExcelContext({
+                    title: 'Revisiones médicas (PRL)',
+                    subtitle: 'Histórico de reconocimientos médicos, declinaciones y caducidades.',
+                    periodLabel: filters.from && filters.to ? `Del ${String(from)} al ${String(to)}` : 'Histórico completo',
+                    companyId,
+                    department: department as string | undefined
+                }));
+                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                res.setHeader('Content-Disposition', `attachment; filename=Reporte_Revisiones_Medicas.xlsx`);
+                return res.send(buffer);
+            }
+
+            res.json(data);
+        } catch (error) {
+            log.error({ error }, 'Medical Reviews Report Error');
+            const { status, body } = getErrorResponse(error, 'Failed to generate medical reviews report');
+            res.status(status).json(body);
+        }
+    }
+
+    /**
+     * GET /api/reports/prl/trainings
+     * Reporte de cursos y formación.
+     * Filters: from, to, department, employeeId, type, format
+     */
+    static async getTrainings(req: Request, res: Response) {
+        try {
+            const { from, to, department, employeeId, type, format } = req.query;
+            const companyId = getCompanyScope(req);
+            const filters: any = {
+                from: from ? new Date(String(from)) : undefined,
+                to: to ? new Date(String(to)) : undefined,
+                companyId: companyId || undefined,
+                department: department ? String(department) : undefined,
+                employeeId: employeeId ? String(employeeId) : undefined,
+                type: type ? String(type) : undefined
+            };
+            const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
+
+            const data = await ReportService.getTrainingsReport(filters);
+
+            await auditReportAccess(req, 'prl-trainings', {
+                from, to, department, employeeId, type, companyId, format: requestedFormat
+            });
+
+            if (format === 'xlsx') {
+                const buffer = await ExcelService.generateTrainingsReport(data, buildExcelContext({
+                    title: 'Cursos y formación',
+                    subtitle: 'Detalle de cursos realizados, horas impartidas y distribución por tipo.',
+                    periodLabel: filters.from && filters.to ? `Del ${String(from)} al ${String(to)}` : 'Histórico completo',
+                    companyId,
+                    department: department as string | undefined
+                }));
+                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                res.setHeader('Content-Disposition', `attachment; filename=Reporte_Cursos_Formacion.xlsx`);
+                return res.send(buffer);
+            }
+
+            res.json(data);
+        } catch (error) {
+            log.error({ error }, 'Trainings Report Error');
+            const { status, body } = getErrorResponse(error, 'Failed to generate trainings report');
+            res.status(status).json(body);
+        }
+    }
 }

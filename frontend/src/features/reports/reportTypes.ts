@@ -4,12 +4,14 @@ import {
     Building2,
     Calendar,
     Clock,
+    GraduationCap,
     LineChart,
+    Stethoscope,
     TrendingUp,
     Users
 } from 'lucide-react';
 
-export type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS' | 'GENDER_GAP' | 'OBRA_SUMMARY' | 'OBRA_EMPLOYEES';
+export type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS' | 'GENDER_GAP' | 'OBRA_SUMMARY' | 'OBRA_EMPLOYEES' | 'PRL_MEDICAL' | 'PRL_TRAINING';
 export type ReportTone = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
 
 export interface CompanyOption {
@@ -109,6 +111,22 @@ export const reportsCatalog: ReportDefinition[] = [
         tone: 'emerald',
         endpoint: '/reports/obras/employees',
         icon: Briefcase
+    },
+    {
+        id: 'PRL_MEDICAL',
+        name: 'Revisiones médicas (PRL)',
+        description: 'Histórico de reconocimientos médicos, declinaciones, próximas revisiones y caducidades.',
+        tone: 'rose',
+        endpoint: '/reports/prl/medical-reviews',
+        icon: Stethoscope
+    },
+    {
+        id: 'PRL_TRAINING',
+        name: 'Cursos y formación',
+        description: 'Cursos realizados, horas impartidas, distribución por tipo y ranking de cursos.',
+        tone: 'violet',
+        endpoint: '/reports/prl/trainings',
+        icon: GraduationCap
     }
 ];
 

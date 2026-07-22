@@ -26,7 +26,7 @@ import {
     updateEmployeeSchema,
     updateEmployeeVacationBalanceSchema
 } from '../schemas/employeeSchemas';
-import { idParamSchema, employeeIdParamSchema } from '../schemas/commonSchemas';
+import { idParamSchema, employeeIdParamSchema, employeeIdAndIdParamSchema } from '../schemas/commonSchemas';
 
 const resolveEmployeeTarget = async (req: any) => {
   const id = req.params.id || req.params.employeeId;
@@ -83,10 +83,12 @@ router.get('/:id/timeline', authorize('employee.read.detail', resolveEmployeeTar
 // PRL & Training Features (split into separate controllers)
 router.get('/:employeeId/medical-reviews', validateResource(employeeIdParamSchema), authorize('employee.read.detail', resolveEmployeeTarget), EmployeeMedicalController.getByEmployee);
 router.post('/:employeeId/medical-reviews', validateResource(employeeIdParamSchema), checkPermission('employees', 'write'), EmployeeMedicalController.create);
-router.delete('/:employeeId/medical-reviews/:id', validateResource(employeeIdParamSchema), checkPermission('employees', 'write'), EmployeeMedicalController.delete);
+router.put('/:employeeId/medical-reviews/:id', validateResource(employeeIdAndIdParamSchema), checkPermission('employees', 'write'), EmployeeMedicalController.update);
+router.delete('/:employeeId/medical-reviews/:id', validateResource(employeeIdAndIdParamSchema), checkPermission('employees', 'write'), EmployeeMedicalController.delete);
 
 router.get('/:employeeId/trainings', validateResource(employeeIdParamSchema), authorize('employee.read.detail', resolveEmployeeTarget), EmployeeTrainingController.getByEmployee);
 router.post('/:employeeId/trainings', validateResource(employeeIdParamSchema), checkPermission('employees', 'write'), EmployeeTrainingController.create);
-router.delete('/:employeeId/trainings/:id', validateResource(employeeIdParamSchema), checkPermission('employees', 'write'), EmployeeTrainingController.delete);
+router.put('/:employeeId/trainings/:id', validateResource(employeeIdAndIdParamSchema), checkPermission('employees', 'write'), EmployeeTrainingController.update);
+router.delete('/:employeeId/trainings/:id', validateResource(employeeIdAndIdParamSchema), checkPermission('employees', 'write'), EmployeeTrainingController.delete);
 
 export default router;

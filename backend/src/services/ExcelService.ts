@@ -793,4 +793,245 @@ export class ExcelService {
 
         return workbook.xlsx.writeBuffer();
     }
+
+    static async generateMedicalReviewsReport(data: {
+        rows: any[];
+        summary: any;
+        distributionByResult: Record<string, number>;
+        distributionByDepartment: Record<string, number>;
+    }, context: ExcelContext = {}) {
+        const workbook = createWorkbook('Revisiones médicas (PRL)');
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        const summary = data?.summary || {};
+
+        // Hoja 1: Resumen ejecutivo
+        addRankingSheet(
+            workbook,
+            'Resumen',
+            context.title || 'Revisiones médicas (PRL)',
+            context.subtitle || 'Histórico de reconocimientos médicos, declinaciones y caducidades.',
+            [
+                { label: 'Revisiones', value: summary.totalReviews || rows.length, hint: 'Total registradas' },
+                { label: 'Empleados', value: summary.uniqueEmployees || 0, hint: 'Con al menos una revisión' },
+                { label: 'Aptos', value: summary.aptoCount || 0, hint: 'Resultado APTO' },
+                { label: 'No aptos', value: summary.noAptoCount || 0, hint: 'Resultado NO APTO' },
+                { label: 'Con limit.', value: summary.aptoConLimitacionesCount || 0, hint: 'APTO CON LIMITACIONES' },
+                { label: 'Pendientes', value: summary.pendienteCount || 0, hint: 'Sin resultado' },
+                { label: 'Renuncias', value: summary.declinedCount || 0, hint: 'Empleado declinó' },
+                { label: 'Caducadas', value: summary.expiredCount || 0, hint: 'Próxima revisión vencida' },
+                { label: 'Por vencer', value: summary.dueSoonCount || 0, hint: '≤ 30 días' }
+            ],
+            [
+                { header: 'Empleado', key: 'employee', width: 28 },
+                { header: 'DNI', key: 'dni', width: 14 },
+                { header: 'Departamento', key: 'department', width: 20 },
+                { header: 'Fecha revisión', key: 'date', width: 14 },
+                { header: 'Resultado', key: 'resultLabel', width: 22 },
+                { header: 'Próx. revisión', key: 'nextReviewDate', width: 14 },
+                { header: 'Días', key: 'daysToExpire', width: 8, align: 'right' },
+                { header: 'Estado', key: 'status', width: 14 }
+            ],
+            rows.map((r: any) => ({
+                employee: r.employee || '-',
+                dni: r.dni || '-',
+                department: r.department || '-',
+                date: formatDate(r.date),
+                resultLabel: r.declined ? 'RENUNCIA' : (r.result || 'PENDIENTE'),
+                nextReviewDate: formatDate(r.nextReviewDate),
+                daysToExpire: r.daysToExpire == null ? '-' : r.daysToExpire,
+                status: r.expired ? 'CADUCADA' : (r.declined ? 'DECLINADA' : 'VIGENTE')
+            })),
+            'rose',
+            context,
+            {
+                employee: 'TOTAL',
+                resultLabel: `${rows.length} revisiones`,
+                status: `${summary.uniqueEmployees || 0} empleados`
+            }
+        );
+
+        // Hoja 2: Distribución por resultado
+        const distResult = data?.distributionByResult || {};
+        const resultRows = Object.entries(distResult)
+            .map(([k, v]) => ({ key: k, count: v }))
+            .sort((a, b) => safeNumber(b.count) - safeNumber(a.count));
+        addRankingSheet(
+            workbook,
+            'Distribución por resultado',
+            'Distribución por resultado',
+            'Agrupación de revisiones según el resultado (incluye renuncias como categoría).',
+            [
+                { label: 'Categorías', value: resultRows.length, hint: 'Resultados distintos' },
+                { label: 'Total', value: sumBy(resultRows, (r) => safeNumber(r.count)), hint: 'Suma global' }
+            ],
+            [
+                { header: 'Resultado', key: 'key', width: 24 },
+                { header: 'Revisiones', key: 'count', width: 14, align: 'right' }
+            ],
+            resultRows,
+            'amber',
+            context
+        );
+
+        // Hoja 3: Distribución por departamento
+        const distDept = data?.distributionByDepartment || {};
+        const deptRows = Object.entries(distDept)
+            .map(([k, v]) => ({ department: k, count: v }))
+            .sort((a, b) => safeNumber(b.count) - safeNumber(a.count));
+        addRankingSheet(
+            workbook,
+            'Distribución por departamento',
+            'Distribución por departamento',
+            'Revisiones agrupadas por departamento del empleado.',
+            [
+                { label: 'Departamentos', value: deptRows.length, hint: 'Con revisiones' },
+                { label: 'Total', value: sumBy(deptRows, (r) => safeNumber(r.count)), hint: 'Suma global' }
+            ],
+            [
+                { header: 'Departamento', key: 'department', width: 28 },
+                { header: 'Revisiones', key: 'count', width: 14, align: 'right' }
+            ],
+            deptRows,
+            'rose',
+            context
+        );
+
+        return workbook.xlsx.writeBuffer();
+    }
+
+    static async generateTrainingsReport(data: {
+        rows: any[];
+        summary: any;
+        distributionByType: Record<string, number>;
+        hoursByType: Record<string, number>;
+        distributionByCourse: Record<string, { count: number; hours: number }>;
+        distributionByDepartment: Record<string, number>;
+    }, context: ExcelContext = {}) {
+        const workbook = createWorkbook('Cursos y formación');
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        const summary = data?.summary || {};
+
+        // Hoja 1: Resumen + detalle
+        addRankingSheet(
+            workbook,
+            'Resumen',
+            context.title || 'Cursos y formación',
+            context.subtitle || 'Detalle de cursos realizados, horas impartidas y distribución por tipo.',
+            [
+                { label: 'Cursos', value: summary.totalTrainings || rows.length, hint: 'Total impartidos' },
+                { label: 'Empleados', value: summary.uniqueEmployees || 0, hint: 'Con al menos un curso' },
+                { label: 'Cursos distintos', value: summary.uniqueCourses || 0, hint: 'Temáticas diferentes' },
+                { label: 'Horas totales', value: formatNumber(summary.totalHours || 0, 2), hint: 'Suma de horas' },
+                { label: 'Media horas/empleado', value: formatNumber(summary.averageHoursPerEmployee || 0, 2), hint: 'Promedio' }
+            ],
+            [
+                { header: 'Empleado', key: 'employee', width: 28 },
+                { header: 'DNI', key: 'dni', width: 14 },
+                { header: 'Departamento', key: 'department', width: 20 },
+                { header: 'Curso', key: 'name', width: 32 },
+                { header: 'Tipo', key: 'type', width: 14 },
+                { header: 'Fecha', key: 'date', width: 14 },
+                { header: 'Horas', key: 'hours', width: 8, align: 'right' }
+            ],
+            rows.map((r: any) => ({
+                employee: r.employee || '-',
+                dni: r.dni || '-',
+                department: r.department || '-',
+                name: r.name || '-',
+                type: r.type || '-',
+                date: formatDate(r.date),
+                hours: safeNumber(r.hours)
+            })),
+            'violet',
+            context,
+            {
+                employee: 'TOTAL',
+                name: `${rows.length} cursos`,
+                hours: safeNumber(summary.totalHours)
+            }
+        );
+
+        // Hoja 2: Por tipo
+        const distType = data?.distributionByType || {};
+        const hoursType = data?.hoursByType || {};
+        const typeRows = Object.entries(distType)
+            .map(([k, v]) => ({
+                type: k,
+                count: v,
+                hours: safeNumber(hoursType[k])
+            }))
+            .sort((a, b) => safeNumber(b.hours) - safeNumber(a.hours));
+        addRankingSheet(
+            workbook,
+            'Por tipo',
+            'Distribución por tipo de curso',
+            'Cantidad de cursos y horas impartidas según el tipo (PRL, TÉCNICA, HABILIDADES, OTROS).',
+            [
+                { label: 'Tipos', value: typeRows.length, hint: 'Categorías distintas' },
+                { label: 'Cursos', value: sumBy(typeRows, (r) => safeNumber(r.count)), hint: 'Total' },
+                { label: 'Horas', value: formatNumber(sumBy(typeRows, (r) => safeNumber(r.hours)), 2), hint: 'Total' }
+            ],
+            [
+                { header: 'Tipo', key: 'type', width: 18 },
+                { header: 'Cursos', key: 'count', width: 12, align: 'right' },
+                { header: 'Horas', key: 'hours', width: 12, align: 'right', numFmt: '#,##0.00' }
+            ],
+            typeRows,
+            'violet',
+            context
+        );
+
+        // Hoja 3: Top cursos
+        const distCourse = data?.distributionByCourse || {};
+        const courseRows = Object.entries(distCourse)
+            .map(([k, v]: [string, any]) => ({
+                name: k,
+                count: safeNumber(v?.count),
+                hours: safeNumber(v?.hours)
+            }))
+            .sort((a, b) => safeNumber(b.count) - safeNumber(a.count));
+        addRankingSheet(
+            workbook,
+            'Top cursos',
+            'Ranking de cursos más impartidos',
+            'Top de cursos por número de empleados formados y horas acumuladas.',
+            [
+                { label: 'Cursos distintos', value: courseRows.length, hint: 'Temáticas' },
+                { label: 'Total cursos', value: sumBy(courseRows, (r) => safeNumber(r.count)), hint: 'Imparticiones' }
+            ],
+            [
+                { header: 'Curso', key: 'name', width: 38 },
+                { header: 'Imparticiones', key: 'count', width: 14, align: 'right' },
+                { header: 'Horas totales', key: 'hours', width: 14, align: 'right', numFmt: '#,##0.00' }
+            ],
+            courseRows,
+            'amber',
+            context
+        );
+
+        // Hoja 4: Por departamento
+        const distDept = data?.distributionByDepartment || {};
+        const deptRows = Object.entries(distDept)
+            .map(([k, v]) => ({ department: k, count: v }))
+            .sort((a, b) => safeNumber(b.count) - safeNumber(a.count));
+        addRankingSheet(
+            workbook,
+            'Por departamento',
+            'Distribución por departamento',
+            'Cursos agrupados por departamento del empleado.',
+            [
+                { label: 'Departamentos', value: deptRows.length, hint: 'Con formación' },
+                { label: 'Total', value: sumBy(deptRows, (r) => safeNumber(r.count)), hint: 'Cursos' }
+            ],
+            [
+                { header: 'Departamento', key: 'department', width: 28 },
+                { header: 'Cursos', key: 'count', width: 14, align: 'right' }
+            ],
+            deptRows,
+            'blue',
+            context
+        );
+
+        return workbook.xlsx.writeBuffer();
+    }
 }

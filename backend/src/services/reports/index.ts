@@ -4,6 +4,7 @@ import { VacationReportService } from './VacationReportService';
 import { CostReportService } from './CostReportService';
 import { HRMetricsService } from './HRMetricsService';
 import { ObraReportService } from './ObraReportService';
+import { PRLReportService } from './PRLReportService';
 
 /**
  * Unified ReportService that delegates to focused sub-services.
@@ -25,6 +26,8 @@ export class ReportService {
     static getGenderGapData = (...args: Parameters<typeof HRMetricsService.getGenderGapData>) => HRMetricsService.getGenderGapData(...args);
     static getObraSummary = (...args: Parameters<typeof ObraReportService.getObraSummary>) => ObraReportService.getObraSummary(...args);
     static getObraEmployeeBreakdown = (...args: Parameters<typeof ObraReportService.getObraEmployeeBreakdown>) => ObraReportService.getObraEmployeeBreakdown(...args);
+    static getMedicalReviewsReport = (...args: Parameters<typeof PRLReportService.getMedicalReviewsReport>) => PRLReportService.getMedicalReviewsReport(...args);
+    static getTrainingsReport = (...args: Parameters<typeof PRLReportService.getTrainingsReport>) => PRLReportService.getTrainingsReport(...args);
 }
 
 // Re-export individual services for direct access if needed
@@ -34,3 +37,4 @@ export { VacationReportService } from './VacationReportService';
 export { CostReportService } from './CostReportService';
 export { HRMetricsService } from './HRMetricsService';
 export { ObraReportService } from './ObraReportService';
+export { PRLReportService } from './PRLReportService';
