@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
     Briefcase,
@@ -194,6 +194,26 @@ export default function CalendarPage() {
     const [conflicts, setConflicts] = useState<Array<{ department: string; absentCount: number; totalCount: number; percentage: number }>>([]);
     const [reminders, setReminders] = useState<any[]>([]);
     const [showReminders, setShowReminders] = useState(false);
+    const remindersButtonRef = useRef<HTMLDivElement | null>(null);
+
+    // Click-outside para cerrar el popover de recordatorios
+    useEffect(() => {
+        if (!showReminders) return;
+        const onDocClick = (e: MouseEvent) => {
+            if (remindersButtonRef.current && !remindersButtonRef.current.contains(e.target as Node)) {
+                setShowReminders(false);
+            }
+        };
+        const onEsc = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowReminders(false);
+        };
+        document.addEventListener('mousedown', onDocClick);
+        document.addEventListener('keydown', onEsc);
+        return () => {
+            document.removeEventListener('mousedown', onDocClick);
+            document.removeEventListener('keydown', onEsc);
+        };
+    }, [showReminders]);
 
     useEffect(() => {
         if (canManageCalendarEvents) {
@@ -514,11 +534,53 @@ export default function CalendarPage() {
                     </button>
 
                     {reminders.length > 0 && (
-                        <button onClick={() => setShowReminders(!showReminders)} className="relative inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
-                            <Bell size={16} className="text-amber-500" />
-                            Recordatorios
-                            <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">{reminders.length}</span>
-                        </button>
+                        <div className="relative" ref={remindersButtonRef}>
+                            <button onClick={() => setShowReminders(!showReminders)} className="relative inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800">
+                                <Bell size={16} className="text-amber-500" />
+                                Recordatorios
+                                <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">{reminders.length}</span>
+                            </button>
+                            <AnimatePresence>
+                                {showReminders && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: -4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -4 }}
+                                        transition={{ duration: 0.15 }}
+                                        className="absolute right-0 top-full mt-2 z-50 w-80 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden"
+                                    >
+                                        <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                                            <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                                <Bell size={14} className="text-amber-500" />
+                                                Recordatorios
+                                            </h3>
+                                            <button onClick={() => setShowReminders(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" aria-label="Cerrar">
+                                                <X size={14} />
+                                            </button>
+                                        </div>
+                                        <div className="max-h-96 overflow-y-auto">
+                                            {reminders.length === 0 ? (
+                                                <p className="text-xs text-slate-400 italic p-4 text-center">Sin recordatorios</p>
+                                            ) : (
+                                                <div className="p-2 space-y-1">
+                                                    {reminders.slice(0, 10).map((r, idx) => (
+                                                        <div key={idx} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                                                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 shrink-0">
+                                                                <Bell size={14} />
+                                                            </div>
+                                                            <div className="flex-1 min-w-0">
+                                                                <p className="text-sm font-medium text-slate-900 dark:text-white truncate">{r.title}</p>
+                                                                <p className="text-xs text-slate-500">{r.daysUntil === 0 ? 'Hoy' : r.daysUntil === 1 ? 'Mañana' : `En ${r.daysUntil} días`}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
                     )}
 
                     {canManageCalendarEvents && (
@@ -712,28 +774,6 @@ export default function CalendarPage() {
                             )}
                         </div>
                     </div>
-
-                    {reminders.length > 0 && (
-                        <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl">
-                            <h3 className="text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                                <Bell size={18} className="text-amber-500" />
-                                Recordatorios
-                            </h3>
-                            <div className="mt-4 space-y-2">
-                                {reminders.slice(0, 5).map((r, idx) => (
-                                    <div key={idx} className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20">
-                                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
-                                            <Bell size={14} />
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-sm font-medium text-slate-900 truncate">{r.title}</p>
-                                            <p className="text-xs text-slate-500">{r.daysUntil === 0 ? 'Hoy' : r.daysUntil === 1 ? 'Manana' : `En ${r.daysUntil} dias`}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
 
                     <div className="bg-white dark:bg-slate-900 rounded-[2rem] border border-slate-100 dark:border-slate-800 p-6 shadow-xl">
                         <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Leyenda</h3>
