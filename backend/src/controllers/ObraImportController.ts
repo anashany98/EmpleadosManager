@@ -145,6 +145,9 @@ export const ObraImportController = {
             if (!batch.sourceFileUrl) return ApiResponse.error(res, 'El archivo ya no está disponible', 404);
             if (batch.status === 'COMMITTED') return ApiResponse.error(res, 'El lote ya fue confirmado', 409);
 
+            // Cap de filas para evitar DoS por archivos grandes. Si lo supera, error
+            // claro: el cliente puede partir el archivo o contactar a admin.
+            const MAX_ROWS = 5000;
             const buffer = await StorageService.getBuffer(batch.sourceFileUrl);
 
             let isPresto = false;
@@ -170,6 +173,9 @@ export const ObraImportController = {
 
             if (isPresto) {
                 const mapped = PrestoParser.toMappedRows(prestoPedidos, { overrideObraCode: obraOverride || null });
+                if (mapped.length > MAX_ROWS) {
+                    return ApiResponse.error(res, `El archivo tiene ${mapped.length} filas Presto, supera el máximo de ${MAX_ROWS}. Divide el archivo o contacta con admin.`, 413);
+                }
                 totalRows = mapped.length;
 
                 // C1: Pre-load obras in one query instead of N
@@ -215,18 +221,25 @@ export const ObraImportController = {
                 }
             } else {
                 const raw = await ExcelParser.parseBuffer(buffer);
+                if (raw.length > MAX_ROWS) {
+                    return ApiResponse.error(res, `El archivo tiene ${raw.length} filas, supera el máximo de ${MAX_ROWS}. Divide el archivo o contacta con admin.`, 413);
+                }
                 const validation = await ObraImportService.validate(raw, rules);
                 valid = validation.valid;
                 invalid = validation.invalid;
                 totalRows = raw.length;
             }
 
+            // Cache del resultado de validación (30 min) — el commit lo reusa y
+            // evita re-leer/re-parsear el Excel. TTL corto porque el archivo puede
+            // cambiar; si se supera, el commit re-parsea (fallback robusto).
             const cached: CachedValidation = {
                 totalRows,
                 valid,
                 invalid,
                 raw: [] as Record<string, any>[]
             };
+            CacheService.set(`obra-import:validation:${id}`, cached, 1800);
 
             await prisma.obraImportBatch.update({
                 where: { id },
@@ -257,15 +270,16 @@ export const ObraImportController = {
                 }
             });
 
+            // Devolvemos solo muestras (10 valid, 25 invalid) para no inflar la response.
+            // El commit obtiene el resultado completo desde CacheService.
             return ApiResponse.success(res, {
                 batchId: id,
                 totalRows,
                 detectedLayout: isPresto ? 'presto' : 'flat',
-                valid: cached.valid.slice(0, 10),
+                valid: valid.slice(0, 10),
                 validCount: valid.length,
-                invalid: cached.invalid.slice(0, 25),
-                invalidCount: invalid.length,
-                _cached: cached
+                invalid: invalid.slice(0, 25),
+                invalidCount: invalid.length
             });
         } catch (err: unknown) {
             return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al previsualizar', 500);
@@ -285,68 +299,82 @@ export const ObraImportController = {
             if (batch.status === 'COMMITTED') return ApiResponse.error(res, 'El lote ya fue confirmado', 409);
             if (!batch.sourceFileUrl) return ApiResponse.error(res, 'El archivo ya no está disponible', 404);
 
-            const buffer = await StorageService.getBuffer(batch.sourceFileUrl);
-
+            // 1) Reutilizar la validación cacheada por `preview` si está disponible
+            //    (TTL 30 min). Evita re-leer el Excel y re-parsearlo. Si expiró
+            //    o no existe (e.g. nunca se llamó preview), parseamos ahora.
+            const cachedValidation = CacheService.get<CachedValidation>(`obra-import:validation:${id}`);
             let validRows: ImportRowValid[] = [];
             let invalidRows: ImportRowInvalid[] = [];
-            try {
-                const wb = new ExcelJS.Workbook();
-                await wb.xlsx.load(buffer as any);
-                const sheet = wb.worksheets[0];
-                if (sheet) {
-                    const det = PrestoParser.detectAndParse(sheet);
-                    if (det.isPresto) {
-                        const mapped = PrestoParser.toMappedRows(det.pedidos, { overrideObraCode: obraOverride || null });
-                        // C1: Pre-load obras in one query instead of N
-                        const obraCodes = [...new Set(mapped.map(r => r.obra_code).filter(Boolean))];
-                        const obras = obraCodes.length
-                            ? await prisma.project.findMany({ where: { code: { in: obraCodes } }, select: { id: true, code: true, status: true } })
-                            : [];
-                        const obraByCode = new Map(obras.map(o => [o.code, o]));
 
-                        for (const row of mapped) {
-                            const warnings: string[] = [];
-                            if (!row.obra_code) warnings.push('MISSING_OBRA_CODE');
-                            if (!row.date || isNaN(row.date.getTime())) warnings.push('INVALID_DATE');
-                            if (!row.amount || row.amount <= 0) warnings.push('INVALID_AMOUNT');
-                            if (!row.type || !(OBRA_EXPENSE_TYPES as readonly string[]).includes(row.type)) warnings.push('INVALID_TYPE');
-                            const obra = row.obra_code ? obraByCode.get(row.obra_code) || null : null;
-                            if (!obra) warnings.push('OBRA_NOT_FOUND');
-                            else if (obra.status !== 'ACTIVE') warnings.push('OBRA_INACTIVE');
-                            if (warnings.length > 0) {
-                                invalidRows.push({ rowIndex: row.rowIndex, raw: row, warnings, obraCode: row.obra_code, employeeDni: null, originalRef: row.originalRef });
-                            } else {
-                                validRows.push({
-                                    rowIndex: row.rowIndex,
-                                    raw: row,
-                                    warnings: [],
-                                    data: {
-                                        obraId: obra!.id,
-                                        employeeId: null,
-                                        type: row.type,
-                                        date: row.date,
-                                        amount: row.amount,
-                                        currency: row.currency || 'EUR',
-                                        description: row.description,
-                                        vendor: row.vendor,
-                                        reference: row.reference,
-                                        origin: null,
-                                        destination: null
-                                    }
-                                });
-                            }
+            if (cachedValidation) {
+                validRows = cachedValidation.valid;
+                invalidRows = cachedValidation.invalid;
+                logger.info({ batchId: id, valid: validRows.length, invalid: invalidRows.length }, '[ObraImport] commit using cached validation');
+            } else {
+                const buffer = await StorageService.getBuffer(batch.sourceFileUrl);
+                let isPresto = false;
+                const prestoPedidos: ReturnType<typeof PrestoParser.detectAndParse>['pedidos'] = [];
+                try {
+                    const wb = new ExcelJS.Workbook();
+                    await wb.xlsx.load(buffer as any);
+                    const sheet = wb.worksheets[0];
+                    if (sheet) {
+                        const det = PrestoParser.detectAndParse(sheet);
+                        if (det.isPresto) {
+                            isPresto = true;
+                            prestoPedidos.push(...det.pedidos);
                         }
                     }
+                } catch (err: unknown) {
+                    logger.warn({ error: err instanceof Error ? err.message : String(err) }, '[ObraImport] Presto detection failed in commit, falling back to flat');
                 }
-            } catch (err: unknown) {
-                logger.warn({ error: err instanceof Error ? err.message : String(err) }, '[ObraImport] Presto detection failed in commit, falling back to flat');
-            }
 
-            if (validRows.length === 0 && invalidRows.length === 0) {
-                const raw = await ExcelParser.parseBuffer(buffer);
-                const validation = await ObraImportService.validate(raw, rules);
-                validRows = validation.valid;
-                invalidRows = validation.invalid;
+                if (isPresto) {
+                    const mapped = PrestoParser.toMappedRows(prestoPedidos, { overrideObraCode: obraOverride || null });
+                    const obraCodes = [...new Set(mapped.map(r => r.obra_code).filter(Boolean))];
+                    const obras = obraCodes.length
+                        ? await prisma.project.findMany({ where: { code: { in: obraCodes } }, select: { id: true, code: true, status: true } })
+                        : [];
+                    const obraByCode = new Map(obras.map(o => [o.code, o]));
+
+                    for (const row of mapped) {
+                        const warnings: string[] = [];
+                        if (!row.obra_code) warnings.push('MISSING_OBRA_CODE');
+                        if (!row.date || isNaN(row.date.getTime())) warnings.push('INVALID_DATE');
+                        if (!row.amount || row.amount <= 0) warnings.push('INVALID_AMOUNT');
+                        if (!row.type || !(OBRA_EXPENSE_TYPES as readonly string[]).includes(row.type)) warnings.push('INVALID_TYPE');
+                        const obra = row.obra_code ? obraByCode.get(row.obra_code) || null : null;
+                        if (!obra) warnings.push('OBRA_NOT_FOUND');
+                        else if (obra.status !== 'ACTIVE') warnings.push('OBRA_INACTIVE');
+                        if (warnings.length > 0) {
+                            invalidRows.push({ rowIndex: row.rowIndex, raw: row, warnings, obraCode: row.obra_code, employeeDni: null, originalRef: row.originalRef });
+                        } else {
+                            validRows.push({
+                                rowIndex: row.rowIndex,
+                                raw: row,
+                                warnings: [],
+                                data: {
+                                    obraId: obra!.id,
+                                    employeeId: null,
+                                    type: row.type,
+                                    date: row.date,
+                                    amount: row.amount,
+                                    currency: row.currency || 'EUR',
+                                    description: row.description,
+                                    vendor: row.vendor,
+                                    reference: row.reference,
+                                    origin: null,
+                                    destination: null
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    const raw = await ExcelParser.parseBuffer(buffer);
+                    const validation = await ObraImportService.validate(raw, rules);
+                    validRows = validation.valid;
+                    invalidRows = validation.invalid;
+                }
             }
 
             if (validRows.length === 0) {
@@ -486,6 +514,8 @@ export const ObraImportController = {
 
             CacheService.invalidateByPrefix('report:obra-summary:');
             CacheService.invalidateByPrefix('report:obra-employee:');
+            // Limpiar la cache de validación — ya no la necesitamos tras commitear
+            CacheService.invalidateByPrefix(`obra-import:validation:${id}`);
 
             return ApiResponse.success(res, {
                 batchId: id,

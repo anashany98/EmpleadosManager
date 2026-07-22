@@ -4,6 +4,7 @@ import { Upload, FileUp, CheckCircle, AlertTriangle, Save, ArrowRight, X, Downlo
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../api/client';
+import { useApiUnwrap } from '../hooks/useApiUnwrap';
 import { useEffect } from 'react';
 
 const DEFAULT_FIELDS = [
@@ -51,8 +52,6 @@ const TEMPLATE_SAMPLE_ROW = [
 type Step = 'UPLOAD' | 'MAP' | 'REVIEW';
 type LayoutHint = 'presto' | 'flat' | 'unknown';
 
-const unwrap = (r: any) => r?.data?.data ?? r?.data ?? r;
-
 const PRESTO_MAPPING: Record<string, string> = {
     obra_code: '',
     date: '',
@@ -71,6 +70,7 @@ export default function ObraImportPage() {
     useEffect(() => { fetchObras(); }, []);
 
     const navigate = useNavigate();
+    const unwrap = useApiUnwrap();
     const [step, setStep] = useState<Step>('UPLOAD');
     const [file, setFile] = useState<File | null>(null);
     const [batchId, setBatchId] = useState<string | null>(null);

@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../api/client';
 import { useConfirm } from '../context/ConfirmContext';
+import { useApiUnwrap } from '../hooks/useApiUnwrap';
 
 const TIPO_LABELS: Record<string, string> = {
     PER_DIEM: 'Dietas',
@@ -14,11 +15,10 @@ const TIPO_LABELS: Record<string, string> = {
     OTHER: 'Otros'
 };
 
-const unwrap = (r: any) => r?.data?.data ?? r?.data ?? r;
-
 export default function ObrasPage() {
     const navigate = useNavigate();
     const confirmAction = useConfirm();
+    const unwrap = useApiUnwrap();
     const [obras, setObras] = useState<any[]>([]);
     const [employees, setEmployees] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);

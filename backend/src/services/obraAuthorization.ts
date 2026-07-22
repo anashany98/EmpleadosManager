@@ -21,6 +21,11 @@ export const ObraAuthorization = {
     /**
      * O2: Verify user can access the obra based on role scoping.
      * Admin and HR roles bypass checks. Managers can only access obras they manage.
+     *
+     * IMPORTANTE: si la obra NO tiene managerId asignado, los managers NO pueden
+     * acceder (antes esto causaba un bypass: `obra.managerId && ...` evaluaba
+     * false y el manager veía todas las obras sin asignar). Ahora exigimos que
+     * el manager esté explícitamente asignado.
      */
     async ensureCanAccess(id: string, user: AuthUser) {
         const obra = await prisma.project.findUnique({
@@ -34,11 +39,18 @@ export const ObraAuthorization = {
             return obra;
         }
 
-        // Managers can only access obras they are assigned to
-        if (user.role === 'manager' && obra.managerId && obra.managerId !== user.employeeId) {
-            throw new AppError('No tienes acceso a esta obra', 403);
+        // Managers: solo pueden acceder a obras donde figure explícitamente como manager
+        if (user.role === 'manager') {
+            if (!obra.managerId) {
+                throw new AppError('Esta obra no tiene manager asignado', 403);
+            }
+            if (obra.managerId !== user.employeeId) {
+                throw new AppError('No tienes acceso a esta obra', 403);
+            }
+            return obra;
         }
 
-        return obra;
+        // Employee / otros: no tienen acceso al detalle de obra salvo si son admin/hr/manager asignado (cubierto arriba)
+        throw new AppError('No tienes acceso a esta obra', 403);
     }
 };

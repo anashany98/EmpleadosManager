@@ -4,9 +4,8 @@ import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save,
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../api/client';
 import { useConfirm } from '../context/ConfirmContext';
-import { OBRA_TYPE_LABELS, OBRA_EXPENSE_TYPES, type ObraExpenseType } from '@shared/obras';
-
-void OBRA_TYPE_LABELS;
+import { useApiUnwrap } from '../hooks/useApiUnwrap';
+import { OBRA_EXPENSE_TYPES, type ObraExpenseType } from '@shared/obras';
 
 const TIPOS: ObraExpenseType[] = [...OBRA_EXPENSE_TYPES];
 
@@ -53,6 +52,7 @@ export default function ObraDetailPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const confirmAction = useConfirm();
+    const unwrap = useApiUnwrap();
     const [obra, setObra] = useState<ObraShape | null>(null);
     const [employees, setEmployees] = useState<any[]>([]);
     const [tab, setTab] = useState<Tab>('info');
@@ -62,12 +62,25 @@ export default function ObraDetailPage() {
     const [expenseForm, setExpenseForm] = useState({ type: 'PER_DIEM' as ObraExpenseType, date: '', amount: '', currency: 'EUR', employeeId: '', description: '', vendor: '', reference: '', origin: '', destination: '' });
     const [expenseEditingId, setExpenseEditingId] = useState<string | null>(null);
 
-    const unwrap = (r: any) => r?.data?.data ?? r?.data ?? r;
+    // Filtros avanzados para los tabs de expenses y horas
+    const [filters, setFilters] = useState({
+        expenseType: '',
+        employeeId: '',
+        from: '',
+        to: ''
+    });
+    const activeFilters = Object.values(filters).some(Boolean);
 
-    const fetchObra = async () => {
+    const fetchObra = async (overrides?: Partial<typeof filters>) => {
         try {
             setLoading(true);
-            const res = await api.get(`/obras/${id}`);
+            const f = { ...filters, ...overrides };
+            const params: Record<string, string> = {};
+            if (f.expenseType) params.expenseType = f.expenseType;
+            if (f.employeeId) params.employeeId = f.employeeId;
+            if (f.from) params.from = f.from;
+            if (f.to) params.to = f.to;
+            const res = await api.get(`/obras/${id}`, { params });
             setObra(unwrap(res) as ObraShape);
         } catch (err: any) {
             toast.error(getErrorMessage(err, 'Error al cargar la obra'));
@@ -270,6 +283,49 @@ export default function ObraDetailPage() {
                             <h3 className="font-bold text-slate-900 dark:text-white mb-2">Descripción</h3>
                             <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{obra.description}</p>
                         </div>
+                    )}
+                </div>
+            )}
+
+            {(tab === 'hours' || tab === 'expenses') && (
+                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-4 flex flex-wrap items-end gap-3">
+                    <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Tipo gasto</label>
+                        <select
+                            className="px-2 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-xs"
+                            value={filters.expenseType}
+                            onChange={(e) => { setFilters({ ...filters, expenseType: e.target.value }); fetchObra({ expenseType: e.target.value, employeeId: '', from: '', to: '' }); }}
+                        >
+                            <option value="">Todos</option>
+                            {TIPOS.map((t) => <option key={t} value={t}>{TIPO_LABELS[t]}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Empleado</label>
+                        <select
+                            className="px-2 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-xs"
+                            value={filters.employeeId}
+                            onChange={(e) => { setFilters({ ...filters, employeeId: e.target.value }); fetchObra({ ...filters, employeeId: e.target.value }); }}
+                        >
+                            <option value="">Todos</option>
+                            {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>)}
+                        </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Desde</label>
+                        <input type="date" className="px-2 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-xs" value={filters.from} onChange={(e) => { setFilters({ ...filters, from: e.target.value }); fetchObra({ ...filters, from: e.target.value }); }} />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Hasta</label>
+                        <input type="date" className="px-2 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-xs" value={filters.to} onChange={(e) => { setFilters({ ...filters, to: e.target.value }); fetchObra({ ...filters, to: e.target.value }); }} />
+                    </div>
+                    {activeFilters && (
+                        <button
+                            onClick={() => { setFilters({ expenseType: '', employeeId: '', from: '', to: '' }); fetchObra({ expenseType: '', employeeId: '', from: '', to: '' }); }}
+                            className="text-xs px-3 py-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg"
+                        >
+                            Limpiar filtros
+                        </button>
                     )}
                 </div>
             )}

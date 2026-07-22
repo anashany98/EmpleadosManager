@@ -6,6 +6,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { AlertsWidget } from './AlertsWidget';
 import { PendingRequestsWidget } from './PendingRequestsWidget';
+import { ObrasWidget } from './ObrasWidget';
 
 interface HRTabProps {
     metrics: any;
@@ -148,6 +149,9 @@ export default function HRTab({ metrics }: HRTabProps) {
                     <PendingRequestsWidget metrics={metrics} />
                 </div>
             </div>
+
+            {/* Obras: vista rápida de obras activas, presupuesto y sobre-presupuesto */}
+            <ObrasWidget />
 
             {/* Charts Row */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

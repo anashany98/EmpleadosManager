@@ -32,6 +32,9 @@ router.patch(
 );
 router.post('/:id/close', checkPermission('projects', 'write'), validateResource(obraIdParamSchema), ObraController.close);
 router.post('/:id/reopen', checkPermission('projects', 'write'), validateResource(obraIdParamSchema), ObraController.reopen);
+// Impact preview: devuelve el coste/impacto de cerrar la obra sin llegar a cerrarla.
+// Útil para mostrar al usuario lo que va a bloquear antes de confirmar.
+router.get('/:id/close-impact', ObraController.getCloseImpact);
 
 router.get(
     '/:obraId/expenses',
