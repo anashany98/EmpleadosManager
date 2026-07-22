@@ -152,3 +152,10 @@ backend/src/**/*.js
 scripts/seed-admin-inline.js
 scripts/*-inline.js
 scripts/seed-admin*.js
+
+# LOW-004: bundle minificado generado (~2 MB) que se coló en
+# control de versiones. No es runtime (Vite genera su propio
+# bundle en `frontend/dist/`). Si necesitas un build de
+# referencia, ejecuta `npm run build` y referencia los
+# assets con hash de `frontend/dist/assets/`.
+frontend/test.js

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, getErrorMessage } from '../../api/client';
 import { toast } from 'sonner';
+import { useConfirm } from '../../hooks/useConfirm';
 import { CreditCard, Plus, Trash2, PenSquare, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getEmployeeDisplayName } from '../../utils/employeeDisplay';
@@ -21,6 +22,7 @@ interface Card {
 }
 
 export function CardManager() {
+    const { confirm: confirmDialog } = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingCard, setEditingCard] = useState<Card | null>(null);
     const queryClient = useQueryClient();
@@ -93,8 +95,14 @@ export function CardManager() {
                                     <PenSquare className="w-4 h-4" />
                                 </button>
                                 <button
-                                    onClick={() => {
-                                        if (confirm('¿Eliminar tarjeta?')) deleteMutation.mutate(card.id);
+                                    onClick={async () => {
+                                        const ok = await confirmDialog({
+                                            title: '¿Eliminar tarjeta?',
+                                            message: 'Esta acción no se puede deshacer. La tarjeta quedará marcada como inactiva.',
+                                            type: 'danger',
+                                            confirmText: 'Eliminar'
+                                        });
+                                        if (ok) deleteMutation.mutate(card.id);
                                     }}
                                     className="p-2 bg-white/20 hover:bg-red-500/50 rounded-lg backdrop-blur-sm"
                                 >

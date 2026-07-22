@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { ClipboardList, Plus, Trash2, CheckCircle2, Circle, Clock } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../../hooks/useConfirm';
 
 interface Task {
     id: string;
@@ -14,6 +15,7 @@ interface Task {
 }
 
 export default function EmployeeChecklist({ employeeId }: { employeeId: string }) {
+    const { confirm: confirmDialog } = useConfirm();
     const [tasks, setTasks] = useState<Task[]>([]);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'ONBOARDING' | 'OFFBOARDING'>('ONBOARDING');
@@ -66,8 +68,14 @@ export default function EmployeeChecklist({ employeeId }: { employeeId: string }
     };
 
     const handleDelete = async (id: string) => {
+        const ok = await confirmDialog({
+            title: '¿Eliminar tarea?',
+            message: 'Esta acción no se puede deshacer.',
+            type: 'danger',
+            confirmText: 'Eliminar'
+        });
+        if (!ok) return;
         try {
-            if (!confirm('¿Eliminar esta tarea?')) return;
             await api.delete(`/checklists/${id}`);
             toast.success('Tarea eliminada');
             fetchTasks();
