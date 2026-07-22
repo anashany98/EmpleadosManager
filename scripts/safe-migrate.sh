@@ -148,7 +148,28 @@ if [ $IS_PROD -eq 1 ]; then
     warn "═════════════════════════════════════════════════════════════════"
 fi
 
-npx prisma migrate deploy --schema="$SCHEMA_PATH"
+# Preferir el binario local de prisma (instalado en node_modules) para
+# evitar que `npx` descargue una versión incompatible desde internet.
+PRISMA_BIN=""
+for candidate in \
+    "./node_modules/.bin/prisma" \
+    "../node_modules/.bin/prisma" \
+    "/app/backend/node_modules/.bin/prisma" \
+    "/app/node_modules/.bin/prisma"; do
+    if [ -x "$candidate" ]; then
+        PRISMA_BIN="$candidate"
+        break
+    fi
+done
+
+if [ -n "$PRISMA_BIN" ]; then
+    log "Usando prisma local: $PRISMA_BIN"
+    "$PRISMA_BIN" migrate deploy --schema="$SCHEMA_PATH"
+else
+    warn "No se encontró prisma local, usando npx (puede descargar de internet)"
+    npx --no-install prisma migrate deploy --schema="$SCHEMA_PATH" 2>/dev/null \
+        || npx prisma migrate deploy --schema="$SCHEMA_PATH"
+fi
 
 log "Migraciones aplicadas correctamente"
 log "Backup conservado en: $BACKUP_FILE"
