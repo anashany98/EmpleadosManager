@@ -14,7 +14,10 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:debug": "playwright test --debug"
+    "test:e2e:debug": "playwright test --debug",
+    "audit:check": "npm audit --omit=dev --audit-level=high",
+    "audit:full": "npm audit",
+    "outdated:check": "npm outdated --long"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.12",
