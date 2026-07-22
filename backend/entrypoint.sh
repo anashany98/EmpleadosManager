@@ -18,8 +18,10 @@ chown -R appuser:appgroup /app/backend/uploads /app/backend/data /app/backend/ba
 chmod -R 775 /app/backend/uploads /app/backend/data /app/backend/backups
 
 if [ "${RUN_PRISMA_MIGRATIONS:-false}" = "true" ]; then
-  echo "Running Prisma migrations..."
-  gosu appuser npx prisma migrate deploy --schema=/app/database/prisma/schema.prisma
+  echo "Running Prisma migrations via safe-migrate wrapper..."
+  # REGLA: la BD de Coolify NO se borra. safe-migrate.sh toma backup
+  # automático antes de aplicar cualquier migración y aborta si falla.
+  gosu appuser bash /app/scripts/safe-migrate.sh
 fi
 
 echo "Starting application as appuser..."
