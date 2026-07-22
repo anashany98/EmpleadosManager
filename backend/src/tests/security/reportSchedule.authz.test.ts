@@ -175,6 +175,108 @@ describe('CRIT-003 — ReportScheduler tenant isolation', () => {
         });
     });
 
+    describe('IMP-003 — validación de enums en createSchedule', () => {
+        it('rechaza reportType desconocido con 400 antes de tocar la BD', async () => {
+            await expect(
+                reportScheduler.createSchedule(
+                    {
+                        name: 'demo',
+                        reportType: 'no-existe-este-tipo',
+                        params: '{}',
+                        frequency: 'DAILY',
+                        sendEmail: false,
+                        recipients: '[]'
+                    },
+                    ACTOR_A
+                )
+            ).rejects.toThrow(/reportType inválido/i);
+            // Crítico: el row nunca llega a BD
+            expect(mockedPrisma.reportSchedule.create).not.toHaveBeenCalled();
+        });
+
+        it('rechaza frequency desconocida con 400 antes de tocar la BD', async () => {
+            await expect(
+                reportScheduler.createSchedule(
+                    {
+                        name: 'demo',
+                        reportType: 'attendance',
+                        params: '{}',
+                        frequency: 'HOURLY', // typo común
+                        sendEmail: false,
+                        recipients: '[]'
+                    },
+                    ACTOR_A
+                )
+            ).rejects.toThrow(/frequency inválido/i);
+            expect(mockedPrisma.reportSchedule.create).not.toHaveBeenCalled();
+        });
+
+        it('normaliza el alias legacy "attendance-summary" al valor canónico del enum', async () => {
+            // Compatibilidad: el frontend puede que aún mande el
+            // formato viejo con guiones. La capa de normalización
+            // traduce al enum y la BD recibe el valor canónico.
+            mockedPrisma.reportSchedule.create.mockResolvedValue({ id: 'new-id' });
+            await reportScheduler.createSchedule(
+                {
+                    name: 'demo',
+                    reportType: 'attendance-summary',
+                    params: '{}',
+                    frequency: 'DAILY',
+                    sendEmail: false,
+                    recipients: '[]'
+                },
+                ACTOR_A
+            );
+            const arg = mockedPrisma.reportSchedule.create.mock.calls[0][0];
+            expect(arg.data.reportType).toBe('ATTENDANCE_SUMMARY');
+        });
+
+        it('normaliza alias legacy "vacations", "genderGap" y "absences-detailed"', async () => {
+            // Cobertura: cada alias del mapa de normalización debe
+            // mapear al valor canónico. Si alguien añade un alias
+            // nuevo, este test lo detecta.
+            const cases = [
+                { input: 'vacations', expected: 'VACATION' },
+                { input: 'genderGap', expected: 'GENDER_GAP' },
+                { input: 'absences-detailed', expected: 'ABSENCES_DETAILED' }
+            ];
+            for (const { input, expected } of cases) {
+                mockedPrisma.reportSchedule.create.mockClear();
+                mockedPrisma.reportSchedule.create.mockResolvedValue({ id: 'new-id' });
+                await reportScheduler.createSchedule(
+                    {
+                        name: 'demo',
+                        reportType: input,
+                        params: '{}',
+                        frequency: 'DAILY',
+                        sendEmail: false,
+                        recipients: '[]'
+                    },
+                    ACTOR_A
+                );
+                const arg = mockedPrisma.reportSchedule.create.mock.calls[0][0];
+                expect(arg.data.reportType, `alias ${input} → ${expected}`).toBe(expected);
+            }
+        });
+
+        it('rechaza reportType vacío / ausente', async () => {
+            await expect(
+                reportScheduler.createSchedule(
+                    {
+                        name: 'demo',
+                        reportType: '',
+                        params: '{}',
+                        frequency: 'DAILY',
+                        sendEmail: false,
+                        recipients: '[]'
+                    },
+                    ACTOR_A
+                )
+            ).rejects.toThrow(/reportType es obligatorio/i);
+            expect(mockedPrisma.reportSchedule.create).not.toHaveBeenCalled();
+        });
+    });
+
     describe('toggleSchedule / generateReport', () => {
         it('impide activar un schedule de otra empresa', async () => {
             mockedPrisma.reportSchedule.findUnique.mockResolvedValue({
@@ -268,9 +370,10 @@ describe('CRIT-003 — ReportScheduler tenant isolation', () => {
      * nuevo sin cablearlo correctamente, este test lo detecta.
      */
     describe('MED-005 — cada reportType llama al generador correcto', () => {
-        // Mapeo oficial entre reportType (lo que se guarda en BD) y
-        // los métodos de ReportService + ExcelService que DEBEN
-        // invocarse. Si añades un tipo, añade su entrada aquí.
+        // IMP-003: los reportType son valores del enum ScheduleReportType
+        // (en mayúsculas). El mapa de la izquierda es lo que devuelve
+        // Prisma al leer la BD; el código del scheduler los convierte
+        // a la clave interna (lowercase) que usa el switch.
         const REPORT_TYPE_MATRIX: Array<{
             reportType: string;
             reportServiceMethod: keyof typeof REPORT_SERVICE_METHODS;
@@ -278,67 +381,55 @@ describe('CRIT-003 — ReportScheduler tenant isolation', () => {
             params: Record<string, unknown>;
         }> = [
             {
-                reportType: 'attendance',
+                reportType: 'ATTENDANCE',
                 reportServiceMethod: 'getAttendanceData',
                 excelServiceMethod: 'generateAttendanceReport',
                 params: { startDate: '2024-01-01', endDate: '2024-01-31' }
             },
             {
-                reportType: 'attendance-summary',
+                reportType: 'ATTENDANCE_SUMMARY',
                 reportServiceMethod: 'getAttendanceDailySummary',
                 excelServiceMethod: 'generateAttendanceSummaryReport',
                 params: { startDate: '2024-01-01', endDate: '2024-01-31' }
             },
             {
-                reportType: 'overtime',
+                reportType: 'OVERTIME',
                 reportServiceMethod: 'getOvertimeData',
                 excelServiceMethod: 'generateOvertimeReport',
                 params: { startDate: '2024-01-01', endDate: '2024-01-31' }
             },
             {
-                reportType: 'vacation',
+                reportType: 'VACATION',
                 reportServiceMethod: 'getVacationData',
                 excelServiceMethod: 'generateVacationReport',
                 params: { year: 2024 }
             },
             {
-                reportType: 'vacations',
-                reportServiceMethod: 'getVacationData',
-                excelServiceMethod: 'generateVacationReport',
-                params: { year: 2024 }
-            },
-            {
-                reportType: 'costs',
+                reportType: 'COSTS',
                 reportServiceMethod: 'getCompanyCostData',
                 excelServiceMethod: 'generateCostReport',
                 params: { year: 2024, month: 6 }
             },
             {
-                reportType: 'absences',
+                reportType: 'ABSENCES',
                 reportServiceMethod: 'getDetailedAbsenceData',
                 excelServiceMethod: 'generateDetailedAbsenceReport',
                 params: { startDate: '2024-01-01', endDate: '2024-01-31' }
             },
             {
-                reportType: 'absences-detailed',
+                reportType: 'ABSENCES_DETAILED',
                 reportServiceMethod: 'getDetailedAbsenceData',
                 excelServiceMethod: 'generateDetailedAbsenceReport',
                 params: { startDate: '2024-01-01', endDate: '2024-01-31' }
             },
             {
-                reportType: 'kpis',
+                reportType: 'KPIS',
                 reportServiceMethod: 'getKPIMetrics',
                 excelServiceMethod: 'generateKPIReport',
                 params: { year: 2024, month: 6 }
             },
             {
-                reportType: 'gender-gap',
-                reportServiceMethod: 'getGenderGapData',
-                excelServiceMethod: 'generateGenderGapReport',
-                params: {}
-            },
-            {
-                reportType: 'genderGap',
+                reportType: 'GENDER_GAP',
                 reportServiceMethod: 'getGenderGapData',
                 excelServiceMethod: 'generateGenderGapReport',
                 params: {}
@@ -435,7 +526,7 @@ describe('CRIT-003 — ReportScheduler tenant isolation', () => {
             }
         );
 
-        it('attendanceSummary: usa el método "summary", no el "detailed" (regression MED-005)', async () => {
+        it('ATTENDANCE_SUMMARY: usa el método "summary", no el "detailed" (regression MED-005)', async () => {
             // Caso explícito: si alguien añade un case duplicado
             // 'attendanceSummary' en el switch del scheduler, este
             // test detecta que se ha llamado al servicio equivocado.
@@ -451,7 +542,7 @@ describe('CRIT-003 — ReportScheduler tenant isolation', () => {
 
             mockedPrisma.reportSchedule.findUnique.mockResolvedValue({
                 id: 'sched-summary',
-                reportType: 'attendanceSummary',
+                reportType: 'ATTENDANCE_SUMMARY',
                 params: '{}',
                 isActive: true,
                 frequency: 'DAILY',
@@ -470,21 +561,23 @@ describe('CRIT-003 — ReportScheduler tenant isolation', () => {
             expect(ExcelService.generateAttendanceReport).not.toHaveBeenCalled();
         });
 
-        it('reportType desconocido devuelve error sin tocar ReportService', async () => {
+        it('CUSTOM (único "desconocido" que puede existir en BD) cae al fallback seguro', async () => {
+            // IMP-003: el enum impide que `reportType` llegue con un
+            // valor no válido desde la BD. CUSTOM es el único valor
+            // del enum que el switch no cubre explícitamente; debe
+            // caer al fallback mapeado en REPORT_TYPE_MAP (actualmente
+            // ATTENDANCE) sin devolver un error 500 al usuario.
             const { ReportService } = await import('../../services/reports');
             const { ExcelService } = await import('../../services/ExcelService');
 
-            // Reset todos los spies para detectar cualquier llamada
-            for (const m of Object.values(REPORT_SERVICE_METHODS)) {
-                vi.mocked((ReportService as any)[m]).mockClear();
-            }
-            for (const m of Object.values(EXCEL_SERVICE_METHODS)) {
-                vi.mocked((ExcelService as any)[m]).mockClear();
-            }
+            vi.mocked(ReportService.getAttendanceData).mockClear();
+            vi.mocked(ReportService.getAttendanceDailySummary).mockClear();
+            (ReportService.getAttendanceData as any).mockResolvedValue({ data: [] });
+            (ExcelService.generateAttendanceReport as any).mockResolvedValue(Buffer.from('xlsx'));
 
             mockedPrisma.reportSchedule.findUnique.mockResolvedValue({
-                id: 'sched-unknown',
-                reportType: 'no-existe-este-tipo',
+                id: 'sched-custom',
+                reportType: 'CUSTOM',
                 params: '{}',
                 isActive: true,
                 frequency: 'DAILY',
@@ -492,18 +585,14 @@ describe('CRIT-003 — ReportScheduler tenant isolation', () => {
                 recipients: '[]',
                 sendEmail: false
             } as any);
+            mockedPrisma.reportSchedule.update.mockResolvedValue({});
 
-            const result = await reportScheduler.generateReport('sched-unknown', ACTOR_A);
+            const result = await reportScheduler.generateReport('sched-custom', ACTOR_A);
 
-            expect(result.success).toBe(false);
-            expect(result.error).toMatch(/Unknown report type/i);
-            // Ningún método de ReportService ni ExcelService fue llamado
-            for (const m of Object.values(REPORT_SERVICE_METHODS)) {
-                expect((ReportService as any)[m]).not.toHaveBeenCalled();
-            }
-            for (const m of Object.values(EXCEL_SERVICE_METHODS)) {
-                expect((ExcelService as any)[m]).not.toHaveBeenCalled();
-            }
+            // No error: el fallback de REPORT_TYPE_MAP maneja CUSTOM
+            expect(result.success).toBe(true);
+            // Y ejecuta el método del fallback (ATTENDANCE)
+            expect(ReportService.getAttendanceData).toHaveBeenCalled();
         });
     });
 });

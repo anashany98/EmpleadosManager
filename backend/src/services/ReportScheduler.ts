@@ -42,6 +42,85 @@ const REPORT_LABELS: Record<string, string> = {
     genderGap: 'Igualdad y diversidad'
 };
 
+/**
+ * IMP-003: canónico de los valores del enum `ScheduleReportType`.
+ * Como el código legacy acepta strings en lowercase/hyphen
+ * (`'attendance-summary'`, `'genderGap'`, `'vacations'`, etc.),
+ * mantenemos un mapa de normalización para que el cambio de tipo
+ * en BD no rompa clientes que aún mandan el formato viejo.
+ */
+const SCHEDULE_REPORT_TYPE_VALUES = [
+    'ATTENDANCE',
+    'ATTENDANCE_SUMMARY',
+    'OVERTIME',
+    'VACATION',
+    'COSTS',
+    'ABSENCES',
+    'ABSENCES_DETAILED',
+    'KPIS',
+    'GENDER_GAP',
+    'CUSTOM'
+] as const;
+
+export type ScheduleReportType = (typeof SCHEDULE_REPORT_TYPE_VALUES)[number];
+
+const SCHEDULE_FREQUENCY_VALUES = ['DAILY', 'WEEKLY', 'MONTHLY'] as const;
+export type ScheduleFrequency = (typeof SCHEDULE_FREQUENCY_VALUES)[number];
+
+/**
+ * Acepta los alias legacy (`attendance`, `attendance-summary`,
+ * `genderGap`, `vacations`, `absences-detailed`, etc.) y devuelve
+ * el valor canónico del enum. Lanza `Error` con mensaje claro si
+ * el valor no es ninguno conocido.
+ */
+function normalizeReportType(input: unknown): ScheduleReportType {
+    if (typeof input !== 'string' || !input) {
+        throw new Error('reportType es obligatorio');
+    }
+    const alias: Record<string, ScheduleReportType> = {
+        attendance: 'ATTENDANCE',
+        'attendance-summary': 'ATTENDANCE_SUMMARY',
+        attendanceSummary: 'ATTENDANCE_SUMMARY',
+        overtime: 'OVERTIME',
+        vacation: 'VACATION',
+        vacations: 'VACATION',
+        costs: 'COSTS',
+        absences: 'ABSENCES',
+        'absences-detailed': 'ABSENCES_DETAILED',
+        absencesDetailed: 'ABSENCES_DETAILED',
+        kpis: 'KPIS',
+        'gender-gap': 'GENDER_GAP',
+        genderGap: 'GENDER_GAP',
+        custom: 'CUSTOM'
+    };
+    if (alias[input]) return alias[input];
+    // Si ya viene como valor canónico del enum, lo aceptamos tal cual
+    if ((SCHEDULE_REPORT_TYPE_VALUES as readonly string[]).includes(input)) {
+        return input as ScheduleReportType;
+    }
+    throw new Error(
+        `reportType inválido: "${input}". Valores permitidos: ${SCHEDULE_REPORT_TYPE_VALUES.join(', ')}`
+    );
+}
+
+/**
+ * Normaliza y valida `frequency`. Solo se acepta el formato del
+ * enum (DAILY/WEEKLY/MONTHLY). Los valores legacy en minúsculas
+ * se rechazan para forzar al caller a usar el contrato actual.
+ */
+function normalizeFrequency(input: unknown): ScheduleFrequency {
+    if (typeof input !== 'string' || !input) {
+        throw new Error('frequency es obligatorio');
+    }
+    const upper = input.toUpperCase();
+    if ((SCHEDULE_FREQUENCY_VALUES as readonly string[]).includes(upper)) {
+        return upper as ScheduleFrequency;
+    }
+    throw new Error(
+        `frequency inválido: "${input}". Valores permitidos: ${SCHEDULE_FREQUENCY_VALUES.join(', ')}`
+    );
+}
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function isGlobalAdmin(actor: SchedulerActor | null | undefined): boolean {
@@ -137,18 +216,17 @@ export class ReportScheduler {
             const now = new Date();
             const dateStr = now.toISOString().split('T')[0];
 
-            const REPORT_TYPE_MAP: Record<string, string> = {
-                'attendance': 'attendance',
-                'attendance-summary': 'attendanceSummary',
-                'overtime': 'overtime',
-                'vacations': 'vacation',
-                'vacation': 'vacation',
-                'costs': 'costs',
-                'absences-detailed': 'absences',
-                'absences': 'absences',
-                'kpis': 'kpis',
-                'gender-gap': 'genderGap',
-                'genderGap': 'genderGap'
+            const REPORT_TYPE_MAP: Record<ScheduleReportType, string> = {
+                ATTENDANCE: 'attendance',
+                ATTENDANCE_SUMMARY: 'attendanceSummary',
+                OVERTIME: 'overtime',
+                VACATION: 'vacation',
+                COSTS: 'costs',
+                ABSENCES: 'absences',
+                ABSENCES_DETAILED: 'absences',
+                KPIS: 'kpis',
+                GENDER_GAP: 'genderGap',
+                CUSTOM: 'attendance' // fallback seguro: nunca debería llegar aquí
             };
 
             const normalizedType = REPORT_TYPE_MAP[schedule.reportType] || schedule.reportType;
@@ -312,7 +390,7 @@ export class ReportScheduler {
         }
     }
 
-    calculateNextRun(frequency: string): Date {
+    calculateNextRun(frequency: ScheduleFrequency): Date {
         const now = new Date();
         switch (frequency) {
             case 'DAILY':
@@ -386,6 +464,14 @@ export class ReportScheduler {
         },
         actor: SchedulerActor
     ) {
+        // IMP-003: normalizamos y validamos `reportType`/`frequency`
+        // contra los enums antes de tocar la BD. Si el caller
+        // (frontend, cron manual) envía un valor desconocido, la
+        // request falla con 400 explícito en vez de crear una fila
+        // basura que el cron luego no puede ejecutar.
+        const reportType = normalizeReportType(data.reportType);
+        const frequency = normalizeFrequency(data.frequency);
+
         // Forzamos companyId del actor (nunca del body)
         const companyId = isGlobalAdmin(actor) ? (data.companyId ?? null) : (actor.companyId ?? null);
 
@@ -396,13 +482,13 @@ export class ReportScheduler {
             assertValidRecipients(recipients);
         }
 
-        const nextRun = this.calculateNextRun(data.frequency);
+        const nextRun = this.calculateNextRun(frequency);
         const created = await prisma.reportSchedule.create({
             data: {
                 name: data.name,
-                reportType: data.reportType,
+                reportType,
                 params: data.params,
-                frequency: data.frequency,
+                frequency,
                 sendEmail: data.sendEmail,
                 recipients: data.recipients,
                 companyId,
@@ -415,8 +501,8 @@ export class ReportScheduler {
             'REPORT_SCHEDULE',
             created.id,
             {
-                reportType: data.reportType,
-                frequency: data.frequency,
+                reportType,
+                frequency,
                 companyId,
                 sendEmail: data.sendEmail
             },

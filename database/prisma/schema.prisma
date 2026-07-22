@@ -496,6 +496,32 @@ model VacationArchive {
   archiveReason   String?
 }
 
+/// Tipos de reporte soportados por el scheduler.
+/// Antes era String libre, lo que permitía typos y valores
+/// legacy divergentes. IMP-003: forzar enum para que el cron
+/// nunca ejecute un `reportType` desconocido.
+enum ScheduleReportType {
+  ATTENDANCE
+  ATTENDANCE_SUMMARY
+  OVERTIME
+  VACATION
+  COSTS
+  ABSENCES
+  ABSENCES_DETAILED
+  KPIS
+  GENDER_GAP
+  CUSTOM
+}
+
+/// Frecuencia de ejecución de un ReportSchedule.
+/// Antes String libre; ahora enum acotado. Cualquier valor fuera
+/// del enum se rechaza con 400 antes de tocar la BD.
+enum ScheduleFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
 enum AbsenceType {
   VACATION
   SICK
@@ -844,19 +870,19 @@ model DashboardConfig {
 
 // Scheduled reports
 model ReportSchedule {
-  id         String    @id @default(uuid())
+  id         String             @id @default(uuid())
   name       String
-  reportType String // attendance, overtime, vacation, costs, absences, kpis, genderGap, custom
-  params     String // JSON: filter parameters
-  frequency  String // DAILY, WEEKLY, MONTHLY
-  sendEmail  Boolean   @default(false)
-  recipients String // JSON: email addresses array
-  isActive   Boolean   @default(true)
+  reportType ScheduleReportType
+  params     String             // JSON: filter parameters
+  frequency  ScheduleFrequency
+  sendEmail  Boolean            @default(false)
+  recipients String             // JSON: email addresses array
+  isActive   Boolean            @default(true)
   lastRunAt  DateTime?
   nextRunAt  DateTime
   companyId  String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
 
   @@index([isActive, nextRunAt])
 }
