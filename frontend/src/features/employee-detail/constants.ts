@@ -36,9 +36,11 @@ export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
             'prl',
             ...(isGlobalAdmin ? ['obras'] : []),
             'activos',
-            'checklists',
-            'seguridad',
-            ...(isGlobalAdmin ? ['privacidad'] : []),
+            // Tabs ocultas a petición del usuario (2026-07-23):
+            // 'checklists', 'seguridad', 'privacidad'.
+            // El render de cada una en EmployeeOperationsSection /
+            // EmployeeAdministrationSection se conserva por si se
+            // quieren volver a activar — solo no aparecen en la barra.
             'notas-rrhh'
         ]
         : ['prl']),
