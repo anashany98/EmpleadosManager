@@ -14,6 +14,30 @@ import {
 export type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS' | 'GENDER_GAP' | 'OBRA_SUMMARY' | 'OBRA_EMPLOYEES' | 'PRL_MEDICAL' | 'PRL_TRAINING';
 export type ReportTone = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
 
+/**
+ * Categorías que agrupan los reports en la barra lateral. El orden
+ * del array es el orden en que se renderizan las secciones.
+ */
+export type ReportCategory = 'ATTENDANCE' | 'TIME' | 'COSTS' | 'OBRAS' | 'PRL';
+
+export interface ReportCategoryDefinition {
+    id: ReportCategory;
+    label: string;
+    description: string;
+}
+
+export const reportCategories: ReportCategoryDefinition[] = [
+    { id: 'ATTENDANCE', label: 'Asistencia',    description: 'Jornadas, horas extra y marcas de los empleados.' },
+    { id: 'TIME',       label: 'Tiempo',        description: 'Vacaciones, bajas, permisos y demás ausencias.' },
+    { id: 'COSTS',      label: 'Costes y org.', description: 'Nóminas, KPIs globales y brecha de género.' },
+    { id: 'OBRAS',      label: 'Obras',         description: 'Resumen de horas y gastos por proyecto.' },
+    { id: 'PRL',        label: 'PRL',           description: 'Prevención de riesgos: médicas y formación.' }
+];
+
+export function getReportCategory(category: ReportCategory): ReportCategoryDefinition {
+    return reportCategories.find((c) => c.id === category) || reportCategories[0];
+}
+
 export interface CompanyOption {
     id: string;
     name: string;
@@ -37,6 +61,7 @@ export interface ReportDefinition {
     tone: ReportTone;
     endpoint: string;
     icon: typeof Clock;
+    category: ReportCategory;
 }
 
 export const reportsCatalog: ReportDefinition[] = [
@@ -46,7 +71,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Resumen diario con horas trabajadas, segmentos y jornadas incompletas.',
         tone: 'blue',
         endpoint: '/reports/attendance-summary',
-        icon: Clock
+        icon: Clock,
+        category: 'ATTENDANCE'
     },
     {
         id: 'OVERTIME',
@@ -54,7 +80,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Horas adicionales, tarifas aplicadas y coste generado por periodo.',
         tone: 'emerald',
         endpoint: '/reports/overtime',
-        icon: TrendingUp
+        icon: TrendingUp,
+        category: 'ATTENDANCE'
     },
     {
         id: 'VACATIONS',
@@ -62,15 +89,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Cuota anual, consumo, peticiones registradas y riesgo de agotamiento.',
         tone: 'amber',
         endpoint: '/reports/vacations',
-        icon: Calendar
-    },
-    {
-        id: 'COSTS',
-        name: 'Coste empresa',
-        description: 'Bruto, seguridad social, IRPF y coste total por persona o departamento.',
-        tone: 'violet',
-        endpoint: '/reports/costs',
-        icon: Building2
+        icon: Calendar,
+        category: 'TIME'
     },
     {
         id: 'ABSENCES_DETAILED',
@@ -78,7 +98,17 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Casos detallados con duración, motivo y seguimiento por empleado.',
         tone: 'rose',
         endpoint: '/reports/absences-detailed',
-        icon: AlertTriangle
+        icon: AlertTriangle,
+        category: 'TIME'
+    },
+    {
+        id: 'COSTS',
+        name: 'Coste empresa',
+        description: 'Bruto, seguridad social, IRPF y coste total por persona o departamento.',
+        tone: 'violet',
+        endpoint: '/reports/costs',
+        icon: Building2,
+        category: 'COSTS'
     },
     {
         id: 'KPIS',
@@ -86,7 +116,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Rotación, absentismo y foco departamental para dirección y RRHH.',
         tone: 'blue',
         endpoint: '/reports/kpis',
-        icon: LineChart
+        icon: LineChart,
+        category: 'COSTS'
     },
     {
         id: 'GENDER_GAP',
@@ -94,7 +125,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Plantilla, medias salariales y brecha estimada por departamento.',
         tone: 'rose',
         endpoint: '/reports/gender-gap',
-        icon: Users
+        icon: Users,
+        category: 'COSTS'
     },
     {
         id: 'OBRA_SUMMARY',
@@ -102,7 +134,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Horas imputadas, gastos por tipo y consumo de presupuesto por obra.',
         tone: 'blue',
         endpoint: '/reports/obras',
-        icon: Briefcase
+        icon: Briefcase,
+        category: 'OBRAS'
     },
     {
         id: 'OBRA_EMPLOYEES',
@@ -110,7 +143,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Horas y gastos (dietas, hospedaje, vuelo, transporte) imputados por empleado dentro de cada obra.',
         tone: 'emerald',
         endpoint: '/reports/obras/employees',
-        icon: Briefcase
+        icon: Briefcase,
+        category: 'OBRAS'
     },
     {
         id: 'PRL_MEDICAL',
@@ -118,7 +152,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Histórico de reconocimientos médicos, declinaciones, próximas revisiones y caducidades.',
         tone: 'rose',
         endpoint: '/reports/prl/medical-reviews',
-        icon: Stethoscope
+        icon: Stethoscope,
+        category: 'PRL'
     },
     {
         id: 'PRL_TRAINING',
@@ -126,7 +161,8 @@ export const reportsCatalog: ReportDefinition[] = [
         description: 'Cursos realizados, horas impartidas, distribución por tipo y ranking de cursos.',
         tone: 'violet',
         endpoint: '/reports/prl/trainings',
-        icon: GraduationCap
+        icon: GraduationCap,
+        category: 'PRL'
     }
 ];
 

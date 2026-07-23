@@ -7,7 +7,9 @@ import {
     Download,
     FileText,
     Filter,
-    LineChart
+    LineChart,
+    Search,
+    X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -16,8 +18,8 @@ import { api, API_URL } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import ReportScheduleModal from '../components/reports/ReportScheduleModal';
 
-import type { ReportType, CompanyOption, DepartmentOptionsResponse } from '../features/reports/reportTypes';
-import { reportsCatalog, getReportDefinition, getToneClasses } from '../features/reports/reportTypes';
+import type { ReportType, CompanyOption, DepartmentOptionsResponse, ReportCategory } from '../features/reports/reportTypes';
+import { reportsCatalog, reportCategories, getReportDefinition, getToneClasses } from '../features/reports/reportTypes';
 import { extractResponseData, buildRequestParams, toQueryString, getPeriodLabel } from '../features/reports/reportHelpers';
 import { getNormalizedRows, buildSummaryCards, buildInsight, buildPdfTable } from '../features/reports/reportDataProcessing';
 import { FilterSelect, SummaryCard, ReportTableHead, ReportTableBody } from '../features/reports/reportTableComponents';
@@ -32,6 +34,7 @@ export default function Reports() {
     const [data, setData] = useState<any>(null);
     const [companies, setCompanies] = useState<CompanyOption[]>([]);
     const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+    const [searchQuery, setSearchQuery] = useState('');
     const [filters, setFilters] = useState({
         companyId: '',
         department: '',
@@ -152,11 +155,83 @@ export default function Reports() {
     const toneClasses = getToneClasses(activeReport.tone);
     const showCompanyFilter = isGlobalAdmin || companies.length > 1;
 
+    /**
+     * Filtra el catálogo por `searchQuery` (match contra `name` +
+     * `description`, case-insensitive) y lo agrupa por categoría. Las
+     * categorías sin coincidencias se ocultan para no dejar headers
+     * vacíos. Se preserva el orden de `reportCategories` (definido
+     * en `reportTypes.ts`) para que la jerarquía sea estable y no
+     * dependa del orden de inserción de los reports.
+     */
+    const groupedReports = useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        const filtered = q
+            ? reportsCatalog.filter((report) =>
+                report.name.toLowerCase().includes(q) ||
+                report.description.toLowerCase().includes(q)
+            )
+            : reportsCatalog;
+
+        return reportCategories
+            .map((category) => ({
+                category,
+                reports: filtered.filter((report) => report.category === category.id)
+            }))
+            .filter((group) => group.reports.length > 0);
+    }, [searchQuery]);
+
+    const totalMatches = groupedReports.reduce((acc, g) => acc + g.reports.length, 0);
+
     return (
     <div className="space-y-4 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-4 sm:gap-8 items-start">
         <div className="space-y-3 sm:space-y-4">
-          {reportsCatalog.map((report) => {
+          {/* ── Buscador ──────────────────────────────────────────── */}
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Buscar reporte…"
+              aria-label="Buscar reporte"
+              className="w-full pl-9 pr-9 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                aria-label="Limpiar búsqueda"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 px-1">
+              {totalMatches} coincidencia{totalMatches === 1 ? '' : 's'} para «{searchQuery}»
+            </p>
+          )}
+
+          {/* ── Secciones por categoría ────────────────────────────── */}
+          {groupedReports.length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 rounded-2xl p-6 text-center text-sm text-slate-500">
+              Ningún reporte coincide con «{searchQuery}».
+            </div>
+          ) : (
+            groupedReports.map(({ category, reports }) => (
+              <section key={category.id} aria-label={category.label}>
+                <header className="px-2 pb-1.5 flex items-baseline justify-between">
+                  <h2 className="text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                    {category.label}
+                  </h2>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    {reports.length}
+                  </span>
+                </header>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-2">
+                  {reports.map((report) => {
             const ReportIcon = report.icon;
             const reportTone = getToneClasses(report.tone);
             const isActive = activeTab === report.id;
@@ -165,34 +240,41 @@ export default function Reports() {
               <div
                 key={report.id}
                 onClick={() => setActiveTab(report.id)}
-                className={`w-full text-left p-3 sm:p-4 rounded-2xl sm:rounded-3xl border transition-all duration-300 group touch-active cursor-pointer ${
+                className={`w-full text-left p-3 rounded-2xl border transition-all duration-200 group touch-active cursor-pointer ${
                   isActive
-                    ? `${reportTone.soft} ${reportTone.border} shadow-lg`
+                    ? `${reportTone.soft} ${reportTone.border} shadow-md`
                     : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                                <div className="flex items-start gap-4">
-                                    <div className={`mt-0.5 p-3 rounded-2xl ${isActive ? reportTone.soft : 'bg-slate-50 dark:bg-slate-800'} ${reportTone.text}`}>
-                                        <ReportIcon size={20} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between gap-3">
-                                            <h3 className={`font-black text-sm ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-100'}`}>{report.name}</h3>
-                                            <ChevronRight size={16} className={`${isActive ? 'opacity-100 text-slate-500' : 'opacity-0 group-hover:opacity-100 text-slate-400'} transition-opacity`} />
-                                        </div>
-                                        <p className={`text-xs mt-2 leading-5 ${isActive ? 'text-slate-600 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>{report.description}</p>
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); openScheduleModal(report.id, report.name); }}
-                                            className="flex items-center gap-2 px-3 py-1.5 text-xs border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors mt-2"
-                                        >
-                                            <Calendar size={14} />
-                                            Programar
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
+                <div className="flex items-start gap-3">
+                  <div className={`mt-0.5 p-2 rounded-xl shrink-0 ${isActive ? reportTone.soft : 'bg-slate-50 dark:bg-slate-800'} ${reportTone.text}`}>
+                    <ReportIcon size={16} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className={`font-black text-sm truncate ${isActive ? 'text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-100'}`}>
+                        {report.name}
+                      </h3>
+                      <ChevronRight size={14} className={`shrink-0 ${isActive ? 'opacity-100 text-slate-500' : 'opacity-0 group-hover:opacity-100 text-slate-400'} transition-opacity`} />
+                    </div>
+                    <p className={`text-[11px] mt-1 leading-4 line-clamp-2 ${isActive ? 'text-slate-600 dark:text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {report.description}
+                    </p>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); openScheduleModal(report.id, report.name); }}
+                      className="flex items-center gap-1.5 px-2 py-1 text-[11px] border rounded-md hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors mt-1.5"
+                    >
+                      <Calendar size={12} /> Programar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+                </div>
+              </section>
+            ))
+          )}
 
                     <div className={`rounded-2xl sm:rounded-3xl border p-4 sm:p-5 ${toneClasses.soft} ${toneClasses.border}`}>
                         <div className={`inline-flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] ${toneClasses.text}`}>
