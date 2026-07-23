@@ -1,3 +1,4 @@
+import { EmployeeAbsenceSection } from '../sections/EmployeeAbsenceSection';
 import { EmployeeAdministrationSection } from '../sections/EmployeeAdministrationSection';
 import { EmployeeAttendanceSection } from '../sections/EmployeeAttendanceSection';
 import { EmployeeDocumentsSection } from '../sections/EmployeeDocumentsSection';
@@ -46,6 +47,9 @@ export function EmployeeViewTabContent(props: EmployeeViewTabContentProps) {
     }
     if (props.activeTab === 'vacaciones') {
         return <EmployeeVacationSection employeeId={props.employeeId} employeeView={props.employeeView} onVacationBalanceChange={props.onVacationBalanceChange} />;
+    }
+    if (props.activeTab === 'ausencias') {
+        return <EmployeeAbsenceSection employeeId={props.employeeId} />;
     }
     if (['seguridad', 'privacidad', 'notas-rrhh'].includes(props.activeTab)) {
         return (

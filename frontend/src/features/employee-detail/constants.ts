@@ -27,6 +27,7 @@ export const EDIT_TABS = ['personal', 'laboral', 'financiero', 'fechas'];
 export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
     'resumen',
     'vacaciones',
+    'ausencias',
     'cronograma',
     'nominas',
     ...(isAdmin
@@ -50,5 +51,6 @@ export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
 export const getEmployeeTabLabel = (tab: string) => {
     if (tab === 'generar') return 'Generar Doc.';
     if (tab === 'prl') return 'PRL / Formación';
+    if (tab === 'ausencias') return 'Ausencias';
     return tab.charAt(0).toUpperCase() + tab.slice(1);
 };

@@ -97,8 +97,8 @@ describe('EmployeeDetail', () => {
 
         await screen.findByText('Ana Admin');
 
-        fireEvent.click(screen.getByRole('button', { name: /seguridad/i }));
-        expect(await screen.findByText('view-seguridad')).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: /ausencias/i }));
+        expect(await screen.findByText('view-ausencias')).toBeInTheDocument();
 
         fireEvent.click(screen.getByRole('button', { name: /editar perfil/i }));
 

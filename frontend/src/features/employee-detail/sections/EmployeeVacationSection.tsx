@@ -464,7 +464,7 @@ export function EmployeeVacationSection({ employeeId, employeeView, onVacationBa
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.2 }}
             >
-                <EmployeeVacationWorkspace employeeId={employeeId} />
+                <EmployeeVacationWorkspace employeeId={employeeId} mode="vacation" />
             </motion.div>
         </div>
     );

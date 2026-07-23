@@ -13,8 +13,17 @@ import { calculateVacationStats, createVacationRequest } from './utils';
 
 type WorkspaceTab = 'REQUESTS' | 'CALENDAR';
 
+export type WorkspaceMode = 'vacation' | 'absence';
+
 interface EmployeeVacationWorkspaceProps {
     employeeId: string;
+    /**
+     * `vacation` → solo solicitudes de tipo VACATION. El modal "Nueva
+     * ausencia" ofrece únicamente ese tipo.
+     * `absence` → todo lo que NO sea VACATION (bajas, maternidad,
+     * permisos, citas médicas, etc.).
+     */
+    mode?: WorkspaceMode;
 }
 
 interface EmployeeVacationSummary {
@@ -38,11 +47,19 @@ const getErrorMessage = (error: unknown): string => {
     return 'Error al procesar la solicitud';
 };
 
-export function EmployeeVacationWorkspace({ employeeId }: EmployeeVacationWorkspaceProps) {
+export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: EmployeeVacationWorkspaceProps) {
     const { user } = useAuth();
     const confirmAction = useConfirm();
     const actor = useMemo(() => normalizeActor(user), [user]);
     const canManageRequests = Boolean(actor && actor.role !== 'employee' && hasModuleAccess(actor, 'vacations', 'write'));
+
+    // Tipos de ausencia que el workspace maneja en este modo:
+    //  - 'vacation'  → solo VACATION
+    //  - 'absence'   → todos los tipos definidos en ABSENCE_TYPES
+    //                   excepto VACATION
+    const availableTypes = useMemo(() => {
+        return Object.keys(ABSENCE_TYPES).filter((key) => (mode === 'vacation' ? key === 'VACATION' : key !== 'VACATION'));
+    }, [mode]);
 
     const [activeTab, setActiveTab] = useState<WorkspaceTab>('REQUESTS');
     const [requests, setRequests] = useState<VacationRequest[]>([]);
@@ -53,7 +70,7 @@ export function EmployeeVacationWorkspace({ employeeId }: EmployeeVacationWorksp
 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [type, setType] = useState('VACATION');
+    const [type, setType] = useState<string>(mode === 'vacation' ? 'VACATION' : (availableTypes[0] ?? 'OTHER'));
     const [reason, setReason] = useState('');
     const [attachment, setAttachment] = useState<File | null>(null);
     const [submitting, setSubmitting] = useState(false);
@@ -91,12 +108,22 @@ export function EmployeeVacationWorkspace({ employeeId }: EmployeeVacationWorksp
     }, [fetchData]);
 
     const employeeName = `${employee?.firstName || ''} ${employee?.lastName || ''}`.trim() || 'Empleado';
-    const stats = calculateVacationStats(requests, employee?.vacationDaysTotal ?? 30, employee?.vacationBalance);
+
+    // Filtramos las solicitudes en cliente según el modo. En el backend
+    // ya se devuelven TODAS las ausencias del empleado; aquí decidimos
+    // cuáles enseña cada tab. Las KPIs/balance siguen calculándose con
+    // TODAS las solicitudes — la pestaña Vacaciones es la que tiene la
+    // tarjeta de balance, Ausencias no.
+    const visibleRequests = useMemo(
+        () => requests.filter((request) => availableTypes.includes(request.type)),
+        [requests, availableTypes]
+    );
+    const stats = calculateVacationStats(visibleRequests, employee?.vacationDaysTotal ?? 30, employee?.vacationBalance);
 
     const resetForm = () => {
         setStartDate('');
         setEndDate('');
-        setType('VACATION');
+        setType(mode === 'vacation' ? 'VACATION' : (availableTypes[0] ?? 'OTHER'));
         setReason('');
         setAttachment(null);
     };
@@ -166,13 +193,20 @@ export function EmployeeVacationWorkspace({ employeeId }: EmployeeVacationWorksp
         }
     };
 
+    const isVacationMode = mode === 'vacation';
+    const heading = isVacationMode ? 'Vacaciones' : 'Ausencias';
+    const headingSubtitle = isVacationMode
+        ? `Gestión individual de ${employeeName}. Comparte el mismo flujo operativo del portal de vacaciones.`
+        : `Gestión individual de ${employeeName} para el resto de ausencias (bajas, permisos, citas médicas, etc.). Las vacaciones se gestionan en su pestaña.`;
+    const newAbsenceLabel = isVacationMode ? 'Nueva ausencia' : 'Nueva ausencia';
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">Vacaciones y ausencias</h2>
+                    <h2 className="text-2xl font-black text-slate-900 dark:text-white">{heading}</h2>
                     <p className="text-slate-500 dark:text-slate-400">
-                        Gestión individual de {employeeName}. Comparte el mismo flujo operativo del portal de vacaciones.
+                        {headingSubtitle}
                     </p>
                 </div>
 
@@ -229,14 +263,18 @@ export function EmployeeVacationWorkspace({ employeeId }: EmployeeVacationWorksp
                     <div className="bg-white dark:bg-slate-900 p-12 rounded-[2rem] text-center border border-slate-200 dark:border-slate-800 border-dashed text-slate-500">
                         Cargando solicitudes...
                     </div>
-                ) : requests.length === 0 ? (
+                ) : visibleRequests.length === 0 ? (
                     <div className="bg-white dark:bg-slate-900 p-12 rounded-[2rem] text-center border border-slate-200 dark:border-slate-800 border-dashed">
                         <Plane size={48} className="mx-auto text-slate-300 mb-4" />
-                        <p className="text-slate-500 font-medium">No hay ausencias registradas para este empleado.</p>
+                        <p className="text-slate-500 font-medium">
+                            {isVacationMode
+                                ? 'No hay vacaciones registradas para este empleado.'
+                                : 'No hay ausencias registradas para este empleado.'}
+                        </p>
                     </div>
                 ) : (
                     <div className="grid grid-cols-1 gap-4">
-                        {requests.map((request) => (
+                        {visibleRequests.map((request) => (
                             <VacationRequestCard
                                 key={request.id}
                                 request={request}
@@ -252,7 +290,7 @@ export function EmployeeVacationWorkspace({ employeeId }: EmployeeVacationWorksp
 
             {activeTab === 'CALENDAR' && (
                 <VacationCalendarView
-                    vacations={requests}
+                    vacations={visibleRequests}
                     title="Calendario del empleado"
                     scopeLabel="Vista mensual con ausencias aprobadas, pendientes y rechazadas."
                     onSelectRequest={setSelectedRequest}
@@ -307,12 +345,16 @@ export function EmployeeVacationWorkspace({ employeeId }: EmployeeVacationWorksp
 
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
-                                    <div className="grid grid-cols-3 gap-2">
-                                        {Object.entries(ABSENCE_TYPES).map(([key, config]) => (
-                                            <button type="button" key={key} onClick={() => setType(key)} className={`p-2 rounded-xl border text-xs font-bold transition-all ${type === key ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                                                {config.label}
-                                            </button>
-                                        ))}
+                                    <div className={`grid ${availableTypes.length > 6 ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+                                        {availableTypes.map((key) => {
+                                            const config = ABSENCE_TYPES[key];
+                                            if (!config) return null;
+                                            return (
+                                                <button type="button" key={key} onClick={() => setType(key)} className={`p-2 rounded-xl border text-xs font-bold transition-all ${type === key ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                                                    {config.label}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
 
