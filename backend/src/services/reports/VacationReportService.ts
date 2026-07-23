@@ -2,7 +2,7 @@ import { prisma } from '../../lib/prisma';
 import { PaginationParams, getPrismaPagination } from '../../utils/pagination';
 import { CacheService } from '../CacheService';
 import { CacheKeys } from '../../utils/cacheKeys';
-import { getEmployeeVacationBalanceSummary, VACATION_TYPES_FOR_BALANCE, roundVacationValue, calculateVacationOverlapDays } from '../VacationBalanceService';
+import { getEmployeeVacationBalanceSummary, roundVacationValue, calculateVacationOverlapDays } from '../VacationBalanceService';
 
 // Cache TTL in seconds - 5 minutes
 const VACATION_CACHE_TTL = 300;
@@ -27,6 +27,16 @@ export class VacationReportService {
 
     /**
      * Computes the actual vacation data using batched queries instead of N+1.
+     *
+     * IMPORTANTE: este reporte SOLO incluye ausencias de tipo VACATION.
+     * El resto de tipos (SICK, MATERNITY, PATERNITY, permisos, etc.) se
+     * reportan en /api/reports/absences-detailed. Antes se filtraba con
+     * `VACATION_TYPES_FOR_BALANCE` (que incluye maternity/paternity porque
+     * consumen el cupo), pero eso mezclaba dos conceptos en la misma
+     * tarjeta: el reporte "Vacaciones y saldos" debe mostrar solo
+     * vacaciones, y el cálculo de saldo del empleado (que sí incluye
+     * maternity/paternity) se hace en `getEmployeeVacationBalanceSummary`
+     * en `VacationBalanceService`.
      */
     private static async computeVacationData(year: number, filters: any = {}, pagination?: PaginationParams) {
         const startOfYear = new Date(year, 0, 1);
@@ -47,7 +57,10 @@ export class VacationReportService {
                         where: {
                             startDate: { lte: endOfYear },
                             endDate: { gte: startOfYear },
-                            type: { in: VACATION_TYPES_FOR_BALANCE }
+                            // Solo vacaciones propiamente dichas. Maternity,
+                            // paternity, sick, etc. van al reporte de
+                            // "Bajas y ausencias".
+                            type: 'VACATION'
                         },
                         select: {
                             startDate: true,
@@ -124,11 +137,21 @@ export class VacationReportService {
 
     /**
      * Gets detailed absences with duration and classification.
+     *
+     * IMPORTANTE: este reporte excluye las vacaciones (type === 'VACATION'),
+     * que tienen su propio reporte en /api/reports/vacations. Aquí se
+     * muestran bajas, permisos, citas médicas, matrimonio, mudanza,
+     * defunción, función pública, maternidad/paternidad (que consumen
+     * cupo pero no son vacaciones), y cualquier otro tipo distinto de
+     * VACATION. Antes NO filtraba por tipo y mostraba todas las
+     * ausencias incluyendo vacaciones, mezclando dos conceptos.
      */
     static async getDetailedAbsenceData(start: Date, end: Date, filters: any = {}, pagination?: PaginationParams) {
         const where: any = {
             startDate: { lte: end },
-            endDate: { gte: start }
+            endDate: { gte: start },
+            // Excluir vacaciones: ya tienen su propio reporte.
+            type: { not: 'VACATION' }
         };
 
         if (filters.companyId) where.employee = { companyId: filters.companyId };
