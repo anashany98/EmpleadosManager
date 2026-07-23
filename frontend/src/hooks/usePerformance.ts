@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { api, getErrorMessage } from '../api/client';
 import { toast } from 'sonner';
 
 // Types
@@ -133,8 +133,8 @@ export function useSubmitSelfEvaluation() {
             queryClient.invalidateQueries({ queryKey: ['evaluations'] });
             toast.success('Autoevaluación enviada correctamente');
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.error || 'Error al enviar autoevaluación');
+        onError: (error: unknown) => {
+            toast.error(getErrorMessage(error, 'Error al enviar autoevaluación'));
         },
     });
 }
@@ -154,8 +154,8 @@ export function useSubmitManagerEvaluation() {
             queryClient.invalidateQueries({ queryKey: ['evaluations'] });
             toast.success('Evaluación enviada correctamente');
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.error || 'Error al enviar evaluación');
+        onError: (error: unknown) => {
+            toast.error(getErrorMessage(error, 'Error al enviar evaluación'));
         },
     });
 }
@@ -198,8 +198,8 @@ export function useCreateObjective() {
             queryClient.invalidateQueries({ queryKey: ['objectives'] });
             toast.success('Objetivo creado correctamente');
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.error || 'Error al crear objetivo');
+        onError: (error: unknown) => {
+            toast.error(getErrorMessage(error, 'Error al crear objetivo'));
         },
     });
 }
@@ -223,8 +223,8 @@ export function useUpdateObjectiveProgress() {
             queryClient.invalidateQueries({ queryKey: ['objectives'] });
             toast.success('Progreso actualizado');
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.error || 'Error al actualizar progreso');
+        onError: (error: unknown) => {
+            toast.error(getErrorMessage(error, 'Error al actualizar progreso'));
         },
     });
 }
@@ -273,7 +273,7 @@ export function useCreateEvaluation() {
             queryClient.invalidateQueries({ queryKey: ['evaluations'] });
             toast.success('Evaluación creada correctamente');
         },
-        onError: (err: any) => toast.error(err.response?.data?.message || 'Error al crear evaluación'),
+        onError: (err: unknown) => toast.error(getErrorMessage(err, 'Error al crear evaluación')),
     });
 }
 
@@ -289,8 +289,8 @@ export function useCreatePDI() {
             queryClient.invalidateQueries({ queryKey: ['pdis'] });
             toast.success('PDI creado correctamente');
         },
-        onError: (error: any) => {
-            toast.error(error.response?.data?.error || 'Error al crear PDI');
+        onError: (error: unknown) => {
+            toast.error(getErrorMessage(error, 'Error al crear PDI'));
         },
     });
 }

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { AuthService } from '../services/AuthService';
 import crypto from 'crypto';
 import { issueCsrfToken } from '../middlewares/csrfMiddleware';
@@ -90,7 +91,7 @@ export const AuthController = {
                 await recordFailedLogin(loginId);
             }
             log.error({ error }, 'Login failed');
-            return ApiResponse.error(res, error.message || 'Error al iniciar sesión', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al iniciar sesión');
         }
     },
 
@@ -214,7 +215,7 @@ export const AuthController = {
             res.clearCookie(CSRF_COOKIE_NAME, { ...clearCookieOptions, httpOnly: false });
             return ApiResponse.success(res, null, 'Sesión cerrada correctamente');
         } catch (error: any) {
-            return ApiResponse.error(res, error.message || 'Error al cerrar sesión', 500);
+            return handleControllerError(res, error, 'Error al cerrar sesión');
         }
     }
 };

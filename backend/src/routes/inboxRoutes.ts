@@ -39,7 +39,7 @@ const resolveAssignTarget = async (req: any) => {
 
 router.post('/upload', protect, checkPermission('employees', 'write'), upload.single('file'), validateDiskUploadMiddleware('file'), InboxController.upload);
 router.get('/pending', protect, checkPermission('employees', 'read'), InboxController.getAllPending);
-router.post('/sync', protect, checkPermission('employees', 'read'), InboxController.triggerSync);
+router.post('/sync', protect, checkPermission('employees', 'write'), InboxController.triggerSync);
 router.get('/:id/download', protect, checkPermission('employees', 'read'), InboxController.download);
 router.post('/:id/assign', protect, authorize('document.write', resolveAssignTarget), InboxController.assign);
 router.delete('/:id', protect, checkPermission('employees', 'write'), InboxController.delete);

@@ -6,6 +6,9 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { StorageService } from './StorageService';
 import { encrypt, decrypt, isEncryptionEnabled, getEncryptionKey } from '../utils/encryption';
+import { createLogger } from './LoggerService';
+
+const logger = createLogger('BackupService');
 
 const execFileAsync = promisify(execFile);
 
@@ -265,11 +268,11 @@ export const BackupService = {
             if (files.length > maxFiles) {
                 files.slice(maxFiles).forEach(file => {
                     fs.unlinkSync(file.path);
-                    console.log(`[Backup] Pruned old backup: ${file.name}`);
+                    logger.info(`[Backup] Pruned old backup: ${file.name}`);
                 });
             }
         } catch (error) {
-            console.error('[Backup] Error pruning backups:', error);
+            logger.error({ err: error }, '[Backup] Error pruning backups:');
         }
     }
 };

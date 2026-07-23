@@ -38,4 +38,22 @@ export default tseslint.config(
       'arrow-body-style': ['error', 'as-needed'],
     },
   },
-)
+);
+// LOW-001 (audit): política de warnings por carpeta.
+// Estado actual (2026-07-21): 1029 warnings (0 errors).
+// Distribución aproximada:
+//   - @typescript-eslint/no-explicit-any: ~700 (tipos laxos
+//     en código legacy, refactor incremental)
+//   - @typescript-eslint/no-unused-vars: ~250 (incluye
+//     `err` no usado en catch, que la regla actual ignora
+//     con `^_` pero el código no usa `_err`)
+//   - no-console: ~50 (logs de debug olvidados)
+//   - otros: ~30
+// El CI falla con `--max-warnings=1100` (margen +71 sobre
+// el conteo actual). Cualquier subida del contador rompe el
+// build. Reducción por fases: 1029 → 800 → 500 → 0.
+//
+// Para ejecutar local:
+//   npm run lint             # exit 0 (warnings no fallan)
+//   npm run lint:strict       # exit 1 si hay warnings
+//   npm run lint:per-folder   # budget por carpeta (ver scripts/lint-budget.mjs)

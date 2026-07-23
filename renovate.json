@@ -1,0 +1,68 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":automergeMinor", ":automergePatch"],
+  "description": "IMP-004: política de actualización de dependencias. Patch y minor se automergean; major requiere review explícito. La política detallada está en docs/DEPENDENCY_POLICY.md.",
+  "schedule": ["before 6am on monday"],
+  "timezone": "Europe/Madrid",
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "description": "Deps de seguridad (helmet, jsonwebtoken, bcryptjs, etc.): forzar minor update a la primera señal. Major siempre revisión manual.",
+      "matchPackagePatterns": [
+        "helmet",
+        "jsonwebtoken",
+        "bcryptjs",
+        "express",
+        "@prisma/client",
+        "prisma",
+        "zod",
+        "axios"
+      ],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergedAt": "06:00",
+      "groupName": "security-deps"
+    },
+    {
+      "description": "Deps con breaking changes frecuentes: NO automerge. Major siempre manual.",
+      "matchPackagePatterns": [
+        "@sentry/*",
+        "react",
+        "react-dom",
+        "vite",
+        "vitest",
+        "typescript",
+        "eslint"
+      ],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "labels": ["dependencies", "breaking-change"]
+    },
+    {
+      "description": "DevDependencies: no autobloqueamos, son de build/test y no llegan al usuario.",
+      "matchDepTypes": ["devDependencies"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    },
+    {
+      "description": "Lockfile maintenance: semanal para mantener npm ci rápido.",
+      "matchManagers": ["npm"],
+      "updateLockFiles": true,
+      "schedule": ["before 6am on monday"]
+    },
+    {
+      "description": "Excluir paquetes deprecated o no mantenibles.",
+      "matchPackagePatterns": ["^xlsx$", "^node-fetch$"],
+      "enabled": false
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "description": "Si GitHub detecta un CVE, abrir PR inmediato (no esperar al lunes).",
+    "enabled": true,
+    "labels": ["security", "dependencies"],
+    "assignees": ["@anashany98"]
+  },
+  "ignorePaths": ["**/node_modules/**", "**/uploads/**", "backups/**"]
+}

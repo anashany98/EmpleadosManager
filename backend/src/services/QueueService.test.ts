@@ -52,6 +52,10 @@ describe('QueueService', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        // El setup de tests pone REDIS_MOCK=true por defecto, lo que
+        // hace que QueueService no inicialice BullMQ. Para este
+        // test específico, forzar el modo BullMQ activo.
+        process.env.REDIS_MOCK = 'false';
         // Re-initialize queues for each test
         queueService = new QueueService();
     });

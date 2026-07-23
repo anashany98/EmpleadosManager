@@ -1,5 +1,8 @@
 import { prisma } from '../lib/prisma';
 import { NotificationStream } from './NotificationStream';
+import { createLogger } from './LoggerService';
+
+const logger = createLogger('NotificationService');
 
 export const NotificationService = {
     create: async ({ userId, title, message, type = 'INFO', link }: {
@@ -21,7 +24,7 @@ export const NotificationService = {
             });
             NotificationStream.sendToUser(userId, 'NOTIFICATION', { title, message, type, link });
         } catch (error) {
-            console.error('Error creating notification:', error);
+            logger.error({ err: error }, 'Error creating notification:');
         }
     },
 
@@ -44,7 +47,7 @@ export const NotificationService = {
                 NotificationStream.sendToUser(admin.id, 'INBOX_NEW_DOCUMENT', { title, message, link });
             }
         } catch (error) {
-            console.error('Error notifying admins:', error);
+            logger.error({ err: error }, 'Error notifying admins:');
         }
     }
 };

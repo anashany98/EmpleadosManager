@@ -9,6 +9,7 @@ import { EmailService } from '../services/EmailService';
 import { CacheService } from '../services/CacheService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
+import { serveLocalUploadFile } from '../utils/fileDownload';
 import { canAccessPolicy } from '../../../shared/authz';
 import {
     notifyVacationCreated,
@@ -363,11 +364,10 @@ export const VacationController = {
             }
 
             if (StorageService.provider === 'local') {
-                const filePath = path.join(process.cwd(), 'uploads', vacation.fileUrl);
-                if (!fs.existsSync(filePath)) {
-                    throw new AppError('El archivo físico no existe', 404);
-                }
-                return res.download(filePath);
+                // MED-007/barrido: helper compartido que valida
+                // contención de path, sanitiza el nombre de
+                // descarga y maneja errores de stream.
+                return serveLocalUploadFile(res, vacation.fileUrl);
             }
 
             const signedUrl = await StorageService.getSignedDownloadUrl(vacation.fileUrl);

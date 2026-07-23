@@ -470,7 +470,17 @@ export const PayrollController = {
             });
 
             res.setHeader('Content-Type', 'application/pdf');
-            res.setHeader('Content-Disposition', `attachment; filename=Nomina_${payroll.batch.month}_${payroll.batch.year}_${EncryptionService.decrypt(payroll.employee.dni) || 'unknown'}.pdf`);
+            // IMP-004 (DNI leak en headers): el DNI descifrado NO
+            // debe aparecer en el `Content-Disposition` porque el
+            // header se loguea en proxies, antivirus, browser
+            // history y a veces en tickets de soporte. Usamos el
+            // `employeeId` (UUID, no PII) como sufijo del nombre
+            // de archivo. El DNI sigue apareciendo DENTRO del
+            // PDF (es la nómina del empleado, debe incluirlo).
+            res.setHeader(
+                'Content-Disposition',
+                `attachment; filename=Nomina_${payroll.batch.month}_${payroll.batch.year}_${payroll.employee.id}.pdf`
+            );
             res.send(pdfBuffer);
 
         } catch (err) {

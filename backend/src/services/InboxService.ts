@@ -80,7 +80,12 @@ export class InboxService {
         // For now, ignoreInitial: true to avoid reprocessing old files every restart unless we want to retry failed ones.
         // Better: ignoreInitial: true, and have a separate 'retryPending' method if needed.
         this.watcher = chokidar.watch(this.inboxDir, {
-            ignored: /(^|[/\\])\./, // ignore dotfiles
+            ignored: (p: string) => {
+                const base = path.basename(p);
+                if (base.startsWith('.')) return true;
+                if (base === 'processed') return true;
+                return false;
+            },
             persistent: true,
             ignoreInitial: true,
             awaitWriteFinish: {
@@ -106,27 +111,27 @@ export class InboxService {
         try {
             const files = fs.readdirSync(this.inboxDir);
             for (const file of files) {
-                if (fs.statSync(path.join(this.inboxDir, file)).isDirectory() || file.startsWith('.')) continue;
+                if (fs.statSync(path.join(this.inboxDir, file)).isDirectory() || file.startsWith('.') || file === 'processed') continue;
                 await this.processFile(path.join(this.inboxDir, file));
             }
-        } catch (_) {
-            log.error({ error: _ }, 'Error syncing folder');
+        } catch (err) {
+            log.error({ error: err }, 'Error syncing folder');
         }
     }
 
-    async processFile(filePath: string) {
+    async processFile(filePath: string, companyId?: string | null) {
         const filename = path.basename(filePath);
         if (this.processing.has(filename)) return;
         this.processing.add(filename);
 
         try {
-            log.info({ filename }, 'Enqueuing file for processing');
-            await queueService.addJob(QUEUES.INGESTION, 'process-file', { filePath }, {
+            log.info({ filename, companyId }, 'Enqueuing file for processing');
+            await queueService.addJob(QUEUES.INGESTION, 'process-file', { filePath, companyId: companyId || null }, {
                 removeOnComplete: true,
                 removeOnFail: 100 // Keep last 100 failed jobs
             });
-        } catch (_) {
-            log.error({ error: _, filename }, 'Error enqueuing file');
+        } catch (err) {
+            log.error({ error: err, filename }, 'Error enqueuing file');
         } finally {
             this.processing.delete(filename);
         }
@@ -197,8 +202,27 @@ export class InboxService {
     }
     /**
      * Assigns a pending document to an employee.
+     *
+     * CRIT-002: este método valida explícitamente que el documento
+     * de bandeja y el empleado destino pertenecen al tenant del
+     * actor. Si no, lanza un error. Antes del fix se confiaba en
+     * que el caller ya había comprobado, pero el `resolveAssignTarget`
+     * del router solo verificaba el empleado, no el inbox doc.
+     *
+     * `actor` es opcional para compatibilidad con el worker
+     * `FileProcessor`, que actúa como "sistema" sin tenant. En ese
+     * caso, la validación se delega a la lógica de auto-assign que
+     * cruza `inboxDoc.companyId` con `employee.companyId`.
      */
-    async assignDocument(inboxId: string, employeeId: string, category: string, name: string, expiryDate?: string) {
+    async assignDocument(
+        inboxId: string,
+        employeeId: string,
+        category: string,
+        name: string,
+        expiryDate?: string,
+        actor?: { id?: string; role?: string; companyId?: string | null } | null,
+        autoAssignContext?: { inboxDocCompanyId?: string | null }
+    ) {
         const inboxDoc = await (prisma as any).inboxDocument.findUnique({
             where: { id: inboxId }
         });
@@ -210,7 +234,60 @@ export class InboxService {
         const fileKey = inboxDoc.fileUrl;
         if (!fileKey) throw new Error('Documento sin archivo asociado');
 
+        // Verificamos el empleado destino
+        const employee = await (prisma as any).employee.findUnique({
+            where: { id: employeeId },
+            select: { id: true, companyId: true }
+        });
+        if (!employee) {
+            throw new Error('Empleado destino no encontrado');
+        }
+
+        // CRIT-002 — defensa multi-capa:
+        //   1) Si hay `actor` explícito (ruta HTTP), exigimos que el
+        //      inbox doc y el empleado pertenezcan a su tenant.
+        //   2) Si NO hay actor (auto-assign del worker), exigimos que
+        //      inboxDoc.companyId y employee.companyId coincidan. Si
+        //      alguno es null, no auto-asignamos: el QR es
+        //      insuficiente para establecer una relación cross-tenant.
+        if (actor) {
+            const isGlobal = actor.role === 'admin' && !actor.companyId;
+            if (!isGlobal) {
+                if (!actor.companyId) {
+                    throw new Error('Usuario sin empresa asignada no puede asignar documentos');
+                }
+                if (inboxDoc.companyId !== actor.companyId) {
+                    log.warn({ inboxId, employeeId, actorId: actor.id, inboxCompanyId: inboxDoc.companyId }, 'Cross-tenant inbox assign blocked (inbox doc)');
+                    throw new Error('Documento no encontrado o de otro tenant');
+                }
+                if (employee.companyId !== actor.companyId) {
+                    log.warn({ inboxId, employeeId, actorId: actor.id, employeeCompanyId: employee.companyId }, 'Cross-tenant inbox assign blocked (target employee)');
+                    throw new Error('Empleado destino de otro tenant');
+                }
+            }
+        } else {
+            // Modo worker (auto-assign desde QR)
+            const inboxCompany = autoAssignContext?.inboxDocCompanyId ?? inboxDoc.companyId;
+            if (inboxCompany && employee.companyId !== inboxCompany) {
+                log.warn({ inboxId, employeeId, inboxCompany, employeeCompany: employee.companyId }, 'Cross-tenant auto-assign blocked (QR/metadata employee mismatch)');
+                throw new Error('Empleado del QR pertenece a otro tenant que el documento');
+            }
+            if (!inboxCompany) {
+                log.warn({ inboxId, employeeId }, 'Inbox doc sin empresa no se puede auto-asignar (sin contexto del actor)');
+                throw new Error('Documento sin empresa asignada: requiere revisión manual');
+            }
+        }
+
         const document = await prisma.$transaction(async (tx) => {
+            // Compare-and-set: solo actualizamos si processed sigue
+            // en false, para evitar carrera con otra asignación.
+            const updateResult = await tx.inboxDocument.updateMany({
+                where: { id: inboxId, processed: false },
+                data: { processed: true, processedAt: new Date() }
+            });
+            if (updateResult.count === 0) {
+                throw new Error('El documento ya fue procesado por otra operación');
+            }
             const doc = await tx.document.create({
                 data: {
                     employeeId,
@@ -221,15 +298,6 @@ export class InboxService {
                     expiryDate: expiryDate ? new Date(expiryDate) : null
                 }
             });
-
-            await tx.inboxDocument.update({
-                where: { id: inboxId },
-                data: {
-                    processed: true,
-                    processedAt: new Date()
-                }
-            });
-
             return doc;
         });
 

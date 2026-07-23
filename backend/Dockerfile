@@ -58,14 +58,22 @@ RUN cd backend && npm run build
 FROM node:22.12-bullseye-slim AS runner
 
 # Match the runtime OS with the Prisma client generated in the build stage.
+# Add the official PostgreSQL apt repo to get client v15 (matches postgres:15.4-alpine
+# used in production). Default Bullseye only has v13 which is incompatible
+# with the v15 server (pg_dump refuses with "server version mismatch").
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg62-turbo-dev \
-    libgif-dev \
-    postgresql-client \
     curl \
+    gnupg \
+    ca-certificates \
+ && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
+ && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt bullseye-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+    libcairo2 \
+    libpango-1.0-0 \
+    libjpeg62-turbo \
+    libgif7 \
+    postgresql-client-15 \
     gosu \
  && rm -rf /var/lib/apt/lists/*
 
@@ -85,6 +93,11 @@ COPY --from=builder --chown=appuser:appgroup /app/backend/assets ./backend/asset
 COPY --from=builder --chown=appuser:appgroup /app/backend/instrument.js ./backend/instrument.js
 COPY --from=builder --chown=appuser:appgroup /app/shared ./shared
 COPY --from=builder --chown=appuser:appgroup /app/database ./database
+# Scripts de seguridad para deploy (safe-migrate.sh, safe-docker.sh, etc.)
+# Los copiamos como root y luego el entrypoint los prepara con permisos de appuser.
+COPY scripts/safe-migrate.sh /app/scripts/safe-migrate.sh
+COPY scripts/deploy-safety.md /app/scripts/deploy-safety.md
+RUN chmod +x /app/scripts/safe-migrate.sh && chown -R appuser:appgroup /app/scripts
 
 # Create directories with proper permissions
 # Ensure uploads/documents, data/inbox exists and is writable by appuser

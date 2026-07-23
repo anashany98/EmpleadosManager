@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import { BackupService } from './BackupService';
 
@@ -9,7 +10,6 @@ describe('BackupService.pruneBackups', () => {
 
     beforeEach(() => {
         // Crear dir temporal bajo la carpeta temporal del OS (no fuga al repo si el cleanup falla)
-        const os = require('os');
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rrhh-test-backups-'));
         // Mock process.cwd() sin mutar el cwd real del proceso
         vi.spyOn(process, 'cwd').mockImplementation(() => tempDir);

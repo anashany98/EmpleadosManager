@@ -2,6 +2,9 @@
 import nodemailer, { Transporter } from 'nodemailer';
 import { prisma } from '../lib/prisma';
 import { EncryptionService } from './EncryptionService';
+import { createLogger } from './LoggerService';
+
+const logger = createLogger('EmailService');
 
 interface SmtpConfig {
     host: string;
@@ -57,7 +60,7 @@ export class EmailService {
                 from: configMap['SMTP_FROM'] || '"Nominas App" <noreply@nominasapp.com>'
             };
         } catch (error) {
-            console.error('Error fetching email config:', error);
+            logger.error({ err: error }, 'Error fetching email config:');
             return null;
         }
     }
@@ -72,7 +75,7 @@ export class EmailService {
             }
 
             if (!this.transporter || this.lastConfigHash !== 'ethereal') {
-                console.log('📧 No SMTP config found. Creating Ethereal test account...');
+                logger.info('No SMTP config found. Creating Ethereal test account...');
                 const testAccount = await nodemailer.createTestAccount();
                 this.transporter = nodemailer.createTransport({
                     host: 'smtp.ethereal.email',
@@ -84,7 +87,7 @@ export class EmailService {
                     },
                 });
                 this.lastConfigHash = 'ethereal';
-                console.log(`📧 Ethereal Ready: ${testAccount.user}`);
+                logger.info(`Ethereal Ready: ${testAccount.user}`);
             }
             return this.transporter!;
         }
@@ -96,7 +99,7 @@ export class EmailService {
         }
 
         // Create new transporter with Real Config
-        console.log(`📧 Configuring SMTP: ${config.host}`);
+        logger.info(`Configuring SMTP: ${config.host}`);
         this.transporter = nodemailer.createTransport({
             host: config.host,
             port: config.port,
@@ -124,18 +127,18 @@ export class EmailService {
                 attachments
             });
 
-            console.log(`✅ Email sent: ${info.messageId}`);
+            logger.info(`Email sent: ${info.messageId}`);
 
             // If using Ethereal, log the URL
             if (this.lastConfigHash === 'ethereal') {
-                console.log(`📬 Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
+                logger.info(`Preview URL: ${nodemailer.getTestMessageUrl(info)}`);
                 // You might want to return this URL to the frontend for testing logic
                 return { success: true, messageId: info.messageId, previewUrl: nodemailer.getTestMessageUrl(info) };
             }
 
             return { success: true, messageId: info.messageId };
         } catch (error: any) {
-            console.error('❌ Error sending email:', error);
+            logger.error('Error sending email:', error);
             const err = new Error(`Error sending email: ${error.message}`);
             (err as any).cause = error;
             throw err;

@@ -1,6 +1,9 @@
 import { type Request, type Response, type NextFunction } from 'express';
 import { AuditService, AuditAction, AuditEntity } from '../services/AuditService';
 import { AuthenticatedRequest } from '../types/express';
+import { createLogger } from '../services/LoggerService';
+
+const logger = createLogger('AuditMiddleware');
 
 export interface AuditOptions {
     entity?: AuditEntity;
@@ -47,7 +50,7 @@ export function auditMiddleware(options: AuditOptions) {
                     metadata
                 });
             } catch (error) {
-                console.error('Audit middleware error:', error);
+                logger.error({ error }, 'Audit middleware error');
             }
         });
 

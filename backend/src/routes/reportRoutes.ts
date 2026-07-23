@@ -55,5 +55,9 @@ router.get('/costs', ReportController.getCosts);
 router.get('/absences-detailed', ReportController.getDetailedAbsences);
 router.get('/kpis', ReportController.getKPIs);
 router.get('/gender-gap', ReportController.getGenderGap);
+router.get('/obras', ReportController.getObras);
+router.get('/obras/employees', ReportController.getObraEmployees);
+router.get('/prl/medical-reviews', ReportController.getMedicalReviews);
+router.get('/prl/trainings', ReportController.getTrainings);
 
 export default router;

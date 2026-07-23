@@ -6,6 +6,7 @@ import { AuditService } from '../services/AuditService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { TimeEntryIdempotencyService } from '../services/TimeEntryIdempotencyService';
+import { assertSameTenantOrGlobal } from '../utils/actorContext';
 
 const log = createLogger('TimeEntryController');
 
@@ -248,16 +249,21 @@ export const TimeEntryController = {
                 return ApiResponse.error(res, 'Faltan campos obligatorios', 400);
             }
 
-            // Security: Verify target employee belongs to admin's company
-            if (currentUser && currentUser.role === 'admin' && currentUser.companyId) {
-                const target = await prisma.employee.findUnique({
-                    where: { id: employeeId },
-                    select: { companyId: true }
-                });
-
-                if (!target || target.companyId !== currentUser.companyId) {
-                    return ApiResponse.error(res, 'No autorizado para gestionar empleados de otra empresa', 403);
-                }
+            // HIGH-002: verificamos tenant del empleado destino.
+            // Antes solo se validaba para `admin con companyId`;
+            // ahora cualquier actor con permiso de mutación debe
+            // pertenecer al mismo tenant. Un HR con `companyId: B`
+            // ya no puede crear fichajes para un empleado de A.
+            const target = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { companyId: true }
+            });
+            if (!target) {
+                return ApiResponse.error(res, 'Empleado no encontrado', 404);
+            }
+            if (!assertSameTenantOrGlobal(currentUser, target.companyId)) {
+                log.warn({ employeeId, userId: currentUser?.id }, 'Cross-tenant manual time entry blocked');
+                return ApiResponse.error(res, 'No autorizado para empleados de otra empresa', 403);
             }
 
             const entry = await prisma.timeEntry.create({

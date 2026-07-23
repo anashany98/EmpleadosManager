@@ -6,6 +6,9 @@ import { AuthenticatedRequest } from '../types/express';
 import { assertCompanyAccess, isGlobalAdmin } from '../utils/companyAccess';
 import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
 import { InventoryService } from '../services/InventoryService';
+import { createLogger } from '../services/LoggerService';
+
+const logger = createLogger('AssetController');
 
 export const AssetController = {
     getAll: async (req: Request, res: Response) => {
@@ -220,7 +223,7 @@ export const AssetController = {
                 try {
                     await InventoryService.returnAsset(id, user.id, 'Eliminación de activo');
                 } catch (returnError) {
-                    console.warn('Failed to return asset to inventory during deletion:', returnError);
+                    logger.warn({ error: returnError }, 'Failed to return asset to inventory during deletion');
                     // Continue with deletion even if return fails
                 }
             }

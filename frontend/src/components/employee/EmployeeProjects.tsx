@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../api/client';
 import { toast } from 'sonner';
+import { useConfirm } from '../../hooks/useConfirm';
 import { HardHat, Plus, Trash2, Clock, MapPin, Loader2, ArrowRight, Info } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -22,6 +23,7 @@ interface WorkEntry {
 }
 
 export default function EmployeeProjects({ employeeId }: { employeeId: string }) {
+    const { confirm: confirmDialog } = useConfirm();
     const [projects, setProjects] = useState<Project[]>([]);
     const [workEntries, setWorkEntries] = useState<WorkEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -122,7 +124,13 @@ export default function EmployeeProjects({ employeeId }: { employeeId: string })
     };
 
     const handleDeleteWork = async (id: string) => {
-        if (!confirm('¿Eliminar este registro?')) return;
+        const ok = await confirmDialog({
+            title: '¿Eliminar este registro?',
+            message: 'Esta acción no se puede deshacer.',
+            type: 'danger',
+            confirmText: 'Eliminar'
+        });
+        if (!ok) return;
         try {
             await api.delete(`/employee-project-work/${id}`);
             toast.success('Registro eliminado');

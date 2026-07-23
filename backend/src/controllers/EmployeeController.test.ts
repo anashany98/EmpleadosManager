@@ -38,12 +38,16 @@ vi.mock('../lib/prisma', () => ({
         },
         medicalReview: {
             findMany: vi.fn(),
+            findUnique: vi.fn(),
             create: vi.fn(),
+            update: vi.fn(),
             delete: vi.fn()
         },
         training: {
             findMany: vi.fn(),
+            findUnique: vi.fn(),
             create: vi.fn(),
+            update: vi.fn(),
             delete: vi.fn()
         }
     }

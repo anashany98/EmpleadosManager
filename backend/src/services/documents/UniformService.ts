@@ -6,17 +6,28 @@ import { InventoryService } from '../InventoryService';
 import { getLogoPath, addQRCodeToPDF, buildPdfBuffer, writeTemplateText } from './DocumentPdfUtils';
 import { CompanyDocumentTemplateService } from './DocumentTemplateService';
 import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
+import { createLogger } from '../../services/LoggerService';
+
+const logger = createLogger('UniformService');
 
 export const generateUniform = async (employeeId: string, items?: Array<{ id?: string; name: string; size?: string; quantity?: number }>, authorName?: string): Promise<any> => {
+    // --- PHASE 1: pre-validate stock for items with known IDs.
+    const itemsWithId = (items || []).filter((it): it is { id: string; name: string; size?: string; quantity?: number } => Boolean(it.id));
+    if (itemsWithId.length > 0) {
+        await InventoryService.assertStockForItems(
+            itemsWithId.map((it) => ({ itemId: it.id, quantity: 1 }))
+        );
+    }
+
+    // --- PHASE 2: generate the PDF + save to storage.
     const doc = await generateUniformInternal(employeeId, items, authorName);
 
-    // --- INVENTORY AUTOMATION ---
-    if (items && items.length > 0) {
-        await Promise.all(items.map(async item => {
-            try {
-                if (item.id) {
-                    // Precise deduction by ID with alerts
-                    await InventoryService.recordMovement({
+    // --- PHASE 3: atomic commit (inventory + asset).
+    if (itemsWithId.length > 0) {
+        try {
+            await prisma.$transaction(async (tx) => {
+                for (const item of itemsWithId) {
+                    await InventoryService.recordMovementInTx(tx, {
                         itemId: item.id,
                         type: 'ASSIGNMENT',
                         quantity: 1,
@@ -24,31 +35,48 @@ export const generateUniform = async (employeeId: string, items?: Array<{ id?: s
                         employeeId,
                         notes: `Acta Uniforme: ${item.name} ${item.size ? `(${item.size})` : ''}`
                     });
-
-                    await prisma.asset.create({
+                    await tx.asset.create({
                         data: {
                             employeeId, category: 'UNIFORM', name: item.name, status: 'ASSIGNED',
                             inventoryItemId: item.id, assignedDate: new Date(),
                             notes: `Acta Uniforme: ${item.name} ${item.size ? `(${item.size})` : ''}`
                         }
                     });
-
-                } else {
-                    // Fallback by name (legacy)
-                    const inv = await prisma.inventoryItem.findFirst({ where: { name: item.name.trim() } });
-                    if (inv) {
-                        await InventoryService.recordMovement({
-                            itemId: inv.id,
-                            type: 'ASSIGNMENT',
-                            quantity: 1,
-                            userId: authorName || 'SYSTEM',
-                            employeeId,
-                            notes: `Acta Uniforme (Legacy): ${item.name}`
-                        });
-                    }
                 }
-            } catch (err) { console.warn(`Stock error for ${item.name}`, err); }
-        }));
+            });
+        } catch (err) {
+            if (doc?.fileUrl) {
+                await StorageService.deleteFile(doc.fileUrl).catch((delErr) => {
+                    logger.warn({ err: delErr, fileUrl: doc.fileUrl }, 'Failed to delete orphan PDF after transaction rollback');
+                });
+            }
+            if (doc?.id) {
+                await prisma.document.delete({ where: { id: doc.id } }).catch((delErr) => {
+                    logger.warn({ err: delErr, docId: doc.id }, 'Failed to delete document row after transaction rollback');
+                });
+            }
+            throw err;
+        }
+    } else if (items && items.length > 0) {
+        // Legacy fallback: items without IDs, matched by name.
+        for (const item of items) {
+            const inv = await prisma.inventoryItem.findFirst({ where: { name: item.name.trim() } });
+            if (!inv) continue;
+            try {
+                await prisma.$transaction(async (tx) => {
+                    await InventoryService.recordMovementInTx(tx, {
+                        itemId: inv.id,
+                        type: 'ASSIGNMENT',
+                        quantity: 1,
+                        userId: authorName || 'SYSTEM',
+                        employeeId,
+                        notes: `Acta Uniforme (Legacy): ${item.name}`
+                    });
+                });
+            } catch (err) {
+                logger.warn({ err, itemName: item.name }, 'Legacy stock deduction failed; document already created');
+            }
+        }
     }
     return doc;
 };

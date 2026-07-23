@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, FileUp, ArrowRight, CheckCircle, RefreshCw, FileText, Table, Save, BookTemplate, Sparkles } from 'lucide-react';
+import { toast } from 'sonner';
 import { api } from '../api/client';
 
 type Step = 'UPLOAD' | 'MAP' | 'REVIEW';
@@ -78,9 +79,9 @@ export default function PayrollImport() {
             await loadProfiles();
             setNewProfileName('');
             setShowSaveProfile(false);
-            alert('Perfil guardado correctamente');
+            toast.success('Perfil guardado correctamente');
         } catch (err) {
-            alert('Error guardando perfil: ' + err);
+            toast.error('Error guardando perfil: ' + (err instanceof Error ? err.message : String(err)));
         }
     };
 
@@ -103,7 +104,7 @@ export default function PayrollImport() {
             setServerFilename(data.filename);
             setStep('MAP');
         } catch (error) {
-            alert('Error al subir: ' + error);
+            toast.error('Error al subir: ' + (error instanceof Error ? error.message : String(error)));
         } finally {
             setLoading(false);
         }
@@ -120,7 +121,7 @@ export default function PayrollImport() {
             setStats(res.data || res);
             setStep('REVIEW');
         } catch (error) {
-            alert('Error en mapeo: ' + error);
+            toast.error('Error en mapeo: ' + (error instanceof Error ? error.message : String(error)));
         } finally {
             setLoading(false);
         }
@@ -139,7 +140,7 @@ export default function PayrollImport() {
             setStats({ rowsCreated: 'Calculados' });
             setStep('REVIEW');
         } catch (error) {
-            alert('Error al generar nóminas: ' + error);
+            toast.error('Error al generar nóminas: ' + (error instanceof Error ? error.message : String(error)));
         } finally {
             setLoading(false);
         }

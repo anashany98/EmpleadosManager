@@ -19,6 +19,7 @@ export interface AuthUser {
  */
 export interface AuthenticatedRequest extends Request {
     user: AuthUser;
+    obraOverride?: string | null;
 }
 
 /**

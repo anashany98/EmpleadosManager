@@ -9,6 +9,7 @@ import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { canAccessPolicy } from '../../../shared/authz';
 import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
+import { serveLocalUploadFile } from '../utils/fileDownload';
 
 const log = createLogger('ExpenseController');
 
@@ -300,11 +301,10 @@ export const ExpenseController = {
             }
 
             if (StorageService.provider === 'local') {
-                const fs = await import('fs');
-                const path = await import('path');
-                const filePath = path.join(process.cwd(), 'uploads', expense.receiptUrl);
-                if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado' });
-                return res.download(filePath);
+                // MED-007/barrido: helper compartido que valida
+                // contención de path, sanitiza el nombre de
+                // descarga y maneja errores de stream.
+                return serveLocalUploadFile(res, expense.receiptUrl);
             }
 
             const signedUrl = await StorageService.getSignedDownloadUrl(expense.receiptUrl);

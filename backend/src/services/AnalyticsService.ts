@@ -61,12 +61,17 @@ export class AnalyticsService {
             }
         });
 
-        // Exits in last 30 days
+        // Exits in last 30 days. MED-009: usar `exitDate` (campo
+        // canónico escrito al desactivar) en vez de `updatedAt`,
+        // que se incrementa con CUALQUIER edición (nombre,
+        // teléfono, salario, etc.) y falsea la métrica de
+        // turnover. Sin este fix, un ex-empleado al que se le
+        // edita el teléfono hoy aparece como "baja reciente".
         const departures = await prisma.employee.count({
             where: {
                 active: false,
                 ...companyFilter,
-                updatedAt: {
+                exitDate: {
                     gte: thirtyDaysAgo,
                     lte: now
                 }
@@ -161,12 +166,14 @@ export class AnalyticsService {
                 }
             });
 
-            // Exits in month
+            // Exits in month. MED-009: ver fix de departures
+            // arriba. Mismo problema, mismo fix: usar `exitDate`
+            // en vez de `updatedAt`.
             const exits = await prisma.employee.count({
                 where: {
                     active: false,
                     ...companyFilter,
-                    updatedAt: {
+                    exitDate: {
                         gte: monthStart,
                         lte: monthEnd
                     }

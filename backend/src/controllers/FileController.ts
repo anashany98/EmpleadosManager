@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
-import path from 'path';
-import fs from 'fs';
 import { AppError } from '../utils/AppError';
 import type { AuthenticatedRequest } from '../types/express';
+import { serveLocalUploadFile } from '../utils/fileDownload';
 
 export const FileController = {
     getFile: async (req: Request, res: Response) => {
@@ -14,26 +13,18 @@ export const FileController = {
             throw new AppError('No estás autenticado.', 401);
         }
 
-        // Validate filename chars - only allow alphanumeric, hyphens, underscores, periods
+        // Validate filename chars - only allow alphanumeric, hyphens, underscores, periods.
+        // Esta regex es una primera barrera de defense-in-depth sobre
+        // `path.basename` (que ya neutraliza `..` y separadores).
         if (!filename || !/^[\w\-.]+$/.test(filename)) {
             throw new AppError('Nombre de archivo inválido', 400);
         }
 
-        // Prevent directory traversal with resolve + containment check
-        const uploadDir = path.resolve(process.cwd(), 'uploads');
-        const filePath = path.resolve(uploadDir, filename);
-
-        // Ensure resolved path is still inside uploadDir
-        if (!filePath.startsWith(uploadDir + path.sep)) {
-            throw new AppError('Nombre de archivo inválido', 400);
-        }
-
-        // Check if file exists
-        if (!fs.existsSync(filePath)) {
-            throw new AppError('Archivo no encontrado', 404);
-        }
-
-        // Send file
-        res.sendFile(filePath);
+        // MED-007/barrido: usamos el helper compartido que aplica
+        // una segunda barrera de contención de path, sanitiza el
+        // nombre de descarga y maneja errores de stream con
+        // callback explícito (404 en ENOENT, 500 controlado en
+        // otros casos).
+        return serveLocalUploadFile(res, filename);
     }
 };

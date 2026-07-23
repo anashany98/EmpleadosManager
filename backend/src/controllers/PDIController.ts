@@ -1,16 +1,20 @@
 import { Request, Response } from 'express';
 import { PDIService } from '../services/PDIService';
 import { AuthenticatedRequest } from '../types/express';
+import { isGlobalAdmin, getActorCompanyFilter, assertSameTenantOrGlobal } from '../utils/actorContext';
 
 export class PDIController {
     // Crear PDI
     static async create(req: Request, res: Response) {
         try {
             const user = (req as AuthenticatedRequest).user;
-            const pdi = await PDIService.createPDI({
-                ...req.body,
-                employeeId: req.body.employeeId || user?.employeeId
-            });
+            // HIGH-001: scoping por tenant
+            const data = { ...req.body, employeeId: req.body.employeeId || user?.employeeId };
+            const companyFilter = getActorCompanyFilter(user);
+            if (companyFilter) {
+                data.companyId = companyFilter;
+            }
+            const pdi = await PDIService.createPDI(data);
             res.status(201).json(pdi);
         } catch (error: any) {
             res.status(400).json({ error: error.message });
@@ -25,15 +29,21 @@ export class PDIController {
             if (!pdi) {
                 return res.status(404).json({ error: 'PDI no encontrado' });
             }
-            
+
+            // HIGH-001: tenant check
+            const pdiCompanyId = (pdi as any).employee?.companyId ?? null;
+            if (!isGlobalAdmin(user) && !assertSameTenantOrGlobal(user, pdiCompanyId)) {
+                return res.status(404).json({ error: 'PDI no encontrado' });
+            }
+
             // Authorization check
             const isOwner = user?.employeeId === pdi.employeeId;
-            const isAdmin = user?.role === 'admin';
-            
-            if (!isOwner && !isAdmin) {
+            const isStaff = isGlobalAdmin(user) || user?.role === 'hr';
+
+            if (!isOwner && !isStaff) {
                 return res.status(403).json({ error: 'No tienes permiso para ver este PDI' });
             }
-            
+
             res.json(pdi);
         } catch (error: any) {
             res.status(400).json({ error: error.message });
@@ -45,14 +55,20 @@ export class PDIController {
         try {
             const user = (req as AuthenticatedRequest).user;
             const filters: any = {};
-            
-            // Non-admin users can only see their own PDIs
-            if (user?.role !== 'admin') {
-                filters.employeeId = user?.employeeId;
-            } else if (req.query.employeeId) {
-                filters.employeeId = req.query.employeeId as string;
+
+            // HIGH-001: scoping por tenant
+            const companyFilter = getActorCompanyFilter(user);
+            if (companyFilter) {
+                filters.employee = { companyId: companyFilter };
+                if (user?.role === 'employee') {
+                    filters.OR = [{ employeeId: user.employeeId ?? null }];
+                }
+            } else if (isGlobalAdmin(user)) {
+                if (req.query.employeeId) filters.employeeId = req.query.employeeId as string;
+            } else {
+                return res.status(403).json({ error: 'No autorizado' });
             }
-            
+
             if (req.query.status) filters.status = req.query.status as string;
 
             const pdis = await PDIService.listPDIs(filters);

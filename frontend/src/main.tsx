@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
+import { ConfirmProvider } from './hooks/useConfirm'
 import './index.css'
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -14,7 +15,9 @@ if ('serviceWorker' in navigator) {
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
+      <ConfirmProvider>
+        <App />
+      </ConfirmProvider>
     </BrowserRouter>
   </React.StrictMode>,
 )

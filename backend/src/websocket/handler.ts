@@ -106,7 +106,16 @@ async function authenticateSocket(socket: Socket): Promise<AuthUser | null> {
             return null;
         }
 
-        if (typeof decoded.sessionVersion === 'number' && user.sessionVersion !== decoded.sessionVersion) {
+        if (typeof decoded.sessionVersion !== 'number') {
+            // HIGH-003: sessionVersion es OBLIGATORIO en el token.
+            // Si falta (token legacy, JWTs antiguos, intentos de
+            // bypass), rechazamos la conexión en lugar de permitir
+            // un canal sin invalidación. Antes el check era opcional,
+            // lo que dejaba un bypass para tokens emitidos antes
+            // de introducir la invalidación de sesión.
+            return null;
+        }
+        if (user.sessionVersion !== decoded.sessionVersion) {
             return null;
         }
 

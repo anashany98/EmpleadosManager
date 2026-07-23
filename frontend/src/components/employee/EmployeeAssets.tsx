@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { Package, Trash2, Tag, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
+import { useConfirm } from '../../hooks/useConfirm';
 
 interface Asset {
     id: string;
@@ -16,6 +17,7 @@ interface Asset {
 }
 
 export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
+    const { confirm: confirmDialog } = useConfirm();
     const [assets, setAssets] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -35,7 +37,13 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('¿Eliminar este activo?')) return;
+        const ok = await confirmDialog({
+            title: '¿Eliminar este activo?',
+            message: 'Esta acción no se puede deshacer.',
+            type: 'danger',
+            confirmText: 'Eliminar'
+        });
+        if (!ok) return;
         try {
             await api.delete(`/assets/${id}`);
             toast.success('Activo eliminado');
@@ -46,7 +54,13 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
     };
 
     const handleReturn = async (id: string) => {
-        if (!confirm('¿Devolver este activo al inventario?')) return;
+        const ok = await confirmDialog({
+            title: '¿Devolver este activo al inventario?',
+            message: 'El activo volverá a estar disponible para asignar a otros empleados.',
+            type: 'info',
+            confirmText: 'Devolver'
+        });
+        if (!ok) return;
         try {
             await api.post(`/assets/${id}/return`);
             toast.success('Activo devuelto al inventario');

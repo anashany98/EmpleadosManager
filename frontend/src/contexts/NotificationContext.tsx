@@ -1,62 +1,101 @@
-import { createContext, useEffect, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
 import { useAuth } from './AuthContext';
 import { API_URL } from '../api/client';
 
-const NotificationContext = createContext<undefined>(undefined);
+interface NotificationItem {
+    id: string;
+    title: string;
+    message: string;
+    read: boolean;
+    createdAt: string;
+}
+
+interface NotificationContextValue {
+    unreadCount: number;
+    notifications: NotificationItem[];
+    markRead: (id: string) => void;
+    markAllRead: () => void;
+}
+
+const NotificationContext = createContext<NotificationContextValue | undefined>(undefined);
+
+export function useNotifications(): NotificationContextValue {
+    const ctx = useContext(NotificationContext);
+    if (!ctx) throw new Error('useNotifications must be used within NotificationProvider');
+    return ctx;
+}
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
     const { user } = useAuth();
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+    const unreadCount = notifications.filter(n => !n.read).length;
+
+    const markRead = useCallback((id: string) => {
+        setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    }, []);
+
+    const markAllRead = useCallback(() => {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    }, []);
 
     useEffect(() => {
         if (!user) return;
 
-        console.log('[Notification] Connecting to EventStream...');
-        const eventSource = new EventSource(`${API_URL}/notifications/stream`, { withCredentials: true } as any);
+        // F3: EventSource same-origin doesn't accept options — remove `as any` and options object
+        const eventSource = new EventSource(`${API_URL}/notifications/stream`);
         let unmounting = false;
-
-        eventSource.onopen = () => {
-            console.log('[Notification] Connected.');
-        };
 
         eventSource.onmessage = (event) => {
             try {
-                // Heartbeat or simple data
                 const data = JSON.parse(event.data);
-                console.log('[Notification] Heartbeat:', data);
+                if (data.type === 'heartbeat') return;
+                // Store notification in state so consumers can access it
+                const item: NotificationItem = {
+                    id: crypto.randomUUID(),
+                    title: data.title || 'Notificación',
+                    message: data.message || '',
+                    read: false,
+                    createdAt: new Date().toISOString()
+                };
+                setNotifications(prev => [item, ...prev].slice(0, 50));
             } catch {
-                // ignore
+                // ignore malformed data
             }
         };
 
         eventSource.addEventListener('INBOX_NEW_DOCUMENT', (event) => {
             try {
                 const data = JSON.parse(event.data);
-                toast.info(data.title || 'Nuevo Documento', {
-                    description: data.message
-                });
-            } catch (e) {
-                console.error('Error parsing notification', e);
+                const item: NotificationItem = {
+                    id: crypto.randomUUID(),
+                    title: data.title || 'Nuevo Documento',
+                    message: data.message || '',
+                    read: false,
+                    createdAt: new Date().toISOString()
+                };
+                setNotifications(prev => [item, ...prev].slice(0, 50));
+                toast.info(item.title, { description: item.message });
+            } catch {
+                // ignore
             }
         });
 
         eventSource.onerror = () => {
-            // Let native EventSource handle reconnect attempts.
-            // Closing here prevents recovery after transient network/proxy issues.
             if (unmounting) return;
             if (eventSource.readyState === EventSource.CLOSED) return;
-            console.warn('[Notification] Stream disconnected, waiting for auto-reconnect');
+            // Let native EventSource handle auto-reconnect
         };
 
         return () => {
             unmounting = true;
-            console.log('[Notification] Closing...');
             eventSource.close();
         };
     }, [user]);
 
     return (
-        <NotificationContext.Provider value={undefined}>
+        <NotificationContext.Provider value={{ unreadCount, notifications, markRead, markAllRead }}>
             {children}
         </NotificationContext.Provider>
     );

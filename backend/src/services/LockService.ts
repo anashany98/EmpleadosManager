@@ -20,6 +20,29 @@ export class LockService {
     async acquire(employeeId: string, user: AuthUser): Promise<LockResult> {
         const lockKey = this.getLockKey(employeeId);
 
+        // HIGH-003: scoping por tenant. Antes, cualquier usuario
+        // autenticado podía adquirir un lock sobre cualquier
+        // employeeId, sin comprobar que perteneciera a su
+        // empresa. Ahora verificamos que el empleado destino
+        // pertenece al mismo tenant que el actor.
+        const target = await prisma.employee.findUnique({
+            where: { id: employeeId },
+            select: { id: true, companyId: true }
+        });
+        if (!target) {
+            return { success: false, error: 'EMPLOYEE_NOT_FOUND' };
+        }
+        const isGlobal = user.role === 'admin' && !user.companyId;
+        if (!isGlobal) {
+            if (!user.companyId || target.companyId !== user.companyId) {
+                log.warn(
+                    { employeeId, userId: user.id, targetCompany: target.companyId, actorCompany: user.companyId },
+                    'Cross-tenant lock acquire blocked'
+                );
+                return { success: false, error: 'FORBIDDEN_CROSS_TENANT' };
+            }
+        }
+
         const existing = await this.getLockInfo(employeeId);
         if (existing.isLocked && existing.lock?.userId !== user.id) {
             return { success: false, conflict: existing };
@@ -111,8 +134,19 @@ export class LockService {
     }
 
     async forceRelease(employeeId: string, adminUser: AuthUser, reason?: string): Promise<void> {
-        if (adminUser.role !== 'admin') {
-            throw new Error('ADMIN_REQUIRED');
+        // HIGH-003: admin global O admin del mismo tenant.
+        const isGlobal = adminUser.role === 'admin' && !adminUser.companyId;
+        if (!isGlobal) {
+            if (adminUser.role !== 'admin') {
+                throw new Error('ADMIN_REQUIRED');
+            }
+            const target = await prisma.employee.findUnique({
+                where: { id: employeeId },
+                select: { companyId: true }
+            });
+            if (!target || (adminUser.companyId && target.companyId !== adminUser.companyId)) {
+                throw new Error('FORBIDDEN_CROSS_TENANT');
+            }
         }
 
         const lockKey = this.getLockKey(employeeId);

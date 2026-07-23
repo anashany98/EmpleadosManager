@@ -1,324 +1,19 @@
-import * as ExcelJS from 'exceljs';
+import {
+    ExcelContext,
+    createWorkbook,
+    addRankingSheet,
+    formatCurrency,
+    formatNumber,
+    formatPercent,
+    formatDate,
+    formatTime,
+    safeNumber,
+    uniqueCount,
+    sumBy,
+    groupRows,
+    TIPO_LABEL_ES
+} from './excel/excelHelpers';
 import { EncryptionService } from './EncryptionService';
-
-type Accent = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
-
-interface ExcelContext {
-    title?: string;
-    subtitle?: string;
-    periodLabel?: string;
-    filters?: string[];
-}
-
-interface MetricCard {
-    label: string;
-    value: string | number;
-    hint?: string;
-}
-
-interface TableColumn {
-    header: string;
-    key: string;
-    width: number;
-    align?: 'left' | 'center' | 'right';
-    numFmt?: string;
-    wrapText?: boolean;
-}
-
-const COLORS: Record<Accent | 'navy' | 'slate' | 'muted' | 'border' | 'white' | 'success' | 'warning' | 'danger', string> = {
-    navy: 'FF0F172A',
-    slate: 'FFF8FAFC',
-    muted: 'FF64748B',
-    border: 'FFE2E8F0',
-    white: 'FFFFFFFF',
-    success: 'FF16A34A',
-    warning: 'FFF59E0B',
-    danger: 'FFDC2626',
-    blue: 'FF2563EB',
-    emerald: 'FF059669',
-    amber: 'FFD97706',
-    rose: 'FFE11D48',
-    violet: 'FF7C3AED'
-};
-
-function createWorkbook(subject: string) {
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'RRHH';
-    workbook.lastModifiedBy = 'OpenCode';
-    workbook.created = new Date();
-    workbook.modified = new Date();
-    workbook.company = 'RRHH';
-    workbook.subject = subject;
-    return workbook;
-}
-
-function toCellValue(value: unknown): ExcelJS.CellValue {
-    if (value === null || value === undefined) return '';
-    if (value instanceof Date || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-        return value;
-    }
-    return String(value);
-}
-
-function formatCurrency(value: number) {
-    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(value);
-}
-
-function formatNumber(value: number, decimals = 2) {
-    return new Intl.NumberFormat('es-ES', {
-        minimumFractionDigits: decimals,
-        maximumFractionDigits: decimals
-    }).format(value);
-}
-
-function formatPercent(value: number) {
-    return `${formatNumber(value, 2)}%`;
-}
-
-function formatDate(value?: string | Date | null) {
-    if (!value) return '-';
-    const parsed = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(parsed.getTime())) return '-';
-    return parsed.toLocaleDateString('es-ES');
-}
-
-function formatTime(value?: string | Date | null) {
-    if (!value) return '-';
-    const parsed = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(parsed.getTime())) return '-';
-    return parsed.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
-}
-
-function safeNumber(value: unknown) {
-    const numeric = Number(value || 0);
-    return Number.isFinite(numeric) ? numeric : 0;
-}
-
-function uniqueCount(values: Array<string | null | undefined>) {
-    return new Set(values.filter(Boolean)).size;
-}
-
-function sumBy<T>(items: T[], selector: (item: T) => number) {
-    return items.reduce((total, item) => total + selector(item), 0);
-}
-
-function groupRows<T>(items: T[], keySelector: (item: T) => string) {
-    const grouped = new Map<string, T[]>();
-    items.forEach((item) => {
-        const key = keySelector(item) || 'Sin asignar';
-        const current = grouped.get(key) || [];
-        current.push(item);
-        grouped.set(key, current);
-    });
-    return grouped;
-}
-
-function normalizeFilters(context?: ExcelContext) {
-    const lines = [
-        context?.periodLabel ? `Periodo: ${context.periodLabel}` : null,
-        ...(context?.filters || []).filter(Boolean)
-    ].filter(Boolean) as string[];
-
-    return lines.length > 0 ? lines.join('  |  ') : 'Sin filtros adicionales';
-}
-
-function configureSheet(sheet: ExcelJS.Worksheet, headerRowNumber: number) {
-    sheet.properties.defaultRowHeight = 20;
-    sheet.views = [{ state: 'frozen', ySplit: headerRowNumber }];
-    sheet.pageSetup = {
-        orientation: 'landscape',
-        fitToPage: true,
-        fitToWidth: 1,
-        fitToHeight: 0,
-        margins: {
-            left: 0.3,
-            right: 0.3,
-            top: 0.4,
-            bottom: 0.4,
-            header: 0.2,
-            footer: 0.2
-        }
-    };
-}
-
-function setColumns(sheet: ExcelJS.Worksheet, columns: TableColumn[]) {
-    columns.forEach((column, index) => {
-        const worksheetColumn = sheet.getColumn(index + 1);
-        worksheetColumn.width = column.width;
-    });
-}
-
-function addReportBanner(
-    sheet: ExcelJS.Worksheet,
-    title: string,
-    subtitle: string,
-    metrics: MetricCard[],
-    accent: Accent,
-    columnCount: number,
-    context?: ExcelContext
-) {
-    const finalColumn = Math.max(columnCount, 8);
-    setColumns(sheet, Array.from({ length: finalColumn }, () => ({ header: '', key: '', width: 16 })));
-
-    sheet.mergeCells(1, 1, 1, finalColumn);
-    sheet.getCell(1, 1).value = title;
-    sheet.getCell(1, 1).font = { size: 20, bold: true, color: { argb: COLORS.white } };
-    sheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS[accent] } };
-    sheet.getCell(1, 1).alignment = { vertical: 'middle', horizontal: 'left' };
-    sheet.getRow(1).height = 28;
-
-    sheet.mergeCells(2, 1, 2, finalColumn);
-    sheet.getCell(2, 1).value = subtitle;
-    sheet.getCell(2, 1).font = { size: 11, color: { argb: COLORS.muted } };
-    sheet.getCell(2, 1).alignment = { vertical: 'middle', horizontal: 'left' };
-    sheet.getRow(2).height = 20;
-
-    const cardsPerRow = Math.min(4, metrics.length);
-    const baseCardWidth = Math.max(2, Math.floor(finalColumn / cardsPerRow));
-
-    metrics.slice(0, cardsPerRow).forEach((metric, index) => {
-        const startColumn = index * baseCardWidth + 1;
-        const endColumn = index === cardsPerRow - 1 ? finalColumn : Math.min(finalColumn, startColumn + baseCardWidth - 1);
-
-        sheet.mergeCells(4, startColumn, 4, endColumn);
-        sheet.mergeCells(5, startColumn, 5, endColumn);
-        sheet.mergeCells(6, startColumn, 6, endColumn);
-
-        const labelCell = sheet.getCell(4, startColumn);
-        labelCell.value = metric.label.toUpperCase();
-        labelCell.font = { size: 9, bold: true, color: { argb: COLORS.muted } };
-        labelCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        labelCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.slate } };
-
-        const valueCell = sheet.getCell(5, startColumn);
-        valueCell.value = metric.value;
-        valueCell.font = { size: 16, bold: true, color: { argb: COLORS.navy } };
-        valueCell.alignment = { horizontal: 'center', vertical: 'middle' };
-        valueCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.slate } };
-
-        const hintCell = sheet.getCell(6, startColumn);
-        hintCell.value = metric.hint || '';
-        hintCell.font = { size: 9, color: { argb: COLORS.muted }, italic: true };
-        hintCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-        hintCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS.slate } };
-
-        for (let rowNumber = 4; rowNumber <= 6; rowNumber += 1) {
-            for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
-                sheet.getCell(rowNumber, columnNumber).border = {
-                    top: { style: 'thin', color: { argb: COLORS.border } },
-                    left: { style: 'thin', color: { argb: COLORS.border } },
-                    bottom: { style: 'thin', color: { argb: COLORS.border } },
-                    right: { style: 'thin', color: { argb: COLORS.border } }
-                };
-            }
-        }
-    });
-
-    sheet.mergeCells(8, 1, 8, finalColumn);
-    sheet.getCell(8, 1).value = `Generado el ${new Date().toLocaleString('es-ES')}  |  ${normalizeFilters(context)}`;
-    sheet.getCell(8, 1).font = { size: 10, color: { argb: COLORS.muted } };
-    sheet.getCell(8, 1).alignment = { horizontal: 'left', vertical: 'middle' };
-    sheet.getRow(8).height = 18;
-
-    return 10;
-}
-
-function addTable(
-    sheet: ExcelJS.Worksheet,
-    startRowNumber: number,
-    columns: TableColumn[],
-    rows: Array<Record<string, unknown>>,
-    accent: Accent,
-    totals?: Record<string, unknown>
-) {
-    setColumns(sheet, columns);
-
-    const headerRow = sheet.getRow(startRowNumber);
-    headerRow.values = [undefined, ...columns.map((column) => column.header)];
-    headerRow.height = 22;
-    headerRow.eachCell((cell) => {
-        cell.font = { bold: true, color: { argb: COLORS.white } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COLORS[accent] } };
-        cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true };
-        cell.border = {
-            top: { style: 'thin', color: { argb: COLORS[accent] } },
-            left: { style: 'thin', color: { argb: COLORS[accent] } },
-            bottom: { style: 'thin', color: { argb: COLORS[accent] } },
-            right: { style: 'thin', color: { argb: COLORS[accent] } }
-        };
-    });
-
-    rows.forEach((rowData, index) => {
-        const row = sheet.getRow(startRowNumber + index + 1);
-        row.values = [undefined, ...columns.map((column) => toCellValue(rowData[column.key]))];
-        row.height = 20;
-
-        row.eachCell((cell, columnNumber) => {
-            const column = columns[columnNumber - 1];
-            cell.font = { size: 10, color: { argb: COLORS.navy } };
-            cell.alignment = {
-                horizontal: column?.align || 'left',
-                vertical: 'middle',
-                wrapText: !!column?.wrapText
-            };
-            cell.border = {
-                bottom: { style: 'thin', color: { argb: COLORS.border } }
-            };
-
-            if (column?.numFmt && typeof cell.value === 'number') {
-                cell.numFmt = column.numFmt;
-            }
-
-            if (index % 2 === 1) {
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
-            }
-        });
-    });
-
-    const totalRowNumber = startRowNumber + rows.length + 1;
-    if (totals && Object.keys(totals).length > 0) {
-        const totalRow = sheet.getRow(totalRowNumber);
-        totalRow.values = [undefined, ...columns.map((column) => toCellValue(totals[column.key]))];
-        totalRow.eachCell((cell, columnNumber) => {
-            const column = columns[columnNumber - 1];
-            cell.font = { bold: true, color: { argb: COLORS.navy } };
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
-            cell.border = {
-                top: { style: 'thin', color: { argb: COLORS.border } },
-                bottom: { style: 'thin', color: { argb: COLORS.border } }
-            };
-            cell.alignment = { horizontal: column?.align || 'left', vertical: 'middle' };
-            if (column?.numFmt && typeof cell.value === 'number') {
-                cell.numFmt = column.numFmt;
-            }
-        });
-    }
-
-    sheet.autoFilter = {
-        from: { row: startRowNumber, column: 1 },
-        to: { row: startRowNumber, column: columns.length }
-    };
-
-    configureSheet(sheet, startRowNumber);
-}
-
-function addRankingSheet(
-    workbook: ExcelJS.Workbook,
-    name: string,
-    title: string,
-    subtitle: string,
-    metrics: MetricCard[],
-    columns: TableColumn[],
-    rows: Array<Record<string, unknown>>,
-    accent: Accent,
-    context?: ExcelContext,
-    totals?: Record<string, unknown>
-) {
-    const sheet = workbook.addWorksheet(name);
-    const headerRowNumber = addReportBanner(sheet, title, subtitle, metrics, accent, columns.length, context);
-    addTable(sheet, headerRowNumber, columns, rows, accent, totals);
-    return sheet;
-}
 
 export class ExcelService {
     static async generateAttendanceReport(data: any[], context: ExcelContext = {}) {
@@ -932,6 +627,408 @@ export class ExcelService {
             ],
             rows.map((row: any) => ({ ...row, gap: safeNumber(row.gap) / 100 })),
             'rose',
+            context
+        );
+
+        return workbook.xlsx.writeBuffer();
+    }
+
+    static async generateObraSummaryReport(payload: {
+        obras: any[];
+        totalsByType: Record<string, number>;
+        horasTotales: number;
+        totalEmpleados: number;
+        budgets: { budget: number; consumed: number };
+    }, context: ExcelContext = {}) {
+        const workbook = createWorkbook('Resumen de obras');
+        const { obras, totalsByType, horasTotales, totalEmpleados, budgets } = payload;
+        const totalGastos = Object.values(totalsByType || {}).reduce((a: number, b: any) => a + safeNumber(b), 0);
+        const overBudget = budgets.consumed > budgets.budget;
+
+        addRankingSheet(
+            workbook,
+            'Resumen ejecutivo',
+            context.title || 'Resumen de obras',
+            context.subtitle || 'Consolidado económico y operativo de las obras registradas en el sistema.',
+            [
+                { label: 'Obras', value: obras.length, hint: 'Proyectos contabilizados' },
+                { label: 'Personas', value: totalEmpleados, hint: 'Empleados con imputación' },
+                { label: 'Horas', value: formatNumber(horasTotales, 2), hint: 'Horas registradas en EmployeeProjectWork' },
+                { label: 'Gasto total', value: formatCurrency(totalGastos), hint: 'Suma de todos los ObraExpense' },
+                { label: 'Presupuesto', value: formatCurrency(budgets.budget), hint: 'Suma de presupuestos' },
+                { label: '% consumido', value: budgets.budget > 0 ? formatPercent((budgets.consumed / budgets.budget) * 100) : '-', hint: 'Ratio gastos / presupuesto' }
+            ],
+            [
+                { header: 'Tipo', key: 'type', width: 24 },
+                { header: 'Importe', key: 'amount', width: 16, align: 'right', numFmt: '#,##0.00"€"' }
+            ],
+            Object.entries(totalsByType || {}).map(([type, amount]) => ({ type: TIPO_LABEL_ES[type] || type, amount: safeNumber(amount) })),
+            overBudget ? 'rose' : 'blue',
+            context,
+            { type: 'TOTAL', amount: totalGastos }
+        );
+
+        addRankingSheet(
+            workbook,
+            'Detalle por obra',
+            'Detalle por obra',
+            'Una fila por obra con totales por tipo y consumo de presupuesto.',
+            [
+                { label: 'Obras activas', value: obras.filter((o: any) => o.status === 'ACTIVE').length, hint: 'Abiertas a imputaciones' },
+                { label: 'Obras cerradas', value: obras.filter((o: any) => o.status === 'INACTIVE').length, hint: 'Cerradas (corregir aún permitido)' },
+                { label: 'Gasto medio/obra', value: obras.length > 0 ? formatCurrency(totalGastos / obras.length) : '-', hint: 'Promedio' },
+                { label: 'Horas medias/obra', value: obras.length > 0 ? formatNumber((horasTotales || 0) / obras.length, 2) : '-', hint: 'Promedio' }
+            ],
+            [
+                { header: 'Código', key: 'code', width: 14 },
+                { header: 'Obra', key: 'name', width: 32 },
+                { header: 'Cliente', key: 'clientName', width: 22 },
+                { header: 'Estado', key: 'status', width: 12, align: 'center' },
+                { header: 'Dietas', key: 'perDiem', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Hospedaje', key: 'lodging', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Vuelo', key: 'flight', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Transporte', key: 'transport', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Otros', key: 'other', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Horas', key: 'hours', width: 12, align: 'right', numFmt: '#,##0.00' },
+                { header: 'Presupuesto', key: 'budget', width: 16, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: '% consumido', key: 'pct', width: 14, align: 'right', numFmt: '0.0%' }
+            ],
+            obras.map((o: any) => {
+                const totals: Record<string, number> = o.totals || {};
+                const total = Object.values(totals).reduce((a: number, b: any) => a + safeNumber(b), 0);
+                const budget = safeNumber(o.budget);
+                return {
+                    code: o.code,
+                    name: o.name,
+                    clientName: o.clientName || '-',
+                    status: o.status === 'ACTIVE' ? 'Activa' : 'Cerrada',
+                    perDiem: safeNumber(totals.PER_DIEM),
+                    lodging: safeNumber(totals.LODGING),
+                    flight: safeNumber(totals.FLIGHT),
+                    transport: safeNumber(totals.TRANSPORT),
+                    other: safeNumber(totals.OTHER),
+                    hours: safeNumber(o.hours),
+                    budget: budget || 0,
+                    pct: budget > 0 ? total / budget : 0
+                };
+            }),
+            overBudget ? 'rose' : 'blue',
+            context
+        );
+
+        return workbook.xlsx.writeBuffer();
+    }
+
+    static async generateObraEmployeeReport(rows: any[], context: ExcelContext = {}) {
+        const workbook = createWorkbook('Gastos de obra por empleado');
+        const totalAmount = rows.reduce((sum: number, r: any) => sum + safeNumber(r.total), 0);
+        const totalHours = rows.reduce((sum: number, r: any) => sum + safeNumber(r.hours), 0);
+        const totalEmployees = rows.length;
+        const obrasTouched = new Set(rows.map((r: any) => r.obraCode).filter(Boolean)).size;
+
+        addRankingSheet(
+            workbook,
+            'Resumen',
+            context.title || 'Gastos de obra por empleado',
+            context.subtitle || 'Horas y gastos imputados por empleado dentro de las obras activas.',
+            [
+                { label: 'Personas', value: totalEmployees, hint: 'Empleados con imputaciones' },
+                { label: 'Obras', value: obrasTouched, hint: 'Obras con al menos un apunte' },
+                { label: 'Horas', value: formatNumber(totalHours, 2), hint: 'Total horas imputadas' },
+                { label: 'Importe', value: formatCurrency(totalAmount), hint: 'Suma de ObraExpense' }
+            ],
+            [
+                { header: 'Empleado', key: 'employee', width: 28 },
+                { header: 'Obra', key: 'obra', width: 24 },
+                { header: 'Horas', key: 'hours', width: 12, align: 'right', numFmt: '#,##0.00' },
+                { header: 'Gasto total', key: 'total', width: 14, align: 'right', numFmt: '#,##0.00"€"' }
+            ],
+            rows.map((r: any) => ({
+                employee: r.employee,
+                obra: r.obra,
+                hours: safeNumber(r.hours),
+                total: safeNumber(r.total)
+            }))
+                .sort((a, b) => safeNumber(b.total) - safeNumber(a.total)),
+            'emerald',
+            context,
+            { employee: 'TOTAL', obra: `${obrasTouched} obras`, hours: totalHours, total: totalAmount }
+        );
+
+        addRankingSheet(
+            workbook,
+            'Detalle por tipo',
+            'Detalle por tipo de gasto',
+            'Suma de importes por obra y tipo, para conciliar con informes de viajes.',
+            [
+                { label: 'Tipos', value: new Set(rows.flatMap((r: any) => Object.keys(r.byType || {}))).size, hint: 'Categorías distintas' },
+                { label: 'Obras', value: obrasTouched, hint: 'Cubiertas' },
+                { label: 'Total', value: formatCurrency(totalAmount), hint: 'Suma global' }
+            ],
+            [
+                { header: 'Empleado', key: 'employee', width: 28 },
+                { header: 'Obra', key: 'obra', width: 24 },
+                { header: 'Dietas', key: 'PER_DIEM', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Hospedaje', key: 'LODGING', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Vuelo', key: 'FLIGHT', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Transporte', key: 'TRANSPORT', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Otros', key: 'OTHER', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Total', key: 'total', width: 14, align: 'right', numFmt: '#,##0.00"€"' }
+            ],
+            rows
+                .map((r: any) => ({
+                    employee: r.employee,
+                    obra: r.obra,
+                    PER_DIEM: safeNumber(r.byType?.PER_DIEM),
+                    LODGING: safeNumber(r.byType?.LODGING),
+                    FLIGHT: safeNumber(r.byType?.FLIGHT),
+                    TRANSPORT: safeNumber(r.byType?.TRANSPORT),
+                    OTHER: safeNumber(r.byType?.OTHER),
+                    total: safeNumber(r.total)
+                }))
+                .sort((a, b) => safeNumber(b.total) - safeNumber(a.total)),
+            'emerald',
+            context
+        );
+
+        return workbook.xlsx.writeBuffer();
+    }
+
+    static async generateMedicalReviewsReport(data: {
+        rows: any[];
+        summary: any;
+        distributionByResult: Record<string, number>;
+        distributionByDepartment: Record<string, number>;
+    }, context: ExcelContext = {}) {
+        const workbook = createWorkbook('Revisiones médicas (PRL)');
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        const summary = data?.summary || {};
+
+        // Hoja 1: Resumen ejecutivo
+        addRankingSheet(
+            workbook,
+            'Resumen',
+            context.title || 'Revisiones médicas (PRL)',
+            context.subtitle || 'Histórico de reconocimientos médicos, declinaciones y caducidades.',
+            [
+                { label: 'Revisiones', value: summary.totalReviews || rows.length, hint: 'Total registradas' },
+                { label: 'Empleados', value: summary.uniqueEmployees || 0, hint: 'Con al menos una revisión' },
+                { label: 'Aptos', value: summary.aptoCount || 0, hint: 'Resultado APTO' },
+                { label: 'No aptos', value: summary.noAptoCount || 0, hint: 'Resultado NO APTO' },
+                { label: 'Con limit.', value: summary.aptoConLimitacionesCount || 0, hint: 'APTO CON LIMITACIONES' },
+                { label: 'Pendientes', value: summary.pendienteCount || 0, hint: 'Sin resultado' },
+                { label: 'Renuncias', value: summary.declinedCount || 0, hint: 'Empleado declinó' },
+                { label: 'Caducadas', value: summary.expiredCount || 0, hint: 'Próxima revisión vencida' },
+                { label: 'Por vencer', value: summary.dueSoonCount || 0, hint: '≤ 30 días' }
+            ],
+            [
+                { header: 'Empleado', key: 'employee', width: 28 },
+                { header: 'DNI', key: 'dni', width: 14 },
+                { header: 'Departamento', key: 'department', width: 20 },
+                { header: 'Fecha revisión', key: 'date', width: 14 },
+                { header: 'Resultado', key: 'resultLabel', width: 22 },
+                { header: 'Próx. revisión', key: 'nextReviewDate', width: 14 },
+                { header: 'Días', key: 'daysToExpire', width: 8, align: 'right' },
+                { header: 'Estado', key: 'status', width: 14 }
+            ],
+            rows.map((r: any) => ({
+                employee: r.employee || '-',
+                dni: r.dni || '-',
+                department: r.department || '-',
+                date: formatDate(r.date),
+                resultLabel: r.declined ? 'RENUNCIA' : (r.result || 'PENDIENTE'),
+                nextReviewDate: formatDate(r.nextReviewDate),
+                daysToExpire: r.daysToExpire == null ? '-' : r.daysToExpire,
+                status: r.expired ? 'CADUCADA' : (r.declined ? 'DECLINADA' : 'VIGENTE')
+            })),
+            'rose',
+            context,
+            {
+                employee: 'TOTAL',
+                resultLabel: `${rows.length} revisiones`,
+                status: `${summary.uniqueEmployees || 0} empleados`
+            }
+        );
+
+        // Hoja 2: Distribución por resultado
+        const distResult = data?.distributionByResult || {};
+        const resultRows = Object.entries(distResult)
+            .map(([k, v]) => ({ key: k, count: v }))
+            .sort((a, b) => safeNumber(b.count) - safeNumber(a.count));
+        addRankingSheet(
+            workbook,
+            'Distribución por resultado',
+            'Distribución por resultado',
+            'Agrupación de revisiones según el resultado (incluye renuncias como categoría).',
+            [
+                { label: 'Categorías', value: resultRows.length, hint: 'Resultados distintos' },
+                { label: 'Total', value: sumBy(resultRows, (r) => safeNumber(r.count)), hint: 'Suma global' }
+            ],
+            [
+                { header: 'Resultado', key: 'key', width: 24 },
+                { header: 'Revisiones', key: 'count', width: 14, align: 'right' }
+            ],
+            resultRows,
+            'amber',
+            context
+        );
+
+        // Hoja 3: Distribución por departamento
+        const distDept = data?.distributionByDepartment || {};
+        const deptRows = Object.entries(distDept)
+            .map(([k, v]) => ({ department: k, count: v }))
+            .sort((a, b) => safeNumber(b.count) - safeNumber(a.count));
+        addRankingSheet(
+            workbook,
+            'Distribución por departamento',
+            'Distribución por departamento',
+            'Revisiones agrupadas por departamento del empleado.',
+            [
+                { label: 'Departamentos', value: deptRows.length, hint: 'Con revisiones' },
+                { label: 'Total', value: sumBy(deptRows, (r) => safeNumber(r.count)), hint: 'Suma global' }
+            ],
+            [
+                { header: 'Departamento', key: 'department', width: 28 },
+                { header: 'Revisiones', key: 'count', width: 14, align: 'right' }
+            ],
+            deptRows,
+            'rose',
+            context
+        );
+
+        return workbook.xlsx.writeBuffer();
+    }
+
+    static async generateTrainingsReport(data: {
+        rows: any[];
+        summary: any;
+        distributionByType: Record<string, number>;
+        hoursByType: Record<string, number>;
+        distributionByCourse: Record<string, { count: number; hours: number }>;
+        distributionByDepartment: Record<string, number>;
+    }, context: ExcelContext = {}) {
+        const workbook = createWorkbook('Cursos y formación');
+        const rows = Array.isArray(data?.rows) ? data.rows : [];
+        const summary = data?.summary || {};
+
+        // Hoja 1: Resumen + detalle
+        addRankingSheet(
+            workbook,
+            'Resumen',
+            context.title || 'Cursos y formación',
+            context.subtitle || 'Detalle de cursos realizados, horas impartidas y distribución por tipo.',
+            [
+                { label: 'Cursos', value: summary.totalTrainings || rows.length, hint: 'Total impartidos' },
+                { label: 'Empleados', value: summary.uniqueEmployees || 0, hint: 'Con al menos un curso' },
+                { label: 'Cursos distintos', value: summary.uniqueCourses || 0, hint: 'Temáticas diferentes' },
+                { label: 'Horas totales', value: formatNumber(summary.totalHours || 0, 2), hint: 'Suma de horas' },
+                { label: 'Media horas/empleado', value: formatNumber(summary.averageHoursPerEmployee || 0, 2), hint: 'Promedio' }
+            ],
+            [
+                { header: 'Empleado', key: 'employee', width: 28 },
+                { header: 'DNI', key: 'dni', width: 14 },
+                { header: 'Departamento', key: 'department', width: 20 },
+                { header: 'Curso', key: 'name', width: 32 },
+                { header: 'Tipo', key: 'type', width: 14 },
+                { header: 'Fecha', key: 'date', width: 14 },
+                { header: 'Horas', key: 'hours', width: 8, align: 'right' }
+            ],
+            rows.map((r: any) => ({
+                employee: r.employee || '-',
+                dni: r.dni || '-',
+                department: r.department || '-',
+                name: r.name || '-',
+                type: r.type || '-',
+                date: formatDate(r.date),
+                hours: safeNumber(r.hours)
+            })),
+            'violet',
+            context,
+            {
+                employee: 'TOTAL',
+                name: `${rows.length} cursos`,
+                hours: safeNumber(summary.totalHours)
+            }
+        );
+
+        // Hoja 2: Por tipo
+        const distType = data?.distributionByType || {};
+        const hoursType = data?.hoursByType || {};
+        const typeRows = Object.entries(distType)
+            .map(([k, v]) => ({
+                type: k,
+                count: v,
+                hours: safeNumber(hoursType[k])
+            }))
+            .sort((a, b) => safeNumber(b.hours) - safeNumber(a.hours));
+        addRankingSheet(
+            workbook,
+            'Por tipo',
+            'Distribución por tipo de curso',
+            'Cantidad de cursos y horas impartidas según el tipo (PRL, TÉCNICA, HABILIDADES, OTROS).',
+            [
+                { label: 'Tipos', value: typeRows.length, hint: 'Categorías distintas' },
+                { label: 'Cursos', value: sumBy(typeRows, (r) => safeNumber(r.count)), hint: 'Total' },
+                { label: 'Horas', value: formatNumber(sumBy(typeRows, (r) => safeNumber(r.hours)), 2), hint: 'Total' }
+            ],
+            [
+                { header: 'Tipo', key: 'type', width: 18 },
+                { header: 'Cursos', key: 'count', width: 12, align: 'right' },
+                { header: 'Horas', key: 'hours', width: 12, align: 'right', numFmt: '#,##0.00' }
+            ],
+            typeRows,
+            'violet',
+            context
+        );
+
+        // Hoja 3: Top cursos
+        const distCourse = data?.distributionByCourse || {};
+        const courseRows = Object.entries(distCourse)
+            .map(([k, v]: [string, any]) => ({
+                name: k,
+                count: safeNumber(v?.count),
+                hours: safeNumber(v?.hours)
+            }))
+            .sort((a, b) => safeNumber(b.count) - safeNumber(a.count));
+        addRankingSheet(
+            workbook,
+            'Top cursos',
+            'Ranking de cursos más impartidos',
+            'Top de cursos por número de empleados formados y horas acumuladas.',
+            [
+                { label: 'Cursos distintos', value: courseRows.length, hint: 'Temáticas' },
+                { label: 'Total cursos', value: sumBy(courseRows, (r) => safeNumber(r.count)), hint: 'Imparticiones' }
+            ],
+            [
+                { header: 'Curso', key: 'name', width: 38 },
+                { header: 'Imparticiones', key: 'count', width: 14, align: 'right' },
+                { header: 'Horas totales', key: 'hours', width: 14, align: 'right', numFmt: '#,##0.00' }
+            ],
+            courseRows,
+            'amber',
+            context
+        );
+
+        // Hoja 4: Por departamento
+        const distDept = data?.distributionByDepartment || {};
+        const deptRows = Object.entries(distDept)
+            .map(([k, v]) => ({ department: k, count: v }))
+            .sort((a, b) => safeNumber(b.count) - safeNumber(a.count));
+        addRankingSheet(
+            workbook,
+            'Por departamento',
+            'Distribución por departamento',
+            'Cursos agrupados por departamento del empleado.',
+            [
+                { label: 'Departamentos', value: deptRows.length, hint: 'Con formación' },
+                { label: 'Total', value: sumBy(deptRows, (r) => safeNumber(r.count)), hint: 'Cursos' }
+            ],
+            [
+                { header: 'Departamento', key: 'department', width: 28 },
+                { header: 'Cursos', key: 'count', width: 14, align: 'right' }
+            ],
+            deptRows,
+            'blue',
             context
         );
 

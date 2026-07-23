@@ -1,13 +1,12 @@
 import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
-import fs from 'fs';
-import path from 'path';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { AuthenticatedRequest } from '../types/express';
 import { AppError } from '../utils/AppError';
 import { assertCompanyAccess, isGlobalAdmin } from '../utils/companyAccess';
 import { AuditService } from '../services/AuditService';
+import { serveLocalUploadFile } from '../utils/fileDownload';
 
 function cleanText(value: unknown): string {
     if (value === null || value === undefined) return '';
@@ -468,16 +467,17 @@ export const VehicleController = {
                 throw new AppError('Documento no encontrado', 404);
             }
 
-            const documentsDir = path.resolve(process.cwd(), 'uploads', 'vehicle-documents');
-            const fileName = path.basename(existing.fileUrl);
-            const filePath = path.resolve(documentsDir, fileName);
-
-            if (!filePath.startsWith(`${documentsDir}${path.sep}`) || !fs.existsSync(filePath)) {
-                throw new AppError('Archivo no encontrado', 404);
-            }
-
-            res.setHeader('Content-Disposition', `attachment; filename="${path.basename(existing.name)}"`);
-            return res.sendFile(filePath);
+            // MED-007/SSRF-barrido: la descarga usa el helper
+            // compartido `serveLocalUploadFile` que aplica
+            // defense-in-depth contra path traversal (verifica
+            // que la ruta resuelta está dentro de `uploads/`),
+            // sanitiza el nombre de descarga (RFC 6266 + 5987, sin
+            // header injection) y maneja los errores de stream con
+            // callback explícito (404 en ENOENT, 500 genérico en
+            // otros casos). `existing.name` es el nombre que el
+            // usuario introdujo al subir; `existing.fileUrl` es la
+            // key almacenada (típicamente `vehicle-documents/<uuid>`).
+            return serveLocalUploadFile(res, existing.fileUrl, { downloadName: existing.name });
         } catch (error) {
             return handleControllerError(res, error, 'Error al descargar documento');
         }

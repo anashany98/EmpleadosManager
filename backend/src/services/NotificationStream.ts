@@ -1,4 +1,7 @@
 import { Response } from 'express';
+import { createLogger } from './LoggerService';
+
+const logger = createLogger('NotificationStream');
 
 type Client = { res: Response };
 
@@ -11,7 +14,7 @@ const writeEvent = (res: Response, event: string, data: any) => {
     } catch (error) {
         // Stream closed or error writing. We can't recover easily here without removing the client.
         // The controller handles cleanup on 'close' event, but immediate error needs handling.
-        console.warn('Failed to write to stream, client might have disconnected.', error);
+        logger.warn({ err: error }, 'Failed to write to stream, client might have disconnected.');
         res.end(); // Try to close properly
     }
 };

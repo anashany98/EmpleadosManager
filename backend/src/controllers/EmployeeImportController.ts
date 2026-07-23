@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import ExcelJS from 'exceljs';
 import { AuthenticatedRequest } from '../types/express';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { EmployeeImportService } from '../services/EmployeeImportService';
 import { AuditService } from '../services/AuditService';
 import { createLogger } from '../services/LoggerService';
@@ -55,7 +56,7 @@ export const EmployeeImportController = {
                 stack: error?.stack,
                 name: error?.name
             }, 'Error previewing employee import');
-            return ApiResponse.error(res, error.message || error?.toString() || 'Error analizando el archivo de empleados', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error analizando el archivo de empleados');
         }
     },
 
@@ -91,7 +92,7 @@ export const EmployeeImportController = {
                 stack: error?.stack,
                 name: error?.name 
             }, 'Error importing employees');
-            return ApiResponse.error(res, error.message || error?.toString() || 'Error procesando el archivo de empleados', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error procesando el archivo de empleados');
         }
     },
 

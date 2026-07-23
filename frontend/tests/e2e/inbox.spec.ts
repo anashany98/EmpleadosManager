@@ -20,9 +20,7 @@ const authenticatedTest = base.extend({
       // Login failed, tests will be skipped
     }
     
-    await use({
-      storage: await context.storageState(),
-    });
+    await use(await context.storageState());
     
     await context.close();
   },

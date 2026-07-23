@@ -14,7 +14,10 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
-    "test:e2e:debug": "playwright test --debug"
+    "test:e2e:debug": "playwright test --debug",
+    "audit:check": "npm audit --omit=dev --audit-level=high",
+    "audit:full": "npm audit",
+    "outdated:check": "npm outdated --long"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.90.12",
@@ -34,13 +37,12 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0",
-    "react-router-dom": "^7.11.0",
+    "react-router-dom": "^7.15.0",
     "react-signature-canvas": "^1.1.0-alpha.2",
     "recharts": "^3.6.0",
     "socket.io-client": "^4.8.3",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
-    "xlsx": "^0.18.5",
     "zod": "^4.4.1"
   },
   "devDependencies": {

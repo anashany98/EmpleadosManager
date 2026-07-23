@@ -34,6 +34,31 @@ const resolveTemplateGenerationEmployeeTarget = async (req: any) => {
         : { employeeId };
 };
 
+/**
+ * Resolver para /sign: el target es el `Document` indicado en el body.
+ * Devuelve `{ employeeId, companyId }` del expediente asociado para
+ * que `authorize('document.write', ...)` aplique la policy por recurso.
+ * Si el documento no existe, devolvemos `null` (la policy falla → 403
+ * uniforme; el servicio después valida de nuevo y lanza 404).
+ */
+const resolveSignTarget = async (req: any) => {
+    const documentId = req.body?.documentId;
+    if (!documentId) return null;
+    const document = await prisma.document.findUnique({
+        where: { id: documentId },
+        select: {
+            id: true,
+            employeeId: true,
+            employee: { select: { id: true, companyId: true } }
+        }
+    });
+    if (!document) return null;
+    return {
+        employeeId: document.employeeId ?? undefined,
+        companyId: document.employee?.companyId ?? undefined
+    };
+};
+
 const storage = multer.diskStorage({
     destination: (_req, _file, cb) => {
         const uploadDir = path.join(process.cwd(), 'uploads', 'template-logos');
@@ -86,7 +111,7 @@ router.post(
     validateResource(documentTemplateGenerateSchema),
     DocumentTemplateController.generate
 );
-router.post('/sign', checkPermission('documents', 'write'), DocumentTemplateController.sign);
+router.post('/sign', authorize('document.write', resolveSignTarget), DocumentTemplateController.sign);
 
 router.delete('/:id', checkPermission('documents', 'write'), DocumentTemplateController.deleteTemplate);
 

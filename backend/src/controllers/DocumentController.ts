@@ -5,6 +5,7 @@ import { ApiResponse } from '../utils/ApiResponse';
 import { validateUpload } from '../config/multer';
 import { AuthenticatedRequest } from '../types/express';
 import { scanFileSecurity, scanWithClamAV } from '../utils/fileSecurity';
+import { serveLocalUploadFile } from '../utils/fileDownload';
 
 import { createWorker, Worker } from 'tesseract.js';
 import { StorageService } from '../services/StorageService';
@@ -294,20 +295,15 @@ export const DocumentController = {
             }
 
             if (StorageService.provider === 'local') {
-                const fs = await import('fs');
-                const path = await import('path');
-                const filePath = path.join(process.cwd(), 'uploads', document.fileUrl);
-                if (!fs.existsSync(filePath)) {
-                    log.warn({ filePath }, 'File missing');
-                    throw new AppError('El archivo físico no existe', 404);
-                }
-
-                if (inline) {
-                    // Try to detect primitive types, else default.
-                    return res.sendFile(filePath);
-                } else {
-                    return res.download(filePath, document.name);
-                }
+                // MED-007/barrido: usar el helper compartido que
+                // valida contención de path, sanitiza el nombre de
+                // descarga (sin header injection con
+                // `document.name` que es user-controlled) y maneja
+                // errores de stream con callback explícito.
+                return serveLocalUploadFile(res, document.fileUrl, {
+                    downloadName: document.name,
+                    inline
+                });
             }
 
             const signedUrl = await StorageService.getSignedDownloadUrl(document.fileUrl);

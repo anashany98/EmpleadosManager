@@ -13,6 +13,9 @@ import {
 import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest, AuthUser } from '../types/express';
 import { AppError } from '../utils/AppError';
+import { createLogger } from '../services/LoggerService';
+
+const logger = createLogger('AuthMiddleware');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
@@ -72,7 +75,7 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
         try {
             parsedPermissions = user.permissions ? JSON.parse(user.permissions as string) : {};
         } catch (parseError) {
-            console.warn(`[AUTH] Invalid permissions JSON for user ${user.id}:`, parseError);
+            logger.warn({ userId: user.id, error: parseError }, `[AUTH] Invalid permissions JSON for user ${user.id}`);
             parsedPermissions = {};
         }
 

@@ -1,4 +1,7 @@
 import { prisma } from '../lib/prisma';
+import { createLogger } from './LoggerService';
+
+const logger = createLogger('AnomalyService');
 
 type Reason = { code: string; message: string; score: number };
 
@@ -135,7 +138,7 @@ export const AnomalyService = {
 
             await upsertAnomaly('TIME_ENTRY', entry.id, entry.employeeId, reasons);
         } catch (error) {
-            console.error('[Anomaly] detectTimeEntry error:', error);
+            logger.error({ err: error }, '[Anomaly] detectTimeEntry error:');
         }
     },
 
@@ -199,7 +202,7 @@ export const AnomalyService = {
 
             await upsertAnomaly('EXPENSE', expense.id, expense.employeeId, reasons);
         } catch (error) {
-            console.error('[Anomaly] detectExpense error:', error);
+            logger.error({ err: error }, '[Anomaly] detectExpense error:');
         }
     },
 
@@ -252,7 +255,7 @@ export const AnomalyService = {
 
             await upsertAnomaly('VACATION', vacation.id, vacation.employeeId, reasons);
         } catch (error) {
-            console.error('[Anomaly] detectVacation error:', error);
+            logger.error({ err: error }, '[Anomaly] detectVacation error:');
         }
     }
 };

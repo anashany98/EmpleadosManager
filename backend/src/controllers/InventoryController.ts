@@ -1,14 +1,15 @@
 import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import fs from 'fs';
-import path from 'path';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { AppError } from '../utils/AppError';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { DocumentTemplateService } from '../services/DocumentTemplateService';
 import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '../utils/pagination';
 import multer from 'multer';
+import { serveLocalUploadFile } from '../utils/fileDownload';
 
 const log = createLogger('InventoryController');
 
@@ -118,7 +119,7 @@ export const InventoryController = {
       return ApiResponse.success(res, item);
     } catch (error: any) {
       log.error({ error }, 'Error updating inventory item');
-      return ApiResponse.error(res, error.message || 'Error al actualizar el producto', 500);
+      return handleControllerError(res, error, 'Error al actualizar el producto');
     }
   },
 
@@ -293,14 +294,12 @@ export const InventoryController = {
                 throw new Error('Error al generar el registro del documento');
             }
 
-            const filePath = path.join(process.cwd(), 'uploads', docRecord.fileUrl);
-
-            if (fs.existsSync(filePath)) {
-                res.download(filePath);
-            } else {
-                log.error({ filePath }, 'Generated file not found on disk');
-                return ApiResponse.error(res, 'El archivo generado no se encuentra en el servidor', 500);
-            }
+            // MED-007/barrido: helper compartido que valida
+            // contención de path, sanitiza el nombre de descarga
+            // y maneja errores de stream. Aquí no tenemos un
+            // downloadName user-controlled (es un PDF generado
+            // server-side), pero el basename sanitizado es seguro.
+            return serveLocalUploadFile(res, docRecord.fileUrl);
 
         } catch (error) {
             log.error({ error }, 'Error generating receipt');

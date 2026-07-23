@@ -1,9 +1,7 @@
 import { Request, Response } from 'express';
 import { TimelineService } from '../services/TimelineService';
 import { ApiResponse } from '../utils/ApiResponse';
-import { createLogger } from '../services/LoggerService';
-
-const log = createLogger('TimelineController');
+import { handleControllerError } from '../utils/controllerError';
 
 export const TimelineController = {
     /**
@@ -14,9 +12,10 @@ export const TimelineController = {
             const { id } = req.params;
             const timeline = await TimelineService.getEmployeeTimeline(id);
             return ApiResponse.success(res, timeline);
-        } catch (error: any) {
-            log.error({ error }, 'Error fetching employee timeline');
-            return ApiResponse.error(res, error.message || 'Error al obtener el historial del empleado', 500);
+        } catch (error) {
+            // MED-007: helper centralizado que censura 5xx,
+            // añade correlation ID y maneja Prisma P2002.
+            return handleControllerError(res, error, 'Error al obtener el historial del empleado');
         }
     }
 };

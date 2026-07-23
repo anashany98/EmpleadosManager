@@ -11,6 +11,28 @@ export default defineConfig({
     },
   },
   plugins: [
+    // MED-011: Vite copia los archivos de `public/` al build
+    // output SIN procesarlos (no pasa por Babel/esbuild), así
+    // que el `__BUILD_HASH__` no se reemplaza. Este plugin
+    // hace la sustitución textual de `__BUILD_HASH__` en
+    // `public/sw.js` durante la fase de generación del
+    // bundle. Es seguro porque `__BUILD_HASH__` es un
+    // identificador único que no aparece en código legítimo
+    // del SW.
+    {
+      name: 'inject-build-hash-into-sw',
+      apply: 'build',
+      generateBundle(_options, bundle) {
+        const buildHash = process.env.GITHUB_SHA
+          ? process.env.GITHUB_SHA.slice(0, 12)
+          : `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        for (const file of Object.values(bundle)) {
+          if (file.type === 'asset' && file.fileName === 'sw.js' && typeof file.source === 'string') {
+            file.source = file.source.replace(/__BUILD_HASH__/g, buildHash);
+          }
+        }
+      }
+    },
     frontmanPlugin({
       host: 'api.frontman.sh',
       projectRoot: path.resolve(__dirname),

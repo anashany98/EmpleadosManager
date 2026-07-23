@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
+import { handleControllerError } from '../utils/controllerError';
 import { EmailService } from '../services/EmailService';
 import { coercePermissionMap, normalizeRole } from '../../../shared/authz';
 import { validatePassword } from '../utils/passwordPolicy';
@@ -138,7 +139,7 @@ export const PasswordController = {
             return ApiResponse.success(res, null, 'Si los datos coinciden, recibiras un correo con las instrucciones.');
         } catch (error: any) {
             log.error({ error }, 'Error processing password reset request');
-            return ApiResponse.error(res, error.message || 'Error al procesar la solicitud', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al procesar la solicitud');
         }
     },
 
@@ -271,7 +272,7 @@ export const PasswordController = {
             }, 'Acceso generado. Copia el enlace de activacion (SOLO DESARROLLO).');
         } catch (error: any) {
             log.error({ error }, 'Error generating access');
-            return ApiResponse.error(res, error.message || 'Error al generar acceso', error.statusCode || 500);
+            return handleControllerError(res, error, 'Error al generar acceso');
         }
     }
 };

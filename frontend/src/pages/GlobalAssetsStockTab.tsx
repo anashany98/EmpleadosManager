@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
-import { api } from '../api/client';
+import { useState, useMemo, useRef, useCallback } from 'react';
+import { api, getErrorMessage } from '../api/client';
+import Modal from '../components/ui/Modal';
 import { Package, Search, AlertTriangle, Plus, Pencil, Trash2, Download, Upload, History, ArrowDownCircle, ArrowUpCircle, Image as ImageIcon, LayoutGrid, List, BarChart3, TrendingDown, TrendingUp, PackageX } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -101,6 +102,8 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
   const [movementsItem, setMovementsItem] = useState<InventoryItem | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
+  // D5: Use ref instead of window global for image upload tracking
+  const imageUploadItemIdRef = useRef<string | null>(null);
 
   const { data: inventory = [], isLoading } = useQuery({
     queryKey: ['inventory'],
@@ -122,7 +125,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
   const withdrawMutation = useMutation({
     mutationFn: async ({ id, amount, notes }: { id: string; amount: number; notes: string }) => api.post(`/inventory/${id}/withdraw`, { amount, notes }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['inventory'] }); toast.success('Stock retirado'); setShowWithdrawModal(false); setWithdrawAmount(0); setWithdrawNotes(''); },
-    onError: (e: any) => toast.error(e?.response?.data?.message || 'Error al retirar stock')
+    onError: (e: unknown) => toast.error(getErrorMessage(e, 'Error al retirar stock'))
   });
 
   const createItemMutation = useMutation({
@@ -375,7 +378,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
                       <p className={`text-lg font-bold ${isLow ? 'text-amber-600' : 'text-gray-900'}`}>{item.quantity}</p>
                     </div>
                     <div className="flex gap-1.5">
-                      <button onClick={() => handleOpenImageUpload(item)} className="p-2 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors" title="Subir imagen"><ImageIcon size={14} /></button>
+                      <button onClick={() => handleOpenImageUpload(item, imageUploadItemIdRef)} className="p-2 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors" title="Subir imagen"><ImageIcon size={14} /></button>
                       <button onClick={() => { setSelectedItem(item); setRefillAmount(0); setShowRefillModal(true); }} className="p-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors" title="Anadir stock"><ArrowUpCircle size={14} /></button>
                       <button onClick={() => { setSelectedItem(item); setWithdrawAmount(0); setWithdrawNotes(''); setShowWithdrawModal(true); }} className="p-2 rounded-lg bg-amber-500 text-white hover:bg-amber-600 transition-colors" title="Retirar stock"><ArrowDownCircle size={14} /></button>
                       <button onClick={() => { setMovementsItem(item); setShowMovementsModal(true); }} className="p-2 rounded-lg bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors" title="Historial"><History size={14} /></button>
@@ -426,7 +429,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
 
       {/* Refill Modal */}
       {showRefillModal && selectedItem && (
-        <Modal onClose={() => setShowRefillModal(false)} title="Anadir stock">
+        <Modal isOpen={true} onClose={() => setShowRefillModal(false)} title="Anadir stock">
           <p className="text-gray-500 mb-3">{selectedItem.name}</p>
           <p className="text-sm text-gray-400 mb-2">Stock actual: <span className="font-bold text-gray-700">{selectedItem.quantity}</span></p>
           <input type="number" min="1" value={refillAmount} onChange={(e) => setRefillAmount(parseInt(e.target.value) || 0)} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 mb-4" placeholder="Cantidad a anadir" />
@@ -439,7 +442,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
 
       {/* Withdraw Modal */}
       {showWithdrawModal && selectedItem && (
-        <Modal onClose={() => setShowWithdrawModal(false)} title="Retirar stock">
+        <Modal isOpen={true} onClose={() => setShowWithdrawModal(false)} title="Retirar stock">
           <p className="text-gray-500 mb-3">{selectedItem.name}</p>
           <p className="text-sm text-gray-400 mb-2">Stock actual: <span className="font-bold text-gray-700">{selectedItem.quantity}</span></p>
           <input type="number" min="1" max={selectedItem.quantity} value={withdrawAmount} onChange={(e) => setWithdrawAmount(parseInt(e.target.value) || 0)} className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100 mb-3" placeholder="Cantidad a retirar" />
@@ -453,7 +456,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
 
       {/* Movements Modal */}
       {showMovementsModal && movementsItem && (
-        <Modal onClose={() => setShowMovementsModal(false)} title={`Historial: ${movementsItem.name}`} wide>
+        <Modal isOpen={true} onClose={() => setShowMovementsModal(false)} title={`Historial: ${movementsItem.name}`} size="lg">
           {movements.length === 0 ? (
             <p className="text-gray-400 text-center py-8">Sin movimientos registrados</p>
           ) : (
@@ -477,7 +480,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
 
       {/* New Item Modal */}
       {showNewItemModal && (
-        <Modal onClose={() => setShowNewItemModal(false)} title="Nuevo producto" wide>
+        <Modal isOpen={true} onClose={() => setShowNewItemModal(false)} title="Nuevo producto" size="lg">
           {renderForm(newItem, (f) => setNewItem(f))}
           <div className="flex gap-3 mt-5">
             <button onClick={() => setShowNewItemModal(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
@@ -488,7 +491,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
 
       {/* Edit Modal */}
       {showEditModal && editItem && (
-        <Modal onClose={() => setShowEditModal(false)} title="Editar producto" wide>
+        <Modal isOpen={true} onClose={() => setShowEditModal(false)} title="Editar producto" size="lg">
           {renderForm(editForm, (f) => setEditForm(f))}
           <div className="flex gap-3 mt-5">
             <button onClick={() => setShowEditModal(false)} className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-medium">Cancelar</button>
@@ -499,7 +502,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
 
       {/* Delete Confirm */}
       {showDeleteConfirm && deleteItem && (
-        <Modal onClose={() => setShowDeleteConfirm(false)} title="Eliminar producto">
+        <Modal isOpen={true} onClose={() => setShowDeleteConfirm(false)} title="Eliminar producto">
           <p className="text-gray-500 mb-1">Seguro que quieres eliminar:</p>
           <p className="font-bold text-gray-900 mb-4">{deleteItem.name}</p>
           <p className="text-sm text-red-500 mb-5">Esta accion no se puede deshacer.</p>
@@ -512,7 +515,7 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
 
       {/* Import Modal */}
       {showImportModal && (
-        <Modal onClose={() => setShowImportModal(false)} title="Importar CSV">
+        <Modal isOpen={true} onClose={() => setShowImportModal(false)} title="Importar CSV">
           <p className="text-sm text-gray-500 mb-4">Sube un CSV con columnas: nombre, categoria, cantidad, minimo, talla, sku, marca, precio, proveedor, ubicacion</p>
           <input type="file" accept=".csv,.txt" onChange={(e) => setImportFile(e.target.files?.[0] || null)} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 hover:file:bg-indigo-100" />
           <div className="flex gap-3 mt-5">
@@ -525,9 +528,9 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
       {/* Hidden file input for image upload */}
       <input type="file" accept="image/*" className="hidden" id="image-upload" onChange={(e) => {
         const file = e.target.files?.[0];
-        if (file && (window as any).__imageUploadItemId) {
-          imageUploadMutation.mutate({ id: (window as any).__imageUploadItemId, file });
-          (window as any).__imageUploadItemId = null;
+        if (file && imageUploadItemIdRef.current) {
+          imageUploadMutation.mutate({ id: imageUploadItemIdRef.current, file });
+          imageUploadItemIdRef.current = null;
         }
         e.target.value = '';
       }} />
@@ -535,18 +538,10 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
   );
 }
 
-function handleOpenImageUpload(item: InventoryItem) {
-  (window as any).__imageUploadItemId = item.id;
+// D5: Moved inside the component scope to use ref instead of window global
+function handleOpenImageUpload(item: InventoryItem, ref: React.MutableRefObject<string | null>) {
+  ref.current = item.id;
   document.getElementById('image-upload')?.click();
 }
 
-function Modal({ onClose, title, children, wide }: { onClose: () => void; title: string; children: React.ReactNode; wide?: boolean }) {
-  return (
-    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className={`bg-white rounded-2xl shadow-2xl w-full ${wide ? 'max-w-2xl' : 'max-w-md'} p-6 max-h-[90vh] overflow-y-auto`} onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold text-gray-900 mb-4">{title}</h3>
-        {children}
-      </div>
-    </div>
-  );
-}
+// Local Modal removed — using shared ui/Modal with focus trap, Escape, and aria-modal

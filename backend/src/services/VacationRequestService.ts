@@ -30,29 +30,6 @@ export async function validateVacationRequest(employeeId: string, start: Date, e
         throw new AppError('Ya existe un registro de ausencia que se solapa con estas fechas.', 400);
     }
 
-    // Check for adjacent date conflicts (new startDate - 1 day = existing endDate, or new endDate + 1 day = existing startDate)
-    const oneDayMs = 24 * 60 * 60 * 1000;
-    const dayBeforeStart = new Date(start.getTime() - oneDayMs);
-    const dayAfterEnd = new Date(end.getTime() + oneDayMs);
-
-    const adjacent = await db.vacation.findFirst({
-        where: {
-            employeeId,
-            status: { in: ['APPROVED', 'EXISTING'] },
-            OR: [
-                { startDate: { equals: dayAfterEnd } },
-                { endDate: { equals: dayBeforeStart } }
-            ]
-        }
-    });
-
-    if (adjacent) {
-        const conflictingDates = adjacent.endDate.getTime() === dayBeforeStart.getTime()
-            ? `La fecha de inicio es un día después de unas vacaciones existentes (${adjacent.startDate.toLocaleDateString()} - ${adjacent.endDate.toLocaleDateString()}).`
-            : `La fecha de fin es un día antes de unas vacaciones existentes (${adjacent.startDate.toLocaleDateString()} - ${adjacent.endDate.toLocaleDateString()}).`;
-        throw new AppError(`Conflicto de fechas adyacentes. ${conflictingDates}`, 400);
-    }
-
     const requestedDays = calculateVacationRequestDays(start, end, type);
 
     if (!isVacationType(type)) {

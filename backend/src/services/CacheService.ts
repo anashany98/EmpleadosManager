@@ -1,3 +1,7 @@
+import { createLogger } from './LoggerService';
+
+const logger = createLogger('CacheService');
+
 /**
  * In-memory LRU Cache with TTL support.
  * Uses Node's built-in Map for simplicity and efficiency.
@@ -190,7 +194,7 @@ class CacheServiceImpl {
         keysToDelete.forEach(key => this.del(key));
 
         if (keysToDelete.length > 0) {
-            console.log(`[CacheService] Cleaned up ${keysToDelete.length} expired entries`);
+            logger.info(`[CacheService] Cleaned up ${keysToDelete.length} expired entries`);
         }
     }
 

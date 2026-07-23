@@ -14,11 +14,13 @@ interface HeaderProps {
   setDarkMode: (dark: boolean) => void;
 }
 
-const THEME_KEY = 'rrhhThemeDark';
+// H3: Single theme key — 'dark' | 'light' (matches App.tsx)
+const THEME_KEY = 'theme';
 
 export function getStoredTheme(): boolean {
   if (typeof window === 'undefined') return false;
-  return localStorage.getItem(THEME_KEY) === 'true';
+  return localStorage.getItem(THEME_KEY) === 'dark' ||
+    (!localStorage.getItem(THEME_KEY) && window.matchMedia('(prefers-color-scheme: dark)').matches);
 }
 
 export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: HeaderProps) {
@@ -29,7 +31,7 @@ export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: H
   useEffect(() => {
     const stored = localStorage.getItem(THEME_KEY);
     if (stored !== null) {
-      setDarkMode(stored === 'true');
+      setDarkMode(stored === 'dark');
     }
   }, [setDarkMode]);
 
@@ -111,7 +113,7 @@ export function Header({ sidebarOpen, setSidebarOpen, darkMode, setDarkMode }: H
           onClick={() => {
             const newMode = !darkMode;
             setDarkMode(newMode);
-            localStorage.setItem(THEME_KEY, String(newMode));
+            localStorage.setItem(THEME_KEY, newMode ? 'dark' : 'light');
           }}
           className={`group relative inline-flex h-9 w-[72px] items-center rounded-full border px-1 transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-950 touch-active ${
             darkMode

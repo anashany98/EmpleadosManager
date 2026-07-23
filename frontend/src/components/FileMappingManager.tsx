@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
+import { useConfirm } from '../hooks/useConfirm';
 import { FileText, Plus, Trash2, Edit2, Save, X } from 'lucide-react';
 
 interface FileMapping {
@@ -11,6 +12,7 @@ interface FileMapping {
 }
 
 export default function FileMappingManager() {
+    const { confirm: confirmDialog } = useConfirm();
     const [mappings, setMappings] = useState<FileMapping[]>([]);
     const [loading, setLoading] = useState(true);
     const [editing, setEditing] = useState<string | null>(null);
@@ -60,7 +62,13 @@ export default function FileMappingManager() {
     };
 
     const handleDelete = async (id: string) => {
-        if (!confirm('¿Estás seguro de eliminar este mapeo?')) return;
+        const ok = await confirmDialog({
+            title: '¿Eliminar mapeo?',
+            message: 'Esta acción no se puede deshacer. Las importaciones futuras no usarán este mapeo.',
+            type: 'danger',
+            confirmText: 'Eliminar'
+        });
+        if (!ok) return;
         try {
             await api.delete(`/mappings/file-mappings/${id}`);
             toast.success('Mapeo eliminado');

@@ -8,7 +8,11 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import LoginPage from './pages/LoginPage';
-import KioskPage from './pages/Kiosk/KioskPage';
+// HIGH-004: el módulo Kiosco está desactivado (decisión funcional
+// 2026-07-20). Eliminamos el import y la ruta para que la UI no
+// la exponga y el bundle no incluya `VITE_KIOSK_DEVICE_SECRET`.
+// El archivo KioskPage.tsx se conserva en disco como referencia
+// histórica para una futura reactivación.
 import RequestReset from './pages/RequestReset';
 import ResetPassword from './pages/ResetPassword';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -44,6 +48,9 @@ const Reports = lazy(() => import('./pages/Reports'));
 const PayrollImport = lazy(() => import('./pages/PayrollImport'));
 const VacationRequests = lazy(() => import('./pages/VacationRequests'));
 const AbsenceTypesPage = lazy(() => import('./pages/AbsenceTypesPage'));
+const ObrasPage = lazy(() => import('./pages/ObrasPage'));
+const ObraDetailPage = lazy(() => import('./pages/ObraDetailPage'));
+const ObraImportPage = lazy(() => import('./pages/ObraImportPage'));
 
 function RouteLoading() {
   return (
@@ -76,16 +83,14 @@ function AppContent() {
 
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
 
+  // H5: Use matchMedia instead of resize listener (fires only on breakpoint change, not every px)
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth <= 768) {
-        setSidebarOpen(false);
-      } else {
-        setSidebarOpen(true);
-      }
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    const mql = window.matchMedia('(min-width: 768px)');
+    const handleChange = (e: MediaQueryListEvent) => setSidebarOpen(e.matches);
+    mql.addEventListener('change', handleChange);
+    // Sync initial state
+    setSidebarOpen(mql.matches);
+    return () => mql.removeEventListener('change', handleChange);
   }, []);
 
   useEffect(() => {
@@ -114,7 +119,6 @@ function AppContent() {
   if (!user) {
     return (
       <Routes>
-        <Route path="/kiosk" element={<KioskPage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/request-reset" element={<RequestReset />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -191,6 +195,9 @@ function AppContent() {
                   <Route path="/admin/financial-dashboard" element={<ProtectedRoute feature="settings"><FinancialDashboard /></ProtectedRoute>} />
                   <Route path="/analytics" element={<ProtectedRoute feature="analytics"><AnalyticsDashboard /></ProtectedRoute>} />
                   <Route path="/performance" element={<ProtectedRoute feature="performance"><PerformancePage /></ProtectedRoute>} />
+                  <Route path="/obras" element={<ProtectedRoute feature="projects"><ObrasPage /></ProtectedRoute>} />
+                  <Route path="/obras/imports" element={<ProtectedRoute feature="projects"><ObraImportPage /></ProtectedRoute>} />
+                  <Route path="/obras/:id" element={<ProtectedRoute feature="projects"><ObraDetailPage /></ProtectedRoute>} />
                   <Route path="/login" element={<Navigate to="/" replace />} />
                 </Routes>
                 </Suspense>

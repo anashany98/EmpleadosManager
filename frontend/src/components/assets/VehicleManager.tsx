@@ -1,8 +1,9 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../api/client';
+import { api, getErrorMessage } from '../../api/client';
 import { toast } from 'sonner';
+import { useConfirm } from '../../hooks/useConfirm';
 import { Car, Plus, Trash2, PenSquare, Calendar, Activity, FileText, Download, History } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { normalizeApiCollection, normalizeApiItem } from './vehicleUtils';
@@ -64,6 +65,7 @@ function getExpiryStatus(expiryDate?: string) {
 }
 
 export function VehicleManager() {
+    const { confirm: confirmDialog } = useConfirm();
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
     const queryClient = useQueryClient();
@@ -143,8 +145,14 @@ export function VehicleManager() {
                                     <PenSquare className="w-4 h-4" />
                                 </button>
                                 <button
-                                    onClick={() => {
-                                        if (confirm('¿Seguro que quieres dar de baja este vehículo?')) deleteMutation.mutate(vehicle.id);
+                                    onClick={async () => {
+                                        const ok = await confirmDialog({
+                                            title: '¿Dar de baja este vehículo?',
+                                            message: 'El vehículo pasará a estado INACTIVO. Puedes volver a activarlo desde la edición.',
+                                            type: 'warning',
+                                            confirmText: 'Dar de baja'
+                                        });
+                                        if (ok) deleteMutation.mutate(vehicle.id);
                                     }}
                                     className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm hover:text-red-600"
                                 >
@@ -207,7 +215,7 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
             }
             onSuccess();
         },
-        onError: (err: any) => toast.error(err.response?.data?.message || err.message || 'Error al guardar')
+        onError: (err: unknown) => toast.error(getErrorMessage(err, 'Error al guardar'))
     });
 
     const { data: employees = [] } = useQuery({
@@ -372,7 +380,13 @@ function DocumentsSection({ vehicleId, documents = [] }: { vehicleId: string, do
     };
 
     const handleDelete = async (docId: string) => {
-        if (!confirm('¿Eliminar documento?')) return;
+        const ok = await confirmDialog({
+            title: '¿Eliminar documento?',
+            message: 'Esta acción no se puede deshacer.',
+            type: 'danger',
+            confirmText: 'Eliminar'
+        });
+        if (!ok) return;
         try {
             await api.delete(`/vehicles/${vehicleId}/documents/${docId}`);
             toast.success('Documento eliminado');
