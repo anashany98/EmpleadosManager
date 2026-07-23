@@ -190,7 +190,12 @@ export default function ObrasPage() {
                     <option value="ACTIVE">Activas</option>
                     <option value="INACTIVE">Cerradas</option>
                 </select>
-                <button onClick={fetchObras} className="px-3 py-2.5 bg-slate-200 dark:bg-slate-800 rounded-xl flex items-center gap-2">
+                <button
+                    type="button"
+                    onClick={() => { setCommittedSearch(search); setPage(1); }}
+                    className="px-3 py-2.5 bg-slate-200 dark:bg-slate-800 rounded-xl flex items-center gap-2"
+                    aria-label="Aplicar filtros"
+                >
                     <Filter size={18} /> Aplicar
                 </button>
             </div>
@@ -208,55 +213,64 @@ export default function ObrasPage() {
                                 {editingId ? <Pencil size={20} /> : <Plus size={20} />}
                                 {editingId ? 'Editar obra' : 'Nueva obra'}
                             </h3>
-                            <button onClick={resetForm} className="text-slate-400 hover:text-slate-700" aria-label="Cerrar formulario"><X size={22} /></button>
+                            <button type="button" onClick={resetForm} className="text-slate-400 hover:text-slate-700" aria-label="Cerrar formulario"><X size={22} /></button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <div>
-                                <label className="text-xs font-medium text-slate-500">Código *</label>
-                                <input className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editingId} />
+                        <form
+                            onSubmit={(e) => { e.preventDefault(); handleSave(); }}
+                            // El <form> envuelve los inputs para que Enter y los
+                            // labels htmlFor funcionen correctamente (a11y +
+                            // submit por teclado). Sin esto los <label> no se
+                            // asocian a sus inputs y la búsqueda por nombre
+                            // desde teclado estaba rota.
+                        >
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label htmlFor="obra-code" className="text-xs font-medium text-slate-500">Código *</label>
+                                    <input id="obra-code" name="code" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editingId} />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label htmlFor="obra-name" className="text-xs font-medium text-slate-500">Nombre *</label>
+                                    <input id="obra-name" name="name" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                                </div>
+                                <div className="md:col-span-3">
+                                    <label htmlFor="obra-client" className="text-xs font-medium text-slate-500">Cliente</label>
+                                    <input id="obra-client" name="clientName" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label htmlFor="obra-destination" className="text-xs font-medium text-slate-500">Destino</label>
+                                    <input id="obra-destination" name="destination" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label htmlFor="obra-start" className="text-xs font-medium text-slate-500">Fecha inicio</label>
+                                    <input id="obra-start" name="startDate" type="date" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label htmlFor="obra-end" className="text-xs font-medium text-slate-500">Fecha fin</label>
+                                    <input id="obra-end" name="endDate" type="date" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label htmlFor="obra-budget" className="text-xs font-medium text-slate-500">Presupuesto (€)</label>
+                                    <input id="obra-budget" name="budget" type="number" step="0.01" min="0" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label htmlFor="obra-manager" className="text-xs font-medium text-slate-500">Responsable</label>
+                                    <select id="obra-manager" name="managerId" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.managerId} onChange={(e) => setForm({ ...form, managerId: e.target.value })}>
+                                        <option value="">— Ninguno —</option>
+                                        {employees.map((e: any) => (
+                                            <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="md:col-span-3">
+                                    <label htmlFor="obra-description" className="text-xs font-medium text-slate-500">Descripción</label>
+                                    <textarea id="obra-description" name="description" rows={2} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                                </div>
                             </div>
-                            <div className="md:col-span-2">
-                                <label className="text-xs font-medium text-slate-500">Nombre *</label>
-                                <input className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                            <div className="flex justify-end gap-2 mt-4">
+                                <button type="button" onClick={resetForm} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">Cancelar</button>
+                                <button type="submit" className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"><Save size={16} /> Guardar</button>
                             </div>
-                            <div className="md:col-span-3">
-                                <label className="text-xs font-medium text-slate-500">Cliente</label>
-                                <input className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.clientName} onChange={(e) => setForm({ ...form, clientName: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-slate-500">Destino</label>
-                                <input className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.destination} onChange={(e) => setForm({ ...form, destination: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-slate-500">Fecha inicio</label>
-                                <input type="date" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-slate-500">Fecha fin</label>
-                                <input type="date" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-slate-500">Presupuesto (€)</label>
-                                <input type="number" step="0.01" min="0" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} />
-                            </div>
-                            <div>
-                                <label className="text-xs font-medium text-slate-500">Responsable</label>
-                                <select className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.managerId} onChange={(e) => setForm({ ...form, managerId: e.target.value })}>
-                                    <option value="">— Ninguno —</option>
-                                    {employees.map((e: any) => (
-                                        <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="md:col-span-3">
-                                <label className="text-xs font-medium text-slate-500">Descripción</label>
-                                <textarea rows={2} className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-2 mt-4">
-                            <button onClick={resetForm} className="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">Cancelar</button>
-                            <button onClick={handleSave} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"><Save size={16} /> Guardar</button>
-                        </div>
+                        </form>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -278,7 +292,11 @@ export default function ObrasPage() {
                             const totalAll = Object.values(totals).reduce((a, b) => Number(a) + Number(b), 0);
                             const closed = o.status === 'INACTIVE';
                             return (
-                                <div key={o.id} className={`bg-white dark:bg-slate-900 rounded-2xl border ${closed ? 'border-slate-200 opacity-75' : 'border-slate-200 dark:border-slate-800'} shadow-sm hover:shadow-md transition-all p-5`}>
+                                // `flex flex-col` + `mt-auto` en el footer empuja los
+                                // botones de acción al borde inferior, manteniendo
+                                // la fila de cards alineada aunque haya obras sin
+                                // gastos (sin bloque de totales).
+                                <div key={o.id} className={`flex flex-col bg-white dark:bg-slate-900 rounded-2xl border ${closed ? 'border-slate-200 opacity-75' : 'border-slate-200 dark:border-slate-800'} shadow-sm hover:shadow-md transition-all p-5`}>
                                     <div className="flex justify-between items-start mb-3">
                                         <div>
                                             <div className="flex items-center gap-2 mb-1">
@@ -308,7 +326,7 @@ export default function ObrasPage() {
                                             </div>
                                         )}
                                     </div>
-                                    <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-800">
+                                    <div className="mt-auto flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-800">
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => navigate(`/obras/${o.id}`)}
