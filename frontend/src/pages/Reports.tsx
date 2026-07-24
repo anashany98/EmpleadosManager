@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState, Fragment } from 'react';
+import { useEffect, useMemo, useRef, useState, Fragment } from 'react';
 import {
     Briefcase,
     Building2,
     Calendar,
+    ChevronLeft,
+    ChevronRight,
     Download,
     FileText,
     Filter,
@@ -177,6 +179,43 @@ export default function Reports() {
 
     const totalMatches = groupedReports.reduce((acc, g) => acc + g.reports.length, 0);
 
+    // Scroll horizontal del strip de chips. Las flechas aparecen solo
+    // cuando hay contenido fuera de vista en esa direccion. Se
+    // recalcula en mount, en cada cambio del catalogo filtrado, en
+    // resize y en scroll del propio strip.
+    const stripRef = useRef<HTMLDivElement>(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
+
+    const updateScrollState = () => {
+        const el = stripRef.current;
+        if (!el) return;
+        setCanScrollLeft(el.scrollLeft > 1);
+        setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 1);
+    };
+
+    useEffect(() => {
+        const el = stripRef.current;
+        if (!el) return;
+        updateScrollState();
+        el.addEventListener('scroll', updateScrollState, { passive: true });
+        window.addEventListener('resize', updateScrollState);
+        return () => {
+            el.removeEventListener('scroll', updateScrollState);
+            window.removeEventListener('resize', updateScrollState);
+        };
+    }, [groupedReports]);
+
+    // Scroll relativo: un click mueve ~3-4 chips (suficiente para
+    // pasar al siguiente grupo). Usamos scrollBy con behavior smooth
+    // para que se vea fluido, no brusco.
+    const scrollStrip = (direction: -1 | 1) => {
+        const el = stripRef.current;
+        if (!el) return;
+        const step = Math.max(240, Math.floor(el.clientWidth * 0.6));
+        el.scrollBy({ left: direction * step, behavior: 'smooth' });
+    };
+
     return (
         <div className="space-y-4 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {/* Strip horizontal arriba: buscador + chips de reportes por categoria */}
@@ -222,11 +261,44 @@ export default function Reports() {
                         Ning&uacute;n reporte coincide con &laquo;{searchQuery}&raquo;.
                     </div>
                 ) : (
-                    <div
-                        className="flex overflow-x-auto gap-1.5 pb-1 -mx-1 px-1 no-scrollbar"
-                        role="tablist"
-                        aria-label="Selector de reportes"
-                    >
+                    <div className="relative group/strip">
+                        {/* Flechas de navegacion. Aparecen solo cuando hay
+                            contenido fuera de vista en esa direccion. Cada
+                            flecha tiene un degradado detras para que el chip
+                            que tape se vea "desdibujado" en el borde, sugiriendo
+                            que hay mas. */}
+                        {canScrollLeft && (
+                            <>
+                                <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-white dark:from-slate-900 to-transparent z-10 rounded-l-2xl" aria-hidden="true" />
+                                <button
+                                    type="button"
+                                    onClick={() => scrollStrip(-1)}
+                                    aria-label="Desplazar reportes a la izquierda"
+                                    className="absolute left-1 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors touch-active"
+                                >
+                                    <ChevronLeft size={18} />
+                                </button>
+                            </>
+                        )}
+                        {canScrollRight && (
+                            <>
+                                <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-white dark:from-slate-900 to-transparent z-10 rounded-r-2xl" aria-hidden="true" />
+                                <button
+                                    type="button"
+                                    onClick={() => scrollStrip(1)}
+                                    aria-label="Desplazar reportes a la derecha"
+                                    className="absolute right-1 top-1/2 -translate-y-1/2 z-20 w-9 h-9 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-900 dark:hover:text-white transition-colors touch-active"
+                                >
+                                    <ChevronRight size={18} />
+                                </button>
+                            </>
+                        )}
+                        <div
+                            ref={stripRef}
+                            className="flex overflow-x-auto gap-1.5 pb-1 -mx-1 px-1 no-scrollbar"
+                            role="tablist"
+                            aria-label="Selector de reportes"
+                        >
                         {groupedReports.map(({ category, reports }, groupIdx) => (
                             <Fragment key={category.id}>
                                 {groupIdx > 0 && (
@@ -267,6 +339,7 @@ export default function Reports() {
                                 })}
                             </Fragment>
                         ))}
+                    </div>
                     </div>
                 )}
             </div>
