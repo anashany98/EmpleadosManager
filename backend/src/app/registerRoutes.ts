@@ -2,6 +2,7 @@ import type { Express } from 'express';
 import { protect, checkPermission, requireGlobalAdmin } from '../middlewares/authMiddleware';
 import employeeRoutes from '../routes/employeeRoutes';
 import payrollRoutes from '../routes/payrollRoutes';
+import payrollControlRoutes from '../routes/payrollControlRoutes';
 import mappingProfileRoutes from '../routes/mappingProfileRoutes';
 import dashboardRoutes from '../routes/dashboardRoutes';
 import vacationRoutes from '../routes/vacationRoutes';
@@ -70,6 +71,7 @@ export function registerRoutes(app: Express): void {
 
     app.use('/api/dashboard/v2', protect, employeeDashboardRoutes);
     app.use('/api/employees', protect, employeeRoutes);
+    app.use('/api/payroll/control', protect, payrollControlRoutes);
     app.use('/api/payroll', protect, payrollRoutes);
     app.use('/api/mappings', protect, checkPermission('payroll', 'write'), mappingProfileRoutes);
     app.use('/api/dashboard', protect, dashboardRoutes);

@@ -15,9 +15,10 @@ interface PaginatedMeta {
     totalPages: number;
 }
 
-const fetchEmployees = async (page: number, limit: number, status: string = 'active', search: string = ''): Promise<{ employees: Employee[]; meta: PaginatedMeta }> => {
+const fetchEmployees = async (page: number, limit: number, status: string = 'active', search: string = '', department: string = ''): Promise<{ employees: Employee[]; meta: PaginatedMeta }> => {
     const params: Record<string, string | number> = { page, limit, status };
     if (search.trim()) params.search = search.trim();
+    if (department.trim()) params.department = department.trim();
     const res = await api.get<{ success: boolean; data: Employee[]; meta: PaginatedMeta }>('/employees', { params });
     const employees: Employee[] = Array.isArray(res.data) ? res.data : [];
     const meta: PaginatedMeta = res.meta || { total: 0, page: 1, limit, totalPages: 1 };
@@ -47,9 +48,18 @@ export function useEmployeesPage() {
     }, [searchTerm]);
 
     const { data, isLoading } = useQuery({
-        queryKey: ['employees', page, limit, filters.status, debouncedSearch],
-        queryFn: () => fetchEmployees(page, limit, filters.status, debouncedSearch),
+        queryKey: ['employees', page, limit, filters.status, filters.department, debouncedSearch],
+        queryFn: () => fetchEmployees(page, limit, filters.status, debouncedSearch, filters.department),
         staleTime: 1000 * 60 * 5
+    });
+
+    const { data: departmentOptions = [] } = useQuery({
+        queryKey: ['employee-departments'],
+        queryFn: async () => {
+            const response = await api.get<{ data?: string[] }>('/employees/departments');
+            return Array.isArray(response.data) ? response.data : [];
+        },
+        staleTime: 1000 * 60 * 10
     });
 
     const employees = data?.employees || [];
@@ -70,17 +80,11 @@ export function useEmployeesPage() {
         }
     });
 
-    const departments = useMemo(() => {
-        const values = new Set(employees.map((employee) => employee.department || 'General'));
-        return Array.from(values).sort();
-    }, [employees]);
+    const departments = departmentOptions;
 
     const filteredEmployees = useMemo(() => {
-        return employees.filter((employee) => {
-            const matchesDepartment = !filters.department || (employee.department || 'General') === filters.department;
-            return matchesDepartment;
-        });
-    }, [employees, filters.department]);
+        return employees;
+    }, [employees]);
 
     const activeFilterCount = useMemo(() => {
         let count = 0;
@@ -89,7 +93,13 @@ export function useEmployeesPage() {
         return count;
     }, [filters]);
 
-    const clearFilters = () => setFilters({ department: '', status: 'all' });
+    const handleFiltersChange = (nextFilters: FilterState) => {
+        setFilters(nextFilters);
+        setPage(1);
+        setSelectedIds([]);
+    };
+
+    const clearFilters = () => handleFiltersChange({ department: '', status: 'all' });
 
     const handleSelectAll = (checked: boolean) => {
         setSelectedIds(checked ? filteredEmployees.map((employee) => employee.id) : []);
@@ -187,7 +197,7 @@ export function useEmployeesPage() {
         importBusy,
         setSearchTerm,
         setShowFilters,
-        setFilters,
+        setFilters: handleFiltersChange,
         setSelectedIds,
         setImportBusy,
         clearFilters,

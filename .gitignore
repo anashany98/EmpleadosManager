@@ -81,6 +81,10 @@ nginx/certbot-webroot/
 # Gemini artifacts (no subir al repo)
 .gemini/
 
+# Local audit/debug artifacts (may contain credentials or production-derived data)
+scratch/
+tmp/
+
 # Temporary PDF debug files
 backend/reproduction_output.pdf
 backend/reproduction_overflow.pdf

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "playwright";
 
-const BASE_URL = process.env.PW_BASE_URL || "http://localhost:5173";
+const BASE_URL = process.env.PW_BASE_URL || "http://localhost:17171";
 const LOGIN_USER = process.env.PW_USER || "admin@admin.com";
 const LOGIN_PASSWORD = process.env.PW_PASSWORD || "admin123";
 const TUNNEL_PASSWORD = process.env.PW_TUNNEL_PASSWORD || "";
@@ -26,6 +26,11 @@ const ROUTES = [
   "/vacations",
   "/expenses",
   "/reconciliation",
+  "/payroll/control",
+  "/absence-types",
+  "/analytics",
+  "/performance",
+  "/obras",
 ];
 
 const OUTPUT_DIR = path.resolve("output/playwright");
@@ -60,6 +65,10 @@ const run = async () => {
 
   page.on("console", (msg) => {
     if (msg.type() === "error") {
+      // Before authentication the app probes `/auth/me` and may attempt one
+      // refresh. Both correctly answer 401 when there is no session yet; the
+      // login assertion below is the authoritative check for this phase.
+      if (currentRoute === "/login" && /401 \(Unauthorized\)/i.test(msg.text())) return;
       report.consoleErrors.push({
         route: currentRoute,
         url: page.url(),
@@ -77,6 +86,12 @@ const run = async () => {
   });
 
   page.on("requestfailed", (request) => {
+    // Route changes intentionally close the long-lived notification SSE
+    // connection. Chromium reports that cancellation as ERR_ABORTED.
+    if (
+      request.url().includes("/api/notifications/stream") &&
+      request.failure()?.errorText === "net::ERR_ABORTED"
+    ) return;
     report.failedRequests.push({
       route: currentRoute,
       method: request.method(),
@@ -89,6 +104,11 @@ const run = async () => {
     if (!response.url().includes("/api/")) return;
     if (response.status() < 400) return;
     if (response.url().includes("/auth/me") && response.status() === 401) return;
+    if (
+      currentRoute === "/login" &&
+      response.url().includes("/auth/refresh") &&
+      response.status() === 401
+    ) return;
     let body = "";
     try {
       body = (await response.text()).slice(0, 300);
@@ -160,7 +180,10 @@ const run = async () => {
           timeout: 30000,
         });
         result.status = response?.status() ?? null;
-        result.navOk = true;
+        result.navOk = result.status === null || result.status < 400;
+        if (result.status !== null && result.status >= 400) {
+          result.visibleError = `HTTP ${result.status}`;
+        }
       } catch (error) {
         result.navOk = false;
         result.visibleError = String(error?.message || error);
@@ -172,7 +195,7 @@ const run = async () => {
 
       const errorCandidate = page
         .locator(
-          'text=/Error|Acceso denegado|No autorizado|No vinculado|No hay|Failed/i'
+          'text=/Error inesperado|Algo salió mal|Acceso denegado|No autorizado|No vinculado|Failed/i'
         )
         .first();
       if (await errorCandidate.isVisible().catch(() => false)) {
@@ -212,6 +235,18 @@ run()
       reportPath: "output/playwright/smoke-report.json",
     };
     console.log(JSON.stringify(summary, null, 2));
+    const brokenRoutes = report.routeChecks.filter(
+      (check) => !check.navOk || (check.status !== null && check.status >= 400)
+    );
+    if (
+      !report.login.success ||
+      brokenRoutes.length > 0 ||
+      report.apiErrors.length > 0 ||
+      report.pageErrors.length > 0 ||
+      report.failedRequests.length > 0
+    ) {
+      process.exitCode = 1;
+    }
   })
   .catch((error) => {
     saveReport();

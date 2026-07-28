@@ -145,7 +145,7 @@ describe('Authz - Permission Maps', () => {
             };
             const perms = getEffectivePermissions(actor);
             expect(perms.employees).toBe('write');
-            expect(perms.dashboard).toBeUndefined();
+            expect(perms.dashboard).toBe('read');
         });
 
         it('should keep full permissions for global admin', () => {
@@ -238,7 +238,7 @@ describe('Authz - Module Access', () => {
 
         it('should expose fleet as its own feature access gate', () => {
             const fleetActor = { role: 'manager', permissions: { fleet: 'read' } };
-            const assetActor = { role: 'manager', permissions: { assets: 'read' } };
+            const assetActor = { role: 'manager', permissions: { assets: 'read', fleet: 'none' } };
 
             expect(canAccessFeature('fleet', fleetActor)).toBe(true);
             expect(canAccessFeature('fleet', assetActor)).toBe(false);

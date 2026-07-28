@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+export const vacationTypeSchema = z.string()
+    .min(1)
+    .max(50)
+    .regex(/^[A-Z][A-Z0-9_]*$/, 'Código de ausencia inválido');
+
 export const vacationCreateSchema = z.object({
     body: z.object({
         employeeId: z.string().min(1, 'ID de empleado requerido'),
@@ -9,10 +14,7 @@ export const vacationCreateSchema = z.object({
         endDate: z.string().refine(val => !isNaN(Date.parse(val)), {
             message: 'Fecha de fin inválida'
         }),
-        type: z.enum([
-            'VACATION', 'SICK', 'BIRTH', 'MEDICAL_HOURS', 'PERSONAL', 'OTHER', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID',
-            'MATERNIDAD', 'PATERNIDAD', 'LACTANCIA', 'TELETRABAJO', 'PERMISO_SINDICAL', 'BAJA_MEDICA', 'OTROS'
-        ]).optional(),
+        type: vacationTypeSchema.optional(),
         status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED']).optional(),
         notes: z.string().max(1000).optional().nullable(),
         reason: z.string().max(1000).optional().nullable(),
@@ -30,10 +32,7 @@ export const vacationUpdateSchema = z.object({
         endDate: z.string().refine(val => !isNaN(Date.parse(val)), {
             message: 'Fecha de fin inválida'
         }).optional(),
-        type: z.enum([
-            'VACATION', 'SICK', 'BIRTH', 'MEDICAL_HOURS', 'PERSONAL', 'OTHER', 'SICK_LEAVE', 'PERSONAL_DAY', 'MATERNITY', 'PATERNITY', 'UNPAID',
-            'MATERNIDAD', 'PATERNIDAD', 'LACTANCIA', 'TELETRABAJO', 'PERMISO_SINDICAL', 'BAJA_MEDICA', 'OTROS'
-        ]).optional(),
+        type: vacationTypeSchema.optional(),
         notes: z.string().max(1000).optional().nullable(),
         reason: z.string().max(1000).optional().nullable(),
     }).refine(data => {

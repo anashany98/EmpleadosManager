@@ -30,6 +30,8 @@ export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
     'ausencias',
     'cronograma',
     'nominas',
+    'control-horario',
+    'dietas',
     ...(isAdmin
         ? [
             ...(isGlobalAdmin ? ['generar'] : []),
@@ -52,5 +54,7 @@ export const getEmployeeTabLabel = (tab: string) => {
     if (tab === 'generar') return 'Generar Doc.';
     if (tab === 'prl') return 'PRL / Formación';
     if (tab === 'ausencias') return 'Ausencias';
+    if (tab === 'control-horario') return 'Control Horario';
+    if (tab === 'dietas') return 'Dietas';
     return tab.charAt(0).toUpperCase() + tab.slice(1);
 };

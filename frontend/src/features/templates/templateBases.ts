@@ -20,7 +20,8 @@ const NON_VISUAL_TEMPLATE_TYPES = new Set(['MODEL_145']);
 export const BACKEND_CATALOG_TEMPLATE_TYPES = [
     'NDA', 'RGPD', 'UNIFORM', 'EPI', 'TECH_DEVICE',
     'CERTIFICADO_EMPRESA', 'CERTIFICADO_TRABAJO', 'CARTA_FORMAL',
-    'JUSTIFICANTE_AUSENCIA', 'FIRMA_DIETAS', 'ENTREGA_MATERIAL'
+    'JUSTIFICANTE_AUSENCIA', 'VACATION_REQUEST', 'FIRMA_DIETAS',
+    'OBRA_EXPENSE_RECEIPT', 'ENTREGA_MATERIAL'
 ] as const;
 
 export const DEFAULT_TEMPLATES: Template[] = [
@@ -28,7 +29,9 @@ export const DEFAULT_TEMPLATES: Template[] = [
     { id: 'certificado_trabajo', name: 'Certificado Trabajo', type: 'CERTIFICADO_TRABAJO' },
     { id: 'carta_formal', name: 'Carta Formal', type: 'CARTA_FORMAL' },
     { id: 'justificante_ausencia', name: 'Justificante Ausencia', type: 'JUSTIFICANTE_AUSENCIA' },
+    { id: 'vacation_request', name: 'Solicitud Vacaciones', type: 'VACATION_REQUEST' },
     { id: 'firma_dietas', name: 'Firma Dietas', type: 'FIRMA_DIETAS' },
+    { id: 'obra_expense_receipt', name: 'Recibí Dietas / Obra', type: 'OBRA_EXPENSE_RECEIPT' },
     { id: 'uniform', name: 'Entrega Uniforme', type: 'UNIFORM' },
     { id: 'epi', name: 'Entrega EPI', type: 'EPI' },
     { id: 'tech_device', name: 'Material Tecnologico', type: 'TECH_DEVICE' },
@@ -47,8 +50,11 @@ export const AVAILABLE_VARIABLES = [
     'empresa.codigoPostal', 'empresa.ciudad', 'empresa.provincia', 'empresa.email', 'empresa.telefono',
     'contrato.tipo', 'contrato.fechaInicio', 'contrato.fechaFin', 'contrato.puesto', 'contrato.salarioMensual',
     'ausencia.tipo', 'ausencia.fechaInicio', 'ausencia.fechaFin', 'ausencia.dias', 'ausencia.motivo',
+    'vacacion.fechaInicio', 'vacacion.fechaFin', 'vacacion.dias', 'vacacion.tipo', 'vacacion.motivo',
     'carta.asunto', 'carta.contenido',
     'dietas.concepto', 'dietas.importe', 'dietas.fecha', 'dietas.kilometros',
+    'obra.codigo', 'obra.nombre', 'obra.destino',
+    'gasto.concepto', 'gasto.fechaInicio', 'gasto.fechaFin', 'gasto.importeDiario', 'gasto.dias', 'gasto.importeTotal', 'gasto.detalle',
     'entrega.listado', 'entrega.dispositivo', 'entrega.numeroSerie', 'entrega.talla', 'entrega.cantidad',
     'firma.ciudad', 'firma.fecha', 'firma.autorizante',
     'fechaActual'
@@ -227,6 +233,18 @@ export const TEMPLATE_PRESETS: Record<string, TemplatePreset> = {
             ...dualSignatures(81)
         ]
     },
+    VACATION_REQUEST: {
+        name: 'Solicitud de Vacaciones',
+        elements: [
+            title('SOLICITUD DE VACACIONES'), ...companyHeader, ...employeeBlock(30),
+            { type: 'box', x: 10, y: 47, w: 80, h: 22, fillColor: LIGHT_BG, borderColor: '#e2e8f0' },
+            { type: 'text', x: 13, y: 50, w: 74, h: 4, text: 'Periodo: {{vacacion.fechaInicio}} - {{vacacion.fechaFin}}', fontSize: 12, fontWeight: 'bold' },
+            { type: 'text', x: 13, y: 55, w: 35, h: 4, text: 'Días: {{vacacion.dias}}', fontSize: 11 },
+            { type: 'text', x: 52, y: 55, w: 35, h: 4, text: 'Tipo: {{vacacion.tipo}}', fontSize: 11 },
+            { type: 'text', x: 13, y: 61, w: 74, h: 5, text: 'Motivo: {{vacacion.motivo}}', fontSize: 11 },
+            ...dualSignatures(80)
+        ]
+    },
     FIRMA_DIETAS: {
         name: 'Firma de Dietas',
         elements: [
@@ -238,6 +256,20 @@ export const TEMPLATE_PRESETS: Record<string, TemplatePreset> = {
             { type: 'text', x: 13, y: 54, w: 74, h: 4, text: 'Kilometros: {{dietas.kilometros}} km', fontSize: 12 },
             ...bodyBox(66, 9, 'La persona firmante declara que los gastos indicados son ciertos y corresponden a actividad laboral.'),
             ...dualSignatures(81)
+        ]
+    },
+    OBRA_EXPENSE_RECEIPT: {
+        name: 'Recibí de Dietas y Gastos de Obra',
+        elements: [
+            title('RECIBÍ'), ...companyHeader, ...employeeBlock(28),
+            { type: 'box', x: 10, y: 45, w: 80, h: 30, fillColor: LIGHT_BG, borderColor: '#e2e8f0' },
+            { type: 'text', x: 13, y: 48, w: 74, h: 4, text: 'Concepto: {{gasto.concepto}}', fontSize: 12, fontWeight: 'bold' },
+            { type: 'text', x: 13, y: 53, w: 74, h: 4, text: 'Periodo: {{gasto.fechaInicio}} - {{gasto.fechaFin}}', fontSize: 11 },
+            { type: 'text', x: 13, y: 58, w: 35, h: 4, text: 'Importe diario: {{gasto.importeDiario}}', fontSize: 11 },
+            { type: 'text', x: 52, y: 58, w: 35, h: 4, text: 'Días: {{gasto.dias}}', fontSize: 11 },
+            { type: 'text', x: 13, y: 63, w: 74, h: 4, text: 'Total: {{gasto.importeTotal}}', fontSize: 13, fontWeight: 'bold' },
+            { type: 'text', x: 13, y: 68, w: 74, h: 4, text: 'Obra: {{obra.codigo}} - {{obra.nombre}} · Destino: {{obra.destino}}', fontSize: 10 },
+            ...dualSignatures(82)
         ]
     },
     UNIFORM: {

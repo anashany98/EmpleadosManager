@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
     AlertCircle,
     Check,
+    ExternalLink,
     FileText,
     Loader2,
     Lock,
@@ -14,7 +15,7 @@ import {
     Sparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { api } from '../api/client';
+import { API_URL, api, getErrorMessage } from '../api/client';
 import {
     extractApiArray,
     getDocumentGenerationRequest,
@@ -48,6 +49,12 @@ interface InventoryItem {
 interface TemplateCardMeta {
     icon: typeof FileText;
     section: 'entrega' | 'legal' | 'rrhh';
+}
+
+interface GeneratedDocument {
+    documentId?: string;
+    fileName?: string;
+    fileUrl?: string;
 }
 
 const TEMPLATE_CARD_META: Record<string, TemplateCardMeta> = {
@@ -143,7 +150,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
     const [itemSearch, setItemSearch] = useState('');
     const [letterData, setLetterData] = useState({ asunto: '', contenido: '' });
     const [absenceData, setAbsenceData] = useState({ tipo: '', fechaInicio: '', fechaFin: '', dias: '', motivo: '' });
-    const [dietasData, setDietasData] = useState({ concepto: '', importe: '', fecha: '', kilometros: '' });
+    const [generatedDocument, setGeneratedDocument] = useState<GeneratedDocument | null>(null);
 
     useEffect(() => {
         const load = async () => {
@@ -198,8 +205,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
         try {
             const extraData: DocumentGeneratorExtraData = {
                 carta: letterData,
-                ausencia: absenceData,
-                dietas: dietasData
+                ausencia: absenceData
             };
 
             const { endpoint, payload } = getDocumentGenerationRequest({
@@ -211,11 +217,13 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                 extraData
             });
 
-            await api.post(endpoint, payload);
-            toast.success('Documento generado correctamente');
+            const response = await api.post<unknown>(endpoint, payload);
+            const generated = extractApiItem<GeneratedDocument>(response);
+            setGeneratedDocument(generated);
+            toast.success('Documento creado y guardado en el expediente');
             onDocumentGenerated?.();
-        } catch (err: any) {
-            toast.error(err.message || 'Error generating document');
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'No se pudo generar el documento'));
         } finally {
             setLoading(false);
         }
@@ -276,20 +284,20 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
             <button
                 key={template.type}
                 onClick={() => setDocType(template.type)}
-                className={`p-4 rounded-[2rem] border-2 transition-all flex flex-col items-center gap-2 text-center group min-h-[128px] ${
+                className={`flex min-h-[112px] flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors ${
                     isSelected
-                        ? 'bg-blue-50 dark:bg-blue-950/20 border-blue-500 text-blue-600 dark:text-blue-400 shadow-xl shadow-blue-500/10'
-                        : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 text-slate-500 hover:border-slate-200 dark:hover:border-slate-700'
+                        ? 'border-blue-500 bg-blue-50 text-blue-700 ring-2 ring-blue-100 dark:bg-blue-950/20 dark:text-blue-400'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900'
                 }`}
             >
-                <div className={`p-2.5 rounded-2xl transition-all ${isSelected ? 'bg-blue-500 text-white' : 'bg-slate-50 dark:bg-slate-800'}`}>
+                <div className={`rounded-lg p-2 transition-colors ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>
                     <Icon size={20} />
                 </div>
-                <span className="text-[10px] font-black uppercase tracking-widest leading-4 line-clamp-2">
+                <span className="line-clamp-2 text-sm font-semibold leading-4">
                     {template.name}
                 </span>
                 {statusText && (
-                    <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                    <span className="text-[10px] font-medium text-slate-400">
                         {statusText}
                     </span>
                 )}
@@ -317,7 +325,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                 </div>
             )}
 
-            <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 shadow-xl border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl -mr-32 -mt-32" />
 
                 <div className="relative z-10 space-y-8">
@@ -569,49 +577,11 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                     )}
 
                     {docType === 'FIRMA_DIETAS' && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-bottom-2 duration-300">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Concepto</label>
-                                <input
-                                    value={dietasData.concepto}
-                                    onChange={(event) => setDietasData((current) => ({ ...current, concepto: event.target.value }))}
-                                    className="w-full px-5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"
-                                    placeholder="Desplazamiento, comida, parking..."
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Importe</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
-                                    value={dietasData.importe}
-                                    onChange={(event) => setDietasData((current) => ({ ...current, importe: event.target.value }))}
-                                    className="w-full px-5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"
-                                    placeholder="0,00"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Fecha</label>
-                                <input
-                                    type="date"
-                                    value={dietasData.fecha}
-                                    onChange={(event) => setDietasData((current) => ({ ...current, fecha: event.target.value }))}
-                                    className="w-full px-5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Kilómetros</label>
-                                <input
-                                    type="number"
-                                    min="0"
-                                    step="0.1"
-                                    value={dietasData.kilometros}
-                                    onChange={(event) => setDietasData((current) => ({ ...current, kilometros: event.target.value }))}
-                                    className="w-full px-5 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border-none focus:ring-2 focus:ring-blue-500 text-sm font-bold"
-                                    placeholder="0"
-                                />
-                            </div>
+                        <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 text-blue-950">
+                            <p className="font-semibold">Los recibís de dietas se generan desde la pestaña Dietas.</p>
+                            <p className="mt-1 text-sm text-blue-800">
+                                Allí se usan directamente los gastos de las obras, sus fechas, el importe repartido y el empleado. Así no se duplican ni se escriben datos distintos a los contabilizados.
+                            </p>
                         </div>
                     )}
 
@@ -649,11 +619,30 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                         </div>
                     )}
 
-                    <div className="pt-6 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                    {generatedDocument && (
+                        <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p className="text-sm font-semibold text-emerald-900">Documento guardado en el expediente</p>
+                                <p className="text-xs text-emerald-700">{generatedDocument.fileName || 'Documento generado'}</p>
+                            </div>
+                            {generatedDocument.fileUrl && (
+                                <a
+                                    href={`${API_URL}${generatedDocument.fileUrl}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+                                >
+                                    <ExternalLink size={15} /> Abrir documento
+                                </a>
+                            )}
+                        </div>
+                    )}
+
+                    <div className="flex justify-end border-t border-slate-100 pt-6 dark:border-slate-800">
                         <button
                             onClick={handleGenerate}
-                            disabled={loading || (docType === 'TECH_DEVICE' && !selectedTechItem)}
-                            className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-slate-800 dark:hover:bg-slate-100 transition-all flex items-center gap-3 disabled:opacity-50 group active:scale-95"
+                            disabled={loading || docType === 'FIRMA_DIETAS' || (docType === 'TECH_DEVICE' && !selectedTechItem)}
+                            className="group flex min-h-11 items-center gap-3 rounded-lg bg-slate-900 px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-900"
                         >
                             {loading ? <Loader2 className="animate-spin" /> : <Sparkles className="group-hover:animate-pulse" />}
                             {loading ? 'Generando...' : 'Generar documento'}

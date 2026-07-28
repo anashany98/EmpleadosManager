@@ -1,4 +1,4 @@
-import { Building, CreditCard, Loader2, MessageCircle, Phone, Sparkles, Trash2 } from 'lucide-react';
+import { Building, CreditCard, Loader2, MessageCircle, Phone, RotateCcw, Sparkles, Trash2 } from 'lucide-react';
 import type { EmployeeViewRecord } from '../types';
 
 interface EmployeeDetailHeaderProps {
@@ -9,6 +9,7 @@ interface EmployeeDetailHeaderProps {
     onGenerateAccess: () => void;
     onOpenOnboarding: () => void;
     onOpenOffboarding: () => void;
+    onOpenReactivate: () => void;
     onEdit: () => void;
 }
 
@@ -20,6 +21,7 @@ export function EmployeeDetailHeader({
     onGenerateAccess,
     onOpenOnboarding,
     onOpenOffboarding,
+    onOpenReactivate,
     onEdit
 }: EmployeeDetailHeaderProps) {
   return (
@@ -34,6 +36,9 @@ export function EmployeeDetailHeader({
               ? `${employee.firstName || ''} ${employee.lastName || ''}`.trim()
               : employee.name}
           </h1>
+          <span className={`mt-2 inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold ${employee.active === false ? 'bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'}`}>
+            {employee.active === false ? 'Empleado inactivo' : 'Empleado activo'}
+          </span>
           <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-1 sm:mt-2 text-slate-500 dark:text-slate-400 text-xs sm:text-sm">
             <span className="flex items-center gap-1"><CreditCard size={14} /> {employee.dni}</span>
             <span className="flex items-center gap-1"><Building size={14} /> {employee.department}</span>
@@ -81,7 +86,7 @@ export function EmployeeDetailHeader({
 
       {canEdit && (
       <div className="flex gap-2 sm:gap-3 flex-wrap w-full md:w-auto">
-        {canManageLifecycle && (
+        {canManageLifecycle && employee.active !== false && (
           <button
             onClick={onOpenOnboarding}
             className="flex-1 md:flex-none px-3 sm:px-4 py-2.5 sm:py-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 font-semibold rounded-lg hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors flex items-center justify-center gap-2 border border-emerald-100 dark:border-emerald-900/30 text-xs sm:text-sm touch-active"
@@ -90,13 +95,22 @@ export function EmployeeDetailHeader({
             Onboarding
           </button>
         )}
-        {canManageLifecycle && (
+        {canManageLifecycle && employee.active !== false && (
           <button
             onClick={onOpenOffboarding}
             className="flex-1 md:flex-none px-3 sm:px-4 py-2.5 sm:py-2 bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-400 font-semibold rounded-lg hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors flex items-center justify-center gap-2 border border-rose-100 dark:border-rose-900/30 text-xs sm:text-sm touch-active"
           >
             <Trash2 size={16} />
             <span className="sm:inline">Tramitar Baja</span>
+          </button>
+        )}
+        {canManageLifecycle && employee.active === false && (
+          <button
+            onClick={onOpenReactivate}
+            className="flex-1 md:flex-none px-3 sm:px-4 py-2.5 sm:py-2 bg-emerald-700 text-white font-semibold rounded-lg hover:bg-emerald-800 transition-colors flex items-center justify-center gap-2 text-xs sm:text-sm"
+          >
+            <RotateCcw size={16} />
+            Reactivar empleado
           </button>
         )}
         <button onClick={onEdit} className="w-full md:w-auto px-4 py-2.5 sm:py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors shadow-lg shadow-blue-500/30 text-sm touch-active">

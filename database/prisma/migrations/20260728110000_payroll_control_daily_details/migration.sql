@@ -1,0 +1,9 @@
+ALTER TABLE "PayrollControlDailyEntry"
+    ALTER COLUMN "workedHours" SET DEFAULT 0,
+    ALTER COLUMN "workedHours" SET NOT NULL,
+    ADD COLUMN "discountHours" DECIMAL(8,2) NOT NULL DEFAULT 0,
+    ADD COLUMN "scheduledHours" DECIMAL(8,2) NOT NULL DEFAULT 0,
+    ADD COLUMN "overtimeHours" DECIMAL(8,2) NOT NULL DEFAULT 0,
+    ADD COLUMN "holidayOvertimeHours" DECIMAL(8,2) NOT NULL DEFAULT 0,
+    ADD COLUMN "dietAmount" DECIMAL(12,2) NOT NULL DEFAULT 0,
+    ADD COLUMN "isHoliday" BOOLEAN NOT NULL DEFAULT false;

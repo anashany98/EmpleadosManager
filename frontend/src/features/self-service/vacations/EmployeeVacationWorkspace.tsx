@@ -8,8 +8,10 @@ import { useConfirm } from '../../../context/ConfirmContext';
 import { useAuth } from '../../../contexts/AuthContext';
 import { VacationCalendarView } from './VacationCalendarView';
 import { VacationRequestCard } from './VacationRequestCard';
-import { ABSENCE_TYPES, type VacationBalanceSummary, type VacationRequest } from './types';
+import { type VacationBalanceSummary, type VacationRequest } from './types';
 import { calculateVacationStats, createVacationRequest } from './utils';
+import { useAbsenceTypeCatalog } from './useAbsenceTypeCatalog';
+import { notifyAbsenceUpdated } from './absenceEvents';
 
 type WorkspaceTab = 'REQUESTS' | 'CALENDAR';
 
@@ -52,14 +54,15 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
     const confirmAction = useConfirm();
     const actor = useMemo(() => normalizeActor(user), [user]);
     const canManageRequests = Boolean(actor && actor.role !== 'employee' && hasModuleAccess(actor, 'vacations', 'write'));
+    const { catalog: absenceTypes, activeCatalog } = useAbsenceTypeCatalog();
 
     // Tipos de ausencia que el workspace maneja en este modo:
     //  - 'vacation'  → solo VACATION
     //  - 'absence'   → todos los tipos definidos en ABSENCE_TYPES
     //                   excepto VACATION
     const availableTypes = useMemo(() => {
-        return Object.keys(ABSENCE_TYPES).filter((key) => (mode === 'vacation' ? key === 'VACATION' : key !== 'VACATION'));
-    }, [mode]);
+        return Object.keys(activeCatalog).filter((key) => (mode === 'vacation' ? key === 'VACATION' : key !== 'VACATION'));
+    }, [activeCatalog, mode]);
 
     const [activeTab, setActiveTab] = useState<WorkspaceTab>('REQUESTS');
     const [requests, setRequests] = useState<VacationRequest[]>([]);
@@ -67,6 +70,7 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [selectedRequest, setSelectedRequest] = useState<VacationRequest | null>(null);
+    const [editingRequest, setEditingRequest] = useState<VacationRequest | null>(null);
 
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -126,6 +130,23 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
         setType(mode === 'vacation' ? 'VACATION' : (availableTypes[0] ?? 'OTHER'));
         setReason('');
         setAttachment(null);
+        setEditingRequest(null);
+    };
+
+    const openCreateModal = () => {
+        resetForm();
+        setShowModal(true);
+    };
+
+    const openEditModal = (request: VacationRequest) => {
+        setEditingRequest(request);
+        setStartDate(request.startDate.slice(0, 10));
+        setEndDate(request.endDate.slice(0, 10));
+        setType(request.type);
+        setReason(request.reason || '');
+        setAttachment(null);
+        setSelectedRequest(null);
+        setShowModal(true);
     };
 
     const handleCreate = async (event: React.FormEvent) => {
@@ -133,19 +154,28 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
         setSubmitting(true);
 
         try {
-            await createVacationRequest({
-                employeeId,
-                startDate,
-                endDate,
-                type,
-                reason,
-                attachment
-            });
-
-            toast.success('Solicitud registrada');
+            if (editingRequest) {
+                await api.put(`/vacations/${editingRequest.id}`, { startDate, endDate, type, reason });
+                toast.success('Ausencia actualizada');
+            } else {
+                await createVacationRequest({
+                    employeeId,
+                    startDate,
+                    endDate,
+                    type,
+                    reason,
+                    attachment
+                });
+                toast.success('Solicitud registrada');
+            }
             setShowModal(false);
             resetForm();
             await fetchData();
+            notifyAbsenceUpdated({
+                employeeId,
+                requestId: editingRequest?.id,
+                action: editingRequest ? 'UPDATED' : 'CREATED'
+            });
         } catch (error) {
             toast.error(getErrorMessage(error));
         } finally {
@@ -173,6 +203,11 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                 setSelectedRequest(null);
             }
             await fetchData();
+            notifyAbsenceUpdated({
+                employeeId,
+                requestId: request.id,
+                action: 'DELETED'
+            });
         } catch (error) {
             toast.error(getErrorMessage(error));
         }
@@ -188,6 +223,11 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
             }
 
             await fetchData();
+            notifyAbsenceUpdated({
+                employeeId,
+                requestId,
+                action: 'STATUS_CHANGED'
+            });
         } catch (error) {
             toast.error(getErrorMessage(error));
         }
@@ -227,7 +267,7 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                     </div>
 
                     {canManageRequests && (
-                        <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/30">
+                        <button onClick={openCreateModal} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-500/30">
                             <Plus size={18} />
                             Nueva ausencia
                         </button>
@@ -282,6 +322,8 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                                 onApprove={canManageRequests ? () => void handleStatusUpdate(request.id, 'APPROVED') : undefined}
                                 onReject={canManageRequests ? () => void handleStatusUpdate(request.id, 'REJECTED') : undefined}
                                 onDelete={canManageRequests ? () => void handleDelete(request) : undefined}
+                                onEdit={canManageRequests ? () => openEditModal(request) : undefined}
+                                absenceTypes={absenceTypes}
                             />
                         ))}
                     </div>
@@ -294,6 +336,7 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                     title="Calendario del empleado"
                     scopeLabel="Vista mensual con ausencias aprobadas, pendientes y rechazadas."
                     onSelectRequest={setSelectedRequest}
+                    absenceTypes={absenceTypes}
                 />
             )}
 
@@ -314,6 +357,8 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                                     onApprove={canManageRequests ? () => void handleStatusUpdate(selectedRequest.id, 'APPROVED') : undefined}
                                     onReject={canManageRequests ? () => void handleStatusUpdate(selectedRequest.id, 'REJECTED') : undefined}
                                     onDelete={canManageRequests ? () => void handleDelete(selectedRequest) : undefined}
+                                    onEdit={canManageRequests ? () => openEditModal(selectedRequest) : undefined}
+                                    absenceTypes={absenceTypes}
                                 />
                             </div>
                         </motion.div>
@@ -326,8 +371,8 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
                         <motion.div initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }} className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden">
                             <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
-                                <h3 className="text-lg font-black text-slate-900 dark:text-white">Nueva ausencia</h3>
-                                <button onClick={() => setShowModal(false)}>
+                                <h3 className="text-lg font-black text-slate-900 dark:text-white">{editingRequest ? 'Modificar ausencia' : 'Nueva ausencia'}</h3>
+                                <button onClick={() => { setShowModal(false); resetForm(); }}>
                                     <X size={20} className="text-slate-400" />
                                 </button>
                             </div>
@@ -343,11 +388,11 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                                     </div>
                                 </div>
 
-                                <div className="space-y-1">
+                                {!editingRequest && <div className="space-y-1">
                                     <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
                                     <div className={`grid ${availableTypes.length > 6 ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
                                         {availableTypes.map((key) => {
-                                            const config = ABSENCE_TYPES[key];
+                                            const config = activeCatalog[key];
                                             if (!config) return null;
                                             return (
                                                 <button type="button" key={key} onClick={() => setType(key)} className={`p-2 rounded-xl border text-xs font-bold transition-all ${type === key ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
@@ -356,7 +401,7 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                                             );
                                         })}
                                     </div>
-                                </div>
+                                </div>}
 
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-slate-500 uppercase">Motivo</label>
@@ -378,7 +423,7 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
 
                                 <div className="pt-2">
                                     <button type="submit" disabled={submitting} className="w-full py-4 bg-indigo-600 text-white font-bold rounded-xl shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-indigo-500/20">
-                                        Registrar ausencia
+                                        {editingRequest ? 'Guardar modificación' : 'Registrar ausencia'}
                                     </button>
                                 </div>
                             </form>

@@ -27,6 +27,7 @@ export class EmployeeService {
     static async getAll(user: AuthenticatedRequest['user'], query: {
         search?: string;
         status?: string;
+        department?: string;
         page?: string;
         limit?: string;
     }) {
@@ -41,6 +42,7 @@ export class EmployeeService {
 
         const search = (query.search || '').trim();
         const status = query.status || 'active';
+        const department = (query.department || '').trim();
 
         const whereClause: any = {};
 
@@ -65,6 +67,10 @@ export class EmployeeService {
                 { lastName: { contains: search, mode: 'insensitive' } },
                 { dni: { contains: search, mode: 'insensitive' } }
             ];
+        }
+
+        if (department) {
+            whereClause.department = department;
         }
 
         const [total, employees] = await Promise.all([

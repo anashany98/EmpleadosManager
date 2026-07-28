@@ -10,7 +10,7 @@ export interface KPIData {
     departures: number;
     turnoverRate: number;
     avgTenure: number;
-    openPositions: number;
+    openPositions: number | null;
     pendingRequests: number;
 }
 
@@ -34,10 +34,12 @@ export interface HeatmapData {
 }
 
 export interface HiringFunnelData {
-    vacancies: number;
-    applications: number;
-    interviews: number;
-    offers: number;
+    available: boolean;
+    reason: string;
+    vacancies: number | null;
+    applications: number | null;
+    interviews: number | null;
+    offers: number | null;
     hired: number;
 }
 

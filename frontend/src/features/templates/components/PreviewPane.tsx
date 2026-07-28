@@ -11,9 +11,10 @@ interface PreviewPaneProps {
     variableContext: Record<string, unknown>;
     employeeId: string;
     showGrid?: boolean;
+    fullWidth?: boolean;
 }
 
-export function PreviewPane({ elements, variableContext, employeeId, showGrid }: PreviewPaneProps) {
+export function PreviewPane({ elements, variableContext, employeeId, showGrid, fullWidth = false }: PreviewPaneProps) {
     const [collapsed, setCollapsed] = useState(false);
 
     const context = useMemo(() => {
@@ -30,7 +31,7 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
     }
 
     return (
-        <aside className="flex w-[320px] flex-col border-l border-gray-200 bg-white">
+        <aside className={`flex flex-col border-l border-gray-200 bg-white ${fullWidth ? 'min-w-0 flex-1' : 'w-[320px]'}`}>
             <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2.5">
                 <div className="flex items-center gap-2">
                     <div className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-50">
@@ -38,15 +39,17 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid }:
                     </div>
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Vista previa</span>
                 </div>
-                <button type="button" onClick={() => setCollapsed(true)} className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600">
-                    <ChevronRight size={14} />
-                </button>
+                {!fullWidth && (
+                    <button type="button" onClick={() => setCollapsed(true)} className="rounded-lg p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600">
+                        <ChevronRight size={14} />
+                    </button>
+                )}
             </div>
             <div className="flex-1 overflow-auto bg-gray-50 p-4">
                 <div
-                    className="relative mx-auto origin-top bg-white overflow-hidden"
+                    className="relative mx-auto origin-top overflow-hidden bg-white"
                     style={{
-                        width: '210mm', maxWidth: '100%', aspectRatio: '210 / 297',
+                        width: '210mm', maxWidth: fullWidth ? 'min(100%, 210mm)' : '100%', aspectRatio: '210 / 297',
                         boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
                         borderRadius: '3px',
                         backgroundImage: showGrid ? 'radial-gradient(circle, #d1d5db 0.8px, transparent 0.8px)' : undefined,

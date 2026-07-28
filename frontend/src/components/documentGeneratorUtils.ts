@@ -92,7 +92,7 @@ const buildGenericTemplatePayload = (
     payload: {
         ...basePayload,
         templateType: docType,
-        ...(data ? { data } : {})
+        ...(data ? { extraContext: data } : {})
     }
 });
 

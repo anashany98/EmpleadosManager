@@ -1,6 +1,6 @@
 import { AVAILABLE_VARIABLES } from './templateBases';
 
-const VARIABLE_PATTERN = /\{\{\s*([\w.\-]+)\s*\}\}/g;
+const VARIABLE_PATTERN = /\{\{\s*([\w.-]+)\s*\}\}/g;
 
 const matchVariables = (content: string): RegExpExecArray[] => {
     const pattern = new RegExp(VARIABLE_PATTERN.source, 'g');

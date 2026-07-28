@@ -8,10 +8,50 @@ const EMPLOYEE_TIMELINE_AUDIT_ACTIONS = new Set([
     'IMPORT',
     'PRIVATE_NOTE_UPDATE',
     'VACATION_BALANCE_UPDATE',
+    'OFFBOARD_EMPLOYEE',
+    'REACTIVATE_EMPLOYEE',
     'DATA_CREATE',
     'DATA_UPDATE',
     'DATA_DELETE'
 ]);
+
+const FIELD_LABELS: Record<string, string> = {
+    firstName: 'nombre',
+    lastName: 'apellidos',
+    email: 'correo',
+    phone: 'teléfono',
+    address: 'dirección',
+    city: 'municipio',
+    postalCode: 'código postal',
+    department: 'departamento',
+    category: 'categoría',
+    contractType: 'tipo de contrato',
+    agreementType: 'convenio',
+    jobTitle: 'puesto',
+    province: 'provincia',
+    registeredIn: 'empadronamiento',
+    drivingLicenseType: 'permiso de conducir',
+    payrollAgencyEmployeeCode: 'código de gestoría',
+    subaccount465: 'subcuenta 465'
+};
+
+function humanizeAuditMetadata(meta: Record<string, unknown>): string {
+    if (typeof meta.info === 'string' && meta.info.trim()) return meta.info;
+    if (typeof meta.message === 'string' && meta.message.trim()) return meta.message;
+    const rawFields = Array.isArray(meta.fields)
+        ? meta.fields
+        : meta.fields && typeof meta.fields === 'object'
+            ? Object.keys(meta.fields as Record<string, unknown>)
+            : [];
+    if (rawFields.length > 0) {
+        const labels = rawFields.map((field) => FIELD_LABELS[String(field)] || String(field));
+        const visible = labels.slice(0, 6).join(', ');
+        const remaining = labels.length - 6;
+        return `Campos modificados: ${visible}${remaining > 0 ? ` y ${remaining} más` : ''}.`;
+    }
+    if (typeof meta.reason === 'string' && meta.reason.trim()) return `Motivo: ${meta.reason}.`;
+    return 'Cambio administrativo registrado.';
+}
 
 export interface TimelineEvent {
     id: string;
@@ -39,9 +79,15 @@ export const TimelineService = {
                 medicalReviews: true,
                 trainings: true,
                 expenses: true,
+                obraExpenses: {
+                    include: {
+                        obra: { select: { code: true, name: true } }
+                    }
+                },
                 payrollRows: {
                     include: { batch: true }
-                }
+                },
+                employmentPeriods: { orderBy: { startDate: 'asc' } }
             }
         });
 
@@ -55,6 +101,10 @@ export const TimelineService = {
         });
 
         const events: TimelineEvent[] = [];
+        const configuredAbsenceTypes = await prisma.absenceTypeConfig.findMany({
+            select: { code: true, name: true }
+        });
+        const absenceLabels = new Map(configuredAbsenceTypes.map((item) => [item.code, item.name]));
 
         // 0. Audit Logs (Combined)
         // Fetch logs where the employee is the "target" (e.g. they were updated by someone else)
@@ -70,13 +120,16 @@ export const TimelineService = {
 
         uniqueLogs
             .filter(log => EMPLOYEE_TIMELINE_AUDIT_ACTIONS.has(log.action))
+            .filter(log => employee.employmentPeriods.length === 0 || !['OFFBOARD_EMPLOYEE', 'REACTIVATE_EMPLOYEE'].includes(log.action))
             .forEach(log => {
                 let title = log.action;
                 let description: string;
+                let lifecycleType: TimelineEvent['type'] = 'INCIDENT';
+                let eventDate = log.createdAt;
 
                 try {
                     const meta = log.metadata ? JSON.parse(log.metadata) : {};
-                    description = meta.info || meta.message || JSON.stringify(meta);
+                    description = humanizeAuditMetadata(meta);
 
                     // Humanize titles
                     if (log.action === 'UPDATE' || log.action === 'DATA_UPDATE') title = 'Modificación de ficha';
@@ -87,6 +140,18 @@ export const TimelineService = {
                     if (log.action === 'VACATION_BALANCE_UPDATE') title = 'Ajuste de vacaciones';
                     if (log.action.startsWith('BULK')) title = 'Acción Masiva: ' + log.action.replace('BULK_', '');
                     if (log.action === 'GENERATE_DOCUMENT') title = 'Documento Generado';
+                    if (log.action === 'OFFBOARD_EMPLOYEE') {
+                        title = 'Baja en la empresa';
+                        lifecycleType = 'EXIT';
+                        if (meta.exitDate) eventDate = new Date(meta.exitDate);
+                        description = `Fin de la relación laboral. Motivo: ${meta.reason || 'No especificado'}`;
+                    }
+                    if (log.action === 'REACTIVATE_EMPLOYEE') {
+                        title = 'Reactivación del empleado';
+                        lifecycleType = 'ENTRY';
+                        if (meta.reactivationDate) eventDate = new Date(meta.reactivationDate);
+                        description = `Empleado reactivado. Motivo: ${meta.reason || 'No especificado'}`;
+                    }
 
                 } catch {
                     description = 'Sin detalles';
@@ -94,16 +159,36 @@ export const TimelineService = {
 
                 events.push({
                     id: log.id,
-                    date: log.createdAt,
-                    type: 'INCIDENT',
+                    date: eventDate,
+                    type: lifecycleType,
                     title,
                     description: `${description} (Por: ${(log as any).user?.email || 'Sistema'})`,
                     category: 'AUDIT'
                 });
             });
 
-        // 1. Alta (Entry Date)
-        if (employee.entryDate) {
+        // 1. Periodos laborales (fuente histórica; la ficha solo refleja el estado actual)
+        employee.employmentPeriods.forEach((period, index) => {
+            events.push({
+                id: `employment-entry-${period.id}`,
+                date: period.startDate,
+                type: 'ENTRY',
+                title: index === 0 ? 'Alta en la empresa' : 'Reactivación del empleado',
+                description: period.startReason || `Inicio de relación laboral como ${employee.jobTitle || 'Empleado'}`
+            });
+            if (period.endDate) {
+                events.push({
+                    id: `employment-exit-${period.id}`,
+                    date: period.endDate,
+                    type: 'EXIT',
+                    title: 'Baja en la empresa',
+                    description: `Fin de la relación laboral. Motivo: ${period.endReason || 'No especificado'}`
+                });
+            }
+        });
+
+        // Compatibilidad con empleados aún no migrados (por ejemplo, sin empresa).
+        if (employee.employmentPeriods.length === 0 && employee.entryDate) {
             events.push({
                 id: `entry-${employee.id}`,
                 date: employee.entryDate,
@@ -112,9 +197,7 @@ export const TimelineService = {
                 description: `Inicio de contrato como ${employee.jobTitle || 'Empleado'}`
             });
         }
-
-        // 2. Baja (Exit Date)
-        if (employee.exitDate) {
+        if (employee.employmentPeriods.length === 0 && employee.exitDate && !uniqueLogs.some((log) => log.action === 'OFFBOARD_EMPLOYEE')) {
             events.push({
                 id: `exit-${employee.id}`,
                 date: employee.exitDate,
@@ -160,7 +243,7 @@ export const TimelineService = {
                 'PERMISO_SINDICAL': 'Permiso Sindical'
             };
             
-            const title = typeTitles[vac.type || 'VACATION'] || 'Ausencia';
+            const title = absenceLabels.get(vac.type || 'VACATION') || typeTitles[vac.type || 'VACATION'] || 'Ausencia';
             
             events.push({
                 id: vac.id,
@@ -176,12 +259,14 @@ export const TimelineService = {
 
         // 5. Nóminas
         employee.payrollRows.forEach(row => {
+            const gross = Number(row.bruto).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
+            const net = Number(row.neto).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' });
             events.push({
                 id: row.id,
                 date: new Date(row.batch.year, row.batch.month - 1, 1),
                 type: 'PAYROLL',
                 title: `Nómina ${row.batch.month}/${row.batch.year}`,
-                description: `Bruto: ${row.bruto}€ | Neto: ${row.neto}€`,
+                description: `Bruto: ${gross} · Neto: ${net}`,
                 amount: Number(row.neto)
             });
         });
@@ -224,6 +309,28 @@ export const TimelineService = {
                 amount: exp.amount ? exp.amount.toNumber() : null,
                 status: exp.status,
                 fileUrl: exp.receiptUrl ? `/api/expenses/${exp.id}/receipt` : null
+            });
+        });
+
+        employee.obraExpenses.forEach(expense => {
+            const categoryLabels: Record<string, string> = {
+                PER_DIEM: 'Dieta',
+                LODGING: 'Hospedaje',
+                FLIGHT: 'Vuelo',
+                TRANSPORT: 'Transporte',
+                CAR_RENTAL: 'Alquiler de coche',
+                OTHER: 'Otro gasto'
+            };
+            events.push({
+                id: `obra-expense-${expense.id}`,
+                date: expense.date,
+                endDate: expense.endDate,
+                type: 'EXPENSE',
+                title: categoryLabels[expense.type] || 'Gasto de obra',
+                description: `${expense.obra.code} - ${expense.obra.name}${expense.description ? ` · ${expense.description}` : ''}`,
+                amount: Number(expense.amount),
+                status: expense.status,
+                category: expense.type
             });
         });
 

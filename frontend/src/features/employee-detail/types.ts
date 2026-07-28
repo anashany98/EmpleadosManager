@@ -15,6 +15,7 @@ export interface EmployeeFormData {
     city: string;
     postalCode: string;
     subaccount465: string;
+    payrollAgencyEmployeeCode: string;
     socialSecurityNumber: string;
     iban: string;
     companyId: string;
@@ -107,6 +108,7 @@ export interface EmployeeViewRecord {
     companyPhone?: string;
     gender?: string;
     subaccount465?: string;
+    payrollAgencyEmployeeCode?: string;
     vacationDaysTotal?: number;
     entryDate?: string;
     seniorityDate?: string;
@@ -192,6 +194,7 @@ export const createDefaultEmployeeFormData = (): EmployeeFormData => ({
     city: '',
     postalCode: '',
     subaccount465: '',
+    payrollAgencyEmployeeCode: '',
     socialSecurityNumber: '',
     iban: '',
     companyId: '',

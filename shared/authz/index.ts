@@ -165,6 +165,7 @@ export const APP_FEATURES = {
     inbox: { module: 'inbox', level: 'read', roles: COMPANY_STAFF_ROLES },
     payrollImport: { module: 'payroll', level: 'read', roles: COMPANY_STAFF_ROLES },
     payrollBatch: { module: 'payroll', level: 'read', roles: COMPANY_STAFF_ROLES },
+    payrollControl: { module: 'payroll', level: 'read', roles: COMPANY_STAFF_ROLES },
     myDocuments: { module: 'documents', level: 'read', requireEmployee: true },
     vacationsSelf: { module: 'vacations', level: 'read', requireEmployee: true },
     vacationsPortal: { module: 'vacations', level: 'read' },

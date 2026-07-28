@@ -25,7 +25,7 @@ export class AnalyticsService {
         departures: number;
         turnoverRate: number;
         avgTenure: number;
-        openPositions: number;
+        openPositions: number | null;
         pendingRequests: number;
     }> {
         const { companyId } = filters;
@@ -33,10 +33,6 @@ export class AnalyticsService {
         // Current period (last 30 days)
         const now = new Date();
         const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-        void thirtyDaysAgo;
-        const _sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-        void _sixtyDaysAgo;
-
         // Build where clause
         const companyFilter = companyId ? { companyId } : {};
 
@@ -57,7 +53,13 @@ export class AnalyticsService {
         const newHires = await prisma.employee.count({
             where: {
                 ...companyFilter,
-                createdAt: { gte: thirtyDaysAgo }
+                OR: [
+                    { entryDate: { gte: thirtyDaysAgo, lte: now } },
+                    {
+                        entryDate: null,
+                        createdAt: { gte: thirtyDaysAgo, lte: now }
+                    }
+                ]
             }
         });
 
@@ -106,8 +108,9 @@ export class AnalyticsService {
         } while (cursor);
         const avgTenure = countWithDate > 0 ? totalTenure / countWithDate : 0;
 
-        // Open positions (placeholder - would need a JobPosition model)
-        const openPositions = 0;
+        // No existe todavía una fuente ATS/vacantes en el modelo. `null`
+        // distingue "sin datos" de una cifra real de cero.
+        const openPositions = null;
 
         // Pending requests (vacation requests pending)
         const pendingRequests = await prisma.vacation.count({
@@ -144,14 +147,26 @@ export class AnalyticsService {
 
         for (let i = months - 1; i >= 0; i--) {
             const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+            const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59, 999);
 
             // Active employees at end of month
             const count = await prisma.employee.count({
                 where: {
-                    active: true,
                     ...companyFilter,
-                    createdAt: { lte: monthEnd }
+                    AND: [
+                        {
+                            OR: [
+                                { entryDate: { lte: monthEnd } },
+                                { entryDate: null, createdAt: { lte: monthEnd } }
+                            ]
+                        },
+                        {
+                            OR: [
+                                { exitDate: null },
+                                { exitDate: { gt: monthEnd } }
+                            ]
+                        }
+                    ]
                 }
             });
 
@@ -159,10 +174,21 @@ export class AnalyticsService {
             const newHires = await prisma.employee.count({
                 where: {
                     ...companyFilter,
-                    createdAt: {
-                        gte: monthStart,
-                        lte: monthEnd
-                    }
+                    OR: [
+                        {
+                            entryDate: {
+                                gte: monthStart,
+                                lte: monthEnd
+                            }
+                        },
+                        {
+                            entryDate: null,
+                            createdAt: {
+                                gte: monthStart,
+                                lte: monthEnd
+                            }
+                        }
+                    ]
                 }
             });
 
@@ -303,33 +329,39 @@ export class AnalyticsService {
     static async getHiringFunnel(
         filters: AnalyticsFilters = {}
     ): Promise<{
-        vacancies: number;
-        applications: number;
-        interviews: number;
-        offers: number;
+        available: false;
+        reason: string;
+        vacancies: null;
+        applications: null;
+        interviews: null;
+        offers: null;
         hired: number;
     }> {
         const { companyId } = filters;
         const companyFilter = companyId ? { companyId } : {};
 
-        // This is a simplified version - in a real system you'd have a proper ATS
-        // For now, we'll use employee creation as a proxy for hiring
-        
         const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
         const hired = await prisma.employee.count({
             where: {
                 ...companyFilter,
-                createdAt: { gte: thirtyDaysAgo }
+                OR: [
+                    { entryDate: { gte: thirtyDaysAgo } },
+                    {
+                        entryDate: null,
+                        createdAt: { gte: thirtyDaysAgo }
+                    }
+                ]
             }
         });
 
-        // Simulated funnel ratios (in a real system these would come from actual data)
         return {
-            vacancies: Math.round(hired * 3), // ~3 vacancies per hire
-            applications: Math.round(hired * 15), // ~15 applications per hire
-            interviews: Math.round(hired * 5), // ~5 interviews per hire
-            offers: Math.round(hired * 1.2), // ~1.2 offers per hire
+            available: false,
+            reason: 'No hay una fuente ATS configurada para vacantes, candidaturas, entrevistas y ofertas.',
+            vacancies: null,
+            applications: null,
+            interviews: null,
+            offers: null,
             hired
         };
     }
@@ -347,7 +379,7 @@ export class AnalyticsService {
 
         for (let i = months - 1; i >= 0; i--) {
             const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
-            const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+            const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59, 999);
 
             const overtime = await prisma.overtimeEntry.aggregate({
                 where: {
@@ -390,7 +422,8 @@ export class AnalyticsService {
             '1-2 años': 0,
             '2-5 años': 0,
             '5-10 años': 0,
-            '> 10 años': 0
+            '> 10 años': 0,
+            'Sin fecha de alta': 0
         };
 
         // Cursor pagination for tenure distribution
@@ -409,7 +442,7 @@ export class AnalyticsService {
 
             batch.forEach(emp => {
                 if (!emp.entryDate) {
-                    ranges['< 1 año']++;
+                    ranges['Sin fecha de alta']++;
                     return;
                 }
 

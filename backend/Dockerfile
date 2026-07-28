@@ -36,6 +36,7 @@ RUN ln -s /app/backend/node_modules /app/node_modules
 # Copy shared modules and database schema
 COPY shared ./shared
 COPY database ./database
+COPY documentos-referencia ./documentos-referencia
 
 # Copy application source code
 COPY backend/tsconfig.json ./backend/tsconfig.json
@@ -58,9 +59,8 @@ RUN cd backend && npm run build
 FROM node:22.12-bullseye-slim AS runner
 
 # Match the runtime OS with the Prisma client generated in the build stage.
-# Add the official PostgreSQL apt repo to get client v15 (matches postgres:15.4-alpine
-# used in production). Default Bullseye only has v13 which is incompatible
-# with the v15 server (pg_dump refuses with "server version mismatch").
+# Production runs PostgreSQL 17. pg_dump refuses to dump a newer server with
+# an older client, so the runtime must ship the matching v17 client.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     gnupg \
@@ -73,7 +73,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpango-1.0-0 \
     libjpeg62-turbo \
     libgif7 \
-    postgresql-client-15 \
+    postgresql-client-17 \
     gosu \
  && rm -rf /var/lib/apt/lists/*
 
@@ -93,6 +93,7 @@ COPY --from=builder --chown=appuser:appgroup /app/backend/assets ./backend/asset
 COPY --from=builder --chown=appuser:appgroup /app/backend/instrument.js ./backend/instrument.js
 COPY --from=builder --chown=appuser:appgroup /app/shared ./shared
 COPY --from=builder --chown=appuser:appgroup /app/database ./database
+COPY --from=builder --chown=appuser:appgroup /app/documentos-referencia ./documentos-referencia
 # Scripts de seguridad para deploy (safe-migrate.sh, safe-docker.sh, etc.)
 # Los copiamos como root y luego el entrypoint los prepara con permisos de appuser.
 COPY scripts/safe-migrate.sh /app/scripts/safe-migrate.sh
@@ -102,7 +103,7 @@ RUN chmod +x /app/scripts/safe-migrate.sh && chown -R appuser:appgroup /app/scri
 # Create directories with proper permissions
 # Ensure uploads/documents, data/inbox exists and is writable by appuser
 RUN mkdir -p ./backend/uploads/documents ./backend/uploads/vehicle-documents ./backend/uploads/template-logos ./backend/data/inbox ./backend/data/inbox_temp ./backend/backups/snapshots ./backend/backups/full && \
-    chown -R appuser:appgroup /app && \
+    chown -R appuser:appgroup /app/backend/uploads /app/backend/data /app/backend/backups && \
     chmod -R 775 /app/backend/uploads /app/backend/data /app/backend/backups
 
 # Use wrapper script to fix permissions at runtime

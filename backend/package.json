@@ -28,13 +28,12 @@
     "@aws-sdk/client-s3": "^3.620.1",
     "@aws-sdk/s3-request-presigner": "^3.620.1",
     "@prisma/client": "^5.x",
-    "@sentry/node": "^8.55.1",
-    "@sentry/profiling-node": "^9.47.1",
+    "@sentry/node": "^10.66.0",
     "@types/nodemailer": "^7.0.5",
     "@types/pdfkit": "^0.17.4",
     "@types/qrcode": "^1.5.6",
-    "archiver": "^7.0.1",
-    "axios": "^1.15.0",
+    "archiver": "^8.0.0",
+    "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.67.3",
     "canvas": "^3.2.0",
@@ -99,5 +98,11 @@
     "typescript": "^5.3.3",
     "typescript-eslint": "^8.59.1",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.8",
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
   }
 }

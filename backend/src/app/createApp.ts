@@ -16,6 +16,7 @@ import { registerRoutes } from './registerRoutes';
 import { initializeHealthChecker, healthController } from './health.controller';
 import { initSocketHandlers } from '../websocket/handler';
 import { prisma } from '../lib/prisma';
+import { AppError } from '../utils/AppError';
 
 const allowedOrigins = (process.env.CORS_ORIGIN || '')
     .split(',')
@@ -100,9 +101,17 @@ function configureSecurity(app: Express): void {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const redisStoreOpts = { sendCommand: (...args: any[]) => (redis as any).call(...args) };
 
+    // A normal dashboard session fans out into many API calls (calendar,
+    // notifications, counters and filters). Keep the test threshold low enough
+    // to exercise the limiter, while allowing sustained real SPA use. Sensitive
+    // routes retain their stricter dedicated limiters below.
+    const intranetLimit = process.env.NODE_ENV === 'test'
+        ? 200
+        : Number(process.env.INTRANET_RATE_LIMIT_PER_MINUTE || 1000);
+
     const intranetLimiter = rateLimit({
         windowMs: 60 * 1000,
-        max: 200,
+        max: Number.isFinite(intranetLimit) && intranetLimit > 0 ? intranetLimit : 1000,
         standardHeaders: true,
         legacyHeaders: false,
         message: 'Too many requests from this IP, please try again after 1 minute',
@@ -158,14 +167,14 @@ function configureSecurity(app: Express): void {
             }
 
             if (allowedOrigins.length === 0) {
-                throw new Error('FATAL: CORS_ORIGIN must be set');
+                return callback(new AppError('CORS no está configurado', 503));
             }
 
             if (isAllowedOrigin(origin)) {
                 return callback(null, true);
             }
 
-            return callback(new Error('Not allowed by CORS'));
+            return callback(new AppError('Origen no permitido', 403));
         },
         credentials: true
     }));
@@ -204,7 +213,7 @@ export function createApp(): { app: Express; server: ReturnType<Express['listen'
                 if (!origin || isAllowedOrigin(origin)) {
                     callback(null, true);
                 } else {
-                    callback(new Error('Not allowed by CORS'));
+                    callback(new AppError('Origen no permitido', 403));
                 }
             },
             credentials: true

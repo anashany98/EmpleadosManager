@@ -57,7 +57,7 @@
           memory: 512M
     command: >
       sh -c 'if [ -z "$$REDIS_PASSWORD" ]; then echo "REDIS_PASSWORD is required"; exit 1; fi;
-      exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru --save 900 1 --save 300 10 --save 60 10000'
+      exec redis-server --requirepass "$$REDIS_PASSWORD" --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction --save 900 1 --save 300 10 --save 60 10000'
     healthcheck:
       test: ['CMD-SHELL', 'redis-cli -a "$${REDIS_PASSWORD}" ping | grep PONG']
       interval: 10s
@@ -219,11 +219,13 @@
       # `*.template` con envsubst. NO montar ./nginx/conf.d/:
       # lo que se escriba en él se borraría al primer restart.
       - ./nginx/templates:/etc/nginx/templates:ro
+      - ./nginx/start.sh:/etc/nginx/start.sh:ro
       - ./nginx/certbot-webroot:/var/www/certbot:ro # Let's Encrypt ACME challenges
       - ./nginx/ssl/letsencrypt:/etc/letsencrypt:ro # Let's Encrypt certificates
     depends_on:
       - frontend
       - backend
+    entrypoint: ['/bin/sh', '/etc/nginx/start.sh']
     networks:
       - manager_network
     restart: always
@@ -286,7 +288,8 @@
   #
   # One-time setup: run scripts/setup-onedrive.sh to create the rclone.conf
   # (interactive OAuth in browser). Until that is done, this container waits
-  # patiently (no restart storm) and stays unhealthy.
+  # patiently (no restart storm). Its logs make clear that remote copying is
+  # pending; health only becomes sync-sensitive once rclone.conf exists.
   #
   # To disable OneDrive entirely, comment out this whole service block.
   rclone-onedrive:
@@ -295,29 +298,30 @@
     environment:
       - ONEDRIVE_REMOTE=${ONEDRIVE_REMOTE:-onedrive}
       - ONEDRIVE_PATH=${ONEDRIVE_PATH:-rrhh-backups}
-    command: >
-      sh -c "
-      echo '[rclone] Esperando a /config/rclone/rclone.conf...';
-      while [ ! -f /config/rclone/rclone.conf ]; do
-        sleep 60;
-      done;
-      echo '[rclone] rclone.conf detectado, arrancando sync loop (cada 24h)';
-      while true; do
-        echo \"[rclone] sync started at $$(date -Iseconds)\";
-        rclone sync /data \"\$$ONEDRIVE_REMOTE:\$$ONEDRIVE_PATH\"
-          --log-level INFO
-          --log-file /logs/rclone.log
-          --use-json-log
-          --stats 5m
-          --transfers 4
-          --checkers 8
-          --delete-during
-          --retries 3
-          --low-level-retries 10
-          && touch /logs/last-sync;
-        echo \"[rclone] sync finished at $$(date -Iseconds), next in 24h\";
-        sleep 86400;
-      done"
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        echo '[rclone] Esperando a /config/rclone/rclone.conf...';
+        while [ ! -f /config/rclone/rclone.conf ]; do
+          sleep 60;
+        done;
+        echo '[rclone] rclone.conf detectado, arrancando sync loop (cada 24h)';
+        while true; do
+          echo \"[rclone] sync started at $$(date -Iseconds)\";
+          rclone sync /data \"\$$ONEDRIVE_REMOTE:\$$ONEDRIVE_PATH\"
+            --log-level INFO
+            --log-file /logs/rclone.log
+            --use-json-log
+            --stats 5m
+            --transfers 4
+            --checkers 8
+            --delete-during
+            --retries 3
+            --low-level-retries 10
+            && touch /logs/last-sync;
+          echo \"[rclone] sync finished at $$(date -Iseconds), next in 24h\";
+          sleep 86400;
+        done
     volumes:
       - rclone_config:/config/rclone:ro
       - backup_data:/data:ro
@@ -331,7 +335,7 @@
     healthcheck:
       # Falla si el ultimo sync exitoso tiene >25h de antiguedad (24h + buffer).
       # El marker /logs/last-sync solo se toca cuando rclone sync termina con exito.
-      test: ['CMD-SHELL', 'test -f /logs/last-sync && find /logs/last-sync -mmin -1500 | grep -q .']
+      test: ['CMD-SHELL', 'test ! -f /config/rclone/rclone.conf || (test -f /logs/last-sync && find /logs/last-sync -mmin -1500 | grep -q .)']
       interval: 1h
       timeout: 5s
       retries: 2

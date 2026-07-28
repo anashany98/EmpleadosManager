@@ -1,8 +1,8 @@
-import { Check, ExternalLink, FileText, Trash2, X } from 'lucide-react';
+import { Check, ExternalLink, FileText, Pencil, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api, API_URL } from '../../../api/client';
-import { ABSENCE_TYPES, CalendarIconSmall, formatVacationRange, type VacationRequest } from './types';
+import { ABSENCE_TYPES, CalendarIconSmall, formatVacationRange, type AbsenceTypeConfig, type VacationRequest } from './types';
 
 interface VacationRequestCardProps {
     request: VacationRequest;
@@ -10,6 +10,8 @@ interface VacationRequestCardProps {
     onApprove?: (comment?: string) => void;
     onReject?: (comment?: string) => void;
     onDelete?: () => void;
+    onEdit?: () => void;
+    absenceTypes?: Record<string, AbsenceTypeConfig>;
     onDocumentGenerated?: (docUrl: string) => void;
 }
 
@@ -19,11 +21,13 @@ export function VacationRequestCard({
     onApprove,
     onReject,
     onDelete,
+    onEdit,
+    absenceTypes = ABSENCE_TYPES,
     onDocumentGenerated
 }: VacationRequestCardProps) {
     const [comment, setComment] = useState('');
     const [generatingDoc, setGeneratingDoc] = useState(false);
-    const config = ABSENCE_TYPES[request.type] || ABSENCE_TYPES.VACATION;
+    const config = absenceTypes[request.type] || ABSENCE_TYPES[request.type] || ABSENCE_TYPES.OTHER;
     const Icon = config.icon;
 
     const handleApprove = () => {
@@ -133,8 +137,14 @@ export function VacationRequestCard({
                 )}
             </div>
 
-            {(onDelete || (canManage && request.status === 'PENDING')) && (
+            {(onDelete || onEdit || (canManage && request.status === 'PENDING')) && (
                 <div className="flex items-center gap-2 mt-2 md:mt-0">
+                    {onEdit && (
+                        <button onClick={onEdit} className="px-4 py-2 bg-indigo-50 text-indigo-700 rounded-xl font-bold hover:bg-indigo-100 transition-colors flex items-center gap-2 dark:bg-indigo-950/30 dark:text-indigo-300">
+                            <Pencil size={16} />
+                            Modificar
+                        </button>
+                    )}
                     {onDelete && (
                         <button onClick={onDelete} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-xl font-bold hover:bg-slate-200 transition-colors flex items-center gap-2 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">
                             <Trash2 size={16} />

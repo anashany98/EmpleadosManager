@@ -17,14 +17,15 @@ import {
     User,
     X,
     Download,
-    Bell
+    Bell,
+    AlertTriangle
 } from 'lucide-react';
 import { format, startOfMonth, endOfMonth } from 'date-fns';
 import { hasModuleAccess, normalizeActor } from '@shared/authz';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
-import { ABSENCE_TYPES } from '../features/self-service/vacations/types';
+import { useAbsenceTypeCatalog } from '../features/self-service/vacations/useAbsenceTypeCatalog';
 
 type UnifiedEventType = 'vacation-own' | 'vacation-team' | 'birthday' | 'event' | 'holiday' | 'fichaje';
 type UnifiedEventSource = 'vacation' | 'calendar_event' | 'birthday' | 'holiday';
@@ -152,6 +153,7 @@ function getEventSubtitle(event: UnifiedCalendarEvent): string {
 }
 
 export default function CalendarPage() {
+    const { activeCatalog: absenceTypes } = useAbsenceTypeCatalog();
     const { user } = useAuth();
     const actor = useMemo(() => normalizeActor(user), [user]);
     const canManageCalendarEvents = Boolean(actor && actor.role !== 'employee' && hasModuleAccess(actor, 'calendar', 'write'));
@@ -320,6 +322,12 @@ export default function CalendarPage() {
 
     useEffect(() => {
         void fetchData();
+    }, [fetchData]);
+
+    useEffect(() => {
+        const refreshAbsences = () => void fetchData();
+        window.addEventListener('absence-updated', refreshAbsences);
+        return () => window.removeEventListener('absence-updated', refreshAbsences);
     }, [fetchData]);
 
     const filteredEvents = useMemo(() => {
@@ -655,7 +663,7 @@ export default function CalendarPage() {
                         <div className="flex flex-wrap gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                             <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">
                                 <CalendarIcon size={14} className="text-indigo-500" />
-                                Solo se muestran vacaciones aprobadas en esta vista
+                                Se muestran vacaciones y ausencias aprobadas
                             </span>
                             <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 dark:bg-slate-800">
                                 <FileText size={14} className="text-slate-500" />
@@ -1022,7 +1030,7 @@ export default function CalendarPage() {
                                 <div>
                                     <label className="mb-1 block text-xs font-bold uppercase text-slate-500">Tipo de ausencia</label>
                                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                                        {Object.entries(ABSENCE_TYPES).map(([key, config]) => (
+                                        {Object.entries(absenceTypes).map(([key, config]) => (
                                             <button
                                                 key={key}
                                                 type="button"

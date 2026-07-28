@@ -1,22 +1,46 @@
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
 import { Bell, Info, AlertTriangle, CheckCircle, AlertOctagon, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
+interface NotificationItem {
+    id: string;
+    title: string;
+    message: string;
+    type: 'SUCCESS' | 'WARNING' | 'ERROR' | 'INFO';
+    read: boolean;
+    link?: string;
+}
+
 export default function NotificationBell() {
-    const [notifications, setNotifications] = useState<any[]>([]);
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
     const [focusedIndex, setFocusedIndex] = useState(-1);
 
-    useEffect(() => {
-        fetchNotifications();
-        const interval = setInterval(fetchNotifications, 30000); // Poll every 30s
+    const fetchNotifications = useCallback(async () => {
+        try {
+            const res = await api.get('/notifications');
+            if (res.success) {
+                setNotifications(res.data.notifications);
+                setUnreadCount(res.data.unreadCount);
+            }
+        } catch (error) {
+            console.error(error);
+        }
+    }, []);
 
+    useEffect(() => {
+        void fetchNotifications();
+        const interval = window.setInterval(() => void fetchNotifications(), 30000);
+        return () => window.clearInterval(interval);
+    }, [fetchNotifications]);
+
+    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setIsOpen(false);
@@ -34,23 +58,10 @@ export default function NotificationBell() {
         document.addEventListener('keydown', handleKeyDown);
 
         return () => {
-            clearInterval(interval);
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, []);
-
-    const fetchNotifications = async () => {
-        try {
-            const res = await api.get('/notifications');
-            if (res.success) {
-                setNotifications(res.data.notifications);
-                setUnreadCount(res.data.unreadCount);
-            }
-        } catch (error) {
-            console.error(error);
-        }
-    };
+    }, [isOpen]);
 
     const markRead = async (id: string) => {
         try {

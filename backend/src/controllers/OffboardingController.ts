@@ -40,5 +40,24 @@ export const OffboardingController = {
         } catch (error) {
             next(error);
         }
+    },
+
+    reactivate: async (req: Request, res: Response, next: NextFunction) => {
+        try {
+            const { employeeId } = req.params;
+            const { reactivationDate, reason } = req.body;
+            const userId = (req as any).user?.id;
+            if (!reactivationDate || !reason || String(reason).trim().length < 5) {
+                return ApiResponse.error(res, 'La reactivación requiere fecha y un motivo de al menos 5 caracteres.', 400);
+            }
+            const employee = await OffboardingService.reactivateEmployee(employeeId, {
+                reactivationDate,
+                reason: String(reason).trim(),
+                userId
+            });
+            return ApiResponse.success(res, employee, 'Empleado reactivado. La baja anterior permanece en el historial.');
+        } catch (error) {
+            next(error);
+        }
     }
 };

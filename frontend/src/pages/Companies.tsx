@@ -1,73 +1,146 @@
-import { useState, useEffect } from 'react';
-import { Plus, Building2, Trash2, Save, X, MapPin, Pencil } from 'lucide-react';
-import { api } from '../api/client';
+import { useCallback, useState, useEffect } from 'react';
+import { Plus, Building2, Trash2, Save, X, MapPin, Pencil, AlertTriangle, RefreshCw } from 'lucide-react';
+import { api, getErrorMessage } from '../api/client';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 
 import { useConfirm } from '../context/ConfirmContext';
 
+interface Company {
+    id: string;
+    name: string;
+    cif: string;
+    legalRep?: string | null;
+    address?: string | null;
+    postalCode?: string | null;
+    city?: string | null;
+    province?: string | null;
+    country?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    officeLatitude?: number | null;
+    officeLongitude?: number | null;
+    allowedRadius?: number | null;
+}
+
+interface CompanyForm {
+    name: string;
+    cif: string;
+    legalRep: string;
+    address: string;
+    postalCode: string;
+    city: string;
+    province: string;
+    country: string;
+    email: string;
+    phone: string;
+    officeLatitude: string;
+    officeLongitude: string;
+    allowedRadius: number;
+}
+
+const emptyCompanyForm = (): CompanyForm => ({
+    name: '', cif: '', legalRep: '', address: '', postalCode: '',
+    city: '', province: '', country: '', email: '', phone: '',
+    officeLatitude: '', officeLongitude: '', allowedRadius: 100
+});
+
 export default function Companies() {
     const { user } = useAuth();
     const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
     const confirmAction = useConfirm();
-    const [companies, setCompanies] = useState<any[]>([]);
+    const [companies, setCompanies] = useState<Company[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [newCompany, setNewCompany] = useState({
-        name: '', cif: '', legalRep: '', address: '', postalCode: '',
-        city: '', province: '', country: '', email: '', phone: '',
-        officeLatitude: '', officeLongitude: '', allowedRadius: 100
-    });
+    const [newCompany, setNewCompany] = useState<CompanyForm>(emptyCompanyForm);
+
+    const fetchCompanies = useCallback(async () => {
+        setLoading(true);
+        setLoadError(null);
+        try {
+            const res = await api.get<{ data?: Company[] }>('/companies');
+            setCompanies(res.data || []);
+        } catch (err) {
+            setLoadError(getErrorMessage(err, 'No se pudieron cargar las empresas'));
+        } finally {
+            setLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
         fetchCompanies();
-    }, []);
-
-    const fetchCompanies = async () => {
-        try {
-            const res = await api.get('/companies');
-            setCompanies(res.data || res || []);
-        } catch (err) {
-            console.error(err);
-        }
-    };
+    }, [fetchCompanies]);
 
     const resetForm = () => {
-        setNewCompany({
-            name: '', cif: '', legalRep: '', address: '', postalCode: '',
-            city: '', province: '', country: '', email: '', phone: '',
-            officeLatitude: '', officeLongitude: '', allowedRadius: 100
-        });
+        setNewCompany(emptyCompanyForm());
         setEditingId(null);
         setIsAdding(false);
     };
 
-    const handleEdit = (company: any) => {
+    const handleEdit = (company: Company) => {
         setNewCompany({
-            ...company,
-            officeLatitude: company.officeLatitude || '',
-            officeLongitude: company.officeLongitude || '',
-            allowedRadius: company.allowedRadius || 100
+            name: company.name,
+            cif: company.cif,
+            legalRep: company.legalRep ?? '',
+            address: company.address ?? '',
+            postalCode: company.postalCode ?? '',
+            city: company.city ?? '',
+            province: company.province ?? '',
+            country: company.country ?? '',
+            email: company.email ?? '',
+            phone: company.phone ?? '',
+            officeLatitude: company.officeLatitude?.toString() ?? '',
+            officeLongitude: company.officeLongitude?.toString() ?? '',
+            allowedRadius: company.allowedRadius ?? 100,
         });
         setEditingId(company.id);
         setIsAdding(true);
     };
 
     const handleSave = async () => {
-        if (!newCompany.name || !newCompany.cif) return toast.error('Nombre y CIF son obligatorios');
+        const name = newCompany.name.trim();
+        const cif = newCompany.cif.trim().toUpperCase();
+        if (name.length < 2 || cif.length < 3) return toast.error('Revisa el nombre fiscal y el CIF/NIF');
+        if (newCompany.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newCompany.email)) {
+            return toast.error('El correo electrónico no es válido');
+        }
+
+        const latitude = newCompany.officeLatitude === '' ? null : Number(newCompany.officeLatitude);
+        const longitude = newCompany.officeLongitude === '' ? null : Number(newCompany.officeLongitude);
+        if (latitude !== null && (!Number.isFinite(latitude) || latitude < -90 || latitude > 90)) {
+            return toast.error('La latitud debe estar entre -90 y 90');
+        }
+        if (longitude !== null && (!Number.isFinite(longitude) || longitude < -180 || longitude > 180)) {
+            return toast.error('La longitud debe estar entre -180 y 180');
+        }
+
+        const payload = {
+            ...newCompany,
+            name,
+            cif,
+            officeLatitude: latitude,
+            officeLongitude: longitude,
+        };
+
+        setSaving(true);
         try {
             if (editingId) {
-                await api.put(`/companies/${editingId}`, newCompany);
+                await api.put(`/companies/${editingId}`, payload);
                 toast.success('Empresa actualizada correctamente');
             } else {
-                await api.post('/companies', newCompany);
+                await api.post('/companies', payload);
                 toast.success('Empresa creada correctamente');
             }
             resetForm();
-            fetchCompanies();
+            await fetchCompanies();
         } catch (err) {
-            toast.error(editingId ? 'Error al actualizar' : 'Error al crear empresa');
+            toast.error(getErrorMessage(err, editingId ? 'Error al actualizar' : 'Error al crear empresa'));
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -86,7 +159,7 @@ export default function Companies() {
             toast.success('Empresa eliminada');
             fetchCompanies();
         } catch (err) {
-            toast.error('Error al eliminar. Asegúrate de que no tenga empleados asociados.');
+            toast.error(getErrorMessage(err, 'No se pudo eliminar la empresa'));
         }
     };
 
@@ -109,6 +182,20 @@ export default function Companies() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <AnimatePresence>
+                    {loading && !isAdding && (
+                        <div className="col-span-full flex items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white p-10 text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+                            <RefreshCw className="animate-spin" size={18} /> Cargando empresas…
+                        </div>
+                    )}
+                    {loadError && !isAdding && (
+                        <div className="col-span-full rounded-2xl border border-red-200 bg-red-50 p-6 text-center dark:border-red-900/60 dark:bg-red-950/20">
+                            <AlertTriangle className="mx-auto text-red-600" size={24} />
+                            <p className="mt-2 text-sm font-semibold text-red-800 dark:text-red-200">{loadError}</p>
+                            <button type="button" onClick={fetchCompanies} className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">
+                                Reintentar
+                            </button>
+                        </div>
+                    )}
                     {isAdding && (
                         <motion.div
                             initial={{ opacity: 0, scale: 0.9 }}
@@ -252,8 +339,8 @@ export default function Companies() {
 
                             <div className="flex gap-3 justify-end mt-8 pt-6 border-t border-slate-100 dark:border-slate-800">
                                 <button onClick={resetForm} className="px-6 py-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors font-medium">Cancelar</button>
-                                <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-2.5 rounded-xl flex items-center gap-2 transition-colors font-bold shadow-lg shadow-blue-500/20">
-                                    <Save size={18} /> {editingId ? 'Actualizar Empresa' : 'Guardar Empresa'}
+                                <button disabled={saving} onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60 text-white px-8 py-2.5 rounded-xl flex items-center gap-2 transition-colors font-bold shadow-lg shadow-blue-500/20">
+                                    {saving ? <RefreshCw size={18} className="animate-spin" /> : <Save size={18} />} {saving ? 'Guardando…' : editingId ? 'Actualizar Empresa' : 'Guardar Empresa'}
                                 </button>
                             </div>
                         </motion.div>

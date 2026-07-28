@@ -344,35 +344,30 @@ export class InsightController {
             const startOfPeriod = new Date();
             startOfPeriod.setFullYear(now.getFullYear() - 1); // Last 12 months
 
-            // Active at start: (Entry < Start) AND (Exit is NULL OR Exit > Start)
-            const startCount = await prisma.employee.count({
+            const startPeriods = await prisma.employmentPeriod.findMany({
                 where: {
                     ...companyFilter,
-                    entryDate: { lte: startOfPeriod },
-                    OR: [
-                        { exitDate: null },
-                        { exitDate: { gt: startOfPeriod } }
-                    ]
-                }
+                    startDate: { lte: startOfPeriod },
+                    OR: [{ endDate: null }, { endDate: { gt: startOfPeriod } }]
+                },
+                select: { employeeId: true }
             });
+            const startCount = new Set(startPeriods.map((period) => period.employeeId)).size;
 
-            // Active at end: (Entry < Now) AND (Exit is NULL OR Exit > Now)
-            const endCount = await prisma.employee.count({
+            const endPeriods = await prisma.employmentPeriod.findMany({
                 where: {
                     ...companyFilter,
-                    entryDate: { lte: now },
-                    OR: [
-                        { exitDate: null },
-                        { exitDate: { gt: now } }
-                    ]
-                }
+                    startDate: { lte: now },
+                    OR: [{ endDate: null }, { endDate: { gt: now } }]
+                },
+                select: { employeeId: true }
             });
+            const endCount = new Set(endPeriods.map((period) => period.employeeId)).size;
 
-            // Leavers: Exit between Start and Now
-            const leavers = await prisma.employee.count({
+            const leavers = await prisma.employmentPeriod.count({
                 where: {
                     ...companyFilter,
-                    exitDate: {
+                    endDate: {
                         gte: startOfPeriod,
                         lte: now
                     }

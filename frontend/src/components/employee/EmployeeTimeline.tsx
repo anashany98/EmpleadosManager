@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, API_URL } from '../../api/client';
 import {
     Circle, FileText,
     Calendar, GraduationCap, Receipt, HeartPulse,
-    UserPlus, UserMinus, ShieldAlert, History, Clock
+    UserPlus, UserMinus, ShieldAlert, History, Clock, RefreshCw, Search
 } from 'lucide-react';
 import { format, isToday, isYesterday, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -17,6 +17,8 @@ interface TimelineEvent {
     amount?: number;
     fileUrl?: string;
     category?: string;
+    status?: string;
+    endDate?: string;
 }
 
 interface EmployeeTimelineProps {
@@ -131,23 +133,42 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
     const [events, setEvents] = useState<TimelineEvent[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [filter, setFilter] = useState<string>('ALL');
+    const [query, setQuery] = useState('');
+    const [loadError, setLoadError] = useState(false);
 
-    useEffect(() => {
-        const fetchTimeline = async () => {
-            try {
-                const res = await api.get(`/employees/${employeeId}/timeline`);
-                setEvents(res.data?.data || res.data || []);
-            } catch (error) {
-                console.error('Error fetching timeline', error);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchTimeline();
+    const fetchTimeline = useCallback(async () => {
+        setIsLoading(true);
+        setLoadError(false);
+        try {
+            const res = await api.get(`/employees/${employeeId}/timeline`);
+            setEvents(res.data?.data || res.data || []);
+        } catch (error) {
+            console.error('Error fetching timeline', error);
+            setLoadError(true);
+        } finally {
+            setIsLoading(false);
+        }
     }, [employeeId]);
 
-    const availableTypes = ['ALL', ...Array.from(new Set(events.map(e => e.type)))];
-    const filteredEvents = filter === 'ALL' ? events : events.filter(e => e.type === filter);
+    useEffect(() => {
+        void fetchTimeline();
+    }, [fetchTimeline]);
+
+    useEffect(() => {
+        const refresh = (event: Event) => {
+            const detail = (event as CustomEvent<{ employeeId?: string }>).detail;
+            if (!detail?.employeeId || detail.employeeId === employeeId) void fetchTimeline();
+        };
+        window.addEventListener('absence-updated', refresh);
+        return () => window.removeEventListener('absence-updated', refresh);
+    }, [employeeId, fetchTimeline]);
+
+    const availableTypes = useMemo(() => ['ALL', ...Array.from(new Set(events.map(e => e.type)))], [events]);
+    const filteredEvents = useMemo(() => events.filter((event) => {
+        if (filter !== 'ALL' && event.type !== filter) return false;
+        const text = `${event.title} ${event.description || ''} ${getConfig(event.type).label}`.toLowerCase();
+        return !query.trim() || text.includes(query.trim().toLowerCase());
+    }), [events, filter, query]);
 
     // ── Loading state ────────────────────────────────────────
     if (isLoading) {
@@ -167,7 +188,7 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
     }
 
     // ── Empty state ──────────────────────────────────────────
-    if (events.length === 0) {
+    if (!loadError && events.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center p-16 text-center">
                 <div className="w-20 h-20 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
@@ -179,9 +200,35 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
         );
     }
 
+    if (loadError) {
+        return (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-8 text-center dark:border-rose-900 dark:bg-rose-950/20">
+                <p className="font-bold text-rose-800 dark:text-rose-300">No se pudo cargar el cronograma.</p>
+                <button type="button" onClick={() => void fetchTimeline()} className="mt-4 inline-flex items-center gap-2 rounded-xl bg-rose-700 px-4 py-2 text-sm font-semibold text-white">
+                    <RefreshCw size={15} />
+                    Reintentar
+                </button>
+            </div>
+        );
+    }
+
     // ── Main timeline ────────────────────────────────────────
     return (
         <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-950 p-5 text-white shadow-sm dark:border-slate-800">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                    <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">Vida laboral</p>
+                        <h2 className="mt-1 text-xl font-extrabold">Cronograma completo</h2>
+                        <p className="mt-1 text-sm text-slate-400">{events.length} hitos · altas, bajas, ausencias, nóminas y documentación en una sola secuencia.</p>
+                    </div>
+                    <label className="relative block w-full lg:w-80">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar en el historial…" className="w-full rounded-xl border border-slate-700 bg-slate-900 py-2.5 pl-10 pr-3 text-sm text-white outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20" />
+                    </label>
+                </div>
+            </div>
+
             {/* Filter pills */}
             {availableTypes.length > 2 && (
                 <div className="flex flex-wrap gap-2 pb-2">
@@ -208,6 +255,11 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
                     style={{ left: '23px' }}
                 />
 
+                {filteredEvents.length === 0 && (
+                    <div className="ml-14 rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500 dark:border-slate-700">
+                        No hay hitos que coincidan con los filtros.
+                    </div>
+                )}
                 <div className="space-y-3">
                     {filteredEvents.map((event, index) => {
                         const config = getConfig(event.type);
@@ -223,7 +275,7 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
                                 {/* Icon node */}
                                 <div className="relative z-10 flex-shrink-0">
                                     <div
-                                        className={`w-12 h-12 rounded-2xl flex items-center justify-center ${config.bg} ring-1 ${config.ring} transition-transform group-hover:scale-110 group-hover:rotate-3`}
+                                        className={`w-12 h-12 rounded-xl flex items-center justify-center ${config.bg} ring-1 ${config.ring} transition-transform group-hover:scale-105`}
                                     >
                                         <Icon size={20} className={config.color} />
                                     </div>
@@ -250,6 +302,12 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
                                         </div>
                                     </div>
 
+                                    {event.endDate && new Date(event.endDate).toDateString() !== new Date(event.date).toDateString() && (
+                                        <p className="mb-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                            Periodo: {new Date(event.date).toLocaleDateString('es-ES')} — {new Date(event.endDate).toLocaleDateString('es-ES')}
+                                        </p>
+                                    )}
+
                                     {event.description && (
                                         <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed">
                                             {event.description}
@@ -257,6 +315,11 @@ export default function EmployeeTimeline({ employeeId }: EmployeeTimelineProps) 
                                     )}
 
                                     <div className="flex items-center gap-3 mt-2">
+                                        {event.status && (
+                                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${event.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' : event.status === 'REJECTED' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                {event.status === 'APPROVED' ? 'Aprobada' : event.status === 'REJECTED' ? 'Rechazada' : 'Pendiente'}
+                                            </span>
+                                        )}
                                         {event.amount !== undefined && event.amount > 0 && (
                                             <span className="inline-flex items-center font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm bg-emerald-100/60 dark:bg-emerald-900/30 px-2.5 py-1 rounded-lg">
                                                 {event.amount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}

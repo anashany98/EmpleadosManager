@@ -110,7 +110,7 @@ if (!reachable) {
 }
 
 const child = process.platform === 'win32'
-    ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/c', `npx prisma ${args.slice(1).join(' ')}`], {
+    ? spawn(process.env.ComSpec || 'cmd.exe', ['/d', '/c', `npx -p prisma@5.22.0 prisma ${args.slice(1).join(' ')}`], {
         cwd: repoRoot,
         stdio: 'inherit',
         env: {
@@ -119,7 +119,7 @@ const child = process.platform === 'win32'
             DATABASE_URL: effectiveDatabaseUrl
         }
     })
-    : spawn('npx', args, {
+    : spawn('npx', ['-p', 'prisma@5.22.0', 'prisma', ...args.slice(1)], {
         cwd: repoRoot,
         stdio: 'inherit',
         env: {

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowLeft, Loader2, Save } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -9,6 +9,7 @@ import OnboardingWizard from '../components/OnboardingWizard';
 import { useAuth } from '../contexts/AuthContext';
 import { EDIT_TABS, getViewTabs } from '../features/employee-detail/constants';
 import { EmployeeDetailHeader } from '../features/employee-detail/components/EmployeeDetailHeader';
+import { ReactivateEmployeeDialog } from '../features/employee-detail/components/ReactivateEmployeeDialog';
 import { EmployeeDetailTabs } from '../features/employee-detail/components/EmployeeDetailTabs';
 import { EmployeeEditTabContent } from '../features/employee-detail/components/EmployeeEditTabContent';
 import { EmployeeViewTabContent } from '../features/employee-detail/components/EmployeeViewTabContent';
@@ -26,6 +27,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
     const isAdmin = user?.role === 'admin';
     const isGlobalAdmin = isAdmin && !user?.companyId;
     const canEdit = isAdmin;
+    const [showReactivateDialog, setShowReactivateDialog] = useState(false);
 
     const detail = useEmployeeDetail({
         employeeId,
@@ -71,6 +73,7 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                     onGenerateAccess={detail.handleGenerateAccess}
                     onOpenOnboarding={() => detail.setShowOnboardingWizard(true)}
                     onOpenOffboarding={() => detail.setShowOffboardingWizard(true)}
+                    onOpenReactivate={() => setShowReactivateDialog(true)}
                     onEdit={detail.enterEditMode}
                 />
 
@@ -131,6 +134,19 @@ export default function EmployeeDetail(props: { employeeId?: string }) {
                         onSuccess={() => {
                             detail.setShowOffboardingWizard(false);
                             navigate('/employees');
+                        }}
+                    />
+                )}
+
+                {showReactivateDialog && (
+                    <ReactivateEmployeeDialog
+                        employeeId={employeeId}
+                        employeeName={getEmployeeDisplayName(detail.employeeView)}
+                        onClose={() => setShowReactivateDialog(false)}
+                        onSuccess={() => {
+                            setShowReactivateDialog(false);
+                            detail.setEmployeeView((current) => current ? { ...current, active: true, exitDate: undefined, lowReason: undefined } : current);
+                            detail.setActiveTab('cronograma');
                         }}
                     />
                 )}

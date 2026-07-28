@@ -37,7 +37,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-leaflet": "^5.0.0",
-    "react-router-dom": "^7.15.0",
+    "react-router-dom": "7.18.1",
     "react-signature-canvas": "^1.1.0-alpha.2",
     "recharts": "^3.6.0",
     "socket.io-client": "^4.8.3",
@@ -72,6 +72,7 @@
     "vitest": "^4.0.18"
   },
   "overrides": {
-    "node-fetch": "2.7.0"
+    "node-fetch": "2.7.0",
+    "ws": "8.21.1"
   }
 }

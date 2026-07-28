@@ -139,7 +139,7 @@ describe('document generator request builder', () => {
                 employeeId: 'emp-1',
                 authorName: 'Responsable',
                 templateType: 'FIRMA_DIETAS',
-                data: {
+                extraContext: {
                     dietas: {
                         concepto: 'Desplazamiento',
                         importe: 120.5,

@@ -5,10 +5,8 @@ import {
     UserMinus, 
     TrendingUp, 
     Clock, 
-    Briefcase,
-    RefreshCw,
-    Calendar,
-    Filter
+    ClipboardList,
+    RefreshCw
 } from 'lucide-react';
 import { useState } from 'react';
 import {
@@ -35,7 +33,7 @@ export default function AnalyticsDashboard() {
     const [period, setPeriod] = useState<TimePeriod>('year');
     
     // Queries
-    const { data: summary, isLoading: summaryLoading, refetch } = useAnalyticsSummary();
+    const { isLoading: summaryLoading, refetch } = useAnalyticsSummary();
     const { data: kpis } = useKPIs();
     const { data: trends } = useTrends(period);
     const { data: departments } = useDepartmentBreakdown();
@@ -50,50 +48,44 @@ export default function AnalyticsDashboard() {
         {
             title: 'Total Empleados',
             value: kpis.totalEmployees,
-            change: 2.5,
-            changeType: 'positive' as const,
             icon: Users,
             color: 'blue' as const,
+            description: 'Plantilla histórica registrada',
         },
         {
             title: 'Nuevas Contrataciones',
             value: kpis.newHires,
-            change: 15,
-            changeType: 'positive' as const,
             icon: UserPlus,
             color: 'emerald' as const,
+            description: 'Últimos 30 días',
         },
         {
             title: 'Bajas',
             value: kpis.departures,
-            change: -8,
-            changeType: 'negative' as const,
             icon: UserMinus,
             color: 'red' as const,
+            description: 'Últimos 30 días',
         },
         {
             title: 'Tasa de Rotación',
             value: `${kpis.turnoverRate}%`,
-            change: -2.1,
-            changeType: 'positive' as const,
             icon: TrendingUp,
             color: 'purple' as const,
+            description: 'Calculada con bajas de 30 días',
         },
         {
             title: 'Antigüedad Promedio',
             value: `${kpis.avgTenure.toFixed(1)} años`,
-            change: 0.3,
-            changeType: 'positive' as const,
             icon: Clock,
             color: 'amber' as const,
+            description: 'Solo empleados con fecha de alta',
         },
         {
-            title: 'Vacantes Abiertas',
-            value: kpis.openPositions,
-            change: 0,
-            changeType: 'neutral' as const,
-            icon: Briefcase,
+            title: 'Solicitudes Pendientes',
+            value: kpis.pendingRequests,
+            icon: ClipboardList,
             color: 'cyan' as const,
+            description: 'Vacaciones y ausencias por revisar',
         },
     ] : [];
 
@@ -217,12 +209,16 @@ export default function AnalyticsDashboard() {
                         >
                             <HiringFunnelWidget 
                                 data={{
-                                    applicants: hiringFunnel?.applications || 0,
-                                    interviews: hiringFunnel?.interviews || 0,
-                                    offers: hiringFunnel?.offers || 0,
+                                    available: hiringFunnel?.available ?? false,
+                                    reason: hiringFunnel?.reason || 'No hay una fuente ATS configurada.',
+                                    applicants: hiringFunnel?.applications ?? null,
+                                    interviews: hiringFunnel?.interviews ?? null,
+                                    offers: hiringFunnel?.offers ?? null,
                                     hired: hiringFunnel?.hired || 0,
-                                    conversionRate: hiringFunnel?.hired ? (hiringFunnel.hired / (hiringFunnel.applications || 1)) * 100 : 0,
-                                    avgTimeToHire: 30
+                                    conversionRate: hiringFunnel?.applications
+                                        ? (hiringFunnel.hired / hiringFunnel.applications) * 100
+                                        : null,
+                                    avgTimeToHire: null
                                 }} 
                             />
                         </motion.div>

@@ -10,8 +10,55 @@ import {
     isVacationType,
     upsertEmployeeVacationBalance
 } from './VacationBalanceService';
+import { HolidayService } from './HolidayService';
 
-export async function validateVacationRequest(employeeId: string, start: Date, end: Date, type?: string, tx?: Prisma.TransactionClient) {
+export interface AbsenceRule {
+    annualLimitDays: number | null;
+    countsForBalance: boolean;
+}
+
+async function enforceAnnualTypeLimit(
+    employeeId: string,
+    type: string,
+    start: Date,
+    requestedDays: number,
+    rule: AbsenceRule | undefined,
+    db: Prisma.TransactionClient | typeof prisma,
+    excludeId?: string
+) {
+    if (!rule?.annualLimitDays) return;
+    const year = start.getUTCFullYear();
+    const from = new Date(Date.UTC(year, 0, 1));
+    const to = new Date(Date.UTC(year, 11, 31, 23, 59, 59, 999));
+    const used = await db.vacation.aggregate({
+        where: {
+            employeeId,
+            type,
+            id: excludeId ? { not: excludeId } : undefined,
+            status: { in: ['PENDING', 'APPROVED', 'EXISTING'] },
+            startDate: { lte: to },
+            endDate: { gte: from }
+        },
+        _sum: { days: true }
+    });
+    const total = (used._sum.days || 0) + requestedDays;
+    if (total > rule.annualLimitDays) {
+        throw new AppError(
+            `Excede el límite anual de ${rule.annualLimitDays} días para este tipo de ausencia (acumulado: ${total}).`,
+            400
+        );
+    }
+}
+
+export async function validateVacationRequest(
+    employeeId: string,
+    start: Date,
+    end: Date,
+    type?: string,
+    tx?: Prisma.TransactionClient,
+    rule?: AbsenceRule,
+    companyId?: string
+) {
     const db = tx || prisma;
 
     // Las fechas de inicio pueden ser anteriores a hoy (importar histórico, registrar
@@ -30,9 +77,12 @@ export async function validateVacationRequest(employeeId: string, start: Date, e
         throw new AppError('Ya existe un registro de ausencia que se solapa con estas fechas.', 400);
     }
 
-    const requestedDays = calculateVacationRequestDays(start, end, type);
+    const requestedDays = !isVacationType(type) && companyId
+        ? await HolidayService.getBusinessDaysCountForCompany(start, end, companyId, db)
+        : calculateVacationRequestDays(start, end, type);
+    await enforceAnnualTypeLimit(employeeId, type || 'VACATION', start, requestedDays, rule, db);
 
-    if (!isVacationType(type)) {
+    if (!(rule?.countsForBalance ?? isVacationType(type))) {
         return { requestedDays };
     }
 
@@ -69,6 +119,52 @@ export async function validateVacationRequest(employeeId: string, start: Date, e
         );
     }
 
+    return { requestedDays };
+}
+
+export async function validateVacationRequestForUpdate(
+    employeeId: string,
+    start: Date,
+    end: Date,
+    type: string | undefined,
+    vacationId: string,
+    tx: Prisma.TransactionClient,
+    rule?: AbsenceRule,
+    companyId?: string
+) {
+    const overlapping = await tx.vacation.findFirst({
+        where: {
+            id: { not: vacationId },
+            employeeId,
+            status: { in: ['APPROVED', 'EXISTING'] },
+            startDate: { lte: end },
+            endDate: { gte: start }
+        }
+    });
+    if (overlapping) {
+        throw new AppError('Ya existe un registro de ausencia que se solapa con estas fechas.', 409);
+    }
+
+    const requestedDays = !isVacationType(type) && companyId
+        ? await HolidayService.getBusinessDaysCountForCompany(start, end, companyId, tx)
+        : calculateVacationRequestDays(start, end, type);
+    await enforceAnnualTypeLimit(employeeId, type || 'VACATION', start, requestedDays, rule, tx, vacationId);
+    if (!(rule?.countsForBalance ?? isVacationType(type))) return { requestedDays };
+
+    const current = await tx.vacation.findUnique({
+        where: { id: vacationId },
+        select: { days: true, startDate: true }
+    });
+    const balance = await getEmployeeVacationBalanceSummary(employeeId, start.getFullYear(), tx);
+    if (!balance) throw new AppError('No se pudo calcular el saldo de vacaciones del empleado', 500);
+
+    const reusableDays = current && current.startDate.getFullYear() === start.getFullYear() ? current.days : 0;
+    if (balance.projectedAvailableDays + reusableDays < requestedDays) {
+        throw new AppError(
+            `Excede cupo. Disponibles al modificar: ${balance.projectedAvailableDays + reusableDays}, solicitados: ${requestedDays}.`,
+            400
+        );
+    }
     return { requestedDays };
 }
 

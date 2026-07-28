@@ -10,7 +10,7 @@ const EMPLOYEE_DATE_FIELDS = [
 
 const EMPLOYEE_STRING_FIELDS = [
     'name', 'firstName', 'lastName', 'email', 'phone', 'address', 'city', 'postalCode',
-    'subaccount465', 'department',
+    'subaccount465', 'payrollAgencyEmployeeCode', 'department',
     'category', 'contractType', 'agreementType', 'jobTitle', 'province', 'registeredIn',
     'drivingLicenseType', 'gender', 'lowReason', 'workingDayType',
     'privateNotes', 'country', 'companyPhone', 'companyShortPhone'
@@ -146,6 +146,7 @@ export function buildEmployeeCreateData(body: Record<string, any>, effectiveComp
         city: sanitizeText(body.city),
         postalCode: sanitizeText(body.postalCode),
         subaccount465: sanitizeText(body.subaccount465),
+        payrollAgencyEmployeeCode: sanitizeText(body.payrollAgencyEmployeeCode),
         // Backward-compatible encrypted legacy columns plus new *Enc source fields.
         socialSecurityNumber: encryptedSocialSecurityNumber,
         socialSecurityNumberEnc: encryptedSocialSecurityNumber,

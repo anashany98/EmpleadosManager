@@ -7,6 +7,9 @@ import { AppError } from '../utils/AppError';
 import { CacheService } from '../services/CacheService';
 import { ObraAuthorization } from '../services/obraAuthorization';
 import { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { ObraExpenseReceiptService } from '../services/ObraExpenseReceiptService';
+import { countInclusiveDays, splitAmountEvenly } from '../services/expenseAllocation';
 
 const FORBIDDEN_EXPENSE_UPDATE_KEYS = new Set([
     'id',
@@ -63,38 +66,100 @@ export const ObraExpenseController = {
             const userId = (req as AuthenticatedRequest).user?.id;
             if (!userId) throw new AppError('Usuario no autenticado', 401);
             const { obraId } = req.params;
-            const { type, date, amount, currency, description, vendor, reference, origin, destination, employeeId } = req.body || {};
+            const {
+                type, date, endDate, amount, amountMode, currency, description, vendor,
+                reference, origin, destination, employeeId, employeeIds
+            } = req.body || {};
 
             await ObraAuthorization.ensureActive(obraId);
 
-            const expense = await prisma.obraExpense.create({
-                data: {
-                    obraId,
-                    employeeId: employeeId || null,
-                    type,
-                    date: new Date(date),
-                    amount,
-                    currency: currency || 'EUR',
-                    description: description ?? null,
-                    vendor: vendor ?? null,
-                    reference: reference ?? null,
-                    origin: origin ?? null,
-                    destination: destination ?? null,
-                    status: 'APPROVED',
-                    createdById: userId
+            const selectedEmployeeIds = Array.from(new Set(
+                Array.isArray(employeeIds) && employeeIds.length > 0
+                    ? employeeIds
+                    : employeeId ? [employeeId] : []
+            )) as string[];
+            if (selectedEmployeeIds.length > 0) {
+                const employeeCount = await prisma.employee.count({
+                    where: { id: { in: selectedEmployeeIds } }
+                });
+                if (employeeCount !== selectedEmployeeIds.length) {
+                    throw new AppError('Uno o varios empleados seleccionados no existen', 400);
                 }
-            });
+            }
 
-            await AuditService.logWithContext('CREATE', 'OBRA_EXPENSE', expense.id, {
+            const allocationCount = Math.max(1, selectedEmployeeIds.length);
+            const enteredAmount = Math.round(Number(amount) * 100) / 100;
+            const dailyMode = type === 'PER_DIEM' && amountMode === 'PER_EMPLOYEE_DAY';
+            const unitCount = dailyMode ? countInclusiveDays(date, endDate || date) : 1;
+            const amountPerEmployee = dailyMode
+                ? Math.round(enteredAmount * unitCount * 100) / 100
+                : null;
+            const allocatedAmounts = dailyMode
+                ? Array.from({ length: allocationCount }, () => amountPerEmployee as number)
+                : splitAmountEvenly(enteredAmount, allocationCount);
+            const originalAmount = dailyMode
+                ? Math.round((amountPerEmployee as number) * allocationCount * 100) / 100
+                : enteredAmount;
+            const allocationGroupId = allocationCount > 1 ? randomUUID() : null;
+            const sourceReference = reference ?? null;
+            const targets: Array<string | null> = selectedEmployeeIds.length > 0 ? selectedEmployeeIds : [null];
+
+            const expenses = await prisma.$transaction(targets.map((targetEmployeeId, index) =>
+                prisma.obraExpense.create({
+                    data: {
+                        obraId,
+                        employeeId: targetEmployeeId,
+                        type,
+                        date: new Date(date),
+                        endDate: new Date(endDate || date),
+                        amount: allocatedAmounts[index],
+                        originalAmount,
+                        unitAmount: dailyMode ? enteredAmount : null,
+                        unitCount,
+                        allocationGroupId,
+                        allocationIndex: allocationGroupId ? index + 1 : null,
+                        allocationCount,
+                        currency: currency || 'EUR',
+                        description: description ?? null,
+                        vendor: vendor ?? null,
+                        // Preserve the user-facing reference separately while retaining
+                        // the existing import idempotency constraint.
+                        reference: allocationGroupId && sourceReference
+                            ? `${sourceReference} [${allocationGroupId.slice(0, 8)}:${index + 1}]`
+                            : sourceReference,
+                        sourceReference,
+                        origin: origin ?? null,
+                        destination: destination ?? null,
+                        status: 'APPROVED',
+                        createdById: userId
+                    }
+                })
+            ));
+
+            await AuditService.logWithContext('CREATE', 'OBRA_EXPENSE_ALLOCATION', allocationGroupId || expenses[0].id, {
                 userId,
                 ...ctx(req),
-                metadata: { obraId, type, amount: Number(expense.amount) }
+                metadata: {
+                    obraId,
+                    type,
+                    originalAmount,
+                    unitAmount: dailyMode ? enteredAmount : null,
+                    unitCount,
+                    allocationCount,
+                    employeeIds: selectedEmployeeIds,
+                    expenseIds: expenses.map((expense) => expense.id)
+                }
             });
 
             CacheService.invalidateByPrefix('report:obra-summary:');
             CacheService.invalidateByPrefix('report:obra-employee:');
 
-            return ApiResponse.success(res, expense, 'Gasto creado', 201);
+            return ApiResponse.success(res, {
+                expenses,
+                allocationGroupId,
+                originalAmount,
+                allocationCount
+            }, allocationCount > 1 ? `Gasto repartido entre ${allocationCount} empleados` : 'Gasto creado', 201);
         } catch (err: unknown) {
             if (err instanceof AppError) return ApiResponse.error(res, err.message, err.statusCode);
             return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al crear el gasto', 500);
@@ -119,9 +184,24 @@ export const ObraExpenseController = {
                 if (FORBIDDEN_EXPENSE_UPDATE_KEYS.has(k)) continue;
                 updateData[k] = v;
             }
+            const amountMode = updateData.amountMode;
+            delete updateData.amountMode;
             if ('date' in updateData) updateData.date = new Date(updateData.date as string);
+            if ('endDate' in updateData && updateData.endDate) updateData.endDate = new Date(updateData.endDate as string);
             if ('amount' in updateData) updateData.amount = Math.round(Number(updateData.amount) * 100) / 100;
             if ('employeeId' in updateData) updateData.employeeId = updateData.employeeId || null;
+
+            const effectiveType = String(updateData.type || existing.type);
+            if (effectiveType === 'PER_DIEM' && amountMode === 'PER_EMPLOYEE_DAY') {
+                const start = (updateData.date as Date | undefined) || existing.date;
+                const end = (updateData.endDate as Date | undefined) || existing.endDate || start;
+                const dailyAmount = Number(updateData.amount ?? existing.unitAmount ?? existing.amount);
+                const days = countInclusiveDays(start, end);
+                updateData.unitAmount = dailyAmount;
+                updateData.unitCount = days;
+                updateData.amount = Math.round(dailyAmount * days * 100) / 100;
+                updateData.originalAmount = updateData.amount;
+            }
 
             const updated = await prisma.obraExpense.update({ where: { id }, data: updateData as Prisma.ObraExpenseUpdateInput });
             await AuditService.logWithContext('UPDATE', 'OBRA_EXPENSE', id, {
@@ -167,10 +247,11 @@ export const ObraExpenseController = {
 
     listAll: async (req: Request, res: Response) => {
         try {
-            const { type, obraId, from, to, limit } = req.query as Record<string, string | undefined>;
+            const { type, obraId, employeeId, from, to, limit } = req.query as Record<string, string | undefined>;
             const where: Prisma.ObraExpenseWhereInput = {};
             if (type) where.type = type;
             if (obraId) where.obraId = obraId;
+            if (employeeId) where.employeeId = employeeId;
             if (from || to) {
                 where.date = {};
                 if (from && !isNaN(Date.parse(from))) where.date.gte = new Date(from);
@@ -189,6 +270,21 @@ export const ObraExpenseController = {
             return ApiResponse.success(res, expenses);
         } catch (err: unknown) {
             return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al listar gastos', 500);
+        }
+    },
+
+    generateReceipts: async (req: Request, res: Response) => {
+        try {
+            const userId = (req as AuthenticatedRequest).user?.id;
+            if (!userId) throw new AppError('Usuario no autenticado', 401);
+            const result = await ObraExpenseReceiptService.generate(req.body.expenseIds, userId);
+            res.setHeader('Content-Type', result.contentType);
+            res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+            res.setHeader('Content-Length', String(result.buffer.length));
+            return res.send(result.buffer);
+        } catch (err: unknown) {
+            if (err instanceof AppError) return ApiResponse.error(res, err.message, err.statusCode);
+            return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al generar los recibís', 500);
         }
     }
 };

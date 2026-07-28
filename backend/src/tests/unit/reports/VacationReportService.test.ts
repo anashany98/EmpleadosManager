@@ -35,15 +35,13 @@ describe('VacationReportService — separación vacaciones / resto de ausencias'
         // Capturamos el `where` que se pasa a prisma.employee.findMany
         // para verificar el filtro de la query anidada de vacations.
         vi.mocked(prisma.employee.count).mockResolvedValue(1);
-        vi.mocked(prisma.employee.findMany).mockImplementation(async (args: any) => {
-            return [{
+        vi.mocked(prisma.employee.findMany).mockImplementation(async (_args: any) => ([{
                 id: 'emp-1',
                 name: 'Ana',
                 department: 'IT',
                 vacationDaysTotal: 30,
                 vacations: []
-            }] as any;
-        });
+            }] as any));
         vi.mocked(prisma.employeeVacationBalance.findMany).mockResolvedValue([]);
 
         await VacationReportService.getVacationData(2026, {});
@@ -59,9 +57,7 @@ describe('VacationReportService — separación vacaciones / resto de ausencias'
 
     it('getDetailedAbsenceData EXCLUYE las vacaciones', async () => {
         vi.mocked(prisma.vacation.count).mockResolvedValue(0);
-        vi.mocked(prisma.vacation.findMany).mockImplementation(async (args: any) => {
-            return [];
-        });
+        vi.mocked(prisma.vacation.findMany).mockImplementation(async (_args: any) => []);
 
         await VacationReportService.getDetailedAbsenceData(
             new Date('2026-01-01'),

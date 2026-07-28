@@ -38,7 +38,7 @@ describe('AnalyticsService.getMainKPIs', () => {
     });
 
     it('applies company filters consistently across KPI queries', async () => {
-        await AnalyticsService.getMainKPIs({ companyId: 'company-1' });
+        const result = await AnalyticsService.getMainKPIs({ companyId: 'company-1' });
 
         expect(vi.mocked(prisma.employee.count).mock.calls[0]?.[0]).toEqual({
             where: { companyId: 'company-1' }
@@ -49,7 +49,13 @@ describe('AnalyticsService.getMainKPIs', () => {
         expect(vi.mocked(prisma.employee.count).mock.calls[2]?.[0]).toEqual({
             where: {
                 companyId: 'company-1',
-                createdAt: expect.any(Object)
+                OR: [
+                    { entryDate: expect.any(Object) },
+                    {
+                        entryDate: null,
+                        createdAt: expect.any(Object)
+                    }
+                ]
             }
         });
         expect(prisma.employee.findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -62,6 +68,7 @@ describe('AnalyticsService.getMainKPIs', () => {
                 employee: { companyId: 'company-1' }
             }
         });
+        expect(result.openPositions).toBeNull();
     });
 
     /**
@@ -76,7 +83,7 @@ describe('AnalyticsService.getMainKPIs', () => {
         vi.mocked(prisma.employee.count)
             .mockResolvedValueOnce(10 as never) // total
             .mockResolvedValueOnce(8 as never)  // active
-            .mockResolvedValueOnce(1 as never)  // newHires (createdAt)
+            .mockResolvedValueOnce(1 as never)  // newHires (entryDate)
             .mockResolvedValueOnce(2 as never); // departures
         vi.mocked(prisma.employee.findMany).mockResolvedValue([] as never);
         vi.mocked(prisma.vacation.count).mockResolvedValue(0 as never);
@@ -98,6 +105,36 @@ describe('AnalyticsService.getMainKPIs', () => {
     });
 });
 
+describe('AnalyticsService.getHiringFunnel', () => {
+    it('no inventa métricas ATS y conserva únicamente las altas reales', async () => {
+        vi.mocked(prisma.employee.count).mockReset().mockResolvedValue(3 as never);
+
+        const result = await AnalyticsService.getHiringFunnel({ companyId: 'company-1' });
+
+        expect(result).toEqual({
+            available: false,
+            reason: expect.stringContaining('ATS'),
+            vacancies: null,
+            applications: null,
+            interviews: null,
+            offers: null,
+            hired: 3,
+        });
+        expect(prisma.employee.count).toHaveBeenCalledWith({
+            where: {
+                companyId: 'company-1',
+                OR: [
+                    { entryDate: { gte: expect.any(Date) } },
+                    {
+                        entryDate: null,
+                        createdAt: { gte: expect.any(Date) },
+                    },
+                ],
+            },
+        });
+    });
+});
+
 describe('AnalyticsService.getHeadcountTrend', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -114,7 +151,7 @@ describe('AnalyticsService.getHeadcountTrend', () => {
         // verificamos el último.
         vi.mocked(prisma.employee.count)
             .mockResolvedValueOnce(10 as never) // headcount
-            .mockResolvedValueOnce(1 as never)  // newHires (createdAt)
+            .mockResolvedValueOnce(1 as never)  // newHires (entryDate)
             .mockResolvedValueOnce(1 as never); // exits
 
         await AnalyticsService.getHeadcountTrend(1, { companyId: 'company-1' });
