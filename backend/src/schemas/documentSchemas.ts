@@ -158,7 +158,8 @@ export const documentTemplateGenerateSchema = z.object({
         templateType: documentTemplateTypeSchema.optional(),
         employeeId: z.string().min(1, "employeeId es obligatorio"),
         authorName: z.string().max(120).optional(),
-        extraContext: z.record(z.unknown()).optional()
+        extraContext: z.record(z.unknown()).optional(),
+        data: z.record(z.unknown()).optional()
     }).refine((body) => Boolean(body.type) || Boolean(body.templateType), {
         message: "type o templateType es obligatorio",
         path: ['type']

@@ -8,6 +8,7 @@ import { SearchInput } from '../../../components/ui/SearchInput';
 import { VacationCalendarView } from './VacationCalendarView';
 import { VacationRequestCard } from './VacationRequestCard';
 import type { VacationRequest } from './types';
+import { notifyAbsenceUpdated } from './absenceEvents';
 
 type ManagementTab = 'CALENDAR' | 'MANAGE' | 'METRICS';
 
@@ -114,16 +115,6 @@ export function VacationManagementView({ isAdmin }: VacationManagementViewProps)
     }, [fetchData]);
 
     useEffect(() => {
-        if (activeTab === 'CALENDAR') {
-            setIsLoadingCalendar(true);
-            const timer = window.setTimeout(() => {
-                void fetchData();
-            }, 0);
-            return () => window.clearTimeout(timer);
-        }
-    }, [activeTab, calendarCurrentDate, fetchData]);
-
-    useEffect(() => {
         if (isAdmin && activeTab === 'CALENDAR') {
             const timer = window.setTimeout(() => {
                 void fetchDepartments();
@@ -160,6 +151,12 @@ export function VacationManagementView({ isAdmin }: VacationManagementViewProps)
             await api.put(`/vacations/${requestId}/status`, payload);
             toast.success(`Solicitud ${status === 'APPROVED' ? 'aprobada' : 'rechazada'}`);
             await fetchData();
+            const updatedRequest = pendingRequests.find((request) => request.id === requestId);
+            notifyAbsenceUpdated({
+                employeeId: updatedRequest?.employeeId,
+                requestId,
+                action: 'STATUS_CHANGED'
+            });
 
             if (selectedRequest?.id === requestId) {
                 setSelectedRequest({ ...selectedRequest, status });

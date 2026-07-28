@@ -8,8 +8,10 @@ import { SearchInput } from '../../../components/ui/SearchInput';
 import { LoadingSpinner } from '../../../components/ui/LoadingSpinner';
 import { VacationCalendarView } from './VacationCalendarView';
 import { VacationRequestCard } from './VacationRequestCard';
-import { ABSENCE_TYPES, type VacationBalanceSummary, type VacationRequest } from './types';
+import { type VacationBalanceSummary, type VacationRequest } from './types';
 import { calculateVacationStats, createVacationRequest } from './utils';
+import { useAbsenceTypeCatalog } from './useAbsenceTypeCatalog';
+import { notifyAbsenceUpdated } from './absenceEvents';
 
 type SelfViewTab = 'REQUESTS' | 'CALENDAR';
 
@@ -28,6 +30,7 @@ const getErrorMessage = (error: unknown): string => {
 
 export function VacationSelfServiceView() {
     const { user } = useAuth();
+    const { catalog: absenceTypes, activeCatalog } = useAbsenceTypeCatalog();
     const [activeTab, setActiveTab] = useState<SelfViewTab>('REQUESTS');
     const [requests, setRequests] = useState<VacationRequest[]>([]);
     const [loading, setLoading] = useState(true);
@@ -45,8 +48,6 @@ export function VacationSelfServiceView() {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [showNextYearWarning, setShowNextYearWarning] = useState(false);
     const [nextYearDays, setNextYearDays] = useState(0);
-
-    const TYPES_REQUIRING_DOCUMENT = ['MARRIAGE', 'DEATH', 'MOVING', 'FAMILY_SICK', 'PUBLIC_DUTY'];
 
     const filteredRequests = useMemo(() => {
         if (!searchTerm) return requests;
@@ -133,6 +134,10 @@ export function VacationSelfServiceView() {
             setReason('');
             setAttachment(null);
             await fetchRequests();
+            notifyAbsenceUpdated({
+                employeeId: user?.employeeId,
+                action: 'CREATED'
+            });
         } catch (error) {
             toast.error(getErrorMessage(error));
         } finally {
@@ -159,6 +164,10 @@ export function VacationSelfServiceView() {
             setReason('');
             setAttachment(null);
             await fetchRequests();
+            notifyAbsenceUpdated({
+                employeeId: user?.employeeId,
+                action: 'CREATED'
+            });
         } catch (error) {
             toast.error(getErrorMessage(error));
         } finally {
@@ -248,6 +257,7 @@ export function VacationSelfServiceView() {
                                         key={request.id}
                                         request={request}
                                         canManage={false}
+                                        absenceTypes={absenceTypes}
                                     />
                                 ))}
                             </div>
@@ -264,6 +274,7 @@ export function VacationSelfServiceView() {
                     onSelectRequest={setSelectedRequest}
                     currentDate={currentDate}
                     onCurrentDateChange={setCurrentDate}
+                    absenceTypes={absenceTypes}
                 />
             )}
 
@@ -318,7 +329,7 @@ export function VacationSelfServiceView() {
                                 <div className="space-y-1">
                                     <label className="text-xs font-bold text-slate-500 uppercase">Tipo</label>
                                     <div className="grid grid-cols-3 gap-2">
-                                        {Object.entries(ABSENCE_TYPES).map(([key, config]) => (
+                                        {Object.entries(activeCatalog).map(([key, config]) => (
                                             <button type="button" key={key} onClick={() => setType(key)} className={`p-2 rounded-xl border text-xs font-bold transition-all ${type === key ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
                                                 {config.label}
                                             </button>
@@ -331,7 +342,7 @@ export function VacationSelfServiceView() {
                                     <textarea value={reason} onChange={(inputEvent) => setReason(inputEvent.target.value)} className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500/20 outline-none font-medium h-24 resize-none" placeholder="Opcional..." />
                                 </div>
 
-                                {TYPES_REQUIRING_DOCUMENT.includes(type) && (
+                                {activeCatalog[type]?.requiresAttachment && (
                                     <div className="space-y-1">
                                         <label className="text-xs font-bold text-slate-500 uppercase">Adjunto</label>
                                         <div className="relative">
@@ -374,7 +385,7 @@ export function VacationSelfServiceView() {
                                 </button>
                             </div>
                             <div className="p-6">
-                                <VacationRequestCard request={selectedRequest} canManage={false} />
+                                <VacationRequestCard request={selectedRequest} canManage={false} absenceTypes={absenceTypes} />
                             </div>
                         </motion.div>
                     </motion.div>

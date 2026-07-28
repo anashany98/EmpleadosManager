@@ -86,6 +86,7 @@ export const navCategories: NavCategory[] = [
         icon: <Briefcase size={20} />,
         items: [
             { path: '/assets', label: 'Activos', icon: <Briefcase size={18} />, feature: 'assets' },
+            { path: '/payroll/control', label: 'Control Gestoría', icon: <FileText size={18} />, feature: 'payrollControl' },
             { path: '/import', label: 'Importar Nóminas', icon: <FileText size={18} />, feature: 'payrollImport' }
         ]
     },

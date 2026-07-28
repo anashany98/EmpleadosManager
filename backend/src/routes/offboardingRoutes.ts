@@ -10,5 +10,6 @@ router.use(requireGlobalAdmin);
 
 router.get('/:employeeId/prepare', OffboardingController.prepareOffboarding);
 router.post('/:employeeId/confirm', OffboardingController.confirmOffboarding);
+router.post('/:employeeId/reactivate', OffboardingController.reactivate);
 
 export default router;

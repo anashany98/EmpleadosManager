@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Users, UserPlus, UserCheck, UserX, TrendingUp } from 'lucide-react';
+import { Users, UserPlus, UserX, TrendingUp } from 'lucide-react';
 
 interface FunnelStage {
     stage: string;
@@ -10,17 +10,19 @@ interface FunnelStage {
 
 interface HiringFunnelWidgetProps {
     data: {
-        applicants: number;
-        interviews: number;
-        offers: number;
+        available: boolean;
+        reason: string;
+        applicants: number | null;
+        interviews: number | null;
+        offers: number | null;
         hired: number;
-        conversionRate: number;
-        avgTimeToHire: number;
+        conversionRate: number | null;
+        avgTimeToHire: number | null;
     };
 }
 
 export default function HiringFunnelWidget({ data }: HiringFunnelWidgetProps) {
-    if (!data) {
+    if (!data.available) {
         return (
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -33,8 +35,11 @@ export default function HiringFunnelWidget({ data }: HiringFunnelWidgetProps) {
                         Embudo de Contratación
                     </h3>
                 </div>
-                <div className="h-64 flex items-center justify-center text-slate-400">
-                    No hay datos disponibles
+                <div className="flex min-h-64 flex-col items-center justify-center text-center text-slate-400">
+                    <UserX size={30} className="mb-3" />
+                    <p className="font-semibold text-slate-600 dark:text-slate-300">Sin fuente de selección</p>
+                    <p className="mt-2 max-w-xs text-sm">{data.reason}</p>
+                    <p className="mt-4 text-xs">Altas reales de los últimos 30 días: <strong>{data.hired}</strong></p>
                 </div>
             </motion.div>
         );
@@ -43,26 +48,26 @@ export default function HiringFunnelWidget({ data }: HiringFunnelWidgetProps) {
     const stages: FunnelStage[] = [
         {
             stage: 'Candidatos',
-            count: data.applicants,
+            count: data.applicants ?? 0,
             percentage: 100,
             color: 'bg-blue-500',
         },
         {
             stage: 'Entrevistas',
-            count: data.interviews,
-            percentage: data.applicants > 0 ? Math.round((data.interviews / data.applicants) * 100) : 0,
+            count: data.interviews ?? 0,
+            percentage: (data.applicants ?? 0) > 0 ? Math.round(((data.interviews ?? 0) / (data.applicants ?? 1)) * 100) : 0,
             color: 'bg-purple-500',
         },
         {
             stage: 'Ofertas',
-            count: data.offers,
-            percentage: data.applicants > 0 ? Math.round((data.offers / data.applicants) * 100) : 0,
+            count: data.offers ?? 0,
+            percentage: (data.applicants ?? 0) > 0 ? Math.round(((data.offers ?? 0) / (data.applicants ?? 1)) * 100) : 0,
             color: 'bg-amber-500',
         },
         {
             stage: 'Contratados',
             count: data.hired,
-            percentage: data.applicants > 0 ? Math.round((data.hired / data.applicants) * 100) : 0,
+            percentage: (data.applicants ?? 0) > 0 ? Math.round((data.hired / (data.applicants ?? 1)) * 100) : 0,
             color: 'bg-emerald-500',
         },
     ];
@@ -129,7 +134,7 @@ export default function HiringFunnelWidget({ data }: HiringFunnelWidgetProps) {
                     <div>
                         <div className="text-xs text-slate-500">Tasa de Conversión</div>
                         <div className="text-lg font-semibold text-slate-900 dark:text-white">
-                            {data.conversionRate}%
+                            {data.conversionRate?.toFixed(1)}%
                         </div>
                     </div>
                 </div>

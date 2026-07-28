@@ -98,22 +98,36 @@ export const obraExpenseCreateSchema = z.object({
     body: z.object({
         type: obraExpenseTypeSchema,
         date: dateString,
+        endDate: dateString.optional(),
         amount: positiveAmount,
+        amountMode: z.enum(['TOTAL_SPLIT', 'PER_EMPLOYEE_DAY']).optional(),
         currency: z.string().trim().min(1).max(8).optional(),
         description: optionalText,
         vendor: optionalTextShort,
         reference: optionalTextShort,
         origin: optionalTextShort,
         destination: optionalTextShort,
-        employeeId: optionalId
+        employeeId: optionalId,
+        employeeIds: z.array(z.string().min(1)).min(1).max(200).optional(),
+        distributeEvenly: z.boolean().optional()
     })
+        .refine((value) => !value.endDate || new Date(value.endDate) >= new Date(value.date), {
+            message: 'La fecha fin debe ser igual o posterior a la fecha inicio',
+            path: ['endDate']
+        })
+        .refine((value) => value.type !== 'PER_DIEM' || Boolean(value.destination), {
+            message: 'El destino es obligatorio para una dieta',
+            path: ['destination']
+        })
 });
 
 export const obraExpenseUpdateSchema = z.object({
     body: z.object({
         type: obraExpenseTypeSchema.optional(),
         date: dateString.optional(),
+        endDate: dateString.optional().nullable(),
         amount: positiveAmount.optional(),
+        amountMode: z.enum(['TOTAL_SPLIT', 'PER_EMPLOYEE_DAY']).optional(),
         currency: z.string().trim().min(1).max(8).optional(),
         description: optionalText,
         vendor: optionalTextShort,
@@ -140,6 +154,7 @@ export const obraExpenseListAllSchema = z.object({
     query: z.object({
         type: obraExpenseTypeSchema.optional(),
         obraId: z.string().min(1).optional(),
+        employeeId: z.string().min(1).optional(),
         from: dateQuery,
         to: dateQuery,
         limit: z.coerce.number().int().min(1).max(500).optional()
@@ -148,6 +163,12 @@ export const obraExpenseListAllSchema = z.object({
 
 export const obraExpenseIdParamSchema = z.object({
     params: uuidParam
+});
+
+export const obraExpenseReceiptSchema = z.object({
+    body: z.object({
+        expenseIds: z.array(z.string().min(1)).min(1).max(200)
+    })
 });
 
 export const obraImportMappingRulesSchema = z.object({

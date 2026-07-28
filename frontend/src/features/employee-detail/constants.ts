@@ -27,8 +27,11 @@ export const EDIT_TABS = ['personal', 'laboral', 'financiero', 'fechas'];
 export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
     'resumen',
     'vacaciones',
+    'ausencias',
     'cronograma',
     'nominas',
+    'control-horario',
+    'dietas',
     ...(isAdmin
         ? [
             ...(isGlobalAdmin ? ['generar'] : []),
@@ -36,9 +39,11 @@ export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
             'prl',
             ...(isGlobalAdmin ? ['obras'] : []),
             'activos',
-            'checklists',
-            'seguridad',
-            ...(isGlobalAdmin ? ['privacidad'] : []),
+            // Tabs ocultas a petición del usuario (2026-07-23):
+            // 'checklists', 'seguridad', 'privacidad'.
+            // El render de cada una en EmployeeOperationsSection /
+            // EmployeeAdministrationSection se conserva por si se
+            // quieren volver a activar — solo no aparecen en la barra.
             'notas-rrhh'
         ]
         : ['prl']),
@@ -48,5 +53,8 @@ export const getViewTabs = (isAdmin: boolean, isGlobalAdmin: boolean) => ([
 export const getEmployeeTabLabel = (tab: string) => {
     if (tab === 'generar') return 'Generar Doc.';
     if (tab === 'prl') return 'PRL / Formación';
+    if (tab === 'ausencias') return 'Ausencias';
+    if (tab === 'control-horario') return 'Control Horario';
+    if (tab === 'dietas') return 'Dietas';
     return tab.charAt(0).toUpperCase() + tab.slice(1);
 };

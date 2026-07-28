@@ -1,5 +1,4 @@
 import { prisma } from '../lib/prisma';
-import { format, parseISO } from 'date-fns';
 import { normalizeRole } from '../../../shared/authz';
 
 export interface CalendarEventInput {
@@ -35,20 +34,30 @@ export interface UnifiedCalendarEvent {
   employeeDepartment?: string | null;
 }
 
-// Spanish holidays for 2026
-const SPAIN_HOLIDAYS_2026 = [
-  { date: '2026-01-01', name: 'Año Nuevo' },
-  { date: '2026-01-06', name: 'Epifanía del Señor' },
-  { date: '2026-04-17', name: 'Viernes Santo' },
-  { date: '2026-04-20', name: 'Lunes de Pascua' },
-  { date: '2026-05-01', name: 'Fiesta del Trabajo' },
-  { date: '2026-08-15', name: 'Asunción de la Virgen' },
-  { date: '2026-10-12', name: 'Fiesta Nacional de España' },
-  { date: '2026-11-01', name: 'Todos los Santos' },
-  { date: '2026-12-06', name: 'Día de la Constitución' },
-  { date: '2026-12-08', name: 'Inmaculada Concepción' },
-  { date: '2026-12-25', name: 'Natividad del Señor' },
-];
+const ABSENCE_LABELS: Record<string, string> = {
+  VACATION: 'Vacaciones',
+  SICK: 'Baja médica',
+  SICK_LEAVE: 'Baja médica',
+  BAJA_MEDICA: 'Baja médica',
+  MATERNITY: 'Maternidad',
+  MATERNIDAD: 'Maternidad',
+  PATERNITY: 'Paternidad',
+  PATERNIDAD: 'Paternidad',
+  MEDICAL_APPOINTMENT: 'Cita médica',
+  MEDICAL_HOURS: 'Horas médicas',
+  PERSONAL_DAY: 'Día personal',
+  MARRIAGE: 'Boda',
+  DEATH: 'Fallecimiento',
+  MOVING: 'Mudanza',
+  FAMILY_SICK: 'Enfermedad familiar',
+  PUBLIC_DUTY: 'Función pública',
+  UNPAID: 'Permiso sin goce',
+  LACTANCIA: 'Lactancia',
+  TELETRABAJO: 'Teletrabajo',
+  PERMISO_SINDICAL: 'Permiso sindical',
+  OTHER: 'Otra ausencia',
+  OTROS: 'Otra ausencia'
+};
 
 export const CalendarService = {
   /**
@@ -61,6 +70,10 @@ export const CalendarService = {
     endDate: Date
   ): Promise<UnifiedCalendarEvent[]> {
     const events: UnifiedCalendarEvent[] = [];
+    const configuredAbsenceTypes = await prisma.absenceTypeConfig.findMany({
+      select: { code: true, name: true, color: true }
+    });
+    const absenceConfig = new Map(configuredAbsenceTypes.map((item) => [item.code, item]));
 
     // Get user and employee info
     const user = await prisma.user.findUnique({
@@ -87,18 +100,21 @@ export const CalendarService = {
 
     vacations.forEach((vacation) => {
       const isOwn = vacation.employeeId === currentEmployeeId;
+      const configuredType = absenceConfig.get(vacation.type);
+      const absenceLabel = configuredType?.name || ABSENCE_LABELS[vacation.type] || 'Ausencia';
+      const absenceColor = configuredType?.color;
       events.push({
         id: `vacation-${vacation.id}`,
         entityId: vacation.id,
-        title: isOwn 
-          ? 'Vacaciones' 
-          : `${vacation.employee.firstName} ${vacation.employee.lastName} - Vacaciones`,
+        title: isOwn
+          ? absenceLabel
+          : `${vacation.employee.firstName} ${vacation.employee.lastName} - ${absenceLabel}`,
         description: vacation.reason || undefined,
         start: vacation.startDate,
         end: vacation.endDate,
         allDay: true,
         type: isOwn ? 'vacation-own' : 'vacation-team',
-        color: isOwn ? '#22c55e' : '#86efac', // green-500 vs green-300
+        color: absenceColor || (isOwn ? '#22c55e' : '#86efac'),
         source: 'vacation',
         editable: false,
         deletable: false,
@@ -176,12 +192,6 @@ export const CalendarService = {
       take: 1000
     });
 
-    const customHolidayDates = new Set(
-      calendarEvents
-        .filter((event) => event.type === 'HOLIDAY')
-        .map((event) => format(event.startDate, 'yyyy-MM-dd'))
-    );
-
     calendarEvents.forEach((event) => {
       // Expand recurring events
       if (event.recurrence && event.recurrence !== 'NONE') {
@@ -241,28 +251,6 @@ export const CalendarService = {
           editable: true,
           deletable: true,
           calendarEventType: event.type,
-        });
-      }
-    });
-
-    // 4. Add Spanish holidays, unless the company already has a holiday on that date
-    SPAIN_HOLIDAYS_2026.forEach((holiday) => {
-      const holidayDate = parseISO(holiday.date);
-      const holidayKey = format(holidayDate, 'yyyy-MM-dd');
-
-      if (holidayDate >= startDate && holidayDate <= endDate && !customHolidayDates.has(holidayKey)) {
-        events.push({
-          id: `holiday-${holiday.date}`,
-          entityId: holiday.date,
-          title: `⚫ ${holiday.name}`,
-          start: holidayDate,
-          end: holidayDate,
-          allDay: true,
-          type: 'holiday',
-          color: '#6b7280', // gray-500
-          source: 'holiday',
-          editable: false,
-          deletable: false,
         });
       }
     });

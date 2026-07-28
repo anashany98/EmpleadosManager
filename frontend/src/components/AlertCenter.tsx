@@ -75,7 +75,7 @@ export default function AlertCenter() {
             document.removeEventListener('mousedown', handleClickOutside);
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, []);
+    }, [isOpen]);
 
     const handleAction = (alert: Alert) => {
         markReadMutation.mutate(alert.id);

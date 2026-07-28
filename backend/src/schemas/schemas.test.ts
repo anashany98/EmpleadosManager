@@ -215,6 +215,26 @@ describe('Vacation Schemas', () => {
 
         expect(result.success).toBe(true);
     });
+
+    it.each([
+        'MEDICAL_APPOINTMENT',
+        'MARRIAGE',
+        'DEATH',
+        'MOVING',
+        'FAMILY_SICK',
+        'PUBLIC_DUTY'
+    ])('accepts the absence type exposed by the UI: %s', (type) => {
+        const result = vacationCreateSchema.safeParse({
+            body: {
+                employeeId: 'emp-1',
+                startDate: '2026-05-01T00:00:00.000Z',
+                endDate: '2026-05-02T00:00:00.000Z',
+                type
+            }
+        });
+
+        expect(result.success).toBe(true);
+    });
 });
 
 describe('Expense Schemas', () => {

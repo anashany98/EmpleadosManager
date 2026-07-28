@@ -266,7 +266,7 @@ export const DocumentTemplateController = {
     },
 
     generateGeneric: async (req: Request, res: Response) => {
-        const { employeeId, templateId, templateType, type, data } = req.body;
+        const { employeeId, templateId, templateType, type, data, extraContext } = req.body;
         if (!employeeId) throw new AppError('employeeId es obligatorio', 400);
 
         const user = (req as AuthenticatedRequest).user;
@@ -298,7 +298,7 @@ export const DocumentTemplateController = {
                 type: normalizedType,
                 companyId: user?.companyId || null,
                 authorName,
-                extraContext: data
+                extraContext: extraContext || data
             });
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: unknown) {

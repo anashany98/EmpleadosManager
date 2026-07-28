@@ -51,6 +51,7 @@ const AbsenceTypesPage = lazy(() => import('./pages/AbsenceTypesPage'));
 const ObrasPage = lazy(() => import('./pages/ObrasPage'));
 const ObraDetailPage = lazy(() => import('./pages/ObraDetailPage'));
 const ObraImportPage = lazy(() => import('./pages/ObraImportPage'));
+const PayrollControlPage = lazy(() => import('./pages/PayrollControlPage'));
 
 function RouteLoading() {
   return (
@@ -177,6 +178,8 @@ function AppContent() {
                   <Route path="/timesheet" element={<ProtectedRoute feature="timesheetManagement"><TimesheetPage /></ProtectedRoute>} />
                   <Route path="/inbox" element={<ProtectedRoute feature="inbox"><InboxPage /></ProtectedRoute>} />
                   <Route path="/import" element={<ProtectedRoute feature="payrollImport"><PayrollImport /></ProtectedRoute>} />
+                  <Route path="/payroll" element={<Navigate to="/payroll/control" replace />} />
+                  <Route path="/payroll/control" element={<ProtectedRoute feature="payrollControl"><PayrollControlPage /></ProtectedRoute>} />
                   <Route path="/payroll/batch/:id" element={<ProtectedRoute feature="payrollBatch"><PayrollBatchDetail /></ProtectedRoute>} />
                   <Route path="/my-documents" element={
                     <ProtectedRoute feature="myDocuments">

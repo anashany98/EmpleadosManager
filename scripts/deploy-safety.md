@@ -11,6 +11,9 @@ Wrapper para aplicar migraciones de Prisma con guardas automáticas:
 - **Detecta prod** por env vars (`NODE_ENV=production`, `DEPLOY_ENV=production`) y por hostname (palabras: `coolify`, `production`, `prod`, `prd`, `live`).
 - **Backup OBLIGATORIO en prod** antes de migrar (con `pg_dump` + gzip + timestamp).
 - **Valida que el backup no está vacío** — si falla, NO aplica la migración.
+- **Comprueba que `pg_dump` no sea anterior al servidor PostgreSQL**.
+- **Reconcilia drift conocido únicamente cuando las columnas exactas existen**.
+- **Aborta ante estructuras parciales o incompatibles**.
 - **Falla-loud** en cualquier error.
 
 ```bash
@@ -55,39 +58,27 @@ SAFE_DOCKER_BYPASS=1 SAFE_DOCKER_REASON="limpieza controlada antes de backup ver
 
 ## Migraciones actuales
 
-Las migraciones añadidas en este PR son **puramente aditivas** (no pierden datos):
+La mayoría de migraciones son aditivas. La conversión de `ReportSchedule`
+preserva sus filas mediante columnas temporales y backfill antes de retirar
+las columnas de texto.
 
 | Migración                                      | Operación                                           | Riesgo                          |
 | ---------------------------------------------- | --------------------------------------------------- | ------------------------------- |
 | `20260626000000_add_calendar_event_recurrence` | `ALTER TABLE ADD COLUMN` (×2)                       | Ninguno si la columna no existe |
 | `20260722000001_add_medical_review_declined`   | `ALTER TABLE ADD COLUMN` (×2) + `CREATE INDEX` (×3) | Ninguno si la columna no existe |
 
-Si la BD de prod ya tiene estas columnas (porque las añadiste a mano antes, como hice en dev), `migrate deploy` fallará con `P3009 drift detected` y el contenedor no arrancará. **Esto NO borra datos**, solo impide el arranque. Solución:
+Si la BD ya contiene `CalendarEvent.recurrence/recurrenceEnd` o
+`EmployeeVacationBalance.advancedDays` sin la migración registrada,
+`safe-migrate.sh` comprueba tipos, nulabilidad y valores por defecto. Solo
+entonces utiliza `prisma migrate resolve --applied`. Un estado parcial aborta.
 
-```sql
--- Verificar drift ANTES del primer arranque
-SELECT column_name FROM information_schema.columns
-WHERE table_name = 'CalendarEvent' AND column_name LIKE 'recurrence%';
-SELECT column_name FROM information_schema.columns
-WHERE table_name = 'MedicalReview' AND column_name LIKE 'declined%';
-
--- Si hay drift, marcar la migración como aplicada (la columna ya existe, no la recreamos)
-INSERT INTO "_prisma_migrations" (id, migration_name, checksum, finished_at, applied_steps_count)
-VALUES (
-  gen_random_uuid()::text,
-  '20260626000000_add_calendar_event_recurrence',
-  'a' || repeat('0', 63),
-  NOW(), 1
-) ON CONFLICT (migration_name) DO NOTHING;
-
-INSERT INTO "_prisma_migrations" (id, migration_name, checksum, finished_at, applied_steps_count)
-VALUES (
-  gen_random_uuid()::text,
-  '20260722000001_add_medical_review_declined',
-  'a' || repeat('0', 63),
-  NOW(), 1
-) ON CONFLICT (migration_name) DO NOTHING;
+```bash
+NODE_ENV=production \
+RUN_PRISMA_MIGRATIONS=true \
+/app/scripts/safe-migrate.sh
 ```
+
+No se insertan filas manuales con checksums falsos en `_prisma_migrations`.
 
 ## Flujo seguro de despliegue
 

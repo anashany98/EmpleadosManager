@@ -49,13 +49,18 @@ export interface VacationRequestInput {
     attachment?: File | null;
 }
 
-interface AbsenceTypeConfig {
+export interface AbsenceTypeConfig {
     label: string;
     color: string;
     text: string;
     bgSoft: string;
     border: string;
     icon: typeof Plane;
+    hexColor?: string;
+    isActive?: boolean;
+    requiresAttachment?: boolean;
+    requiresApproval?: boolean;
+    countsForBalance?: boolean;
 }
 
 export const ABSENCE_TYPES: Record<string, AbsenceTypeConfig> = {

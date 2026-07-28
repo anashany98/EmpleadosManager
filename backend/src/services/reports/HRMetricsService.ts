@@ -27,28 +27,27 @@ export class HRMetricsService {
         const endDate = new Date(year, month, 0, 23, 59, 59);
 
         // 1. Employee Count (Start, End and Avg)
-        const totalEmployees = await prisma.employee.count({
+        const activePeriods = await prisma.employmentPeriod.findMany({
             where: {
-                OR: [
-                    { exitDate: null },
-                    { exitDate: { gte: startDate } }
-                ],
-                entryDate: { lte: endDate },
+                startDate: { lte: endDate },
+                OR: [{ endDate: null }, { endDate: { gte: startDate } }],
                 ...(filters.companyId ? { companyId: filters.companyId } : {})
-            }
+            },
+            select: { employeeId: true }
         });
+        const totalEmployees = new Set(activePeriods.map((period) => period.employeeId)).size;
 
         // 2. Turnover Data
-        const hires = await prisma.employee.count({
+        const hires = await prisma.employmentPeriod.count({
             where: {
-                entryDate: { gte: startDate, lte: endDate },
+                startDate: { gte: startDate, lte: endDate },
                 ...(filters.companyId ? { companyId: filters.companyId } : {})
             }
         });
 
-        const exits = await prisma.employee.count({
+        const exits = await prisma.employmentPeriod.count({
             where: {
-                exitDate: { gte: startDate, lte: endDate },
+                endDate: { gte: startDate, lte: endDate },
                 ...(filters.companyId ? { companyId: filters.companyId } : {})
             }
         });
@@ -118,11 +117,12 @@ export class HRMetricsService {
 
         const employees = await prisma.employee.findMany({
             where: {
-                OR: [
-                    { exitDate: null },
-                    { exitDate: { gte: startDate } }
-                ],
-                entryDate: { lte: endDate },
+                employmentPeriods: {
+                    some: {
+                        startDate: { lte: endDate },
+                        OR: [{ endDate: null }, { endDate: { gte: startDate } }]
+                    }
+                },
                 ...(filters.companyId ? { companyId: filters.companyId } : {})
             },
             include: {

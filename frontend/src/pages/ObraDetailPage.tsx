@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save, Upload } from 'lucide-react';
+import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save, Upload, Users, FileDown, Check, AlertTriangle, ChevronDown, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../api/client';
 import { useConfirm } from '../context/ConfirmContext';
 import { useApiUnwrap } from '../hooks/useApiUnwrap';
 import { OBRA_EXPENSE_TYPES, type ObraExpenseType } from '@shared/obras';
+import { downloadExpenseReceipts } from '../features/expenses/downloadExpenseReceipts';
 
 const TIPOS: ObraExpenseType[] = [...OBRA_EXPENSE_TYPES];
 
@@ -14,6 +15,7 @@ const TIPO_LABELS: Record<ObraExpenseType, string> = {
     LODGING: 'Hospedaje',
     FLIGHT: 'Vuelo',
     TRANSPORT: 'Transporte',
+    CAR_RENTAL: 'Alquiler de coche',
     OTHER: 'Otro'
 };
 
@@ -22,10 +24,32 @@ const TIPO_COLORS: Record<ObraExpenseType, string> = {
     LODGING: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
     FLIGHT: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     TRANSPORT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    CAR_RENTAL: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
     OTHER: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
 };
 
+const emptyExpenseForm = () => ({
+    type: 'PER_DIEM' as ObraExpenseType,
+    date: '',
+    endDate: '',
+    amount: '',
+    currency: 'EUR',
+    employeeIds: [] as string[],
+    description: '',
+    vendor: '',
+    reference: '',
+    origin: '',
+    destination: ''
+});
+
 type Tab = 'info' | 'hours' | 'expenses';
+
+const inclusiveDays = (start: string, end: string) => {
+    if (!start || !end) return 0;
+    const from = new Date(`${start}T00:00:00Z`);
+    const to = new Date(`${end}T00:00:00Z`);
+    return Math.max(1, Math.floor((to.getTime() - from.getTime()) / 86_400_000) + 1);
+};
 
 interface ObraShape {
     id: string;
@@ -59,8 +83,11 @@ export default function ObraDetailPage() {
     const [loading, setLoading] = useState(false);
     const [hoursForm, setHoursForm] = useState({ employeeId: '', startDate: '', endDate: '', hours: 8, notes: '' });
     const [hoursEditingId, setHoursEditingId] = useState<string | null>(null);
-    const [expenseForm, setExpenseForm] = useState({ type: 'PER_DIEM' as ObraExpenseType, date: '', amount: '', currency: 'EUR', employeeId: '', description: '', vendor: '', reference: '', origin: '', destination: '' });
+    const [expenseForm, setExpenseForm] = useState(emptyExpenseForm);
     const [expenseEditingId, setExpenseEditingId] = useState<string | null>(null);
+    const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([]);
+    const [generatingReceipts, setGeneratingReceipts] = useState(false);
+    const [employeeExpenseSearch, setEmployeeExpenseSearch] = useState('');
 
     // Filtros avanzados para los tabs de expenses y horas
     const [filters, setFilters] = useState({
@@ -114,18 +141,31 @@ export default function ObraDetailPage() {
     const totalsByType: Record<string, number> = obra.totals?.byType || {};
     const totalExpenses = Number(obra.totals?.totalExpenses || 0);
     const totalHours = Number(obra.totals?.hours || 0);
+    const expenseDays = inclusiveDays(expenseForm.date, expenseForm.endDate);
+    const selectedExpenseEmployees = employees.filter((employee) => expenseForm.employeeIds.includes(employee.id));
+    const filteredExpenseEmployees = employees.filter((employee) => {
+        const name = employee.name || `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
+        return `${name} ${employee.dni || ''}`.toLowerCase().includes(employeeExpenseSearch.trim().toLowerCase());
+    });
+    const dietGrandTotal = Number(expenseForm.amount || 0) * expenseDays * expenseForm.employeeIds.length;
 
     const handleSaveExpense = async () => {
-        if (!expenseForm.date || !expenseForm.amount) return toast.error('Fecha e importe son obligatorios');
+        if (!expenseForm.date || !expenseForm.endDate || !expenseForm.amount) return toast.error('Las fechas y el importe son obligatorios');
+        if (expenseForm.endDate < expenseForm.date) return toast.error('La fecha fin debe ser igual o posterior al inicio');
         const amountNum = Number(expenseForm.amount);
         if (!Number.isFinite(amountNum) || amountNum <= 0) return toast.error('Importe debe ser > 0');
+        if (expenseForm.type === 'PER_DIEM' && !expenseForm.destination.trim()) return toast.error('Indica el destino del viaje');
         try {
             const payload: any = {
                 type: expenseForm.type,
                 date: expenseForm.date,
+                endDate: expenseForm.endDate,
                 amount: amountNum,
+                amountMode: expenseForm.type === 'PER_DIEM' ? 'PER_EMPLOYEE_DAY' : 'TOTAL_SPLIT',
                 currency: expenseForm.currency || 'EUR',
-                employeeId: expenseForm.employeeId || null,
+                ...(expenseEditingId
+                    ? { employeeId: expenseForm.employeeIds[0] || null }
+                    : { employeeIds: expenseForm.employeeIds }),
                 description: expenseForm.description || null,
                 vendor: expenseForm.vendor || null,
                 reference: expenseForm.reference || null,
@@ -139,11 +179,34 @@ export default function ObraDetailPage() {
                 await api.post(`/obras/${id}/expenses`, payload);
                 toast.success('Gasto creado');
             }
-            setExpenseForm({ type: 'PER_DIEM', date: '', amount: '', currency: 'EUR', employeeId: '', description: '', vendor: '', reference: '', origin: '', destination: '' });
+            setExpenseForm(emptyExpenseForm());
+            setEmployeeExpenseSearch('');
             setExpenseEditingId(null);
             fetchObra();
         } catch (err: any) {
             toast.error(getErrorMessage(err, 'Error al guardar gasto'));
+        }
+    };
+
+    const toggleExpenseEmployee = (employeeId: string) => {
+        setExpenseForm((current) => ({
+            ...current,
+            employeeIds: current.employeeIds.includes(employeeId)
+                ? current.employeeIds.filter((id) => id !== employeeId)
+                : [...current.employeeIds, employeeId]
+        }));
+    };
+
+    const handleGenerateReceipts = async () => {
+        if (selectedExpenseIds.length === 0) return toast.error('Selecciona al menos un gasto con empleado');
+        try {
+            setGeneratingReceipts(true);
+            await downloadExpenseReceipts(selectedExpenseIds);
+            toast.success(selectedExpenseIds.length === 1 ? 'Recibí generado' : `${selectedExpenseIds.length} recibís generados`);
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'No se pudieron generar los recibís'));
+        } finally {
+            setGeneratingReceipts(false);
         }
     };
 
@@ -227,7 +290,7 @@ export default function ObraDetailPage() {
                 </button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
                 {TIPOS.map((t) => (
                     <div key={t} className="bg-white dark:bg-slate-900 rounded-xl p-4 border border-slate-200 dark:border-slate-800">
                         <p className="text-xs text-slate-500">{TIPO_LABELS[t]}</p>
@@ -385,42 +448,147 @@ export default function ObraDetailPage() {
                 <div className="space-y-4">
                     {closed && (
                         <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 text-amber-800 dark:text-amber-200 rounded-lg px-4 py-3 text-sm">
-                            ⚠ Esta obra está cerrada. No se pueden añadir nuevos gastos; las correcciones siguen permitidas.
+                            <AlertTriangle size={16} className="mr-2 inline-block" />
+                            Esta obra está cerrada. No se pueden añadir nuevos gastos; las correcciones siguen permitidas.
                         </div>
                     )}
                     <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-5">
                         <h3 className="font-bold mb-3 flex items-center gap-1.5"><Plus size={16} /> {expenseEditingId ? 'Editar gasto' : 'Añadir gasto manual'}</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            <select className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.type} onChange={(e) => setExpenseForm({ ...expenseForm, type: e.target.value as ObraExpenseType })}>
+                        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                            <label className="space-y-1 lg:col-span-3">
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Categoría</span>
+                                <select className="min-h-11 w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.type} onChange={(e) => {
+                                    const type = e.target.value as ObraExpenseType;
+                                    setExpenseForm({ ...expenseForm, type, destination: type === 'PER_DIEM' ? (expenseForm.destination || obra.destination || '') : expenseForm.destination });
+                                }}>
                                 {TIPOS.map((t) => <option key={t} value={t}>{TIPO_LABELS[t]}</option>)}
-                            </select>
-                            <input type="date" className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.date} onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value })} />
-                            <input type="number" step="0.01" min="0" className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="Importe (€)" />
-                            <select className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.employeeId} onChange={(e) => setExpenseForm({ ...expenseForm, employeeId: e.target.value })}>
-                                <option value="">Empleado (opcional)...</option>
-                                {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>)}
-                            </select>
-                            <input className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 md:col-span-2" placeholder="Descripción..." value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} />
-                            <input className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" placeholder="Proveedor" value={expenseForm.vendor} onChange={(e) => setExpenseForm({ ...expenseForm, vendor: e.target.value })} />
-                            <input className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" placeholder="Referencia" value={expenseForm.reference} onChange={(e) => setExpenseForm({ ...expenseForm, reference: e.target.value })} />
-                            {(expenseForm.type === 'FLIGHT' || expenseForm.type === 'TRANSPORT') && (
-                                <>
-                                    <input className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" placeholder="Origen" value={expenseForm.origin} onChange={(e) => setExpenseForm({ ...expenseForm, origin: e.target.value })} />
-                                    <input className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" placeholder="Destino" value={expenseForm.destination} onChange={(e) => setExpenseForm({ ...expenseForm, destination: e.target.value })} />
-                                </>
-                            )}
+                                </select>
+                            </label>
+                            <label className="space-y-1 lg:col-span-3">
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Desde</span>
+                                <input type="date" className="min-h-11 w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.date} onChange={(e) => setExpenseForm({ ...expenseForm, date: e.target.value, endDate: expenseForm.endDate || e.target.value })} />
+                            </label>
+                            <label className="space-y-1 lg:col-span-3">
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Hasta</span>
+                                <input type="date" min={expenseForm.date} className="min-h-11 w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.endDate} onChange={(e) => setExpenseForm({ ...expenseForm, endDate: e.target.value })} />
+                            </label>
+                            <label className="space-y-1 lg:col-span-3">
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                    {expenseForm.type === 'PER_DIEM' ? 'Importe por empleado y día' : 'Importe total a repartir'}
+                                </span>
+                                <input type="number" step="0.01" min="0.01" className="min-h-11 w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="0,00 €" />
+                            </label>
+
+                            <details className="group relative lg:col-span-12">
+                                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800">
+                                    <span className="flex min-w-0 items-center gap-2">
+                                        <Users size={16} className="shrink-0 text-slate-500" />
+                                        <span className="truncate">
+                                            {selectedExpenseEmployees.length === 0
+                                                ? 'Seleccionar empleados…'
+                                                : selectedExpenseEmployees.length === 1
+                                                    ? (selectedExpenseEmployees[0].name || selectedExpenseEmployees[0].dni)
+                                                    : `${selectedExpenseEmployees.length} empleados seleccionados`}
+                                        </span>
+                                    </span>
+                                    <ChevronDown size={16} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                                </summary>
+                                <div className="absolute z-30 mt-1 w-full rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                                    <div className="relative mb-2">
+                                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="search"
+                                            value={employeeExpenseSearch}
+                                            onChange={(event) => setEmployeeExpenseSearch(event.target.value)}
+                                            placeholder="Buscar por nombre o DNI"
+                                            className="min-h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-800"
+                                        />
+                                    </div>
+                                    {!expenseEditingId && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpenseForm((current) => ({
+                                                ...current,
+                                                employeeIds: filteredExpenseEmployees.every((employee) => current.employeeIds.includes(employee.id))
+                                                    ? current.employeeIds.filter((id) => !filteredExpenseEmployees.some((employee) => employee.id === id))
+                                                    : Array.from(new Set([...current.employeeIds, ...filteredExpenseEmployees.map((employee) => employee.id)]))
+                                            }))}
+                                            className="mb-2 min-h-9 rounded-md px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                                        >
+                                            {filteredExpenseEmployees.every((employee) => expenseForm.employeeIds.includes(employee.id)) ? 'Quitar resultados' : 'Seleccionar resultados'}
+                                        </button>
+                                    )}
+                                    <div className="max-h-56 overflow-y-auto">
+                                        {filteredExpenseEmployees.map((employee: any) => {
+                                            const selected = expenseForm.employeeIds.includes(employee.id);
+                                            const name = employee.name || `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.dni;
+                                            return (
+                                                <button
+                                                    key={employee.id}
+                                                    type="button"
+                                                    disabled={Boolean(expenseEditingId && !selected)}
+                                                    onClick={() => toggleExpenseEmployee(employee.id)}
+                                                    className={`flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${selected ? 'bg-blue-50 text-blue-900 dark:bg-blue-950/40 dark:text-blue-100' : 'hover:bg-slate-50 dark:hover:bg-slate-800'} disabled:opacity-40`}
+                                                >
+                                                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 dark:border-slate-600'}`}>{selected && <Check size={13} />}</span>
+                                                    <span className="truncate">{name}</span>
+                                                    <span className="ml-auto text-xs text-slate-400">{employee.dni}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </details>
+
+                            {expenseForm.type === 'PER_DIEM' ? (
+                                <div className="lg:col-span-12 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                                    <strong>{Number(expenseForm.amount || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> × {expenseDays || 0} día{expenseDays === 1 ? '' : 's'} × {expenseForm.employeeIds.length} empleado{expenseForm.employeeIds.length === 1 ? '' : 's'} = <strong>{dietGrandTotal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong>
+                                </div>
+                            ) : expenseForm.employeeIds.length > 0 && Number(expenseForm.amount) > 0 ? (
+                                <div className="lg:col-span-12 text-xs text-slate-600">
+                                    Cada empleado recibirá aproximadamente {(Number(expenseForm.amount) / expenseForm.employeeIds.length).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}.
+                                </div>
+                            ) : null}
+                            <input className="min-h-11 px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 lg:col-span-6" placeholder="Descripción" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} />
+                            <input className="min-h-11 px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 lg:col-span-3" placeholder="Proveedor" value={expenseForm.vendor} onChange={(e) => setExpenseForm({ ...expenseForm, vendor: e.target.value })} />
+                            <input className="min-h-11 px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 lg:col-span-3" placeholder="Referencia" value={expenseForm.reference} onChange={(e) => setExpenseForm({ ...expenseForm, reference: e.target.value })} />
+                            <label className="space-y-1 lg:col-span-6">
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Origen (opcional)</span>
+                                <input className="min-h-11 w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" placeholder="Lugar de salida" value={expenseForm.origin} onChange={(e) => setExpenseForm({ ...expenseForm, origin: e.target.value })} />
+                            </label>
+                            <label className="space-y-1 lg:col-span-6">
+                                <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Destino {expenseForm.type === 'PER_DIEM' ? '(obligatorio)' : ''}</span>
+                                <input className="min-h-11 w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" placeholder={obra.destination || 'Lugar de destino'} value={expenseForm.destination} onChange={(e) => setExpenseForm({ ...expenseForm, destination: e.target.value })} />
+                            </label>
                         </div>
                         <div className="flex justify-end gap-2 mt-3">
-                            {expenseEditingId && <button onClick={() => { setExpenseEditingId(null); setExpenseForm({ type: 'PER_DIEM' as ObraExpenseType, date: '', amount: '', currency: 'EUR', employeeId: '', description: '', vendor: '', reference: '', origin: '', destination: '' }); }} className="px-3 py-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancelar</button>}
+                            {expenseEditingId && <button onClick={() => { setExpenseEditingId(null); setExpenseForm(emptyExpenseForm()); }} className="min-h-11 px-3 py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg">Cancelar</button>}
                             <button disabled={closed && !expenseEditingId} onClick={handleSaveExpense} className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg flex items-center gap-1.5"><Save size={14} /> Guardar gasto</button>
                         </div>
                     </div>
                     <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+                            <div>
+                                <p className="text-sm font-semibold text-slate-900 dark:text-white">Gastos registrados</p>
+                                <p className="text-xs text-slate-500">Selecciona filas con empleado para generar un recibí por persona.</p>
+                            </div>
+                            <button type="button" disabled={selectedExpenseIds.length === 0 || generatingReceipts} onClick={handleGenerateReceipts} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white dark:text-slate-900">
+                                <FileDown size={16} /> {generatingReceipts ? 'Generando…' : `Generar recibís (${selectedExpenseIds.length})`}
+                            </button>
+                        </div>
                         <table className="w-full text-sm">
                             <thead className="bg-slate-50 dark:bg-slate-800 text-xs uppercase text-slate-500">
                                 <tr>
+                                    <th className="w-12 px-4 py-3 text-left">
+                                        <input
+                                            type="checkbox"
+                                            aria-label="Seleccionar todos los gastos con empleado"
+                                            checked={(obra.expenses || []).filter((expense: any) => expense.employeeId).length > 0 && (obra.expenses || []).filter((expense: any) => expense.employeeId).every((expense: any) => selectedExpenseIds.includes(expense.id))}
+                                            onChange={(event) => setSelectedExpenseIds(event.target.checked ? (obra.expenses || []).filter((expense: any) => expense.employeeId).map((expense: any) => expense.id) : [])}
+                                        />
+                                    </th>
                                     <th className="px-4 py-3 text-left">Tipo</th>
-                                    <th className="px-4 py-3 text-left">Fecha</th>
+                                    <th className="px-4 py-3 text-left">Periodo</th>
                                     <th className="px-4 py-3 text-left">Empleado</th>
                                     <th className="px-4 py-3 text-left">Descripción</th>
                                     <th className="px-4 py-3 text-right">Importe</th>
@@ -430,19 +598,26 @@ export default function ObraDetailPage() {
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {(obra.expenses || []).map((e: any) => (
                                     <tr key={e.id}>
+                                        <td className="px-4 py-3">
+                                            <input type="checkbox" disabled={!e.employeeId} aria-label={`Seleccionar gasto ${e.id}`} checked={selectedExpenseIds.includes(e.id)} onChange={() => setSelectedExpenseIds((current) => current.includes(e.id) ? current.filter((id) => id !== e.id) : [...current, e.id])} />
+                                        </td>
                                         <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded text-xs ${TIPO_COLORS[e.type as ObraExpenseType] || ''}`}>{TIPO_LABELS[e.type as ObraExpenseType] || e.type}</span></td>
-                                        <td className="px-4 py-3">{String(e.date).substring(0, 10)}</td>
+                                        <td className="px-4 py-3">{String(e.date).substring(0, 10)}{e.endDate && String(e.endDate).substring(0, 10) !== String(e.date).substring(0, 10) ? ` → ${String(e.endDate).substring(0, 10)}` : ''}</td>
                                         <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{e.employee?.name || '—'}</td>
                                         <td className="px-4 py-3 text-slate-500 text-xs">{e.description || e.vendor || e.origin ? `${e.origin || ''}${e.origin && e.destination ? ' → ' : ''}${e.destination || ''}` : '—'}</td>
-                                        <td className="px-4 py-3 text-right font-semibold">{Number(e.amount).toLocaleString('es-ES', { style: 'currency', currency: e.currency || 'EUR' })}</td>
+                                        <td className="px-4 py-3 text-right font-semibold">
+                                            {Number(e.amount).toLocaleString('es-ES', { style: 'currency', currency: e.currency || 'EUR' })}
+                                            {e.type === 'PER_DIEM' && e.unitAmount && <span className="block text-[10px] font-normal text-slate-500">{Number(e.unitAmount).toLocaleString('es-ES', { style: 'currency', currency: e.currency || 'EUR' })}/día × {e.unitCount || 1}</span>}
+                                            {Number(e.allocationCount || 1) > 1 && <span className="block text-[10px] font-normal text-slate-400">Reparto {e.allocationIndex}/{e.allocationCount}</span>}
+                                        </td>
                                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                                            <button onClick={() => { setExpenseEditingId(e.id); setExpenseForm({ type: e.type as ObraExpenseType, date: String(e.date).substring(0, 10), amount: e.amount, currency: e.currency || 'EUR', employeeId: e.employeeId || '', description: e.description || '', vendor: e.vendor || '', reference: e.reference || '', origin: e.origin || '', destination: e.destination || '' }); }} className="text-blue-600 mr-2" aria-label="Editar"><Pencil size={14} /></button>
+                                            <button onClick={() => { setExpenseEditingId(e.id); setExpenseForm({ type: e.type as ObraExpenseType, date: String(e.date).substring(0, 10), endDate: String(e.endDate || e.date).substring(0, 10), amount: e.type === 'PER_DIEM' && e.unitAmount ? e.unitAmount : e.amount, currency: e.currency || 'EUR', employeeIds: e.employeeId ? [e.employeeId] : [], description: e.description || '', vendor: e.vendor || '', reference: e.sourceReference || e.reference || '', origin: e.origin || '', destination: e.destination || '' }); }} className="text-blue-600 mr-2" aria-label="Editar"><Pencil size={14} /></button>
                                             <button onClick={() => handleDeleteExpense(e.id)} className="text-rose-600" aria-label="Eliminar"><Trash2 size={14} /></button>
                                         </td>
                                     </tr>
                                 ))}
                                 {(!obra.expenses || obra.expenses.length === 0) && (
-                                    <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-400">Sin gastos. Añade uno o importa desde Excel.</td></tr>
+                                    <tr><td colSpan={7} className="px-4 py-6 text-center text-slate-400">Sin gastos. Añade uno o importa desde Excel.</td></tr>
                                 )}
                             </tbody>
                         </table>

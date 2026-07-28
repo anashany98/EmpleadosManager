@@ -1,3 +1,4 @@
+import { EmployeeAbsenceSection } from '../sections/EmployeeAbsenceSection';
 import { EmployeeAdministrationSection } from '../sections/EmployeeAdministrationSection';
 import { EmployeeAttendanceSection } from '../sections/EmployeeAttendanceSection';
 import { EmployeeDocumentsSection } from '../sections/EmployeeDocumentsSection';
@@ -5,6 +6,8 @@ import { EmployeeOperationsSection } from '../sections/EmployeeOperationsSection
 import { EmployeePayrollSection } from '../sections/EmployeePayrollSection';
 import { EmployeeSummarySection } from '../sections/EmployeeSummarySection';
 import { EmployeeVacationSection } from '../sections/EmployeeVacationSection';
+import { EmployeeControlHorarioSection } from '../sections/EmployeeControlHorarioSection';
+import { EmployeeDietSection } from '../sections/EmployeeDietSection';
 import type { EmployeeVacationBalanceSummary, EmployeeViewRecord } from '../types';
 
 interface EmployeeViewTabContentProps {
@@ -32,6 +35,12 @@ export function EmployeeViewTabContent(props: EmployeeViewTabContentProps) {
             />
         );
     }
+    if (props.activeTab === 'control-horario') {
+        return <EmployeeControlHorarioSection employeeId={props.employeeId} />;
+    }
+    if (props.activeTab === 'dietas') {
+        return <EmployeeDietSection employeeId={props.employeeId} />;
+    }
     if (['generar', 'expediente', 'prl'].includes(props.activeTab)) {
         return <EmployeeDocumentsSection activeTab={props.activeTab} employeeId={props.employeeId} onDocumentGenerated={props.onDocumentGenerated} />;
     }
@@ -46,6 +55,9 @@ export function EmployeeViewTabContent(props: EmployeeViewTabContentProps) {
     }
     if (props.activeTab === 'vacaciones') {
         return <EmployeeVacationSection employeeId={props.employeeId} employeeView={props.employeeView} onVacationBalanceChange={props.onVacationBalanceChange} />;
+    }
+    if (props.activeTab === 'ausencias') {
+        return <EmployeeAbsenceSection employeeId={props.employeeId} />;
     }
     if (['seguridad', 'privacidad', 'notas-rrhh'].includes(props.activeTab)) {
         return (

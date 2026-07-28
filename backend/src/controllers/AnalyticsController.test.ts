@@ -38,7 +38,7 @@ describe('AnalyticsController', () => {
             departures: 1,
             turnoverRate: 10,
             avgTenure: 3,
-            openPositions: 0,
+            openPositions: null,
             pendingRequests: 2
         } as never);
     });

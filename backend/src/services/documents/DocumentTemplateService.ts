@@ -358,6 +358,59 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
             'Firma y sello: {{firma.autorizante}}'
         ].join('\n')
     },
+    VACATION_REQUEST: {
+        type: 'VACATION_REQUEST',
+        name: 'Solicitud de vacaciones',
+        variables: [
+            'empresa.nombre', 'empleado.nombreCompleto', 'empleado.dni', 'empleado.departamento',
+            'empleado.puesto', 'vacacion.fechaInicio', 'vacacion.fechaFin', 'vacacion.dias',
+            'vacacion.tipo', 'vacacion.motivo', 'firma.ciudad', 'firma.fecha'
+        ],
+        content: [
+            '# SOLICITUD DE VACACIONES',
+            '',
+            'Empleado: {{empleado.nombreCompleto}}',
+            'DNI/NIE: {{empleado.dni}}',
+            'Empresa: {{empresa.nombre}}',
+            '',
+            'Periodo: del {{vacacion.fechaInicio}} al {{vacacion.fechaFin}}',
+            'Días solicitados: {{vacacion.dias}}',
+            'Tipo: {{vacacion.tipo}}',
+            'Motivo: {{vacacion.motivo}}',
+            '',
+            'Firma del trabajador: ____________________',
+            'Firma del responsable: ____________________',
+            '',
+            'En {{firma.ciudad}}, a {{firma.fecha}}.'
+        ].join('\n')
+    },
+    OBRA_EXPENSE_RECEIPT: {
+        type: 'OBRA_EXPENSE_RECEIPT',
+        name: 'Recibí de dietas y gastos de obra',
+        variables: [
+            'empresa.nombre', 'empleado.nombreCompleto', 'empleado.dni',
+            'obra.codigo', 'obra.nombre', 'obra.destino', 'gasto.concepto',
+            'gasto.fechaInicio', 'gasto.fechaFin', 'gasto.importeDiario',
+            'gasto.dias', 'gasto.importeTotal', 'gasto.detalle', 'firma.fecha'
+        ],
+        content: [
+            '# RECIBÍ',
+            '',
+            'Yo, {{empleado.nombreCompleto}}, con DNI/NIE {{empleado.dni}}, declaro haber recibido de {{empresa.nombre}} la cantidad de {{gasto.importeTotal}}.',
+            '',
+            'Concepto: {{gasto.concepto}}',
+            'Periodo: {{gasto.fechaInicio}} - {{gasto.fechaFin}}',
+            'Importe diario: {{gasto.importeDiario}}',
+            'Número de días: {{gasto.dias}}',
+            'Obra: {{obra.codigo}} - {{obra.nombre}}',
+            'Destino: {{obra.destino}}',
+            'Detalle: {{gasto.detalle}}',
+            '',
+            'Firma del trabajador: ____________________',
+            '',
+            'Emitido el {{firma.fecha}}.'
+        ].join('\n')
+    },
     FIRMA_DIETAS: {
         type: 'FIRMA_DIETAS',
         name: 'Firma de dietas',
@@ -408,7 +461,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
     }
 };
 
-const EDITABLE_TEMPLATE_TYPES = ['NDA', 'RGPD', 'UNIFORM', 'EPI', 'TECH_DEVICE', 'CERTIFICADO_EMPRESA', 'CERTIFICADO_TRABAJO', 'CARTA_FORMAL', 'JUSTIFICANTE_AUSENCIA', 'FIRMA_DIETAS', 'ENTREGA_MATERIAL'];
+const EDITABLE_TEMPLATE_TYPES = ['NDA', 'RGPD', 'UNIFORM', 'EPI', 'TECH_DEVICE', 'CERTIFICADO_EMPRESA', 'CERTIFICADO_TRABAJO', 'CARTA_FORMAL', 'JUSTIFICANTE_AUSENCIA', 'VACATION_REQUEST', 'FIRMA_DIETAS', 'OBRA_EXPENSE_RECEIPT', 'ENTREGA_MATERIAL'];
 const OFFICIAL_ONLY_TEMPLATE_TYPES = new Set(['MODEL_145']);
 
 const tryParseArray = (value: string | null | undefined): string[] => {
@@ -431,7 +484,9 @@ const DOCUMENT_CATEGORY_BY_TYPE: Record<string, string> = {
     CERTIFICADO_TRABAJO: 'CERTIFICATE',
     CARTA_FORMAL: 'OTHER',
     JUSTIFICANTE_AUSENCIA: 'ABSENCE',
+    VACATION_REQUEST: 'OTHER',
     FIRMA_DIETAS: 'EXPENSE',
+    OBRA_EXPENSE_RECEIPT: 'EXPENSE',
     ENTREGA_MATERIAL: 'OTHER',
     UNIFORM: 'OTHER',
     EPI: 'PRL',
@@ -515,8 +570,8 @@ export const CompanyDocumentTemplateService = {
         }
 
         return prisma.documentTemplate.findFirst({
-            where: { companyId: null, type, isActive: true, isDefault: true },
-            orderBy: { updatedAt: 'desc' }
+            where: { companyId: null, type, isActive: true },
+            orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }]
         });
     },
 
@@ -740,6 +795,33 @@ export const CompanyDocumentTemplateService = {
         return context;
     },
 
+    renderPdfFromTemplate: async (options: {
+        type: string;
+        companyId?: string | null;
+        employeeId: string;
+        context: Record<string, unknown>;
+    }) => {
+        const template = await CompanyDocumentTemplateService.getTemplate(options.type, options.companyId ?? null);
+        if (!template) throw new AppError('Plantilla no encontrada', 404);
+
+        const layout = parseLayoutTemplate(template.content || '');
+        const doc = new PDFDocument({ size: 'A4', margin: layout ? 0 : 50 });
+        if (layout) {
+            await renderLayoutTemplate(doc, layout, options.context, {
+                employeeId: options.employeeId,
+                documentType: options.type
+            });
+        } else {
+            await addQRCodeToPDF(doc, { t: options.type }, options.employeeId);
+            const logoPath = getLogoPath();
+            if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
+            doc.y = logoPath ? 120 : 50;
+            const rendered = CompanyDocumentTemplateService.renderTemplate(template.content || '', options.context as TemplateContext);
+            writeTemplateText(doc, rendered);
+        }
+        return { buffer: await buildPdfBuffer(doc), template };
+    },
+
     generateDocumentFromTemplate: async (options: {
         employeeId: string;
         type: string;
@@ -764,25 +846,13 @@ export const CompanyDocumentTemplateService = {
             authorName,
             extraContext: mergedExtraContext
         });
-        const layout = parseLayoutTemplate(template.content || '');
-        const doc = new PDFDocument({ size: 'A4', margin: layout ? 0 : 50 });
         const documentType = type || template.type;
-
-        if (layout) {
-            await renderLayoutTemplate(doc, layout, context as Record<string, unknown>, {
-                employeeId,
-                documentType
-            });
-        } else {
-            await addQRCodeToPDF(doc, { t: documentType }, employeeId);
-            const logoPath = getLogoPath();
-            if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
-            doc.y = logoPath ? 120 : 50;
-            const rendered = CompanyDocumentTemplateService.renderTemplate(template.content || '', context);
-            writeTemplateText(doc, rendered);
-        }
-
-        const pdfBuffer = await buildPdfBuffer(doc);
+        const { buffer: pdfBuffer } = await CompanyDocumentTemplateService.renderPdfFromTemplate({
+            type: documentType,
+            companyId,
+            employeeId,
+            context: context as Record<string, unknown>
+        });
         const safeType = sanitizeFileName(documentType);
         const safeDni = sanitizeFileName(context.empleado.dni || employeeId);
         const originalName = `${safeType}_${safeDni}_${Date.now()}.pdf`;

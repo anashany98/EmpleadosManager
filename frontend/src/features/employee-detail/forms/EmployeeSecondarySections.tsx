@@ -164,6 +164,20 @@ export function EmployeeSecondarySections({
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Subcuenta Contable (465)</label>
                     <input name="subaccount465" value={formData.subaccount465} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />
                 </div>
+                <div className="space-y-2 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 dark:border-emerald-900 dark:bg-emerald-950/20">
+                    <label className="text-sm font-semibold text-emerald-950 dark:text-emerald-200">Código de gestoría</label>
+                    <input
+                        name="payrollAgencyEmployeeCode"
+                        value={formData.payrollAgencyEmployeeCode}
+                        onChange={onChange}
+                        placeholder="Ej.: código de la columna B de gestoria.xlsx"
+                        autoComplete="off"
+                        className="w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 font-mono font-semibold text-slate-900 outline-none focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 dark:border-emerald-800 dark:bg-slate-900 dark:text-white"
+                    />
+                    <p className="text-xs leading-relaxed text-emerald-800 dark:text-emerald-300">
+                        Identificador único usado para localizar al trabajador en la plantilla de gestoría. El cambio se copiará a los períodos nuevos; los períodos ya creados conservan su código histórico.
+                    </p>
+                </div>
                 <div className="md:col-span-2 space-y-2">
                     <label className="text-sm font-medium text-slate-700 dark:text-slate-300">IBAN</label>
                     <input name="iban" value={formData.iban} onChange={onChange} className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800" />

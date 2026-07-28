@@ -113,6 +113,7 @@ export default function AbsenceTypesPage() {
             }
             setIsModalOpen(false);
             await fetchTypes();
+            window.dispatchEvent(new CustomEvent('absence-types-updated'));
         } catch (err: any) {
             const msg = err?.message || 'Error al guardar';
             toast.error(msg);
@@ -126,6 +127,7 @@ export default function AbsenceTypesPage() {
             await api.put(`/absence-types/${t.id}`, { isActive: !t.isActive });
             toast.success(t.isActive ? 'Tipo desactivado' : 'Tipo activado');
             await fetchTypes();
+            window.dispatchEvent(new CustomEvent('absence-types-updated'));
         } catch {
             toast.error('Error al cambiar estado');
         }

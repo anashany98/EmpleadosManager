@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../../backend/node_modules/.prisma/client"
 }
 
 datasource db {
@@ -8,28 +9,29 @@ datasource db {
 }
 
 model User {
-  id                  String               @id @default(uuid())
-  email               String               @unique
-  dni                 String?              @unique // Login alternative
-  employeeId          String? // Link to specific employee record
-  password            String
-  role                String               @default("user")
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  permissions         String?
-  isActive            Boolean              @default(true)
-  sessionVersion      Int                  @default(0)
-  failedLoginAttempts Int                  @default(0)
-  lockedUntil         DateTime?
-  auditLogs           AuditLog[]
-  exports             Export[]
-  batches             PayrollImportBatch[]
-  refreshTokens       RefreshToken[]
-  notifications       Notification[]
-  obraExpensesCreated ObraExpense[]
-  obraImportsCreated  ObraImportBatch[]
-  employee            Employee?            @relation(fields: [employeeId], references: [id])
-  createdEvents       CalendarEvent[]      @relation("EventCreator")
+  id                    String                 @id @default(uuid())
+  email                 String                 @unique
+  dni                   String?                @unique // Login alternative
+  employeeId            String? // Link to specific employee record
+  password              String
+  role                  String                 @default("user")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  permissions           String?
+  isActive              Boolean                @default(true)
+  sessionVersion        Int                    @default(0)
+  failedLoginAttempts   Int                    @default(0)
+  lockedUntil           DateTime?
+  auditLogs             AuditLog[]
+  exports               Export[]
+  payrollControlExports PayrollControlExport[]
+  batches               PayrollImportBatch[]
+  refreshTokens         RefreshToken[]
+  notifications         Notification[]
+  obraExpensesCreated   ObraExpense[]
+  obraImportsCreated    ObraImportBatch[]
+  employee              Employee?              @relation(fields: [employeeId], references: [id])
+  createdEvents         CalendarEvent[]        @relation("EventCreator")
 }
 
 model RefreshToken {
@@ -59,30 +61,33 @@ model PasswordResetToken {
 }
 
 model Company {
-  id                  String               @id @default(uuid())
-  name                String
-  cif                 String               @unique
-  logoUrl             String?
-  legalRep            String? // Apoderado
-  address             String?
-  postalCode          String?
-  city                String?
-  province            String?
-  country             String?
-  email               String?
-  phone               String?
-  officeLatitude      Float?
-  officeLongitude     Float?
-  allowedRadius       Int?                 @default(100) // Meters
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  employees           Employee[]
-  onboardingTemplates OnboardingTemplate[]
-  documentTemplates   DocumentTemplate[]
-  vehicles            Vehicle[]
-  cards               Card[]
-  fileMappings        FileMapping[]
-  calendarEvents      CalendarEvent[]
+  id                           String                        @id @default(uuid())
+  name                         String
+  cif                          String                        @unique
+  logoUrl                      String?
+  legalRep                     String? // Apoderado
+  address                      String?
+  postalCode                   String?
+  city                         String?
+  province                     String?
+  country                      String?
+  email                        String?
+  phone                        String?
+  officeLatitude               Float?
+  officeLongitude              Float?
+  allowedRadius                Int?                          @default(100) // Meters
+  createdAt                    DateTime                      @default(now())
+  updatedAt                    DateTime                      @updatedAt
+  employees                    Employee[]
+  onboardingTemplates          OnboardingTemplate[]
+  documentTemplates            DocumentTemplate[]
+  vehicles                     Vehicle[]
+  cards                        Card[]
+  fileMappings                 FileMapping[]
+  calendarEvents               CalendarEvent[]
+  payrollControlPeriods        PayrollControlPeriod[]
+  payrollControlConceptConfigs PayrollControlConceptConfig[]
+  employmentPeriods            EmploymentPeriod[]
 }
 
 model PermissionProfile {
@@ -94,35 +99,38 @@ model PermissionProfile {
 }
 
 model Employee {
-  id                       String    @id @default(uuid())
-  dni                      String    @unique
-  name                     String
-  firstName                String?
-  lastName                 String?
-  email                    String?
-  phone                    String?
-  address                  String?
-  city                     String?
-  postalCode               String?
-  province                 String?
-  registeredIn             String?
-  birthDate                DateTime?
-  gender                   String?
-  subaccount465            String?   @unique
-  active                   Boolean   @default(true)
+  id                        String    @id @default(uuid())
+  dni                       String    @unique
+  name                      String
+  firstName                 String?
+  lastName                  String?
+  email                     String?
+  phone                     String?
+  address                   String?
+  city                      String?
+  postalCode                String?
+  province                  String?
+  registeredIn              String?
+  birthDate                 DateTime?
+  gender                    String?
+  subaccount465             String?   @unique
+  // Código estable que usa la gestoría. No se infiere nunca de DNI, nombre
+  // ni UUID durante una exportación.
+  payrollAgencyEmployeeCode String?
+  active                    Boolean   @default(true)
   // Soft-delete: GDPR right-to-be-forgotten. When set, the row is
   // hidden from all reads and excluded from FK joins. The data is
   // physically purged by a scheduled job after the configured
   // retention period (default 4 years for payroll, 5 for medical).
-  deletedAt                DateTime?
-  deletedById              String?
-  deletionReason           String?
-  socialSecurityNumber     String?
-  iban                     String?
-  dniExpiration            DateTime?
-  drivingLicense           Boolean   @default(false)
-  drivingLicenseType       String?
-  drivingLicenseExpiration DateTime?
+  deletedAt                 DateTime?
+  deletedById               String?
+  deletionReason            String?
+  socialSecurityNumber      String?
+  iban                      String?
+  dniExpiration             DateTime?
+  drivingLicense            Boolean   @default(false)
+  drivingLicenseType        String?
+  drivingLicenseExpiration  DateTime?
 
   // Encrypted-at-rest PII fields (GDPR Art. 32). SOURCE OF TRUTH for sensitive
   // identifiers. The plaintext columns above stay at their last-known value (or
@@ -181,9 +189,9 @@ model Employee {
   subordinates             Employee[]                @relation("Hierarchy")
   projectWork              EmployeeProjectWork[]
   expenses                 Expense[]
-  obraExpenses             ObraExpense[] 
-  managedObras             Project[]              @relation("ObraManager")
-  medicalReviews           MedicalReview[] 
+  obraExpenses             ObraExpense[]
+  managedObras             Project[]                 @relation("ObraManager")
+  medicalReviews           MedicalReview[]
   overtimeEntries          OvertimeEntry[]
   payrollRows              PayrollRow[]
   timeEntries              TimeEntry[]
@@ -198,12 +206,15 @@ model Employee {
   cards                  Card[]
   users                  User[]
   passwordResetTokens    PasswordResetToken[]
-  evaluations            Evaluation[]         @relation("EvaluationEmployee")
-  evaluationsAsEvaluator Evaluation[]         @relation("EvaluationEvaluator")
+  evaluations            Evaluation[]           @relation("EvaluationEmployee")
+  evaluationsAsEvaluator Evaluation[]           @relation("EvaluationEvaluator")
   peerReviews            PeerReview[]
   objectives             Objective[]
   pdis                   PDI[]
+  payrollControlRecords  PayrollControlRecord[]
+  employmentPeriods      EmploymentPeriod[]
 
+  @@unique([companyId, payrollAgencyEmployeeCode])
   @@index([companyId])
   @@index([active])
   @@index([deletedAt])
@@ -257,16 +268,16 @@ model Project {
   clientName   String?
   startDate    DateTime?
   endDate      DateTime?
-  budget       Decimal?  @db.Decimal(15, 2)
+  budget       Decimal?              @db.Decimal(15, 2)
   managerId    String?
-  status       String   @default("ACTIVE")
+  status       String                @default("ACTIVE")
   active       Boolean               @default(true)
   createdAt    DateTime              @default(now())
   updatedAt    DateTime              @updatedAt
   employeeWork EmployeeProjectWork[]
   expenses     ObraExpense[]
   imports      ObraImportBatch[]
-  manager      Employee? @relation("ObraManager", fields: [managerId], references: [id], onDelete: SetNull)
+  manager      Employee?             @relation("ObraManager", fields: [managerId], references: [id], onDelete: SetNull)
 
   @@index([status])
   @@index([managerId])
@@ -291,34 +302,37 @@ model EmployeeProjectWork {
 }
 
 model ObraExpense {
-  id            String   @id @default(uuid())
+  id            String           @id @default(uuid())
   obraId        String
   employeeId    String?
   type          String
   date          DateTime
-  amount        Decimal  @db.Decimal(15, 2)
-  currency      String   @default("EUR")
+  endDate       DateTime?
+  amount        Decimal          @db.Decimal(15, 2)
+  originalAmount Decimal?        @db.Decimal(15, 2)
+  unitAmount     Decimal?        @db.Decimal(15, 2)
+  unitCount      Int             @default(1)
+  allocationGroupId String?
+  allocationIndex Int?
+  allocationCount Int            @default(1)
+  sourceReference String?
+  currency      String           @default("EUR")
   description   String?
   vendor        String?
   reference     String?
   origin        String?
   destination   String?
   receiptUrl    String?
-  status        String   @default("APPROVED")
+  status        String           @default("APPROVED")
   importBatchId String?
   createdById   String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  obra          Project  @relation(fields: [obraId], references: [id], onDelete: Cascade)
-  employee      Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  obra          Project          @relation(fields: [obraId], references: [id], onDelete: Cascade)
+  employee      Employee?        @relation(fields: [employeeId], references: [id], onDelete: SetNull)
   importBatch   ObraImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
-  createdBy     User    @relation(fields: [createdById], references: [id], onDelete: NoAction)
+  createdBy     User             @relation(fields: [createdById], references: [id], onDelete: NoAction)
 
-  @@index([obraId, type])
-  @@index([obraId, date])
-  @@index([employeeId])
-  @@index([status])
-  @@index([importBatchId])
   // MED-010: unicidad (obraId, reference) para que dos imports
   // concurrentes del mismo archivo NO creen gastos duplicados
   // (gasto inflado / fraude contable). En PostgreSQL, los
@@ -327,22 +341,28 @@ model ObraExpense {
   // controller usa `createMany({ skipDuplicates: true })`
   // para convertir el P2002 en warning idempotente.
   @@unique([obraId, reference])
+  @@index([obraId, type])
+  @@index([obraId, date])
+  @@index([employeeId])
+  @@index([allocationGroupId])
+  @@index([status])
+  @@index([importBatchId])
 }
 
 model ObraImportBatch {
-  id             String   @id @default(uuid())
+  id             String        @id @default(uuid())
   obraId         String?
   sourceFilename String
   sourceFileUrl  String?
-  status         String   @default("UPLOADED")
+  status         String        @default("UPLOADED")
   resultSummary  String?
   mappingRules   String?
   warnings       String?
   createdById    String
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  obra           Project? @relation(fields: [obraId], references: [id], onDelete: SetNull)
-  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: NoAction)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  obra           Project?      @relation(fields: [obraId], references: [id], onDelete: SetNull)
+  createdBy      User          @relation(fields: [createdById], references: [id], onDelete: NoAction)
   expenses       ObraExpense[]
 
   @@index([status])
@@ -882,10 +902,10 @@ model ReportSchedule {
   id         String             @id @default(uuid())
   name       String
   reportType ScheduleReportType
-  params     String             // JSON: filter parameters
+  params     String // JSON: filter parameters
   frequency  ScheduleFrequency
   sendEmail  Boolean            @default(false)
-  recipients String             // JSON: email addresses array
+  recipients String // JSON: email addresses array
   isActive   Boolean            @default(true)
   lastRunAt  DateTime?
   nextRunAt  DateTime
@@ -1344,4 +1364,246 @@ model Consent {
   @@index([purpose])
   @@index([granted])
   @@index([grantedAt])
+}
+
+// Control de Gestoría y Control Horario RRHH
+model PayrollControlPeriod {
+  id             String                 @id @default(uuid())
+  companyId      String
+  year           Int
+  month          Int
+  status         String                 @default("DRAFT") // DRAFT, IN_REVIEW, CLOSED, EXPORTED, SENT_TO_AGENCY, REOPENED
+  reopenReason   String?
+  closedAt       DateTime?
+  closedById     String?
+  reopenedAt     DateTime?
+  reopenedById   String?
+  formulaVersion String                 @default("2026-control-v1")
+  exportedAt     DateTime?
+  exportedById   String?
+  version        Int                    @default(1)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  company        Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  records        PayrollControlRecord[]
+  exports        PayrollControlExport[]
+
+  @@unique([companyId, year, month])
+  @@index([companyId])
+  @@index([year, month])
+  @@index([status])
+}
+
+model PayrollControlRecord {
+  id           String  @id @default(uuid())
+  periodId     String
+  employeeId   String
+  category     String?
+  department   String?
+  gestoriaCode String?
+
+  overtimeRate         Decimal  @default(0) @db.Decimal(10, 4)
+  overtimeRateManual   Decimal? @db.Decimal(10, 4)
+  isOvertimeRateManual Boolean  @default(false)
+
+  holidayOvertimeRate         Decimal  @default(0) @db.Decimal(10, 4)
+  holidayOvertimeRateManual   Decimal? @db.Decimal(10, 4)
+  isHolidayOvertimeRateManual Boolean  @default(false)
+
+  overtimeHours         Decimal  @default(0) @db.Decimal(10, 2)
+  overtimeHoursManual   Decimal? @db.Decimal(10, 2)
+  isOvertimeHoursManual Boolean  @default(false)
+
+  holidayOvertimeHours         Decimal  @default(0) @db.Decimal(10, 2)
+  holidayOvertimeHoursManual   Decimal? @db.Decimal(10, 2)
+  isHolidayOvertimeHoursManual Boolean  @default(false)
+
+  totalOvertimeAmountCalculated Decimal  @default(0) @db.Decimal(12, 2)
+  totalOvertimeAmount           Decimal  @default(0) @db.Decimal(12, 2)
+  totalOvertimeAmountManual     Decimal? @db.Decimal(12, 2)
+  isTotalOvertimeAmountManual   Boolean  @default(false)
+
+  positiveVariable         Decimal  @default(0) @db.Decimal(12, 2)
+  positiveVariableManual   Decimal? @db.Decimal(12, 2)
+  isPositiveVariableManual Boolean  @default(false)
+
+  negativeVariable         Decimal  @default(0) @db.Decimal(12, 2)
+  negativeVariableManual   Decimal? @db.Decimal(12, 2)
+  isNegativeVariableManual Boolean  @default(false)
+
+  diets         Decimal  @default(0) @db.Decimal(12, 2)
+  dietsManual   Decimal? @db.Decimal(12, 2)
+  isDietsManual Boolean  @default(false)
+
+  irpf         Decimal  @default(0) @db.Decimal(6, 4)
+  irpfManual   Decimal? @db.Decimal(6, 4)
+  isIrpfManual Boolean  @default(false)
+
+  tgss         Decimal  @default(0) @db.Decimal(6, 4)
+  tgssManual   Decimal? @db.Decimal(6, 4)
+  isTgssManual Boolean  @default(false)
+
+  availablePercentageCalculated Decimal  @default(0) @db.Decimal(6, 4)
+  availablePercentage           Decimal  @default(0) @db.Decimal(6, 4)
+  availablePercentageManual     Decimal? @db.Decimal(6, 4)
+  isAvailablePercentageManual   Boolean  @default(false)
+
+  grossCalculated Decimal  @default(0) @db.Decimal(12, 2)
+  gross           Decimal  @default(0) @db.Decimal(12, 2)
+  grossManual     Decimal? @db.Decimal(12, 2)
+  isGrossManual   Boolean  @default(false)
+
+  productivityCalculated Decimal  @default(0) @db.Decimal(12, 4)
+  productivity           Decimal  @default(0) @db.Decimal(12, 4)
+  productivityManual     Decimal? @db.Decimal(12, 4)
+  isProductivityManual   Boolean  @default(false)
+
+  hoursCalculated     Decimal  @default(0) @db.Decimal(12, 2)
+  hoursAmount         Decimal  @default(0) @db.Decimal(12, 2)
+  hoursAmountManual   Decimal? @db.Decimal(12, 2)
+  isHoursAmountManual Boolean  @default(false)
+
+  differenceCalculated     Decimal  @default(0) @db.Decimal(12, 2)
+  difference               Decimal  @default(0) @db.Decimal(12, 2)
+  differenceManual         Decimal? @db.Decimal(12, 2)
+  isDifferenceManual       Boolean  @default(false)
+  reconciliationCalculated Decimal  @default(0) @db.Decimal(12, 4)
+
+  customConcepts String? @db.Text
+  observations   String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  version   Int      @default(1)
+
+  period        PayrollControlPeriod         @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  employee      Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  overrides     PayrollControlOverride[]
+  conceptValues PayrollControlConceptValue[]
+  dailyEntries  PayrollControlDailyEntry[]
+
+  @@unique([periodId, employeeId])
+  @@index([periodId])
+  @@index([employeeId])
+}
+
+model PayrollControlOverride {
+  id              String               @id @default(uuid())
+  recordId        String
+  fieldName       String
+  calculatedValue String?
+  manualValue     String?
+  previousValue   String?
+  newValue        String?
+  userId          String?
+  createdAt       DateTime             @default(now())
+  record          PayrollControlRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@index([recordId])
+  @@index([fieldName])
+}
+
+model PayrollControlConceptConfig {
+  id           String   @id @default(uuid())
+  companyId    String
+  key          String
+  label        String
+  gestoriaCode String?
+  active       Boolean  @default(true)
+  order        Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company Company                      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  values  PayrollControlConceptValue[]
+
+  @@unique([companyId, key])
+  @@index([companyId])
+}
+
+/// Tramos contractuales reales de un empleado. Permite conservar todas las
+/// bajas y reactivaciones sin sobrescribir el historial en Employee.
+model EmploymentPeriod {
+  id          String    @id @default(uuid())
+  employeeId  String
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  startDate   DateTime
+  endDate     DateTime?
+  startReason String?
+  endReason   String?
+  createdById String?
+  endedById   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([employeeId, startDate])
+  @@index([companyId, startDate, endDate])
+  @@index([endDate])
+}
+
+model PayrollControlConceptValue {
+  id              String   @id @default(uuid())
+  recordId        String
+  conceptConfigId String
+  key             String
+  label           String
+  gestoriaCode    String?
+  value           Decimal  @default(0) @db.Decimal(12, 2)
+  manualValue     Decimal? @db.Decimal(12, 2)
+  isManual        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  record        PayrollControlRecord        @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  conceptConfig PayrollControlConceptConfig @relation(fields: [conceptConfigId], references: [id], onDelete: Restrict)
+
+  @@unique([recordId, conceptConfigId])
+  @@index([recordId])
+  @@index([gestoriaCode])
+}
+
+model PayrollControlDailyEntry {
+  id                   String    @id @default(uuid())
+  recordId             String
+  workDate             DateTime  @db.Date
+  entryAt              DateTime?
+  breakOutAt           DateTime?
+  breakInAt            DateTime?
+  exitAt               DateTime?
+  workedHours          Decimal   @default(0) @db.Decimal(8, 2)
+  discountHours        Decimal   @default(0) @db.Decimal(8, 2)
+  scheduledHours       Decimal   @default(0) @db.Decimal(8, 2)
+  overtimeHours        Decimal   @default(0) @db.Decimal(8, 2)
+  holidayOvertimeHours Decimal   @default(0) @db.Decimal(8, 2)
+  dietAmount           Decimal   @default(0) @db.Decimal(12, 2)
+  isHoliday            Boolean   @default(false)
+  isCalendarHoliday    Boolean   @default(false)
+  holidayName          String?
+  notes                String?   @db.Text
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  record PayrollControlRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+
+  @@unique([recordId, workDate])
+  @@index([recordId])
+}
+
+model PayrollControlExport {
+  id           String   @id @default(uuid())
+  periodId     String
+  filename     String
+  templateHash String
+  outputHash   String
+  content      Bytes
+  mappingJson  String   @db.Text
+  createdById  String
+  createdAt    DateTime @default(now())
+
+  period    PayrollControlPeriod @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  createdBy User                 @relation(fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([periodId, createdAt])
 }

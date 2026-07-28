@@ -9,12 +9,14 @@ import { EmailService } from '../services/EmailService';
 import { CacheService } from '../services/CacheService';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
+import { AbsenceType } from '@prisma/client';
 import { serveLocalUploadFile } from '../utils/fileDownload';
 import { canAccessPolicy } from '../../../shared/authz';
 import {
     notifyVacationCreated,
     saveVacationAttachment,
     validateVacationRequest,
+    validateVacationRequestForUpdate,
     updateVacationStatus,
     transformVacationWithUrl,
     transformVacationListWithUrl
@@ -24,6 +26,25 @@ import fs from 'fs';
 import path from 'path';
 
 const log = createLogger('VacationController');
+
+function normalizedAbsenceType(type?: string | null): AbsenceType {
+    const aliases: Record<string, AbsenceType> = {
+        SICK_LEAVE: AbsenceType.SICK,
+        BAJA_MEDICA: AbsenceType.SICK,
+        MATERNIDAD: AbsenceType.MATERNITY,
+        PATERNIDAD: AbsenceType.PATERNITY,
+        LACTANCIA: AbsenceType.LACTATION,
+        MEDICAL_HOURS: AbsenceType.MEDICAL_APPOINTMENT,
+        PERSONAL: AbsenceType.OTHER,
+        PERSONAL_DAY: AbsenceType.OTHER,
+        OTROS: AbsenceType.OTHER,
+        TELETRABAJO: AbsenceType.OTHER,
+        PERMISO_SINDICAL: AbsenceType.OTHER,
+        BIRTH: AbsenceType.OTHER
+    };
+    if (!type) return AbsenceType.VACATION;
+    return aliases[type] || (Object.values(AbsenceType).includes(type as AbsenceType) ? type as AbsenceType : AbsenceType.OTHER);
+}
 
 function invalidateVacationBalanceCache(employeeId: string, year: number): void {
     // Invalidate current year and adjacent years (for carried-over balances)
@@ -130,7 +151,7 @@ export const VacationController = {
     // Crear vacaciones
     create: async (req: Request, res: Response) => {
         try {
-            const { employeeId: bodyEmployeeId, startDate, endDate, type, reason } = req.body as { employeeId?: string; startDate: string; endDate: string; type?: string; reason?: string };
+            const { employeeId: bodyEmployeeId, startDate, endDate, type, reason, notes } = req.body as { employeeId?: string; startDate: string; endDate: string; type?: string; reason?: string; notes?: string };
             let employeeId = bodyEmployeeId || (req as AuthenticatedRequest).user?.employeeId;
             const { user } = req as AuthenticatedRequest;
 
@@ -159,10 +180,32 @@ export const VacationController = {
 
             const start = new Date(startDate);
             const end = new Date(endDate);
-            const vacationStatus = (req.body as any).status || 'PENDING';
+            const selectedType = type || 'VACATION';
+            const typeConfig = await prisma.absenceTypeConfig.findUnique({ where: { code: selectedType } });
+            if (!typeConfig?.isActive) {
+                return ApiResponse.error(res, 'El tipo de ausencia seleccionado no existe o está desactivado', 400);
+            }
+            if (typeConfig.requiresAttachment && !req.file) {
+                return ApiResponse.error(res, 'Este tipo de ausencia requiere un documento adjunto', 422);
+            }
+            const canManage = canAccessPolicy('vacation.manage', user, { employeeId, companyId: targetEmployee.companyId });
+            const requestedStatus = (req.body as any).status;
+            const vacationStatus = requestedStatus === 'APPROVED' && canManage
+                ? 'APPROVED'
+                : typeConfig.requiresApproval
+                    ? 'PENDING'
+                    : 'APPROVED';
 
             const vacation = await prisma.$transaction(async (tx) => {
-                const { requestedDays } = await validateVacationRequest(employeeId, start, end, type, tx);
+                const { requestedDays } = await validateVacationRequest(
+                    employeeId,
+                    start,
+                    end,
+                    selectedType,
+                    tx,
+                    typeConfig,
+                    targetEmployee.companyId || undefined
+                );
                 const fileUrl = await saveVacationAttachment(employeeId, req.file);
 
                 return tx.vacation.create({
@@ -170,9 +213,10 @@ export const VacationController = {
                         employeeId,
                         startDate: start,
                         endDate: end,
-                        type: type || 'VACATION',
+                        type: selectedType,
+                        absenceType: normalizedAbsenceType(selectedType),
                         days: requestedDays,
-                        reason: reason || null,
+                        reason: reason || notes || null,
                         fileUrl,
                         status: vacationStatus
                     },
@@ -195,6 +239,97 @@ export const VacationController = {
             }
             log.error({ error }, 'Error creating vacation');
             return ApiResponse.error(res, 'Error al crear vacaciones', 500);
+        }
+    },
+
+    update: async (req: Request, res: Response) => {
+        const { id } = req.params;
+        try {
+            const current = await prisma.vacation.findUnique({
+                where: { id },
+                include: { employee: { select: { companyId: true } } }
+            });
+            if (!current) return ApiResponse.error(res, 'Ausencia no encontrada', 404);
+
+            const start = req.body.startDate ? new Date(req.body.startDate) : current.startDate;
+            const end = req.body.endDate ? new Date(req.body.endDate) : current.endDate;
+            const type = req.body.type || current.type;
+            const typeConfig = await prisma.absenceTypeConfig.findUnique({ where: { code: type } });
+            if (!typeConfig?.isActive) {
+                return ApiResponse.error(res, 'El tipo de ausencia seleccionado no existe o está desactivado', 400);
+            }
+            if (typeConfig.requiresAttachment && !req.file && !current.fileUrl) {
+                return ApiResponse.error(res, 'Este tipo de ausencia requiere un documento adjunto', 422);
+            }
+            const reason = req.body.reason !== undefined
+                ? req.body.reason
+                : req.body.notes !== undefined
+                    ? req.body.notes
+                    : current.reason;
+
+            const updated = await prisma.$transaction(async (tx) => {
+                if (current.status === 'APPROVED' || current.status === 'EXISTING') {
+                    const overlap = await tx.vacation.findFirst({
+                        where: {
+                            id: { not: id },
+                            employeeId: current.employeeId,
+                            status: { in: ['APPROVED', 'EXISTING'] },
+                            startDate: { lte: end },
+                            endDate: { gte: start }
+                        }
+                    });
+                    if (overlap) throw new AppError('La modificación se solapa con otra ausencia aprobada.', 409);
+                }
+
+                const { requestedDays } = await validateVacationRequestForUpdate(
+                    current.employeeId,
+                    start,
+                    end,
+                    type,
+                    id,
+                    tx,
+                    typeConfig,
+                    current.employee.companyId || undefined
+                );
+                const replacementFileUrl = req.file
+                    ? await saveVacationAttachment(current.employeeId, req.file)
+                    : current.fileUrl;
+                const result = await tx.vacation.update({
+                    where: { id },
+                    data: {
+                        startDate: start,
+                        endDate: end,
+                        type,
+                        absenceType: normalizedAbsenceType(type),
+                        reason: reason || null,
+                        days: requestedDays,
+                        fileUrl: replacementFileUrl
+                    },
+                    include: { employee: true }
+                });
+                await tx.auditLog.create({
+                    data: {
+                        action: 'UPDATE_ABSENCE',
+                        entity: 'VACATION',
+                        entityId: id,
+                        userId: (req as AuthenticatedRequest).user?.id,
+                        targetEmployeeId: current.employeeId,
+                        metadata: JSON.stringify({
+                            previous: { startDate: current.startDate, endDate: current.endDate, type: current.type, reason: current.reason },
+                            next: { startDate: start, endDate: end, type, reason }
+                        })
+                    }
+                });
+                return result;
+            });
+
+            invalidateVacationBalanceCache(current.employeeId, current.startDate.getFullYear());
+            invalidateVacationBalanceCache(current.employeeId, start.getFullYear());
+            return ApiResponse.success(res, await transformVacationWithUrl(updated), 'Ausencia actualizada');
+        } catch (error: any) {
+            if (error instanceof AppError) return ApiResponse.error(res, error.message, error.statusCode || 400);
+            log.error({ error }, 'Error updating absence');
+            return ApiResponse.error(res, 'Error al actualizar la ausencia', 500);
         }
     },
 

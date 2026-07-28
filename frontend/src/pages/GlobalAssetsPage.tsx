@@ -79,10 +79,10 @@ export default function GlobalAssetsPage() {
           <div className="space-y-1 sm:space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-wider">
               <Package className="w-3.5 h-3.5" />
-              Gesti\u00f3n de Activos y Almac\u00e9n
+              Gestión de Activos y Almacén
             </div>
             <h1 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">Inventario Global</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium max-w-lg">Controla el material entregado a empleados y el stock disponible en almac\u00e9n.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400 font-medium max-w-lg">Controla el material entregado a empleados y el stock disponible en almacén.</p>
                     </div>
                 </div>
 
@@ -182,7 +182,7 @@ export default function GlobalAssetsPage() {
         <div className="space-y-1 sm:space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-bold uppercase tracking-wider">
             <Package className="w-3.5 h-3.5" />
-            Gesti\u00f3n de Activos
+            Gestión de Activos
           </div>
           <h1 className="text-2xl sm:text-4xl font-black text-slate-900 dark:text-white tracking-tight">Inventario Global</h1>
                 </div>

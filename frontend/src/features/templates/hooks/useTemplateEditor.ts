@@ -34,6 +34,7 @@ export function useTemplateEditor() {
     const [templates, setTemplates] = useState<Template[]>(DEFAULT_TEMPLATES);
     const [loadingTemplates, setLoadingTemplates] = useState(false);
     const [saving, setSaving] = useState(false);
+    const [generating, setGenerating] = useState(false);
     const [zoom, setZoom] = useState(100);
     const [showGrid, setShowGrid] = useState(true);
     const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -219,12 +220,14 @@ export function useTemplateEditor() {
     }, [templates, selectedTemplate.id, confirmDiscard]);
 
     const handleCreateNewTemplate = useCallback((name: string) => {
-        const newTemplate: Template = { id: `custom_${Date.now()}`, name: name.trim(), type: 'CUSTOM' };
+        const timestamp = Date.now();
+        const newTemplate: Template = { id: `custom_${timestamp}`, name: name.trim(), type: `CUSTOM_${timestamp}` };
         setTemplates((prev) => [...prev, newTemplate]);
         setSelectedTemplate(newTemplate);
         history.reset([]);
+        markDirty();
         toast.success(`Plantilla "${name}" creada`);
-    }, [history]);
+    }, [history, markDirty]);
 
     const handleDuplicateTemplate = useCallback(async (target: { type: string; name: string }) => {
         setSaving(true);
@@ -243,17 +246,46 @@ export function useTemplateEditor() {
         }
     }, [history.elements]);
 
-    const handleGenerateFromEmployee = useCallback((employeeId: string) => {
-        const employee = employees.find((e) => e.id === employeeId);
-        if (!employee) return;
-        setVariableContext({
-            'empleado.id': employee.id, 'empleado.dni': employee.dni,
-            'empleado.nombreCompleto': employee.nombreCompleto, 'empleado.puesto': employee.puesto,
-            'empleado.fechaAlta': employee.fechaAlta, 'empleado.tipoContrato': employee.tipoContrato || 'Indefinido',
-            'firma.fecha': new Date().toLocaleDateString('es-ES'), 'fechaActual': new Date().toLocaleDateString('es-ES')
-        });
-        toast.success(`Documento generado para ${employee.nombreCompleto}`);
-    }, [employees]);
+    const handleGenerateFromEmployees = useCallback(async (employeeIds: string[]) => {
+        const selectedEmployees = employees.filter((employee) => employeeIds.includes(employee.id));
+        if (selectedEmployees.length === 0) {
+            toast.error('Selecciona al menos un empleado');
+            return false;
+        }
+        if (isDirty) {
+            toast.error('Guarda la plantilla antes de generar documentos');
+            return false;
+        }
+
+        setGenerating(true);
+        const failed: string[] = [];
+        let generated = 0;
+
+        for (const employee of selectedEmployees) {
+            try {
+                await api.post('/document-templates/generate', {
+                    employeeId: employee.id,
+                    templateType: selectedTemplate.type
+                });
+                generated += 1;
+            } catch {
+                failed.push(employee.nombreCompleto);
+            }
+        }
+
+        setGenerating(false);
+        if (generated > 0) {
+            toast.success(
+                generated === 1
+                    ? 'Documento creado y guardado en el expediente'
+                    : `${generated} documentos creados, uno por empleado`
+            );
+        }
+        if (failed.length > 0) {
+            toast.error(`No se pudieron generar ${failed.length}: ${failed.slice(0, 3).join(', ')}`);
+        }
+        return failed.length === 0;
+    }, [employees, isDirty, selectedTemplate.type]);
 
     const handleDiscardChanges = useCallback(() => {
         if (!confirmDiscard()) return;
@@ -281,7 +313,7 @@ export function useTemplateEditor() {
         selectedId, setSelectedId,
         selectedTemplate, setSelectedTemplate: handleSelectTemplate,
         templates, loadingTemplates,
-        saving, isDirty,
+        saving, generating, isDirty,
         zoom, handleZoom,
         showGrid, setShowGrid,
         logoUrl, fileInputRef,
@@ -302,7 +334,7 @@ export function useTemplateEditor() {
         handleSave,
         handleCreateNewTemplate,
         handleDuplicateTemplate,
-        handleGenerateFromEmployee,
+        handleGenerateFromEmployees,
         handleDiscardChanges,
         handleLogoUpload,
         handleRemoveLogo,

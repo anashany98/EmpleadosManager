@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Filter } from 'lucide-react';
-import { ABSENCE_TYPES, DAY_NAMES, isVacationToday, type VacationRequest } from './types';
+import { ABSENCE_TYPES, DAY_NAMES, isVacationToday, type AbsenceTypeConfig, type VacationRequest } from './types';
 
 interface VacationCalendarViewProps {
     vacations: VacationRequest[];
@@ -14,6 +14,7 @@ interface VacationCalendarViewProps {
     isLoading?: boolean;
     currentDate?: Date;
     onCurrentDateChange?: (date: Date) => void;
+    absenceTypes?: Record<string, AbsenceTypeConfig>;
 }
 
 export function VacationCalendarView({
@@ -27,7 +28,8 @@ export function VacationCalendarView({
     onSelectRequest,
     isLoading = false,
     currentDate: externalCurrentDate,
-    onCurrentDateChange
+    onCurrentDateChange,
+    absenceTypes = ABSENCE_TYPES
 }: VacationCalendarViewProps) {
     const [internalDate, setInternalDate] = useState(new Date());
     const currentDate = externalCurrentDate ?? internalDate;
@@ -128,7 +130,6 @@ export function VacationCalendarView({
                         ))}
 
                         {renderedDays.map(({ day, events, isWeekend, isToday, cellDate }) => {
-                            const config = ABSENCE_TYPES[event.type] || ABSENCE_TYPES.VACATION;
                             return (
                                 <div
                                     key={day}
@@ -138,7 +139,7 @@ export function VacationCalendarView({
 
                                     <div className="flex flex-col gap-1 overflow-y-auto max-h-[120px] custom-scrollbar">
                                         {events.map((event) => {
-                                            const eventConfig = ABSENCE_TYPES[event.type] || ABSENCE_TYPES.VACATION;
+                                            const eventConfig = absenceTypes[event.type] || ABSENCE_TYPES[event.type] || ABSENCE_TYPES.OTHER;
                                             const stateClass =
                                                 event.status === 'PENDING'
                                                     ? 'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200'

@@ -1,8 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Clock, AlertTriangle, ArrowLeft, Plus, Check } from 'lucide-react';
+import { Clock, AlertTriangle, ArrowLeft, Plus, Check, Search } from 'lucide-react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
+import { buildLocalDayRange, buildLocalTimestamp } from './attendanceDateUtils';
+
+interface AttendanceSegment {
+    type: string;
+    start: string;
+    end?: string | null;
+}
+
+interface AttendanceSummary {
+    employeeName: string;
+    date: string;
+    status: string;
+    totalHours: number;
+    segments: AttendanceSegment[];
+}
 
 export default function AttendanceReconciliation() {
     const [searchParams] = useSearchParams();
@@ -10,36 +25,49 @@ export default function AttendanceReconciliation() {
     const employeeId = searchParams.get('employeeId');
     const date = searchParams.get('date');
 
-    const [summary, setSummary] = useState<any>(null);
+    const [summary, setSummary] = useState<AttendanceSummary | null>(null);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const [showFixModal, setShowFixModal] = useState(false);
     const [fixType, setFixType] = useState('OUT');
     const [fixTime, setFixTime] = useState('18:00');
 
-    const loadData = async () => {
-        if (!employeeId || !date) return;
+    const loadData = useCallback(async () => {
+        if (!employeeId || !date) {
+            setSummary(null);
+            setLoadError(null);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
+        setLoadError(null);
         try {
-            const startStr = `${date}T00:00:00Z`;
-            const endStr = `${date}T23:59:59Z`;
-            const res = await api.get(`/reports/attendance-summary?employeeId=${employeeId}&start=${startStr}&end=${endStr}`);
+            const { start, end } = buildLocalDayRange(date);
+            const query = new URLSearchParams({ employeeId, start, end });
+            const res = await api.get(`/reports/attendance-summary?${query.toString()}`);
             if (res.data && res.data.length > 0) {
                 setSummary(res.data[0]);
+            } else {
+                setSummary(null);
             }
-        } catch (e) {
+        } catch (_error) {
+            setSummary(null);
+            setLoadError('No se pudieron cargar los datos de asistencia.');
             toast.error('Error al cargar datos de asistencia');
         } finally {
             setLoading(false);
         }
-    };
+    }, [date, employeeId]);
 
     useEffect(() => {
         loadData();
-    }, [employeeId, date]);
+    }, [loadData]);
 
     const handleApplyFix = async () => {
         try {
-            const timestamp = `${date}T${fixTime}:00`;
+            if (!employeeId || !date) return;
+            const timestamp = buildLocalTimestamp(date, fixTime);
             await api.post('/time-entries/manual', {
                 employeeId,
                 type: fixType,
@@ -50,13 +78,58 @@ export default function AttendanceReconciliation() {
             toast.success('Fichaje corregido correctamente');
             setShowFixModal(false);
             loadData();
-        } catch (e) {
+        } catch (_error) {
             toast.error('Error al aplicar la corrección');
         }
     };
 
     if (loading) return <div className="p-10 text-slate-500 italic">Cargando detalles de asistencia...</div>;
-    if (!summary) return <div className="p-10 text-red-500">No se encontraron datos para este día.</div>;
+    if (!employeeId || !date) {
+        return (
+            <div className="p-8 max-w-3xl mx-auto">
+                <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300">
+                        <Search size={24} />
+                    </div>
+                    <h1 className="text-2xl font-black text-slate-900 dark:text-white">Selecciona un fichaje para conciliar</h1>
+                    <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
+                        Esta pantalla necesita un empleado y un día concretos. Abre el control de fichajes o una anomalía y elige la acción de revisión.
+                    </p>
+                    <div className="mt-6 flex flex-wrap justify-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => navigate('/timesheet')}
+                            className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700"
+                        >
+                            Ir a Control de fichajes
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => navigate('/anomalies')}
+                            className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                        >
+                            Ver anomalías
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    if (loadError) {
+        return (
+            <div className="p-8 max-w-3xl mx-auto">
+                <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-center dark:border-red-900/60 dark:bg-red-950/20">
+                    <AlertTriangle className="mx-auto text-red-600" size={28} />
+                    <h1 className="mt-3 text-xl font-black text-red-900 dark:text-red-200">No se pudo abrir la conciliación</h1>
+                    <p className="mt-2 text-sm text-red-700 dark:text-red-300">{loadError}</p>
+                    <button type="button" onClick={loadData} className="mt-5 rounded-xl bg-red-600 px-5 py-3 text-sm font-bold text-white hover:bg-red-700">
+                        Reintentar
+                    </button>
+                </div>
+            </div>
+        );
+    }
+    if (!summary) return <div className="p-10 text-slate-500">No se encontraron fichajes para este empleado y día.</div>;
 
     return (
         <div className="p-8 max-w-4xl mx-auto space-y-6">
@@ -82,7 +155,7 @@ export default function AttendanceReconciliation() {
                     </div>
                     <div className="col-span-2 space-y-4">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-2">Timeline del Día</p>
-                        {summary.segments.map((s: any, idx: number) => (
+                        {summary.segments.map((s, idx) => (
                             <div key={idx} className="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                                 <div className={`p-2 rounded-xl ${s.type === 'WORK' ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>
                                     <Clock size={16} />
@@ -105,7 +178,7 @@ export default function AttendanceReconciliation() {
                                 )}
                             </div>
                         ))}
-                        {summary.status === 'INCOMPLETE' && summary.segments.every((s: any) => s.end) && (
+                        {summary.status === 'INCOMPLETE' && summary.segments.every((s) => s.end) && (
                             <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center gap-3">
                                 <AlertTriangle className="text-red-500" size={20} />
                                 <p className="text-xs text-red-700 font-medium">Hay una inconsistencia en los fichajes. Faltan registros para cerrar el día adecuadamente.</p>

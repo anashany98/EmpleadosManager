@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
 import { Clock, Calendar, ChevronLeft, ChevronRight, User, MapPin } from 'lucide-react';
@@ -54,7 +54,7 @@ const toLocalDateString = (value: Date) => {
 const normalizeTimeEntries = (payload: unknown): TimeEntry[] => {
   if (!Array.isArray(payload) || payload.length === 0) return [];
 
-  const first = payload[0] as any;
+  const first = payload[0] as Partial<TimeEntry>;
   const alreadyNormalized = typeof first?.date === 'string' && typeof first?.totalHours === 'number';
   if (alreadyNormalized) return payload as TimeEntry[];
 
@@ -152,7 +152,7 @@ export default function TimesheetPage() {
       setMapLocation({ lat: lat as number, lng: lng as number });
       setIsMapOpen(true);
     } else {
-      toast.error('No hay ubicaci\u00f3n registrada para este fichaje');
+      toast.error('No hay ubicación registrada para este fichaje');
     }
   };
 
@@ -162,15 +162,7 @@ export default function TimesheetPage() {
     }
   }, [user, isAdmin]);
 
-  useEffect(() => {
-    fetchEmployees();
-  }, []);
-
-  useEffect(() => {
-    fetchEntries();
-  }, [selectedEmployee, currentMonth]);
-
-  const fetchEmployees = async () => {
+  const fetchEmployees = useCallback(async () => {
     try {
       const res = await api.get('/employees');
       setEmployees(res.data || res || []);
@@ -178,9 +170,9 @@ export default function TimesheetPage() {
       console.error(error);
       toast.error('Error al cargar empleados');
     }
-  };
+  }, []);
 
-  const fetchEntries = async () => {
+  const fetchEntries = useCallback(async () => {
     setLoading(true);
     try {
       const year = currentMonth.getFullYear();
@@ -200,7 +192,15 @@ export default function TimesheetPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentMonth, selectedEmployee]);
+
+  useEffect(() => {
+    void fetchEmployees();
+  }, [fetchEmployees]);
+
+  useEffect(() => {
+    void fetchEntries();
+  }, [fetchEntries]);
 
   const prevMonth = () => {
     setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
@@ -466,7 +466,7 @@ export default function TimesheetPage() {
                             <button
                               onClick={() => handleViewMap(entry.lat, entry.lng)}
                               className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors touch-active"
-                              title="Ver ubicaci\u00f3n"
+                              title="Ver ubicación"
                             >
                               <MapPin size={16} />
                             </button>

@@ -5,7 +5,8 @@ import { validateResource } from '../middlewares/validateResource';
 import {
     obraExpenseUpdateSchema,
     obraExpenseIdParamSchema,
-    obraExpenseListAllSchema
+    obraExpenseListAllSchema,
+    obraExpenseReceiptSchema
 } from '../schemas/obraSchemas';
 
 const router = Router();
@@ -13,6 +14,7 @@ const router = Router();
 router.use(protect, requireGlobalAdmin, checkPermission('projects', 'read'));
 
 router.get('/', checkPermission('projects', 'read'), validateResource(obraExpenseListAllSchema), ObraExpenseController.listAll);
+router.post('/receipts', checkPermission('projects', 'write'), validateResource(obraExpenseReceiptSchema), ObraExpenseController.generateReceipts);
 router.patch('/:id', checkPermission('projects', 'write'), validateResource(obraExpenseIdParamSchema), validateResource(obraExpenseUpdateSchema), ObraExpenseController.update);
 router.delete('/:id', checkPermission('projects', 'write'), validateResource(obraExpenseIdParamSchema), ObraExpenseController.delete);
 
