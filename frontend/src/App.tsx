@@ -52,6 +52,9 @@ const ObrasPage = lazy(() => import('./pages/ObrasPage'));
 const ObraDetailPage = lazy(() => import('./pages/ObraDetailPage'));
 const ObraImportPage = lazy(() => import('./pages/ObraImportPage'));
 const PayrollControlPage = lazy(() => import('./pages/PayrollControlPage'));
+const HrTaskCenterPage = lazy(() => import('./pages/HrTaskCenterPage'));
+const HrMonthlyClosePage = lazy(() => import('./pages/HrMonthlyClosePage'));
+const HrAlertSettingsPage = lazy(() => import('./pages/HrAlertSettingsPage'));
 
 function RouteLoading() {
   return (
@@ -170,6 +173,9 @@ function AppContent() {
                   <Route path="/employees/:id" element={<ProtectedRoute feature="employeeDetail"><EmployeeDetail /></ProtectedRoute>} />
                   <Route path="/employees/org-chart" element={<ProtectedRoute feature="orgChart"><OrgChart /></ProtectedRoute>} />
                   <Route path="/employees/rrhh-dashboard" element={<ProtectedRoute feature="employees"><RRHHDashboard /></ProtectedRoute>} />
+                  <Route path="/hr/tasks" element={<ProtectedRoute feature="employees"><HrTaskCenterPage /></ProtectedRoute>} />
+                  <Route path="/hr/monthly-close" element={<ProtectedRoute feature="employees"><HrMonthlyClosePage /></ProtectedRoute>} />
+                  <Route path="/hr/alerts" element={<ProtectedRoute feature="employees"><HrAlertSettingsPage /></ProtectedRoute>} />
                   <Route path="/companies" element={<ProtectedRoute feature="companies"><Companies /></ProtectedRoute>} />
                   <Route path="/calendar" element={<ProtectedRoute feature="calendar"><CalendarPage /></ProtectedRoute>} />
                   <Route path="/audit" element={<ProtectedRoute feature="audit"><AuditLogPage /></ProtectedRoute>} />

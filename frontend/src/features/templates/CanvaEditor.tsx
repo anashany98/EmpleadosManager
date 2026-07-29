@@ -145,6 +145,7 @@ export default function CanvaEditor() {
                         elements={editor.elements}
                         variableContext={editor.variableContext}
                         employeeId={editor.previewEmployeeId}
+                        logoUrl={editor.logoUrl}
                         showGrid={false}
                         fullWidth
                     />

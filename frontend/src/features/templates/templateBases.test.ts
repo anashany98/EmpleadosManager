@@ -24,7 +24,7 @@ describe('template bases', () => {
         });
     });
 
-    it('keeps saved JSON canvas layouts unchanged', () => {
+    it('keeps saved JSON canvas layouts and adds the protected filing QR', () => {
         const savedElements = [
             {
                 id: 'saved-1',
@@ -47,7 +47,12 @@ describe('template bases', () => {
             content: JSON.stringify(savedElements)
         }, fixedId);
 
-        expect(elements).toEqual(savedElements);
+        expect(elements[0]).toEqual(savedElements[0]);
+        expect(elements[1]).toMatchObject({
+            type: 'qr',
+            qrDataSource: 'document',
+            locked: true
+        });
     });
 
     it('serializes canvas elements as a backend renderable layout template', () => {
@@ -144,6 +149,50 @@ describe('template bases', () => {
             type: 'variable',
             content: '{{empleado.dni}}'
         });
+        expect(elements.at(-1)).toMatchObject({
+            type: 'qr',
+            qrDataSource: 'document',
+            locked: true
+        });
+    });
+
+    it('preserves a system QR when a backend layout is opened and saved again', () => {
+        const content = JSON.stringify({
+            kind: 'layout-template',
+            version: 1,
+            elements: [
+                {
+                    id: 'filing-qr',
+                    type: 'qr',
+                    x: 44,
+                    y: 89,
+                    w: 12,
+                    h: 8,
+                    dataSource: 'document',
+                    color: '#172033',
+                    backgroundColor: '#ffffff'
+                }
+            ]
+        });
+
+        const elements = createElementsForTemplate({ type: 'NDA', name: 'NDA QR', content }, fixedId);
+        expect(elements).toHaveLength(1);
+        expect(elements[0]).toMatchObject({
+            id: 'filing-qr',
+            type: 'qr',
+            qrDataSource: 'document',
+            locked: true
+        });
+
+        const saved = JSON.parse(serializeTemplateContent(elements));
+        expect(saved.elements).toHaveLength(1);
+        expect(saved.elements[0]).toMatchObject({
+            id: 'filing-qr',
+            type: 'qr',
+            dataSource: 'document',
+            color: '#172033',
+            backgroundColor: '#ffffff'
+        });
     });
 
     it('converts unknown markdown backend templates into editable A4 elements', () => {
@@ -165,6 +214,13 @@ describe('template bases', () => {
         BACKEND_CATALOG_TEMPLATE_TYPES.forEach((type) => {
             expect(selectorTypes).toContain(type);
         });
+    });
+
+    it('exposes one canonical template for generated diet and obra receipts', () => {
+        const selectorTypes = DEFAULT_TEMPLATES.map((template) => template.type);
+
+        expect(selectorTypes).toContain('OBRA_EXPENSE_RECEIPT');
+        expect(selectorTypes).not.toContain('FIRMA_DIETAS');
     });
 
     it('uses the full editable A4 page area without overflowing', () => {

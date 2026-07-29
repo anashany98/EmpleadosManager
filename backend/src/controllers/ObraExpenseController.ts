@@ -230,16 +230,49 @@ export const ObraExpenseController = {
             // C4: Verify obra is active (consistent with create)
             await ObraAuthorization.ensureActive(existing.obraId);
 
-            await prisma.obraExpense.delete({ where: { id } });
-            await AuditService.logWithContext('DELETE', 'OBRA_EXPENSE', id, {
-                userId,
-                ...ctx(req),
-                metadata: { snapshot: { type: existing.type, amount: Number(existing.amount), date: existing.date, obraId: existing.obraId } }
-            });
+            // ?allGroup=true borra todas las partes de un gasto repartido
+            // (mismo allocationGroupId) en una sola transacción, para que
+            // borrar desde la vista de un empleado no deje las partes de
+            // los demás como "huérfanas" de un grupo incompleto.
+            const allGroup = String(req.query.allGroup || '').toLowerCase() === 'true';
+            const hasGroup = Boolean(existing.allocationGroupId) && (existing.allocationCount || 1) > 1;
+
+            if (allGroup && hasGroup) {
+                const groupId = existing.allocationGroupId as string;
+                const groupSnapshot = await prisma.obraExpense.findMany({
+                    where: { allocationGroupId: groupId },
+                    select: { id: true, type: true, amount: true, date: true, obraId: true, employeeId: true }
+                });
+                await prisma.$transaction([
+                    prisma.obraExpense.deleteMany({ where: { allocationGroupId: groupId } })
+                ]);
+                await AuditService.logWithContext('DELETE', 'OBRA_EXPENSE_ALLOCATION', groupId, {
+                    userId,
+                    ...ctx(req),
+                    metadata: {
+                        scope: 'allGroup',
+                        obraId: existing.obraId,
+                        allocationCount: groupSnapshot.length,
+                        expenseIds: groupSnapshot.map((e) => e.id),
+                        snapshot: groupSnapshot.map((e) => ({ type: e.type, amount: Number(e.amount), date: e.date, employeeId: e.employeeId }))
+                    }
+                });
+            } else {
+                await prisma.obraExpense.delete({ where: { id } });
+                await AuditService.logWithContext('DELETE', 'OBRA_EXPENSE', id, {
+                    userId,
+                    ...ctx(req),
+                    metadata: { snapshot: { type: existing.type, amount: Number(existing.amount), date: existing.date, obraId: existing.obraId, employeeId: existing.employeeId } }
+                });
+            }
 
             CacheService.invalidateByPrefix('report:obra-summary:');
             CacheService.invalidateByPrefix('report:obra-employee:');
-            return ApiResponse.success(res, null, 'Gasto eliminado');
+            return ApiResponse.success(
+                res,
+                null,
+                allGroup && hasGroup ? 'Gasto repartido eliminado por completo' : 'Gasto eliminado'
+            );
         } catch (err: unknown) {
             return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al eliminar el gasto', 500);
         }

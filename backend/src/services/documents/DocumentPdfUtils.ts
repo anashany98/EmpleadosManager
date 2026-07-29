@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
 import { createLogger } from '../../services/LoggerService';
+import { buildSystemQrPayload } from './QrDocumentService';
 
 const logger = createLogger('DocumentPdfUtils');
 
@@ -19,11 +20,9 @@ export const getLogoPath = (): string | null => {
  */
 export const addQRCodeToPDF = async (doc: typeof PDFDocument, data: any, employeeId: string) => {
     try {
-        const qrDataString = JSON.stringify({
-            ...data,
-            eid: employeeId,
-            d: new Date().toISOString()
-        });
+        const qrDataString = JSON.stringify(
+            buildSystemQrPayload(employeeId, String(data?.t || 'DOCUMENT'), data)
+        );
 
         // Generate QR as buffer
         const qrBuffer = await QRCode.toBuffer(qrDataString, {

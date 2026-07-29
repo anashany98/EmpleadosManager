@@ -28,7 +28,8 @@ export const PERMISSION_MODULES = [
     'fleet',
     'notifications',
     'onboarding',
-    'offboarding'
+    'offboarding',
+    'gestoria'
 ] as const;
 export type PermissionModule = (typeof PERMISSION_MODULES)[number];
 
@@ -110,6 +111,7 @@ const COMPANY_STAFF_DEFAULTS: PermissionMap = {
     notifications: 'read',
     onboarding: 'write',
     offboarding: 'write',
+    gestoria: 'write',
     audit: 'none',
     users: 'none',
     settings: 'none'
@@ -264,6 +266,18 @@ export const DOMAIN_POLICIES = {
     },
     'kiosk.manage': {
         grants: [{ scope: 'company', roles: COMPANY_STAFF_ROLES, module: 'kiosk', level: 'write' }]
+    },
+    'gestoria.read': {
+        grants: [{ scope: 'company', roles: COMPANY_STAFF_ROLES, module: 'gestoria', level: 'read' }]
+    },
+    'gestoria.write': {
+        grants: [{ scope: 'company', roles: COMPANY_STAFF_ROLES, module: 'gestoria', level: 'write' }]
+    },
+    'gestoria.close': {
+        grants: [{ scope: 'company', roles: ['admin', 'hr'], module: 'gestoria', level: 'write' }]
+    },
+    'gestoria.export': {
+        grants: [{ scope: 'company', roles: COMPANY_STAFF_ROLES, module: 'gestoria', level: 'write' }]
     }
 } as const satisfies Record<string, { grants: readonly AccessGrant[] }>;
 
@@ -444,7 +458,7 @@ export function canAccessPolicy(
     return policy.grants.some((grant) => {
         const accessGrant = grant as AccessGrant;
 
-        if (grant.roles && !grant.roles.includes(normalized.role)) {
+        if (accessGrant.roles && !accessGrant.roles.includes(normalized.role)) {
             return false;
         }
 

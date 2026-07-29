@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image as ImageIcon } from 'lucide-react';
 import type { CanvasElement } from './types';
+import { QrElementPreview } from './QrElementPreview';
 
 const SNAP_GRID = 10;
 
@@ -127,16 +128,11 @@ export function CanvasStage({
                         if ((e.target as HTMLElement).dataset.canvas === 'true') onSelectElement(null);
                     }}
                 >
-                    {logoUrl && (
-                        <div className="absolute flex items-center justify-center overflow-hidden rounded border border-dashed border-gray-300" style={{ left: 40, top: 40, width: 100, height: 60 }}>
-                            <img src={logoUrl} alt="Logo" className="max-h-full max-w-full object-contain" />
-                        </div>
-                    )}
-
                     {elements.map((element) => (
                         <CanvasItem
                             key={element.id}
                             element={element}
+                            logoUrl={logoUrl}
                             selected={selectedId === element.id}
                             onPointerDown={(e) => startDrag(element, e, 'move')}
                             onResizePointerDown={(handle, e) => startDrag(element, e, 'resize', handle)}
@@ -185,10 +181,11 @@ function SelectionOverlay({ element }: { element: CanvasElement }) {
 }
 
 function CanvasItem({
-    element, selected, onPointerDown, onResizePointerDown
+    element, selected, logoUrl, onPointerDown, onResizePointerDown
 }: {
     element: CanvasElement;
     selected: boolean;
+    logoUrl: string | null;
     onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
     onResizePointerDown: (handle: string, e: React.PointerEvent<HTMLDivElement>) => void;
 }) {
@@ -216,6 +213,47 @@ function CanvasItem({
                 ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400"><ImageIcon size={32} /></div>
                 )}
+            </div>
+        );
+    }
+
+    if (element.type === 'logo') {
+        const source = element.src || logoUrl;
+        return (
+            <div
+                onPointerDown={onPointerDown}
+                className="absolute flex cursor-grab items-center justify-center overflow-hidden active:cursor-grabbing"
+                style={{ left: element.x, top: element.y, width: element.width, height: element.height }}
+                data-testid={`canvas-element-${element.id}`}
+                title="Logo corporativo"
+            >
+                {source ? (
+                    <img src={source} alt="Logo corporativo" className="h-full w-full object-contain" />
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center rounded border border-dashed border-gray-300 bg-gray-50 px-2 text-center text-[11px] font-medium text-gray-400">
+                        Logo de empresa
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    if (element.type === 'qr') {
+        return (
+            <div
+                onPointerDown={onPointerDown}
+                className="absolute cursor-grab overflow-hidden bg-white p-0.5 active:cursor-grabbing"
+                style={{
+                    left: element.x,
+                    top: element.y,
+                    width: element.width,
+                    height: element.height,
+                    backgroundColor: element.backgroundColor || '#ffffff'
+                }}
+                data-testid={`canvas-element-${element.id}`}
+                title="QR para archivar el documento en el trabajador"
+            >
+                <QrElementPreview element={element} />
             </div>
         );
     }

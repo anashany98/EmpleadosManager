@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
 import { getLogoPath } from './DocumentPdfUtils';
+import { buildSystemQrPayload } from './QrDocumentService';
 
 export type LayoutElementType = 'text' | 'variable' | 'box' | 'logo' | 'qr';
 
@@ -167,13 +168,6 @@ const resolveTextTemplate = (content: string, context: Record<string, unknown>) 
         return value === undefined ? match : formatValue(value);
     });
 
-const buildQrPayload = (employeeId: string, documentType: string, extra?: Record<string, unknown>) => ({
-    t: documentType,
-    eid: employeeId,
-    d: new Date().toISOString(),
-    ...(extra || {})
-});
-
 const buildQrValue = (element: LayoutQrElement, context: Record<string, unknown>, options: LayoutRenderOptions) => {
     if (element.dataSource === 'custom') {
         return element.value || '';
@@ -183,7 +177,7 @@ const buildQrValue = (element: LayoutQrElement, context: Record<string, unknown>
         return formatValue(resolvePath(context, element.value || ''));
     }
 
-    return JSON.stringify(buildQrPayload(options.employeeId, options.documentType, options.qrData));
+    return JSON.stringify(buildSystemQrPayload(options.employeeId, options.documentType, options.qrData));
 };
 
 const resolveImageSource = (element: LayoutLogoElement, context: Record<string, unknown>) => {
@@ -311,8 +305,11 @@ export const renderLayoutTemplate = async (
     }
 
     const orderedElements = [...layout.elements].sort((left, right) => (left.zIndex || 0) - (right.zIndex || 0));
-    const subjectPayload = JSON.stringify(buildQrPayload(options.employeeId, options.documentType, options.qrData));
+    const subjectPayload = JSON.stringify(buildSystemQrPayload(options.employeeId, options.documentType, options.qrData));
     doc.info.Subject = subjectPayload;
+    const hasVisibleSystemQr = orderedElements.some((element) =>
+        element.type === 'qr' && (element.dataSource || 'document') === 'document'
+    );
 
     for (const element of orderedElements) {
         const x = percentToPoint(element.x, pageWidth);
@@ -407,5 +404,18 @@ export const renderLayoutTemplate = async (
             }
             doc.restore();
         }
+    }
+
+    if (!hasVisibleSystemQr) {
+        const qrBuffer = await QRCode.toBuffer(subjectPayload, {
+            errorCorrectionLevel: 'M',
+            margin: 1,
+            width: 160
+        });
+        const size = Math.min(pageWidth * 0.08, pageHeight * 0.057);
+        doc.image(qrBuffer, (pageWidth - size) / 2, pageHeight * 0.905, {
+            width: size,
+            height: size
+        });
     }
 };

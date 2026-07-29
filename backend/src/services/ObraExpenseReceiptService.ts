@@ -128,38 +128,39 @@ const buildReceiptPdf = (expense: ReceiptExpense, issuedAt: Date): Promise<Buffe
 
 const buildConfiguredReceiptPdf = async (expense: ReceiptExpense, issuedAt: Date): Promise<Buffer> => {
     const companyId = expense.employee?.company?.id || null;
-    const configuredTemplate = await CompanyDocumentTemplateService.getStoredTemplate('OBRA_EXPENSE_RECEIPT', companyId);
-    if (!configuredTemplate) return buildReceiptPdf(expense, issuedAt);
+    const employeeId = expense.employee?.id || expense.employeeId;
+    if (!employeeId) {
+        throw new AppError('El gasto debe tener un empleado asignado', 400);
+    }
 
     const currency = expense.currency || 'EUR';
     const money = (value: unknown) => Number(value || 0).toLocaleString('es-ES', { style: 'currency', currency });
     const endDate = expense.endDate || expense.date;
-    const context = {
-        empresa: { nombre: expense.employee?.company?.name || '' },
-        empleado: {
-            nombreCompleto: employeeName(expense),
-            dni: expense.employee?.dni || ''
-        },
-        obra: {
-            codigo: expense.obra.code,
-            nombre: expense.obra.name,
-            destino: expense.destination || expense.obra.destination || ''
-        },
-        gasto: {
-            concepto: OBRA_TYPE_LABELS[expense.type as ObraExpenseType] || expense.type,
-            fechaInicio: formatDate(expense.date),
-            fechaFin: formatDate(endDate),
-            importeDiario: expense.unitAmount ? money(expense.unitAmount) : '',
-            dias: expense.unitCount || 1,
-            importeTotal: money(expense.amount),
-            detalle: expense.description || ''
-        },
-        firma: { fecha: formatDate(issuedAt) }
-    };
+    const context = await CompanyDocumentTemplateService.buildContext(employeeId, {
+        extraContext: {
+            obra: {
+                codigo: expense.obra.code,
+                nombre: expense.obra.name,
+                destino: expense.destination || expense.obra.destination || ''
+            },
+            gasto: {
+                concepto: OBRA_TYPE_LABELS[expense.type as ObraExpenseType] || expense.type,
+                fechaInicio: formatDate(expense.date),
+                fechaFin: formatDate(endDate),
+                importeDiario: expense.unitAmount ? money(expense.unitAmount) : '',
+                dias: expense.unitCount || 1,
+                importeTotal: money(expense.amount),
+                detalle: expense.description || ''
+            }
+        }
+    });
+    if (context.firma) {
+        context.firma.fecha = formatDate(issuedAt);
+    }
     const rendered = await CompanyDocumentTemplateService.renderPdfFromTemplate({
         type: 'OBRA_EXPENSE_RECEIPT',
         companyId,
-        employeeId: expense.employee?.id || expense.employeeId || expense.id,
+        employeeId,
         context
     });
     return rendered.buffer;

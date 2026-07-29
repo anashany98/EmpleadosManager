@@ -76,7 +76,7 @@ const storage = multer.diskStorage({
 const logoUpload = multer({
     storage,
     fileFilter: (_req, file, cb) => {
-        const allowed = ['.jpg', '.jpeg', '.png', '.svg', '.webp'];
+        const allowed = ['.jpg', '.jpeg', '.png'];
         const ext = path.extname(file.originalname).toLowerCase();
         if (allowed.includes(ext)) {
             cb(null, true);
@@ -90,6 +90,7 @@ const logoUpload = multer({
 router.get('/list', checkPermission('documents', 'read'), DocumentTemplateController.listTemplates);
 router.get('/stored', checkPermission('documents', 'read'), DocumentTemplateController.listStoredTemplates);
 router.get('/variables', checkPermission('documents', 'read'), DocumentTemplateController.getAvailableVariables);
+router.get('/logo', checkPermission('documents', 'read'), DocumentTemplateController.getCompanyLogo);
 router.get('/:type', checkPermission('documents', 'read'), DocumentTemplateController.getTemplate);
 
 router.post(
@@ -99,6 +100,7 @@ router.post(
     DocumentTemplateController.saveTemplate
 );
 router.post('/logo', checkPermission('documents', 'write'), logoUpload.single('logo'), validateDiskUploadMiddleware('logo'), DocumentTemplateController.uploadLogo);
+router.delete('/logo', checkPermission('documents', 'write'), DocumentTemplateController.removeCompanyLogo);
 router.post(
     '/preview',
     checkPermission('documents', 'read'),

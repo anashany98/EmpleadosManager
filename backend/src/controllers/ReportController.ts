@@ -364,6 +364,59 @@ export class ReportController {
     }
 
     /**
+     * GET /api/reports/terminations
+     * Monthly employee departures: dismissals, voluntary leaves and contract endings.
+     */
+    static async getTerminations(req: Request, res: Response) {
+        try {
+            const { year, month, format, department } = req.query;
+            const companyId = getCompanyScope(req);
+            const targetYear = year ? Number(year) : new Date().getFullYear();
+            const targetMonth = month ? Number(month) : undefined;
+
+            if (!Number.isInteger(targetYear) || targetYear < 2000 || targetYear > 2200) {
+                return res.status(400).json({ error: 'El año no es válido' });
+            }
+            if (targetMonth !== undefined && (!Number.isInteger(targetMonth) || targetMonth < 1 || targetMonth > 12)) {
+                return res.status(400).json({ error: 'El mes debe estar entre 1 y 12' });
+            }
+
+            const data = await ReportService.getMonthlyTerminations(targetYear, targetMonth, {
+                companyId,
+                department: department as string | undefined
+            });
+            const requestedFormat = format === 'xlsx' ? 'xlsx' : 'json';
+
+            await auditReportAccess(req, 'terminations', {
+                year: targetYear,
+                month: targetMonth,
+                department,
+                companyId,
+                format: requestedFormat
+            });
+
+            if (format === 'xlsx') {
+                const buffer = await ExcelService.generateTerminationReport(data, buildExcelContext({
+                    title: 'Reporte de bajas y despidos',
+                    subtitle: 'Movimientos de salida de plantilla con fecha, tipo y motivo.',
+                    periodLabel: targetMonth ? `${targetMonth}/${targetYear}` : `Año ${targetYear}`,
+                    companyId,
+                    department: department as string | undefined
+                }));
+                res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+                res.setHeader('Content-Disposition', `attachment; filename=Reporte_Bajas_Despidos_${targetYear}_${targetMonth || 'Anual'}.xlsx`);
+                return res.send(buffer);
+            }
+
+            return res.json(data);
+        } catch (error) {
+            log.error({ error }, 'Termination Report Error');
+            const { status, body } = getErrorResponse(error, 'No se pudo generar el reporte de bajas y despidos');
+            return res.status(status).json(body);
+        }
+    }
+
+    /**
      * GET /api/reports/kpis
      */
     static async getKPIs(req: Request, res: Response) {

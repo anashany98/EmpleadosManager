@@ -19,6 +19,30 @@ import { getPaginationParams, getPrismaPagination, buildPaginationMeta } from '.
 import { AuthenticatedRequest } from '../types/express';
 
 const log = createLogger('EmployeeService');
+const TERMINATION_TYPES = new Set(['DISMISSAL', 'VOLUNTARY_LEAVE', 'CONTRACT_END', 'OTHER']);
+
+const parseTerminationData = (data: any, requireReason = true) => {
+    const terminationType = String(data?.terminationType || 'OTHER').trim().toUpperCase();
+    if (!TERMINATION_TYPES.has(terminationType)) {
+        throw new AppError('Tipo de baja no válido', 400);
+    }
+
+    const reason = String(data?.reason || '').trim().substring(0, 500);
+    if (requireReason && reason.length < 3) {
+        throw new AppError('Indica el motivo de la baja o despido', 400);
+    }
+
+    const dateValue = data?.date ? new Date(`${String(data.date).slice(0, 10)}T12:00:00`) : new Date();
+    if (Number.isNaN(dateValue.getTime())) {
+        throw new AppError('La fecha de baja no es válida', 400);
+    }
+
+    return {
+        terminationType,
+        reason: reason || 'Baja sin motivo especificado',
+        date: dateValue
+    };
+};
 
 export class EmployeeService {
     /**
@@ -255,7 +279,7 @@ export class EmployeeService {
     static async update(user: AuthenticatedRequest['user'], id: string, body: any) {
         const target = await prisma.employee.findUnique({
             where: { id },
-            select: { id: true, companyId: true }
+            select: { id: true, companyId: true, active: true }
         });
 
         if (!target) {
@@ -271,6 +295,15 @@ export class EmployeeService {
 
         if (user.companyId && body.companyId && body.companyId !== user.companyId) {
             throw new AppError('No puedes mover empleados a otra empresa', 403);
+        }
+
+        if (body.active !== undefined && body.active !== target.active) {
+            throw new AppError(
+                body.active
+                    ? 'Utiliza la acción de reactivar para abrir un nuevo periodo laboral'
+                    : 'Utiliza la acción de tramitar baja para indicar fecha y motivo',
+                422
+            );
         }
 
         // Validate managerId belongs to same company (if provided and user can edit company)
@@ -336,39 +369,61 @@ export class EmployeeService {
             throw new AppError('Máximo 100 empleados por operación', 400);
         }
 
-        // Verify all employees belong to user's company
-        if (user.companyId) {
-            const targets = await prisma.employee.findMany({
-                where: { id: { in: employeeIds }, companyId: user.companyId },
-                select: { id: true }
-            });
-            if (targets.length !== employeeIds.length) {
-                throw new AppError('Permiso denegado: algunos empleados no pertenecen a tu empresa', 403);
-            }
-        } else if (user.role !== 'admin') {
+        if (!user.companyId && user.role !== 'admin') {
             throw new AppError('Usuario sin empresa', 403);
+        }
+
+        const targets = await prisma.employee.findMany({
+            where: {
+                id: { in: employeeIds },
+                ...(user.companyId ? { companyId: user.companyId } : {})
+            },
+            select: {
+                id: true,
+                companyId: true,
+                entryDate: true,
+                createdAt: true
+            }
+        });
+        if (targets.length !== employeeIds.length) {
+            throw new AppError('Permiso denegado: algunos empleados no pertenecen a tu empresa', 403);
         }
 
         const results = await prisma.$transaction(async (tx) => {
             let updateData: any = {};
             let logAction = '';
             let logInfo = '';
+            let termination: ReturnType<typeof parseTerminationData> | null = null;
 
             switch (action) {
                 case 'activate':
-                    updateData = { active: true, exitDate: null };
+                    updateData = { active: true, exitDate: null, lowDate: null, lowReason: null };
                     logAction = 'BULK_ACTIVATE';
                     logInfo = 'Activación masiva';
                     break;
                 case 'deactivate':
-                    updateData = { active: false, exitDate: new Date() };
+                    termination = parseTerminationData(data);
+                    updateData = {
+                        active: false,
+                        exitDate: termination.date,
+                        lowDate: termination.date,
+                        lowReason: termination.reason,
+                        vacationDaysTotal: 0
+                    };
                     logAction = 'BULK_DEACTIVATE';
-                    logInfo = 'Baja masiva';
+                    logInfo = `${termination.terminationType}: ${termination.reason}`;
                     break;
                 case 'delete':
-                    updateData = { active: false, exitDate: new Date() };
+                    termination = parseTerminationData(data, false);
+                    updateData = {
+                        active: false,
+                        exitDate: termination.date,
+                        lowDate: termination.date,
+                        lowReason: termination.reason,
+                        vacationDaysTotal: 0
+                    };
                     logAction = 'BULK_DELETE';
-                    logInfo = 'Eliminación masiva (Soft)';
+                    logInfo = `Baja masiva: ${termination.reason}`;
                     break;
                 // eslint-disable-next-line no-case-declarations
                 case 'change_dept': // eslint-disable-line no-case-declarations
@@ -393,15 +448,92 @@ export class EmployeeService {
                 data: updateData
             });
 
-            for (const empId of employeeIds) {
+            if (termination) {
+                await tx.user.updateMany({
+                    where: { employeeId: { in: employeeIds } },
+                    data: { isActive: false, sessionVersion: { increment: 1 } }
+                });
+            }
+
+            for (const target of targets) {
+                if (termination) {
+                    await tx.employeeVacationBalance.upsert({
+                        where: {
+                            employeeId_year: {
+                                employeeId: target.id,
+                                year: termination.date.getFullYear()
+                            }
+                        },
+                        create: {
+                            employeeId: target.id,
+                            year: termination.date.getFullYear(),
+                            annualQuotaDays: 0,
+                            carriedOverDays: 0,
+                            importedUsedDays: 0,
+                            advancedDays: 0
+                        },
+                        update: {
+                            annualQuotaDays: 0,
+                            carriedOverDays: 0,
+                            importedUsedDays: 0,
+                            advancedDays: 0
+                        }
+                    });
+
+                    const closed = await tx.employmentPeriod.updateMany({
+                        where: { employeeId: target.id, endDate: null },
+                        data: {
+                            endDate: termination.date,
+                            endReason: termination.reason,
+                            endType: termination.terminationType,
+                            endedById: user.id
+                        }
+                    });
+                    if (closed.count === 0 && target.companyId) {
+                        await tx.employmentPeriod.create({
+                            data: {
+                                employeeId: target.id,
+                                companyId: target.companyId,
+                                startDate: target.entryDate || target.createdAt,
+                                endDate: termination.date,
+                                endReason: termination.reason,
+                                endType: termination.terminationType,
+                                endedById: user.id
+                            }
+                        });
+                    }
+                } else if (action === 'activate' && target.companyId) {
+                    const openPeriod = await tx.employmentPeriod.findFirst({
+                        where: { employeeId: target.id, endDate: null },
+                        select: { id: true }
+                    });
+                    if (!openPeriod) {
+                        await tx.employmentPeriod.create({
+                            data: {
+                                employeeId: target.id,
+                                companyId: target.companyId,
+                                startDate: new Date(),
+                                startReason: 'Reactivación',
+                                createdById: user.id
+                            }
+                        });
+                    }
+                }
+
                 await tx.auditLog.create({
                     data: {
                         action: logAction,
                         entity: 'EMPLOYEE',
-                        entityId: empId,
+                        entityId: target.id,
                         user: { connect: { id: user.id } },
-                        targetEmployee: { connect: { id: empId } },
-                        metadata: JSON.stringify({ info: logInfo, ...updateData })
+                        targetEmployee: { connect: { id: target.id } },
+                        metadata: JSON.stringify({
+                            info: logInfo,
+                            terminationType: termination?.terminationType,
+                            reason: termination?.reason,
+                            date: termination?.date,
+                            ...updateData
+                        })
                     }
                 });
             }
@@ -443,24 +575,54 @@ export class EmployeeService {
             return null;
         }
 
-        await prisma.employee.update({
-            where: { id },
-            data: {
-                active: false,
-                exitDate: new Date(),
-                deletedAt: new Date(),
-                deletedById: user.id,
-                deletionReason: reason || 'Manual deletion'
-            }
-        });
-
-        // Disable the linked User account to prevent further logins
-        await prisma.user.updateMany({
-            where: { employeeId: id },
-            data: {
-                isActive: false,
-                sessionVersion: { increment: 1 }
-            }
+        const termination = parseTerminationData({ reason: reason || 'Eliminación manual', terminationType: 'OTHER' }, false);
+        await prisma.$transaction(async (tx) => {
+            await tx.employee.update({
+                where: { id },
+                data: {
+                    active: false,
+                    exitDate: termination.date,
+                    lowDate: termination.date,
+                    lowReason: termination.reason,
+                    vacationDaysTotal: 0,
+                    deletedAt: termination.date,
+                    deletedById: user.id,
+                    deletionReason: termination.reason
+                }
+            });
+            await tx.user.updateMany({
+                where: { employeeId: id },
+                data: {
+                    isActive: false,
+                    sessionVersion: { increment: 1 }
+                }
+            });
+            await tx.employeeVacationBalance.upsert({
+                where: { employeeId_year: { employeeId: id, year: termination.date.getFullYear() } },
+                create: {
+                    employeeId: id,
+                    year: termination.date.getFullYear(),
+                    annualQuotaDays: 0,
+                    carriedOverDays: 0,
+                    importedUsedDays: 0,
+                    advancedDays: 0
+                },
+                update: {
+                    annualQuotaDays: 0,
+                    carriedOverDays: 0,
+                    importedUsedDays: 0,
+                    advancedDays: 0
+                }
+            });
+            await tx.employmentPeriod.updateMany({
+                where: { employeeId: id, endDate: null },
+                data: {
+                    endDate: termination.date,
+                    endReason: termination.reason,
+                    endType: termination.terminationType,
+                    endedById: user.id
+                }
+            });
         });
 
         await AuditService.log('DELETE', 'EMPLOYEE', id, {

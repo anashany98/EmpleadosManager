@@ -11,5 +11,6 @@ export const ELEMENT_LIBRARY: ElementDescriptor[] = [
     { type: 'variable', label: 'Variable', icon: 'Variable' },
     { type: 'box', label: 'Caja', icon: 'Square' },
     { type: 'line', label: 'Linea', icon: 'Minus' },
-    { type: 'image', label: 'Imagen', icon: 'Image' }
+    { type: 'image', label: 'Imagen', icon: 'Image' },
+    { type: 'qr', label: 'QR de archivo', icon: 'QrCode' }
 ];

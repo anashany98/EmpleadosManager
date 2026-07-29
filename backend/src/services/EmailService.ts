@@ -113,6 +113,10 @@ export class EmailService {
         return this.transporter;
     }
 
+    static async isConfigured(): Promise<boolean> {
+        return Boolean(await this.getConfig());
+    }
+
     static async sendMail(to: string, subject: string, html: string, attachments?: any[]) {
         try {
             const transporter = await this.getTransporter();

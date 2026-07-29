@@ -2,6 +2,15 @@ import { prisma } from '../lib/prisma';
 import { InventoryService } from './InventoryService';
 import { AppError } from '../utils/AppError';
 
+const OFFBOARDING_REASONS: Record<string, { label: string; type: string }> = {
+    BAJA_VOLUNTARIA: { label: 'Baja voluntaria / Dimisión', type: 'VOLUNTARY_LEAVE' },
+    FIN_CONTRATO: { label: 'Fin de contrato / No superación del periodo de prueba', type: 'CONTRACT_END' },
+    DESPIDO_OBJETIVO: { label: 'Despido objetivo', type: 'DISMISSAL' },
+    DESPIDO_DISCIPLINARIO: { label: 'Despido disciplinario', type: 'DISMISSAL' },
+    JUBILACION: { label: 'Jubilación', type: 'OTHER' },
+    OTRO: { label: 'Otro motivo', type: 'OTHER' }
+};
+
 export const OffboardingService = {
     /**
      * Gets all data needed for offboarding an employee.
@@ -39,6 +48,10 @@ export const OffboardingService = {
         returnAssets: string[], // IDs of assets returned
         userId: string
     }) => {
+        const reasonDetails = OFFBOARDING_REASONS[options.reason] || {
+            label: String(options.reason).trim(),
+            type: 'OTHER'
+        };
         const results = {
             assetsReturned: 0,
             deactivated: false,
@@ -71,7 +84,12 @@ export const OffboardingService = {
             if (openPeriod) {
                 await tx.employmentPeriod.update({
                     where: { id: openPeriod.id },
-                    data: { endDate: exitDate, endReason: options.reason, endedById: options.userId }
+                    data: {
+                        endDate: exitDate,
+                        endReason: reasonDetails.label,
+                        endType: reasonDetails.type,
+                        endedById: options.userId
+                    }
                 });
             } else {
                 await tx.employmentPeriod.create({
@@ -81,7 +99,8 @@ export const OffboardingService = {
                         startDate: employee.entryDate || employee.createdAt,
                         endDate: exitDate,
                         startReason: 'Periodo reconstruido al tramitar la baja',
-                        endReason: options.reason,
+                        endReason: reasonDetails.label,
+                        endType: reasonDetails.type,
                         endedById: options.userId
                     }
                 });
@@ -89,7 +108,35 @@ export const OffboardingService = {
 
             await tx.employee.update({
                 where: { id: employeeId },
-                data: { active: false, exitDate, lowReason: options.reason }
+                data: {
+                    active: false,
+                    exitDate,
+                    lowDate: exitDate,
+                    lowReason: reasonDetails.label,
+                    vacationDaysTotal: 0
+                }
+            });
+            await tx.employeeVacationBalance.upsert({
+                where: {
+                    employeeId_year: {
+                        employeeId,
+                        year: exitDate.getFullYear()
+                    }
+                },
+                create: {
+                    employeeId,
+                    year: exitDate.getFullYear(),
+                    annualQuotaDays: 0,
+                    carriedOverDays: 0,
+                    importedUsedDays: 0,
+                    advancedDays: 0
+                },
+                update: {
+                    annualQuotaDays: 0,
+                    carriedOverDays: 0,
+                    importedUsedDays: 0,
+                    advancedDays: 0
+                }
             });
             await tx.user.updateMany({
                 where: { employeeId },
@@ -104,7 +151,8 @@ export const OffboardingService = {
                     userId: options.userId,
                     metadata: JSON.stringify({
                         exitDate: exitDate.toISOString(),
-                        reason: options.reason,
+                        reason: reasonDetails.label,
+                        terminationType: reasonDetails.type,
                         assetsReturned: results.assetsReturned
                     })
                 }
