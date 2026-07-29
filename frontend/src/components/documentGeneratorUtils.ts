@@ -73,7 +73,7 @@ export const STANDARD_DOCUMENT_TYPES = [
     'CERTIFICADO_TRABAJO',
     'CARTA_FORMAL',
     'JUSTIFICANTE_AUSENCIA',
-    'FIRMA_DIETAS'
+    'OBRA_EXPENSE_RECEIPT'
 ] as const;
 
 const STANDARD_DOCUMENT_TYPE_SET = new Set<string>(STANDARD_DOCUMENT_TYPES);
@@ -129,7 +129,7 @@ export const resolveDocumentGeneratorTemplates = (
         const storedTemplate = storedByType.get(type);
         return {
             type,
-            name: STANDARD_TEMPLATE_NAME_BY_TYPE.get(type) || mergedByType.get(type)?.name || type,
+            name: storedTemplate?.name || STANDARD_TEMPLATE_NAME_BY_TYPE.get(type) || mergedByType.get(type)?.name || type,
             source: storedTemplate?.companyId
                 ? 'company'
                 : storedTemplate

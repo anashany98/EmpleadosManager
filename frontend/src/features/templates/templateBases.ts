@@ -6,6 +6,7 @@ import type {
     TemplatePreset,
     TemplatePresetElement
 } from './components/types';
+import { CANONICAL_DOCUMENT_TEMPLATES } from '@shared/documentTemplateLayouts';
 
 export type { CanvasElement, Template } from './components/types';
 
@@ -16,11 +17,12 @@ const BORDER = '#cbd5e1';
 const A4_WIDTH_PX = 794;
 const A4_HEIGHT_PX = 1123;
 const NON_VISUAL_TEMPLATE_TYPES = new Set(['MODEL_145']);
+const SYSTEM_QR_POSITION = { x: 46, y: 90.5, w: 8, h: 5.7 };
 
 export const BACKEND_CATALOG_TEMPLATE_TYPES = [
     'NDA', 'RGPD', 'UNIFORM', 'EPI', 'TECH_DEVICE',
     'CERTIFICADO_EMPRESA', 'CERTIFICADO_TRABAJO', 'CARTA_FORMAL',
-    'JUSTIFICANTE_AUSENCIA', 'VACATION_REQUEST', 'FIRMA_DIETAS',
+    'JUSTIFICANTE_AUSENCIA', 'VACATION_REQUEST',
     'OBRA_EXPENSE_RECEIPT', 'ENTREGA_MATERIAL'
 ] as const;
 
@@ -30,7 +32,6 @@ export const DEFAULT_TEMPLATES: Template[] = [
     { id: 'carta_formal', name: 'Carta Formal', type: 'CARTA_FORMAL' },
     { id: 'justificante_ausencia', name: 'Justificante Ausencia', type: 'JUSTIFICANTE_AUSENCIA' },
     { id: 'vacation_request', name: 'Solicitud Vacaciones', type: 'VACATION_REQUEST' },
-    { id: 'firma_dietas', name: 'Firma Dietas', type: 'FIRMA_DIETAS' },
     { id: 'obra_expense_receipt', name: 'Recibí Dietas / Obra', type: 'OBRA_EXPENSE_RECEIPT' },
     { id: 'uniform', name: 'Entrega Uniforme', type: 'UNIFORM' },
     { id: 'epi', name: 'Entrega EPI', type: 'EPI' },
@@ -91,6 +92,16 @@ const canvasToLayoutElement = (element: CanvasElement, index: number): LayoutEle
     if (element.type === 'variable') {
         return { ...base, type: 'variable' as const, variable: extractVariableName(element.content), fontSize: element.fontSize, fontWeight: element.fontWeight === 'bold' ? 'bold' : 'normal', color: element.color, align: normalizeAlign(element.textAlign) };
     }
+    if (element.type === 'qr') {
+        return {
+            ...base,
+            type: 'qr' as const,
+            dataSource: element.qrDataSource || 'document',
+            value: element.qrValue,
+            color: element.color || DEFAULT_TEXT,
+            backgroundColor: element.backgroundColor || '#ffffff'
+        };
+    }
     if (element.type === 'box') {
         return { ...base, type: 'box' as const, fillColor: element.backgroundColor, borderColor: element.borderColor, borderWidth: element.borderWidth };
     }
@@ -122,7 +133,16 @@ const layoutToCanvasElement = (element: LayoutElement, index: number, idFactory:
         return { ...base, type: 'logo' as const, content: '', src: element.url };
     }
     if (element.type === 'qr') {
-        return { ...base, type: 'box' as const, content: '', backgroundColor: element.backgroundColor || '#ffffff', borderColor: element.color || DEFAULT_TEXT, borderWidth: 1 };
+        return {
+            ...base,
+            type: 'qr' as const,
+            content: '',
+            qrDataSource: element.dataSource || 'document',
+            qrValue: element.value,
+            color: element.color || DEFAULT_TEXT,
+            backgroundColor: element.backgroundColor || '#ffffff',
+            locked: (element.dataSource || 'document') === 'document'
+        };
     }
     return { ...base, type: 'text' as const, content: element.text, fontSize: element.fontSize || 12, fontWeight: element.fontWeight || 'normal', color: element.color || DEFAULT_TEXT, textAlign: normalizeAlign(element.align) };
 };
@@ -131,6 +151,35 @@ const isCanvasElement = (value: unknown): value is CanvasElement => {
     if (!value || typeof value !== 'object') return false;
     const el = value as Record<string, unknown>;
     return Boolean(el.id && el.type && typeof el.x === 'number' && typeof el.y === 'number');
+};
+
+export const createSystemQrElement = (
+    idFactory: IdFactory = defaultIdFactory,
+    index = 0
+): CanvasElement => ({
+    id: idFactory(index),
+    type: 'qr',
+    x: percentToPx(SYSTEM_QR_POSITION.x, A4_WIDTH_PX),
+    y: percentToPx(SYSTEM_QR_POSITION.y, A4_HEIGHT_PX),
+    width: percentToPx(SYSTEM_QR_POSITION.w, A4_WIDTH_PX),
+    height: percentToPx(SYSTEM_QR_POSITION.h, A4_HEIGHT_PX),
+    content: '',
+    qrDataSource: 'document',
+    color: DEFAULT_TEXT,
+    backgroundColor: '#ffffff',
+    locked: true
+});
+
+const ensureSystemQr = (elements: CanvasElement[], idFactory: IdFactory): CanvasElement[] => {
+    const existingIndex = elements.findIndex((element) =>
+        element.type === 'qr' && (element.qrDataSource || 'document') === 'document'
+    );
+    if (existingIndex < 0) {
+        return [...elements, createSystemQrElement(idFactory, elements.length)];
+    }
+    return elements.map((element, index) =>
+        index === existingIndex ? { ...element, qrDataSource: 'document', locked: true } : element
+    );
 };
 
 export const serializeTemplateContent = (elements: CanvasElement[]): string => {
@@ -243,19 +292,6 @@ export const TEMPLATE_PRESETS: Record<string, TemplatePreset> = {
             { type: 'text', x: 52, y: 55, w: 35, h: 4, text: 'Tipo: {{vacacion.tipo}}', fontSize: 11 },
             { type: 'text', x: 13, y: 61, w: 74, h: 5, text: 'Motivo: {{vacacion.motivo}}', fontSize: 11 },
             ...dualSignatures(80)
-        ]
-    },
-    FIRMA_DIETAS: {
-        name: 'Firma de Dietas',
-        elements: [
-            title('SOLICITUD DE DIETAS Y GASTOS'), ...employeeBlock(20),
-            { type: 'box', x: 10, y: 40, w: 80, h: 22, fillColor: LIGHT_BG, borderColor: '#e2e8f0' },
-            { type: 'text', x: 13, y: 43, w: 74, h: 4, text: 'Concepto: {{dietas.concepto}}', fontSize: 12 },
-            { type: 'text', x: 13, y: 48, w: 35, h: 4, text: 'Importe: {{dietas.importe}} EUR', fontSize: 12, fontWeight: 'bold' },
-            { type: 'text', x: 52, y: 48, w: 35, h: 4, text: 'Fecha: {{dietas.fecha}}', fontSize: 12 },
-            { type: 'text', x: 13, y: 54, w: 74, h: 4, text: 'Kilometros: {{dietas.kilometros}} km', fontSize: 12 },
-            ...bodyBox(66, 9, 'La persona firmante declara que los gastos indicados son ciertos y corresponden a actividad laboral.'),
-            ...dualSignatures(81)
         ]
     },
     OBRA_EXPENSE_RECEIPT: {
@@ -377,11 +413,20 @@ export const createElementsForTemplate = (
     idFactory: IdFactory = defaultIdFactory
 ): CanvasElement[] => {
     const saved = parseSavedElements(template.content, idFactory);
-    if (saved) return saved;
+    if (saved) return ensureSystemQr(saved, idFactory);
+    const canonical = CANONICAL_DOCUMENT_TEMPLATES[template.type];
+    if (canonical) {
+        return ensureSystemQr(
+            canonical.layout.elements.map((element, index) =>
+                layoutToCanvasElement(element as LayoutElement, index, idFactory)
+            ),
+            idFactory
+        );
+    }
     const preset = TEMPLATE_PRESETS[template.type];
-    if (preset) return convertPresetToElements(preset, idFactory);
-    if (template.content) return createElementsFromTextTemplate(template, idFactory);
-    return [];
+    if (preset) return ensureSystemQr(convertPresetToElements(preset, idFactory), idFactory);
+    if (template.content) return ensureSystemQr(createElementsFromTextTemplate(template, idFactory), idFactory);
+    return ensureSystemQr([], idFactory);
 };
 
 const getTemplatePriority = (t: Template) => {

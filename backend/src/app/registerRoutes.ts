@@ -48,6 +48,7 @@ import lockRoutes from '../routes/lockRoutes';
 import absenceTypeConfigRoutes from '../routes/absenceTypeConfigRoutes';
 import consentRoutes from '../routes/consentRoutes';
 import meRoutes from '../routes/meRoutes';
+import hrWorkspaceRoutes from '../routes/hrWorkspaceRoutes';
 
 export function registerRoutes(app: Express): void {
     app.use('/api/kiosk', kioskRoutes);
@@ -95,5 +96,6 @@ export function registerRoutes(app: Express): void {
     app.use('/api/locks', protect, lockRoutes);
     app.use('/api/consents', protect, consentRoutes);
     app.use('/api/me', protect, meRoutes);
+    app.use('/api/hr-workspace', protect, hrWorkspaceRoutes);
     app.use('/api/absence-types', absenceTypeConfigRoutes);
 }

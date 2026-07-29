@@ -86,6 +86,19 @@ export function useTemplateEditor() {
     }, [selectedTemplate?.id, selectedTemplate?.type]);
 
     useEffect(() => {
+        const fetchCompanyLogo = async () => {
+            try {
+                const response = await api.get<unknown>('/document-templates/logo');
+                const logo = extractItem<{ previewDataUrl?: string | null }>(response);
+                setLogoUrl(logo?.previewDataUrl || null);
+            } catch {
+                setLogoUrl(null);
+            }
+        };
+        void fetchCompanyLogo();
+    }, []);
+
+    useEffect(() => {
         const fetchEmployees = async () => {
             try {
                 const res = await api.get<unknown>('/employees');
@@ -116,9 +129,14 @@ export function useTemplateEditor() {
 
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 if (selectedId) {
-                    history.set((prev) => prev.filter((el) => el.id !== selectedId));
-                    setSelectedId(null);
-                    markDirty();
+                    const selected = history.elements.find((element) => element.id === selectedId);
+                    if (selected?.locked) {
+                        toast.info('El QR de archivo está protegido');
+                    } else {
+                        history.set((prev) => prev.filter((el) => el.id !== selectedId));
+                        setSelectedId(null);
+                        markDirty();
+                    }
                 }
             }
             if (e.key === 'Escape') setSelectedId(null);
@@ -139,17 +157,27 @@ export function useTemplateEditor() {
     }, [selectedId, history, markDirty]);
 
     const addElement = useCallback((type: CanvasElement['type']) => {
+        if (type === 'qr') {
+            const existing = history.elements.find((element) => element.type === 'qr' && element.qrDataSource === 'document');
+            if (existing) {
+                setSelectedId(existing.id);
+                toast.info('La plantilla ya tiene su QR de archivo');
+                return;
+            }
+        }
         const el: CanvasElement = {
             id: generateId(), type, x: 100, y: 100,
-            width: type === 'line' ? 200 : 150,
-            height: type === 'text' || type === 'variable' ? 40 : type === 'line' ? 2 : 100,
+            width: type === 'line' ? 200 : type === 'qr' ? 64 : 150,
+            height: type === 'text' || type === 'variable' ? 40 : type === 'line' ? 2 : type === 'qr' ? 64 : 100,
             content: type === 'text' ? 'Texto' : type === 'variable' ? '{{variable}}' : '',
             fontSize: type === 'text' || type === 'variable' ? 16 : undefined,
             fontWeight: type === 'text' ? 'normal' : undefined,
             color: '#1e293b',
             backgroundColor: type === 'box' ? '#ffffff' : undefined,
             borderColor: type === 'box' || type === 'line' ? '#1e293b' : undefined,
-            borderWidth: type === 'box' ? 1 : undefined
+            borderWidth: type === 'box' ? 1 : undefined,
+            qrDataSource: type === 'qr' ? 'document' : undefined,
+            locked: type === 'qr' ? true : undefined
         };
         history.set((prev) => [...prev, el]);
         setSelectedId(el.id);
@@ -167,6 +195,11 @@ export function useTemplateEditor() {
     }, [history, markDirty]);
 
     const deleteElement = useCallback((id: string) => {
+        const target = history.elements.find((element) => element.id === id);
+        if (target?.locked) {
+            toast.info('El QR de archivo está protegido');
+            return;
+        }
         history.set((prev) => prev.filter((el) => el.id !== id));
         setSelectedId((cur) => (cur === id ? null : cur));
         markDirty();
@@ -224,7 +257,7 @@ export function useTemplateEditor() {
         const newTemplate: Template = { id: `custom_${timestamp}`, name: name.trim(), type: `CUSTOM_${timestamp}` };
         setTemplates((prev) => [...prev, newTemplate]);
         setSelectedTemplate(newTemplate);
-        history.reset([]);
+        history.reset(createElementsForTemplate(newTemplate));
         markDirty();
         toast.success(`Plantilla "${name}" creada`);
     }, [history, markDirty]);
@@ -297,15 +330,30 @@ export function useTemplateEditor() {
 
     const handleZoom = useCallback((delta: number) => setZoom((prev) => Math.min(Math.max(prev + delta, 30), 200)), []);
 
-    const handleLogoUpload = useCallback((file: File) => {
-        const reader = new FileReader();
-        reader.onload = (e) => { setLogoUrl(e.target?.result as string); toast.success('Logo subido'); };
-        reader.readAsDataURL(file);
+    const handleLogoUpload = useCallback(async (file: File) => {
+        const formData = new FormData();
+        formData.append('logo', file);
+        try {
+            const response = await api.post<unknown>('/document-templates/logo', formData);
+            const uploaded = extractItem<{ previewDataUrl?: string | null }>(response);
+            if (!uploaded?.previewDataUrl) throw new Error('Logo sin vista previa');
+            setLogoUrl(uploaded.previewDataUrl);
+            toast.success('Logo corporativo aplicado a todas las plantillas');
+        } catch {
+            toast.error('No se pudo guardar el logo corporativo');
+        } finally {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
     }, []);
 
-    const handleRemoveLogo = useCallback(() => {
-        setLogoUrl(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+    const handleRemoveLogo = useCallback(async () => {
+        try {
+            await api.delete('/document-templates/logo');
+            setLogoUrl(null);
+            toast.success('Logo corporativo eliminado');
+        } catch {
+            toast.error('No se pudo eliminar el logo corporativo');
+        }
     }, []);
 
     return {

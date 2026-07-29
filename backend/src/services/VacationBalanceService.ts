@@ -11,6 +11,7 @@ type EmployeeBalanceEmployee = {
     id: string;
     entryDate?: Date | null;
     createdAt?: Date | null;
+    active?: boolean;
 };
 
 interface MaterializedVacationBalanceResult {
@@ -288,7 +289,8 @@ async function getEmployeeBalanceEmployee(employeeId: string, db: DbClient): Pro
         select: {
             id: true,
             entryDate: true,
-            createdAt: true
+            createdAt: true,
+            active: true
         }
     });
 }
@@ -303,6 +305,21 @@ export async function getEmployeeVacationBalanceSummary(
 
     if (!employee) {
         return null;
+    }
+
+    if (employee.active === false) {
+        return {
+            year,
+            annualQuotaDays: 0,
+            carriedOverDays: 0,
+            importedUsedDays: 0,
+            advancedDays: 0,
+            totalEntitledDays: 0,
+            approvedUsedDays: 0,
+            pendingDays: 0,
+            availableDays: 0,
+            projectedAvailableDays: 0
+        };
     }
 
     const state = await getVacationBalanceState(employee, year, db, new Map());

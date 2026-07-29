@@ -513,6 +513,52 @@ export class ExcelService {
         return workbook.xlsx.writeBuffer();
     }
 
+    static async generateTerminationReport(data: any[], context: ExcelContext = {}) {
+        const workbook = createWorkbook('Bajas y despidos');
+        const typeLabels: Record<string, string> = {
+            DISMISSAL: 'Despido',
+            VOLUNTARY_LEAVE: 'Baja voluntaria',
+            CONTRACT_END: 'Fin de contrato',
+            OTHER: 'Otra baja'
+        };
+        const dismissals = data.filter((item) => item.type === 'DISMISSAL').length;
+        const voluntaryLeaves = data.filter((item) => item.type === 'VOLUNTARY_LEAVE').length;
+        const contractEnds = data.filter((item) => item.type === 'CONTRACT_END').length;
+
+        addRankingSheet(
+            workbook,
+            'Detalle',
+            context.title || 'Reporte de bajas y despidos',
+            context.subtitle || 'Movimientos de salida de plantilla con fecha, tipo y motivo.',
+            [
+                { label: 'Total bajas', value: data.length, hint: 'Salidas registradas' },
+                { label: 'Despidos', value: dismissals, hint: 'Extinciones por despido' },
+                { label: 'Voluntarias', value: voluntaryLeaves, hint: 'Bajas solicitadas' },
+                { label: 'Fin contrato', value: contractEnds, hint: 'Contratos finalizados' }
+            ],
+            [
+                { header: 'Nombre', key: 'employee', width: 30 },
+                { header: 'DNI/NIE', key: 'dni', width: 17 },
+                { header: 'Departamento', key: 'department', width: 20 },
+                { header: 'Tipo', key: 'type', width: 20, align: 'center' },
+                { header: 'Fecha', key: 'date', width: 15, align: 'center' },
+                { header: 'Motivo', key: 'reason', width: 48, wrapText: true }
+            ],
+            data.map((item) => ({
+                employee: item.employee || 'N/A',
+                dni: item.dni || '-',
+                department: item.department || 'Sin asignar',
+                type: typeLabels[item.type] || 'Otra baja',
+                date: formatDate(item.date),
+                reason: item.reason || 'Sin motivo especificado'
+            })),
+            'rose',
+            context
+        );
+
+        return workbook.xlsx.writeBuffer();
+    }
+
     static async generateKPIReport(summary: any, deptStats: any[], context: ExcelContext = {}) {
         const workbook = createWorkbook('KPIs de gestion');
 

@@ -1,4 +1,4 @@
-import { Trash2, AlignLeft, AlignCenter, AlignRight, Bold } from 'lucide-react';
+import { Trash2, AlignLeft, AlignCenter, AlignRight, Bold, ShieldCheck } from 'lucide-react';
 import { AVAILABLE_VARIABLES } from '../templateBases';
 import type { CanvasElement } from './types';
 
@@ -29,16 +29,30 @@ export function PropertiesPanel({ element, onUpdate, onDelete }: PropertiesPanel
                 <span className="inline-flex items-center rounded-md bg-indigo-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-600">
                     {element.type === 'variable' ? 'Variable' : element.type}
                 </span>
-                <button
-                    type="button"
-                    onClick={() => onDelete(element.id)}
-                    className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
-                    title="Eliminar"
-                    data-testid="delete-element"
-                >
-                    <Trash2 size={14} />
-                </button>
+                {!element.locked && (
+                    <button
+                        type="button"
+                        onClick={() => onDelete(element.id)}
+                        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                        title="Eliminar"
+                        data-testid="delete-element"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                )}
             </div>
+
+            {element.type === 'qr' && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                    <div className="flex items-center gap-2 text-emerald-700">
+                        <ShieldCheck size={16} />
+                        <span className="text-[12px] font-semibold">QR de archivo protegido</span>
+                    </div>
+                    <p className="mt-1.5 text-[11px] leading-4 text-emerald-700/80">
+                        Identifica el documento y permite archivarlo automáticamente en el trabajador al escanearlo.
+                    </p>
+                </div>
+            )}
 
             {isTextLike && (
                 <FieldGroup label={element.type === 'variable' ? 'Variable' : 'Texto'}>
@@ -135,6 +149,21 @@ export function PropertiesPanel({ element, onUpdate, onDelete }: PropertiesPanel
             {element.type === 'line' && (
                 <FieldGroup label="Color">
                     <ColorField value={element.borderColor || element.color || '#1e293b'} onChange={(v) => onUpdate(element.id, { borderColor: v, color: v })} />
+                </FieldGroup>
+            )}
+
+            {element.type === 'qr' && (
+                <FieldGroup label="Apariencia del QR">
+                    <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-gray-500">Código</span>
+                            <ColorField value={element.color || '#172033'} onChange={(v) => onUpdate(element.id, { color: v })} compact />
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-[11px] text-gray-500">Fondo</span>
+                            <ColorField value={element.backgroundColor || '#ffffff'} onChange={(v) => onUpdate(element.id, { backgroundColor: v })} compact />
+                        </div>
+                    </div>
                 </FieldGroup>
             )}
         </div>

@@ -7,8 +7,31 @@ import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { prisma } from '../lib/prisma';
 import { CompanyDocumentTemplateService } from '../services/documents/DocumentTemplateService';
+import fs from 'fs/promises';
+import path from 'path';
 
 const log = createLogger('DocumentTemplateController');
+const TEMPLATE_LOGO_DIRECTORY = path.resolve(process.cwd(), 'uploads', 'template-logos');
+
+const getTemplateLogoPath = (logoUrl: string | null | undefined) => {
+    if (!logoUrl?.startsWith('/uploads/template-logos/')) return null;
+    const fileName = path.basename(logoUrl);
+    const resolved = path.resolve(TEMPLATE_LOGO_DIRECTORY, fileName);
+    return path.dirname(resolved) === TEMPLATE_LOGO_DIRECTORY ? resolved : null;
+};
+
+const getLogoPreviewDataUrl = async (logoUrl: string | null | undefined) => {
+    const logoPath = getTemplateLogoPath(logoUrl);
+    if (!logoPath) return null;
+    try {
+        const extension = path.extname(logoPath).toLowerCase();
+        const mime = extension === '.png' ? 'image/png' : 'image/jpeg';
+        const buffer = await fs.readFile(logoPath);
+        return `data:${mime};base64,${buffer.toString('base64')}`;
+    } catch {
+        return null;
+    }
+};
 
 export const DocumentTemplateController = {
     listTemplates: async (req: Request, res: Response) => ApiResponse.success(res, CompanyDocumentTemplateService.getCatalog()),
@@ -16,8 +39,32 @@ export const DocumentTemplateController = {
     listStoredTemplates: async (req: Request, res: Response) => {
         try {
             const { user } = req as AuthenticatedRequest;
+            const employeeId = String(req.query.employeeId || '');
+            let companyId = user?.companyId || null;
+
+            if (employeeId) {
+                const employee = await prisma.employee.findUnique({
+                    where: { id: employeeId },
+                    select: { id: true, companyId: true }
+                });
+
+                if (!employee) {
+                    return ApiResponse.error(res, 'Empleado no encontrado', 404);
+                }
+
+                const canAccessEmployeeCompany = user?.role === 'admin'
+                    ? !user.companyId || user.companyId === employee.companyId
+                    : Boolean(user?.companyId && user.companyId === employee.companyId);
+
+                if (!canAccessEmployeeCompany) {
+                    return ApiResponse.error(res, 'No autorizado para consultar las plantillas de este empleado', 403);
+                }
+
+                companyId = employee.companyId;
+            }
+
             const templates = await CompanyDocumentTemplateService.listTemplates({
-                companyId: user?.companyId || null,
+                companyId,
                 includeGlobal: true
             });
 
@@ -296,7 +343,6 @@ export const DocumentTemplateController = {
             const doc = await CompanyDocumentTemplateService.generateDocumentFromTemplate({
                 employeeId,
                 type: normalizedType,
-                companyId: user?.companyId || null,
                 authorName,
                 extraContext: extraContext || data
             });
@@ -348,10 +394,75 @@ export const DocumentTemplateController = {
             }
 
             const logoUrl = `/uploads/template-logos/${req.file.filename}`;
-            return ApiResponse.success(res, { logoUrl, fileName: req.file.filename }, 'Logo subido correctamente', 201);
+            const previous = await prisma.company.findUnique({
+                where: { id: user.companyId },
+                select: { logoUrl: true }
+            });
+            await prisma.company.update({
+                where: { id: user.companyId },
+                data: { logoUrl }
+            });
+
+            const previousPath = getTemplateLogoPath(previous?.logoUrl);
+            if (previousPath && previousPath !== req.file.path) {
+                await fs.unlink(previousPath).catch(() => {});
+            }
+
+            return ApiResponse.success(res, {
+                logoUrl,
+                previewDataUrl: await getLogoPreviewDataUrl(logoUrl),
+                fileName: req.file.filename
+            }, 'Logo corporativo guardado para todos los documentos', 201);
         } catch (error: unknown) {
+            if (req.file?.path) {
+                await fs.unlink(req.file.path).catch(() => {});
+            }
             log.error({ error }, 'Error uploading logo');
             return handleControllerError(res, error, 'Error al subir el logo');
+        }
+    },
+
+    getCompanyLogo: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            if (!user?.companyId) {
+                return ApiResponse.success(res, { logoUrl: null, previewDataUrl: null });
+            }
+
+            const company = await prisma.company.findUnique({
+                where: { id: user.companyId },
+                select: { logoUrl: true }
+            });
+            return ApiResponse.success(res, {
+                logoUrl: company?.logoUrl || null,
+                previewDataUrl: await getLogoPreviewDataUrl(company?.logoUrl)
+            });
+        } catch (error: unknown) {
+            return handleControllerError(res, error, 'Error al obtener el logo corporativo');
+        }
+    },
+
+    removeCompanyLogo: async (req: Request, res: Response) => {
+        try {
+            const { user } = req as AuthenticatedRequest;
+            if (!user?.companyId) {
+                return ApiResponse.error(res, 'No tienes una empresa asignada', 400);
+            }
+
+            const company = await prisma.company.findUnique({
+                where: { id: user.companyId },
+                select: { logoUrl: true }
+            });
+            await prisma.company.update({
+                where: { id: user.companyId },
+                data: { logoUrl: null }
+            });
+
+            const previousPath = getTemplateLogoPath(company?.logoUrl);
+            if (previousPath) await fs.unlink(previousPath).catch(() => {});
+            return ApiResponse.success(res, { logoUrl: null, previewDataUrl: null }, 'Logo corporativo eliminado');
+        } catch (error: unknown) {
+            return handleControllerError(res, error, 'Error al eliminar el logo corporativo');
         }
     }
 };

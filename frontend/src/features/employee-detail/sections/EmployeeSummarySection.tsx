@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronRight, Plane, TrendingUp } from 'lucide-react';
 import { OvertimeTracker } from './OvertimeTracker';
 import type { EmployeeViewRecord } from '../types';
+import { SmartEmployeeRecordPanel } from '../../hr-operations/components/SmartEmployeeRecordPanel';
 
 export function EmployeeSummarySection({
     employeeId,
@@ -21,6 +22,7 @@ export function EmployeeSummarySection({
 
     return (
         <div className="space-y-8">
+            <SmartEmployeeRecordPanel employeeId={employeeId} />
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-700">
                     <p className="text-slate-500 text-sm font-medium mb-1">Subcuenta Contable</p>

@@ -53,6 +53,7 @@ router.get('/vacations', ReportController.getVacations);
 router.get('/vacations/usage-by-department', ReportController.getVacationUsageByDepartment);
 router.get('/costs', ReportController.getCosts);
 router.get('/absences-detailed', ReportController.getDetailedAbsences);
+router.get('/terminations', ReportController.getTerminations);
 router.get('/kpis', ReportController.getKPIs);
 router.get('/gender-gap', ReportController.getGenderGap);
 router.get('/obras', ReportController.getObras);

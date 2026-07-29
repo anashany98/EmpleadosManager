@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from 'lucide-react';
 import { resolveTemplateContent, EMPTY_PREVIEW_CONTEXT } from '../templateVariables';
 import type { CanvasElement } from './types';
+import { QrElementPreview } from './QrElementPreview';
 
 const A4_WIDTH = 794;
 const A4_HEIGHT = 1123;
@@ -10,11 +11,12 @@ interface PreviewPaneProps {
     elements: CanvasElement[];
     variableContext: Record<string, unknown>;
     employeeId: string;
+    logoUrl?: string | null;
     showGrid?: boolean;
     fullWidth?: boolean;
 }
 
-export function PreviewPane({ elements, variableContext, employeeId, showGrid, fullWidth = false }: PreviewPaneProps) {
+export function PreviewPane({ elements, variableContext, employeeId, logoUrl = null, showGrid, fullWidth = false }: PreviewPaneProps) {
     const [collapsed, setCollapsed] = useState(false);
 
     const context = useMemo(() => {
@@ -65,7 +67,7 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid, f
                         </div>
                     )}
                     {elements.map((element) => (
-                        <PreviewElement key={element.id} element={element} context={context} />
+                        <PreviewElement key={element.id} element={element} context={context} logoUrl={logoUrl} />
                     ))}
                 </div>
                 {!employeeId && (
@@ -78,7 +80,7 @@ export function PreviewPane({ elements, variableContext, employeeId, showGrid, f
     );
 }
 
-function PreviewElement({ element, context }: { element: CanvasElement; context: Record<string, unknown> }) {
+function PreviewElement({ element, context, logoUrl }: { element: CanvasElement; context: Record<string, unknown>; logoUrl: string | null }) {
     const isTextLike = element.type === 'text' || element.type === 'variable';
     const pctX = `${(element.x / A4_WIDTH) * 100}%`;
     const pctY = `${(element.y / A4_HEIGHT) * 100}%`;
@@ -99,6 +101,36 @@ function PreviewElement({ element, context }: { element: CanvasElement; context:
                 ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gray-100 text-[8px] text-gray-400">Imagen</div>
                 )}
+            </div>
+        );
+    }
+
+    if (element.type === 'logo') {
+        const source = element.src || logoUrl;
+        return (
+            <div className="absolute flex items-center justify-center overflow-hidden" style={{ left: pctX, top: pctY, width: pctW, height: pctH }}>
+                {source ? (
+                    <img src={source} alt="Logo corporativo" className="h-full w-full object-contain" />
+                ) : (
+                    <div className="flex h-full w-full items-center justify-center rounded border border-dashed border-gray-200 bg-gray-50 text-[7px] text-gray-400">Logo de empresa</div>
+                )}
+            </div>
+        );
+    }
+
+    if (element.type === 'qr') {
+        return (
+            <div
+                className="absolute overflow-hidden bg-white p-px"
+                style={{
+                    left: element.x,
+                    top: element.y,
+                    width: element.width,
+                    height: element.height,
+                    backgroundColor: element.backgroundColor || '#ffffff'
+                }}
+            >
+                <QrElementPreview element={element} />
             </div>
         );
     }

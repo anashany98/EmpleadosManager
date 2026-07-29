@@ -40,6 +40,32 @@ describe('VacationBalanceService', () => {
         expect(calculateProratedAnnualVacationDays(new Date('2026-12-31'), 2026)).toBeCloseTo(0.08, 2);
     });
 
+    it('returns an all-zero vacation balance for an inactive employee', async () => {
+        (prisma.employee.findUnique as any).mockResolvedValue({
+            id: 'emp-inactive',
+            active: false,
+            entryDate: new Date('2020-01-01'),
+            createdAt: new Date('2020-01-01')
+        });
+
+        const summary = await getEmployeeVacationBalanceSummary('emp-inactive', 2026);
+
+        expect(summary).toEqual({
+            year: 2026,
+            annualQuotaDays: 0,
+            carriedOverDays: 0,
+            importedUsedDays: 0,
+            advancedDays: 0,
+            totalEntitledDays: 0,
+            approvedUsedDays: 0,
+            pendingDays: 0,
+            availableDays: 0,
+            projectedAvailableDays: 0
+        });
+        expect(prisma.employeeVacationBalance.findUnique).not.toHaveBeenCalled();
+        expect(prisma.vacation.findMany).not.toHaveBeenCalled();
+    });
+
     it('derives carry over from the previous anchored year', async () => {
         (prisma.employee.findUnique as any).mockResolvedValue({
             id: 'emp-1',

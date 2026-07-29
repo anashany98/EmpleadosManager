@@ -5,10 +5,14 @@ import { AppError } from '../../utils/AppError';
 import { getEmployeeVacationBalanceSummary } from '../VacationBalanceService';
 import { StorageService } from '../StorageService';
 import { addQRCodeToPDF, buildPdfBuffer, getLogoPath, writeTemplateText } from './DocumentPdfUtils';
-import { parseLayoutTemplate, renderLayoutTemplate } from './DocumentLayoutService';
+import { parseLayoutTemplate, renderLayoutTemplate, type LayoutTemplate } from './DocumentLayoutService';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { createLogger } from '../../services/LoggerService';
+import {
+    CANONICAL_DOCUMENT_TEMPLATES,
+    getCanonicalTemplateVariables
+} from '../../../../shared/documentTemplateLayouts';
 
 const logger = createLogger('DocumentTemplateService');
 
@@ -120,6 +124,35 @@ export interface ResolvedTemplate {
 }
 
 type TemplateDefinition = Pick<ResolvedTemplate, 'name' | 'type' | 'content' | 'variables'>;
+
+const OBRA_EXPENSE_RECEIPT_LAYOUT: LayoutTemplate = {
+    kind: 'layout-template',
+    version: 1,
+    page: { backgroundColor: '#ffffff', showGrid: false },
+    elements: [
+        { id: 'title', type: 'text', x: 8, y: 5, w: 84, h: 8, text: 'RECIBÍ', fontSize: 22, fontWeight: 'bold', align: 'center', color: '#1e293b' },
+        { id: 'company-name', type: 'text', x: 10, y: 16, w: 55, h: 4, text: '{{empresa.nombre}}', fontSize: 12, fontWeight: 'bold', color: '#1e293b' },
+        { id: 'company-cif', type: 'text', x: 10, y: 20, w: 55, h: 4, text: 'CIF: {{empresa.cif}}', fontSize: 10, color: '#1e293b' },
+        { id: 'company-address', type: 'text', x: 10, y: 24, w: 55, h: 4, text: '{{empresa.direccion}}', fontSize: 10, color: '#1e293b' },
+        { id: 'logo-box', type: 'box', x: 72, y: 15, w: 18, h: 10, fillColor: '#ffffff', borderColor: '#e2e8f0', borderWidth: 1 },
+        { id: 'logo-label', type: 'text', x: 72, y: 19, w: 18, h: 3, text: 'LOGO', fontSize: 10, align: 'center', color: '#94a3b8' },
+        { id: 'employee-box', type: 'box', x: 10, y: 28, w: 80, h: 13, fillColor: '#f8fafc', borderColor: '#e2e8f0', borderWidth: 1 },
+        { id: 'employee-name', type: 'text', x: 13, y: 30, w: 74, h: 4, text: 'Trabajador/a: {{empleado.nombreCompleto}}', fontSize: 12, fontWeight: 'bold', color: '#1e293b' },
+        { id: 'employee-dni', type: 'text', x: 13, y: 34, w: 35, h: 4, text: 'DNI: {{empleado.dni}}', fontSize: 10, color: '#1e293b' },
+        { id: 'employee-job', type: 'text', x: 50, y: 34, w: 37, h: 4, text: 'Puesto: {{empleado.puesto}}', fontSize: 10, color: '#1e293b' },
+        { id: 'expense-box', type: 'box', x: 10, y: 45, w: 80, h: 30, fillColor: '#f8fafc', borderColor: '#e2e8f0', borderWidth: 1 },
+        { id: 'expense-concept', type: 'text', x: 13, y: 48, w: 74, h: 4, text: 'Concepto: {{gasto.concepto}}', fontSize: 12, fontWeight: 'bold', color: '#1e293b' },
+        { id: 'expense-period', type: 'text', x: 13, y: 53, w: 74, h: 4, text: 'Periodo: {{gasto.fechaInicio}} - {{gasto.fechaFin}}', fontSize: 11, color: '#1e293b' },
+        { id: 'expense-daily', type: 'text', x: 13, y: 58, w: 35, h: 4, text: 'Importe diario: {{gasto.importeDiario}}', fontSize: 11, color: '#1e293b' },
+        { id: 'expense-days', type: 'text', x: 52, y: 58, w: 35, h: 4, text: 'Días: {{gasto.dias}}', fontSize: 11, color: '#1e293b' },
+        { id: 'expense-total', type: 'text', x: 13, y: 63, w: 74, h: 4, text: 'Total: {{gasto.importeTotal}}', fontSize: 13, fontWeight: 'bold', color: '#1e293b' },
+        { id: 'expense-worksite', type: 'text', x: 13, y: 68, w: 74, h: 4, text: 'Obra: {{obra.codigo}} - {{obra.nombre}} · Destino: {{obra.destino}}', fontSize: 10, color: '#1e293b' },
+        { id: 'company-signature-box', type: 'box', x: 10, y: 82, w: 34, h: 12, fillColor: '#ffffff', borderColor: '#cbd5e1', borderWidth: 1 },
+        { id: 'company-signature-label', type: 'text', x: 10, y: 95, w: 34, h: 4, text: 'Firma empresa', fontSize: 10, fontWeight: 'bold', align: 'center', color: '#475569' },
+        { id: 'employee-signature-box', type: 'box', x: 56, y: 82, w: 34, h: 12, fillColor: '#ffffff', borderColor: '#cbd5e1', borderWidth: 1 },
+        { id: 'employee-signature-label', type: 'text', x: 56, y: 95, w: 34, h: 4, text: 'Firma trabajador', fontSize: 10, fontWeight: 'bold', align: 'center', color: '#475569' }
+    ]
+};
 
 const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
     NDA: {
@@ -393,23 +426,7 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
             'gasto.fechaInicio', 'gasto.fechaFin', 'gasto.importeDiario',
             'gasto.dias', 'gasto.importeTotal', 'gasto.detalle', 'firma.fecha'
         ],
-        content: [
-            '# RECIBÍ',
-            '',
-            'Yo, {{empleado.nombreCompleto}}, con DNI/NIE {{empleado.dni}}, declaro haber recibido de {{empresa.nombre}} la cantidad de {{gasto.importeTotal}}.',
-            '',
-            'Concepto: {{gasto.concepto}}',
-            'Periodo: {{gasto.fechaInicio}} - {{gasto.fechaFin}}',
-            'Importe diario: {{gasto.importeDiario}}',
-            'Número de días: {{gasto.dias}}',
-            'Obra: {{obra.codigo}} - {{obra.nombre}}',
-            'Destino: {{obra.destino}}',
-            'Detalle: {{gasto.detalle}}',
-            '',
-            'Firma del trabajador: ____________________',
-            '',
-            'Emitido el {{firma.fecha}}.'
-        ].join('\n')
+        content: JSON.stringify(OBRA_EXPENSE_RECEIPT_LAYOUT)
     },
     FIRMA_DIETAS: {
         type: 'FIRMA_DIETAS',
@@ -461,7 +478,20 @@ const TEMPLATE_DEFINITIONS: Record<string, TemplateDefinition> = {
     }
 };
 
-const EDITABLE_TEMPLATE_TYPES = ['NDA', 'RGPD', 'UNIFORM', 'EPI', 'TECH_DEVICE', 'CERTIFICADO_EMPRESA', 'CERTIFICADO_TRABAJO', 'CARTA_FORMAL', 'JUSTIFICANTE_AUSENCIA', 'VACATION_REQUEST', 'FIRMA_DIETAS', 'OBRA_EXPENSE_RECEIPT', 'ENTREGA_MATERIAL'];
+const LEGACY_BUILTIN_CONTENT_BY_TYPE = Object.fromEntries(
+    Object.entries(TEMPLATE_DEFINITIONS).map(([type, definition]) => [type, definition.content])
+);
+
+Object.entries(CANONICAL_DOCUMENT_TEMPLATES).forEach(([type, template]) => {
+    TEMPLATE_DEFINITIONS[type] = {
+        type,
+        name: template.name,
+        variables: getCanonicalTemplateVariables(template),
+        content: JSON.stringify(template.layout)
+    };
+});
+
+const EDITABLE_TEMPLATE_TYPES = ['NDA', 'RGPD', 'UNIFORM', 'EPI', 'TECH_DEVICE', 'CERTIFICADO_EMPRESA', 'CERTIFICADO_TRABAJO', 'CARTA_FORMAL', 'JUSTIFICANTE_AUSENCIA', 'VACATION_REQUEST', 'OBRA_EXPENSE_RECEIPT', 'ENTREGA_MATERIAL'];
 const OFFICIAL_ONLY_TEMPLATE_TYPES = new Set(['MODEL_145']);
 
 const tryParseArray = (value: string | null | undefined): string[] => {
@@ -474,6 +504,38 @@ const tryParseArray = (value: string | null | undefined): string[] => {
         return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
     } catch {
         return [];
+    }
+};
+
+const migrateLegacyLogoPlaceholder = (content: string): string => {
+    try {
+        const parsed = JSON.parse(content) as {
+            kind?: string;
+            version?: number;
+            page?: unknown;
+            elements?: Array<Record<string, unknown>>;
+        };
+        if (parsed.kind !== 'layout-template' || !Array.isArray(parsed.elements)) return content;
+
+        const logoBox = parsed.elements.find((element) => element.id === 'logo-box' && element.type === 'box');
+        const logoLabel = parsed.elements.find((element) => element.id === 'logo-label' && element.type === 'text');
+        if (!logoBox || !logoLabel) return content;
+
+        const elements = parsed.elements.filter((element) => element !== logoBox && element !== logoLabel);
+        elements.push({
+            id: 'company-logo',
+            type: 'logo',
+            source: 'company',
+            fit: 'contain',
+            x: logoBox.x,
+            y: logoBox.y,
+            w: logoBox.w,
+            h: logoBox.h,
+            zIndex: logoBox.zIndex
+        });
+        return JSON.stringify({ ...parsed, elements });
+    } catch {
+        return content;
     }
 };
 
@@ -579,10 +641,18 @@ export const CompanyDocumentTemplateService = {
         const stored = await CompanyDocumentTemplateService.getStoredTemplate(type, companyId);
 
         if (stored) {
+            const legacyBuiltinContent = LEGACY_BUILTIN_CONTENT_BY_TYPE[type];
+            const canonicalDefinition = TEMPLATE_DEFINITIONS[type];
+            const resolvedContent = canonicalDefinition
+                && legacyBuiltinContent
+                && stored.content.trim() === legacyBuiltinContent.trim()
+                ? canonicalDefinition.content
+                : stored.content;
+            const content = migrateLegacyLogoPlaceholder(resolvedContent);
             return {
                 name: stored.name,
                 type: stored.type,
-                content: stored.content,
+                content,
                 variables: tryParseArray(stored.variables),
                 source: stored.companyId ? 'company' : 'global',
                 companyId: stored.companyId,
@@ -825,11 +895,20 @@ export const CompanyDocumentTemplateService = {
     generateDocumentFromTemplate: async (options: {
         employeeId: string;
         type: string;
-        companyId?: string | null;
         authorName?: string;
         extraContext?: Record<string, unknown>;
     }) => {
-        const { employeeId, type, companyId = null, authorName, extraContext } = options;
+        const { employeeId, type, authorName, extraContext } = options;
+        const employee = await prisma.employee.findUnique({
+            where: { id: employeeId },
+            select: { companyId: true }
+        });
+
+        if (!employee) {
+            throw new AppError('Empleado no encontrado', 404);
+        }
+
+        const companyId = employee.companyId;
         const template = await CompanyDocumentTemplateService.getTemplate(type, companyId);
 
         if (!template) {

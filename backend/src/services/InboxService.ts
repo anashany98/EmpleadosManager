@@ -7,6 +7,7 @@ import { simpleParser } from 'mailparser';
 import * as chokidar from 'chokidar';
 import { queueService, QUEUES } from './QueueService';
 import { loggers } from './LoggerService';
+import { DEFAULT_QR_FILE_MAPPINGS } from './documents/QrDocumentService';
 
 const log = loggers.inbox;
 
@@ -28,20 +29,11 @@ export class InboxService {
      */
     private async initializeMappings() {
         try {
-            const count = await (prisma as any).fileMapping.count();
-            if (count === 0) {
-                log.info('Seeding default file mappings...');
-                await (prisma as any).fileMapping.createMany({
-                    data: [
-                        { qrType: 'VACATION', category: 'Justificante Ausencia', namePattern: 'Justificante Auto {{date}}' },
-                        { qrType: 'EPI', category: 'PRL', namePattern: 'Entrega EPIs Firmado {{date}}' },
-                        { qrType: 'UNIFORME', category: 'PRL', namePattern: 'Entrega Uniforme Firmado {{date}}' },
-                        { qrType: 'TECH_DEVICE', category: 'Equipamiento', namePattern: 'Entrega {{deviceName}} Firmado {{date}}' },
-                        { qrType: 'MODEL_145', category: 'Contrato', namePattern: 'Modelo 145 Firmado {{date}}' },
-                        { qrType: 'PAYROLL_SIGNED', category: 'Nómina', namePattern: 'Nómina Firmada {{date}}' }
-                    ]
-                });
-            }
+            log.info('Ensuring default file mappings...');
+            await (prisma as any).fileMapping.createMany({
+                data: DEFAULT_QR_FILE_MAPPINGS,
+                skipDuplicates: true
+            });
         } catch {
             log.error('Error seeding mappings');
         }

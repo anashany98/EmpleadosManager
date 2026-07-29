@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { api } from '../../../api/client';
 import { useConfirm } from '../../../context/ConfirmContext';
 import type { Employee, FilterState } from '../types';
+import type { EmployeeDeactivationData } from '../components/EmployeeDeactivationDialog';
 
 
 const DEFAULT_LIMIT = 20;
@@ -38,6 +39,7 @@ export function useEmployeesPage() {
     const [page, setPage] = useState(1);
     const [limit] = useState(DEFAULT_LIMIT);
     const [debouncedSearch, setDebouncedSearch] = useState('');
+    const [showDeactivationDialog, setShowDeactivationDialog] = useState(false);
 
     useEffect(() => {
         const timer = setTimeout(() => {
@@ -121,13 +123,8 @@ export function useEmployeesPage() {
             });
             if (!confirmed) return;
         } else if (actionId === 'deactivate') {
-            const confirmed = await confirmAction({
-                title: 'Desactivación Masiva',
-                message: `¿Desactivar a los ${selectedIds.length} empleados seleccionados?`,
-                confirmText: 'Desactivar',
-                type: 'warning'
-            });
-            if (!confirmed) return;
+            setShowDeactivationDialog(true);
+            return;
         } else if (actionId === 'activate') {
             const confirmed = await confirmAction({
                 title: 'Activación Masiva',
@@ -146,6 +143,15 @@ export function useEmployeesPage() {
         }
 
         bulkUpdateMutation.mutate({ employeeIds: selectedIds, action: actionId });
+    };
+
+    const handleConfirmDeactivation = (data: EmployeeDeactivationData) => {
+        bulkUpdateMutation.mutate({
+            employeeIds: selectedIds,
+            action: 'deactivate',
+            data
+        });
+        setShowDeactivationDialog(false);
     };
 
     const handleDownloadTemplate = async () => {
@@ -204,6 +210,10 @@ export function useEmployeesPage() {
         handleSelectAll,
         handleSelectOne,
         handleBulkAction,
+        showDeactivationDialog,
+        setShowDeactivationDialog,
+        handleConfirmDeactivation,
+        deactivationBusy: bulkUpdateMutation.isPending,
         handleDownloadTemplate,
         handleImportFile,
         handleCloseImportWizard,

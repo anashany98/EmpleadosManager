@@ -8,10 +8,11 @@ import { NotificationService } from '../services/NotificationService';
 import { createLogger } from '../services/LoggerService';
 import { inboxService } from '../services/InboxService';
 import { createWorker, type Worker as TesseractWorker } from 'tesseract.js';
-import jsQR from 'jsqr';
-import { PDFDocument } from 'pdf-lib';
-import { PNG } from 'pngjs';
-import jpeg from 'jpeg-js';
+import {
+    extractSystemQrFromImage,
+    extractSystemQrFromPdf,
+    getDefaultQrFileMapping
+} from '../services/documents/QrDocumentService';
 
 const log = createLogger('FileProcessor');
 
@@ -249,25 +250,10 @@ export const FileProcessor = async (job: Job) => {
 
         // 1. Analyze File (OCR/Metadata)
         if (ext.toLowerCase() === '.pdf') {
-            try {
-                const pdfDoc = await PDFDocument.load(buffer, { ignoreEncryption: true });
-                const subject = pdfDoc.getSubject();
-                if (subject) {
-                    try {
-                        const parsed = JSON.parse(subject);
-                        if (parsed.eid && parsed.t) {
-                            qrData = parsed;
-                            log.info({ type: qrData.t }, 'Found system metadata in PDF Subject');
-                        }
-                    } catch {
-                        // Silently ignore - QR metadata is optional
-                    }
-                }
-            } catch (e) {
-                log.warn({ error: e }, 'Error reading PDF metadata');
-            }
+            qrData = await extractSystemQrFromPdf(buffer);
+            if (qrData) log.info({ type: qrData.t }, 'Found system QR/metadata in PDF');
         } else if (['.png', '.jpg', '.jpeg'].includes(ext.toLowerCase())) {
-            qrData = await scanImageForQR(buffer);
+            qrData = await extractSystemQrFromImage(buffer);
         }
 
         // 1.5. OCR Extraction (Text) — pooled + timeout-bounded to prevent
@@ -346,15 +332,16 @@ export const FileProcessor = async (job: Job) => {
                 let name = `Documento Auto ${date}`;
 
                 // DB Lookup for Mapping
-                const mapping = await prisma.fileMapping.findFirst({
+                const storedMapping = await prisma.fileMapping.findFirst({
                     where: { qrType: qrData.t }
                 });
+                const mapping = storedMapping || getDefaultQrFileMapping(qrData.t);
 
                 if (mapping) {
                     category = mapping.category;
                     name = mapping.namePattern
                         .replace('{{date}}', date)
-                        .replace('{{deviceName}}', qrData.name || 'Dispositivo');
+                        .replace('{{deviceName}}', typeof qrData.name === 'string' ? qrData.name : 'Dispositivo');
                 } else {
                     log.warn({ type: qrData.t }, 'Unknown QR Type, using default category');
                 }
@@ -440,48 +427,6 @@ export const FileProcessor = async (job: Job) => {
         throw error; // Let BullMQ handle retries
     }
 };
-
-/**
- * Extracts QR data from an image buffer using jsQR.
- */
-async function scanImageForQR(buffer: Buffer): Promise<any | null> {
-    try {
-        let imageData: { data: Uint8Array | Uint8ClampedArray | Buffer, width: number, height: number } | null = null;
-
-        // Try detecting format (basic signature check)
-        if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47) {
-            // PNG
-            const pngData = await new Promise<any>((resolve, reject) => {
-                new PNG().parse(buffer, (error: any, data: any) => {
-                    if (error) reject(error);
-                    else resolve(data);
-                });
-            });
-            imageData = { data: pngData.data, width: pngData.width, height: pngData.height };
-        } else if (buffer[0] === 0xFF && buffer[1] === 0xD8) {
-            // JPEG
-            const jpegData = jpeg.decode(buffer, { useTArray: true }); // useTArray for Uint8Array
-            imageData = { data: jpegData.data, width: jpegData.width, height: jpegData.height };
-        }
-
-        if (imageData) {
-            // jsQR expects Uint8ClampedArray
-            const clamped = new Uint8ClampedArray(imageData.data);
-            const code = jsQR(clamped, imageData.width, imageData.height);
-            if (code && code.data) {
-                try {
-                    return JSON.parse(code.data);
-                } catch {
-                    return null; // Valid QR but not JSON
-                }
-            }
-        }
-        return null;
-    } catch (e) {
-        log.error({ error: e }, 'Error scanning image');
-        return null;
-    }
-}
 
 /**
  * Assigns a pending document to an employee.

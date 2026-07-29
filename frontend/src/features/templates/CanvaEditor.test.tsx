@@ -6,7 +6,8 @@ vi.mock('../../api/client', () => {
     return {
         api: {
             get: vi.fn(),
-            post: vi.fn()
+            post: vi.fn(),
+            delete: vi.fn()
         },
         BASE_URL: 'http://localhost'
     };
@@ -22,6 +23,7 @@ import CanvaEditor from './CanvaEditor';
 const mockApi = api as unknown as {
     get: ReturnType<typeof vi.fn>;
     post: ReturnType<typeof vi.fn>;
+    delete: ReturnType<typeof vi.fn>;
 };
 
 const listResponse = [
@@ -49,10 +51,20 @@ beforeEach(() => {
         if (url === '/document-templates/list') return Promise.resolve(listResponse);
         if (url === '/document-templates/stored') return Promise.resolve(storedResponse);
         if (url === '/employees') return Promise.resolve(employeesResponse);
+        if (url === '/document-templates/logo') return Promise.resolve({ logoUrl: null, previewDataUrl: null });
         if (url.startsWith('/document-templates/variables')) return Promise.resolve(variablesResponse);
         return Promise.resolve({});
     });
-    mockApi.post.mockResolvedValue({ id: 'saved-1', type: 'NDA', name: 'Acuerdo de Confidencialidad' });
+    mockApi.post.mockImplementation((url: string) => {
+        if (url === '/document-templates/logo') {
+            return Promise.resolve({
+                logoUrl: '/uploads/template-logos/company-logo.png',
+                previewDataUrl: 'data:image/png;base64,ZmFrZQ=='
+            });
+        }
+        return Promise.resolve({ id: 'saved-1', type: 'NDA', name: 'Acuerdo de Confidencialidad' });
+    });
+    mockApi.delete.mockResolvedValue({});
 });
 
 afterEach(() => {
@@ -161,6 +173,25 @@ describe('CanvaEditor', () => {
         await waitFor(() => {
             expect(screen.queryByRole('status')).not.toBeInTheDocument();
         });
+    });
+
+    it('uploads the corporate logo and shows it inside the template logo element', async () => {
+        const { container } = render(<CanvaEditor />);
+
+        const uploadButton = await screen.findByRole('button', { name: /subir logo empresa/i });
+        fireEvent.click(uploadButton);
+        const input = container.querySelector('input[type="file"]') as HTMLInputElement;
+        const file = new File(['fake-png'], 'company-logo.png', { type: 'image/png' });
+        fireEvent.change(input, { target: { files: [file] } });
+
+        await waitFor(() => {
+            expect(mockApi.post).toHaveBeenCalledWith(
+                '/document-templates/logo',
+                expect.any(FormData)
+            );
+        });
+        expect(await screen.findByAltText('Logo corporativo')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /cambiar logo empresa/i })).toBeInTheDocument();
     });
 
     it('duplicates the current template under another type', async () => {

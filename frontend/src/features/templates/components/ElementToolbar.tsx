@@ -1,11 +1,12 @@
-import { Image as ImageIcon, Minus, Square, Type, Variable } from 'lucide-react';
+import { Image as ImageIcon, Minus, QrCode, Square, Type, Variable } from 'lucide-react';
 import type { ElementType } from './types';
 import { ELEMENT_LIBRARY } from './elements';
 
-const ICONS: Record<string, typeof Type> = { Type, Variable, Square, Minus, Image: ImageIcon };
+const ICONS: Record<string, typeof Type> = { Type, Variable, Square, Minus, Image: ImageIcon, QrCode };
 const TOOLTIPS: Record<ElementType, string> = {
     text: 'Anadir texto', variable: 'Anadir variable', box: 'Anadir caja',
-    line: 'Anadir linea', image: 'Anadir imagen', logo: 'Anadir logo'
+    line: 'Anadir linea', image: 'Anadir imagen', logo: 'Anadir logo',
+    qr: 'QR para archivar en el trabajador'
 };
 
 interface ElementToolbarProps {
