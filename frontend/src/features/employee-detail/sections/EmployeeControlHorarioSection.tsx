@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     AlertTriangle,
     CalendarDays,
@@ -12,10 +12,12 @@ import {
     Loader2,
     Lock,
     Save,
+    Upload,
     WandSparkles
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../../../api/client';
+import { normalizeDailyRowsForSave, normalizeTimeInput } from './employeeControlHorarioForm';
 
 interface EmployeeControlHorarioSectionProps {
     employeeId: string;
@@ -114,6 +116,12 @@ interface CalendarEventApi {
     type: string;
 }
 
+interface TimeSheetImportPreview {
+    sheetName: string;
+    entries: Array<Pick<DailyRow, 'workDate' | 'entryTime' | 'breakOutTime' | 'breakInTime' | 'exitTime' | 'notes'>>;
+    warnings: string[];
+}
+
 const MONTHS = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -186,16 +194,6 @@ function rowIsIncomplete(row: DailyRow): boolean {
     if (!rowHasTimes(row)) return false;
     if (!row.entryTime || !row.exitTime) return true;
     return Boolean(row.breakOutTime) !== Boolean(row.breakInTime);
-}
-
-function normalizeTimeInput(value: string): string {
-    const trimmed = value.trim();
-    if (!trimmed) return '';
-    const excelTime = trimmed.match(/^(\d{1,2})[:.]([0-5]\d)(?::\d{2})?$/);
-    if (excelTime) return `${excelTime[1].padStart(2, '0')}:${excelTime[2]}`;
-    const compactTime = trimmed.match(/^(\d{1,2})([0-5]\d)$/);
-    if (compactTime) return `${compactTime[1].padStart(2, '0')}:${compactTime[2]}`;
-    return '';
 }
 
 function parsePastedValue(field: DailyEditableField, rawValue: string): string | number | boolean {
@@ -324,6 +322,31 @@ function NumericCell({
     );
 }
 
+function MobileTimeInput({
+    label,
+    value,
+    disabled,
+    onChange
+}: {
+    label: string;
+    value: string;
+    disabled: boolean;
+    onChange: (value: string) => void;
+}) {
+    return (
+        <label className="block rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 dark:border-slate-700 dark:bg-slate-800">
+            <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-500">{label}</span>
+            <input
+                type="time"
+                disabled={disabled}
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                className="mt-0.5 h-8 w-full border-0 bg-transparent p-0 font-mono text-sm font-semibold text-slate-900 outline-none focus:ring-0 disabled:text-slate-500 dark:text-white"
+            />
+        </label>
+    );
+}
+
 export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHorarioSectionProps) {
     const now = new Date();
     const [year, setYear] = useState(now.getFullYear());
@@ -339,6 +362,10 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
     const [monthlyFieldsDirty, setMonthlyFieldsDirty] = useState(false);
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importPreview, setImportPreview] = useState<TimeSheetImportPreview | null>(null);
+    const importInputRef = useRef<HTMLInputElement>(null);
     const [quickSchedule, setQuickSchedule] = useState<QuickSchedule>({
         entryTime: '',
         breakOutTime: '',
@@ -556,6 +583,15 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
 
     const handleSave = async () => {
         if (!record || isLocked || saving) return;
+        const normalized = normalizeDailyRowsForSave(rows);
+        if (normalized.invalidRowIndexes.length > 0) {
+            const days = normalized.invalidRowIndexes
+                .map((index) => rows[index].dayNumber)
+                .join(', ');
+            toast.error(`Corrige la hora de los días ${days}. Usa 08:00 o escribe 800.`);
+            return;
+        }
+        const rowsToSave = normalized.rows;
         setSaving(true);
         setSaveError(false);
         try {
@@ -565,7 +601,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                     year,
                     month,
                     expectedVersion: record.version,
-                    entries: rows.map((row) => ({
+                    entries: rowsToSave.map((row) => ({
                         workDate: row.workDate,
                         entryTime: row.entryTime || null,
                         breakOutTime: row.breakOutTime || null,
@@ -612,6 +648,58 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
             toast.error(getErrorMessage(error, 'No se pudo guardar el control horario'));
         } finally {
             setSaving(false);
+        }
+    };
+
+    const createImportForm = (file: File, includeVersion = false) => {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('year', String(year));
+        form.append('month', String(month));
+        if (includeVersion && record) form.append('expectedVersion', String(record.version));
+        return form;
+    };
+
+    const previewImport = async (file: File) => {
+        if (!record || isLocked) return;
+        setImporting(true);
+        setImportPreview(null);
+        try {
+            const response = await api.post<ApiEnvelope<TimeSheetImportPreview>>(
+                `/payroll/control/employee/${employeeId}/daily/import-preview`,
+                createImportForm(file)
+            );
+            setImportFile(file);
+            setImportPreview(unwrap(response));
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'No se pudo analizar el Excel de control horario'));
+        } finally {
+            setImporting(false);
+        }
+    };
+
+    const confirmImport = async () => {
+        if (!record || !importFile || !importPreview || isLocked) return;
+        setImporting(true);
+        try {
+            const response = await api.post<ApiEnvelope<{ record: PayrollRecord; importedDays: number; warnings: string[] }>>(
+                `/payroll/control/employee/${employeeId}/daily/import`,
+                createImportForm(importFile, true)
+            );
+            const result = unwrap(response);
+            setRecord(result.record);
+            setRows(buildRows(year, month, result.record.dailyEntries || []));
+            setDirty(false);
+            setSaved(true);
+            setModifiedRows(new Set());
+            setLastSavedAt(new Date());
+            setImportPreview(null);
+            setImportFile(null);
+            toast.success(`${result.importedDays} días importados correctamente.`);
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'No se pudieron importar las horas'));
+        } finally {
+            setImporting(false);
         }
     };
 
@@ -664,10 +752,21 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                         : 'Sin cambios'}
                         </span>
                         {!isLocked && (
+                            <>
+                            <input ref={importInputRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) void previewImport(file);
+                                event.target.value = '';
+                            }} />
+                            <button type="button" onClick={() => importInputRef.current?.click()} disabled={importing || saving} className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-300 bg-white px-3 text-sm font-semibold text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-slate-800 dark:text-blue-300">
+                                {importing ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+                                Importar Excel
+                            </button>
                             <button type="button" onClick={handleSave} disabled={saving || !dirty} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">
                                 {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                                 Guardar cambios
                             </button>
+                            </>
                         )}
                     </div>
                 </header>
@@ -746,7 +845,40 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                         )}
                     </div>
                 ) : (
-                    <div className="max-h-[620px] overflow-auto">
+                    <>
+                    <div className="md:hidden space-y-3 p-3">
+                        {rows.map((row, index) => {
+                            const highlighted = row.weekend || row.isHoliday || row.isCalendarHoliday;
+                            const incomplete = rowIsIncomplete(row);
+                            return (
+                                <article key={row.workDate} className={`rounded-xl border p-3 shadow-sm ${highlighted ? 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/20' : incomplete ? 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900'}`}>
+                                    <div className="mb-3 flex items-start justify-between gap-3">
+                                        <div>
+                                            <p className="text-sm font-bold text-slate-950 dark:text-white">{row.dayLabel} · {String(row.dayNumber).padStart(2, '0')} de {MONTHS[month - 1]}</p>
+                                            <p className="text-xs text-slate-500">{highlighted ? row.holidayName || (row.weekend ? 'Fin de semana' : 'Festivo') : `${row.workedHours.toFixed(2)} h trabajadas · ${row.overtimeHours.toFixed(2)} h extra`}</p>
+                                        </div>
+                                        {modifiedRows.has(row.workDate) && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-bold text-blue-800">Pendiente</span>}
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <MobileTimeInput label="Entrada 1" value={row.entryTime} disabled={isLocked} onChange={(value) => updateRow(index, { entryTime: value })} />
+                                        <MobileTimeInput label="Salida 1" value={row.breakOutTime} disabled={isLocked} onChange={(value) => updateRow(index, { breakOutTime: value })} />
+                                        <MobileTimeInput label="Entrada 2" value={row.breakInTime} disabled={isLocked} onChange={(value) => updateRow(index, { breakInTime: value })} />
+                                        <MobileTimeInput label="Salida 2" value={row.exitTime} disabled={isLocked} onChange={(value) => updateRow(index, { exitTime: value })} />
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-2 gap-2">
+                                        <label className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-800">Dieta €
+                                            <input type="number" min="0" step="0.01" disabled={isLocked} value={row.dietAmount} onChange={(event) => updateRow(index, { dietAmount: Number(event.target.value || 0) })} className="mt-0.5 h-8 w-full border-0 bg-transparent p-0 font-mono text-sm font-semibold text-slate-900 outline-none focus:ring-0 disabled:text-slate-500 dark:text-white" />
+                                        </label>
+                                        <label className="flex min-h-12 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                            <input type="checkbox" checked={row.isHoliday || row.isCalendarHoliday} disabled={isLocked || row.isCalendarHoliday} onChange={(event) => updateRow(index, { isHoliday: event.target.checked })} className="h-5 w-5 rounded border-slate-300 text-rose-600" /> Festivo
+                                        </label>
+                                    </div>
+                                    <input type="text" disabled={isLocked} value={row.notes} onChange={(event) => updateRow(index, { notes: event.target.value })} placeholder="Añadir observación…" className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800" />
+                                </article>
+                            );
+                        })}
+                    </div>
+                    <div className="hidden max-h-[620px] overflow-auto md:block">
                         <div className="sticky left-0 z-10 flex min-w-[1260px] items-center justify-between gap-4 border-b border-slate-200 bg-white px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-900">
                             <div className="flex items-center gap-4">
                                 <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-white ring-1 ring-slate-300" />Dato editable</span>
@@ -880,6 +1012,22 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                             </tfoot>
                         </table>
                     </div>
+                    </>
+                )}
+                {importPreview && (
+                    <div className="border-t border-blue-200 bg-blue-50 px-4 py-3 dark:border-blue-900 dark:bg-blue-950/30">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p className="font-semibold text-blue-950 dark:text-blue-100">Vista previa: {importPreview.entries.length} días de la hoja {importPreview.sheetName}</p>
+                                <p className="text-xs text-blue-800 dark:text-blue-200">Se importarán las cuatro horas y las observaciones del mes abierto. Los demás días se conservarán.</p>
+                                {importPreview.warnings.length > 0 && <p className="mt-1 text-xs font-medium text-amber-700">{importPreview.warnings.join(' ')}</p>}
+                            </div>
+                            <div className="flex gap-2">
+                                <button type="button" onClick={() => { setImportPreview(null); setImportFile(null); }} disabled={importing} className="h-8 rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700">Cancelar</button>
+                                <button type="button" onClick={() => void confirmImport()} disabled={importing} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-blue-700 px-3 text-xs font-semibold text-white disabled:opacity-50">{importing && <Loader2 size={13} className="animate-spin" />} Aplicar importación</button>
+                            </div>
+                        </div>
+                    </div>
                 )}
             </section>
 
@@ -916,7 +1064,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                 </section>
             )}
             {record && (
-                <aside className="z-30 grid gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white shadow-2xl xl:sticky xl:bottom-3 xl:grid-cols-[1fr_auto] xl:items-center">
+                <aside className="sticky bottom-0 z-30 grid gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white shadow-2xl safe-bottom xl:grid-cols-[1fr_auto] xl:items-center">
                     <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs xl:grid-cols-6">
                         <div><span className="block text-slate-400">Trabajadas</span><strong className="font-mono text-sm">{totals.worked.toFixed(2)} h</strong></div>
                         <div><span className="block text-slate-400">Planificadas</span><strong className="font-mono text-sm">{totals.scheduled.toFixed(2)} h</strong></div>

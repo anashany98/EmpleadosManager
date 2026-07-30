@@ -29,6 +29,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 backend/error.log
+run-logs/
 
 # Editor directories and files
 .vscode/*
@@ -84,6 +85,19 @@ nginx/certbot-webroot/
 # Local audit/debug artifacts (may contain credentials or production-derived data)
 scratch/
 tmp/
+screenshots/
+scripts/login*.json
+scripts/preview-*.json
+scripts/get_password.sql
+scripts/reset*-pw.*
+scripts/reset_password.sql
+scripts/debug-*.cjs
+scripts/review-*.cjs
+scripts/verify-*.cjs
+scripts/zoom-*.cjs
+scripts/import_test.json
+scripts/proveedores.xlsx
+docker-compose.manager.yml
 
 # Temporary PDF debug files
 backend/reproduction_output.pdf
