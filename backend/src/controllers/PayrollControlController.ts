@@ -1,5 +1,7 @@
 import type { Request, Response } from 'express';
 import { PayrollControlService } from '../services/PayrollControlService';
+import { PayrollControlImportService } from '../services/PayrollControlImportService';
+import { validateUpload } from '../config/multer';
 import { ApiResponse } from '../utils/ApiResponse';
 import { handleControllerError } from '../utils/controllerError';
 import type { AuthenticatedRequest } from '../types/express';
@@ -17,7 +19,8 @@ import {
     restoreCellSchema,
     updateConceptValueSchema,
     updatePeriodStatusSchema,
-    updateRecordCellSchema
+    updateRecordCellSchema,
+    timeSheetImportSchema
 } from '../schemas/payrollControlSchemas';
 
 const log = createLogger('PayrollControlController');
@@ -252,6 +255,62 @@ export const PayrollControlController = {
         } catch (error: unknown) {
             log.error({ error }, 'Error updating employee daily payroll control');
             return handleControllerError(res, error, 'Error al guardar el detalle diario');
+        }
+    },
+
+    previewEmployeeTimeSheetImport: async (req: Request, res: Response) => {
+        try {
+            if (!req.file) throw new AppError('Selecciona un archivo Excel para importar.', 400);
+            validateUpload(req.file);
+            const user = requireUser(req);
+            const body = timeSheetImportSchema.parse(req.body);
+            const employee = await prisma.employee.findUnique({ where: { id: req.params.employeeId }, select: { companyId: true } });
+            if (!employee) throw new AppError('Empleado no encontrado.', 404);
+            assertTenantAccess(user, employee.companyId);
+            return ApiResponse.success(res, await PayrollControlImportService.preview(req.file.buffer, body.year, body.month));
+        } catch (error: unknown) {
+            return handleControllerError(res, error, 'Error al analizar el Excel de control horario');
+        }
+    },
+
+    importEmployeeTimeSheet: async (req: Request, res: Response) => {
+        try {
+            if (!req.file) throw new AppError('Selecciona un archivo Excel para importar.', 400);
+            validateUpload(req.file);
+            const user = requireUser(req);
+            const body = timeSheetImportSchema.parse(req.body);
+            if (!body.expectedVersion) throw new AppError('Falta la versión del control horario. Recarga la página e inténtalo de nuevo.', 400);
+            const employee = await prisma.employee.findUnique({ where: { id: req.params.employeeId }, select: { companyId: true } });
+            if (!employee) throw new AppError('Empleado no encontrado.', 404);
+            assertTenantAccess(user, employee.companyId);
+            const info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, body.year, body.month);
+            if (!info.record) throw new AppError('No existe registro mensual para el empleado.', 404);
+            const preview = await PayrollControlImportService.preview(req.file.buffer, body.year, body.month);
+            const imported = new Map(preview.entries.map((entry) => [entry.workDate, entry]));
+            const existing = new Map(info.record.dailyEntries.map((entry) => [entry.workDate.toISOString().slice(0, 10), entry]));
+            const days = new Date(Date.UTC(body.year, body.month, 0)).getUTCDate();
+            const entries = Array.from({ length: days }, (_, index) => {
+                const workDate = `${body.year}-${String(body.month).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
+                const source = imported.get(workDate);
+                if (source) return source;
+                const current = existing.get(workDate);
+                const weekend = new Date(`${workDate}T00:00:00.000Z`).getUTCDay() % 6 === 0;
+                return {
+                    workDate,
+                    entryTime: current?.entryAt ? current.entryAt.toISOString().slice(11, 16) : null,
+                    breakOutTime: current?.breakOutAt ? current.breakOutAt.toISOString().slice(11, 16) : null,
+                    breakInTime: current?.breakInAt ? current.breakInAt.toISOString().slice(11, 16) : null,
+                    exitTime: current?.exitAt ? current.exitAt.toISOString().slice(11, 16) : null,
+                    discountHours: Number(current?.discountHours ?? (weekend ? 0 : 0.5)),
+                    scheduledHours: Number(current?.scheduledHours ?? (weekend ? 0 : 8)),
+                    isHoliday: current?.isHoliday ?? false,
+                    dietAmount: Number(current?.dietAmount ?? 0), notes: current?.notes ?? ''
+                };
+            });
+            const record = await PayrollControlService.updateDailyEntries(info.record.id, body.expectedVersion, entries, user.id);
+            return ApiResponse.success(res, { record, importedDays: preview.entries.length, warnings: preview.warnings }, 'Horas importadas correctamente.');
+        } catch (error: unknown) {
+            return handleControllerError(res, error, 'Error al importar el Excel de control horario');
         }
     },
 

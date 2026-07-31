@@ -1,8 +1,13 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { PayrollControlController } from '../controllers/PayrollControlController';
 import { checkPermission } from '../middlewares/authMiddleware';
+import { createMulterOptions } from '../config/multer';
+import { validateResource } from '../middlewares/validateResource';
+import { timeSheetImportSchema } from '../schemas/payrollControlSchemas';
 
 const router = Router();
+const timeSheetUpload = multer(createMulterOptions('uploads/payroll-control/', ['.xlsx'], ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']));
 
 // Control General y Administración RRHH
 router.get('/concepts', checkPermission('payroll', 'read'), PayrollControlController.listConcepts);
@@ -20,6 +25,8 @@ router.post('/period/status', checkPermission('payroll', 'write'), PayrollContro
 router.get('/employee/:employeeId', checkPermission('employees', 'read'), PayrollControlController.getEmployeeRecord);
 router.put('/employee/:employeeId', checkPermission('employees', 'write'), PayrollControlController.updateEmployeeRecord);
 router.put('/employee/:employeeId/daily', checkPermission('employees', 'write'), PayrollControlController.updateEmployeeDailyEntries);
+router.post('/employee/:employeeId/daily/import-preview', checkPermission('employees', 'write'), timeSheetUpload.single('file'), validateResource(timeSheetImportSchema), PayrollControlController.previewEmployeeTimeSheetImport);
+router.post('/employee/:employeeId/daily/import', checkPermission('employees', 'write'), timeSheetUpload.single('file'), validateResource(timeSheetImportSchema), PayrollControlController.importEmployeeTimeSheet);
 
 // Exportación a Gestoría
 router.post('/export/gestoria/preview', checkPermission('payroll', 'write'), PayrollControlController.previewGestoria);

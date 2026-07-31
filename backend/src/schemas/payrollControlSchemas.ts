@@ -83,6 +83,12 @@ export const updateDailyEntriesSchema = z.object({
     }).strict()).min(28).max(31)
 }).strict();
 
+export const timeSheetImportSchema = z.object({
+    year: z.coerce.number().int().min(2000).max(2100),
+    month: z.coerce.number().int().min(1).max(12),
+    expectedVersion: z.coerce.number().int().positive().optional()
+}).strict();
+
 export const exportGestoriaSchema = z.object({ periodId: z.string().uuid() }).strict();
 
 export const createConceptConfigSchema = z.object({
