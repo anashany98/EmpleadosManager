@@ -79,7 +79,10 @@ export const updateDailyEntriesSchema = z.object({
         scheduledHours: z.coerce.number().finite().min(0).max(24),
         isHoliday: z.boolean(),
         dietAmount: z.coerce.number().finite().min(0).max(10_000),
-        notes: z.string().trim().max(1000)
+        // Los registros ya existentes pueden tener la nota almacenada como NULL.
+        // Al volver a guardarlos, el cliente debe poder enviarlos sin bloquear
+        // todo el mes; se normalizan a texto vacío para el servicio.
+        notes: z.string().trim().max(1000).nullable().transform((value) => value ?? '')
     }).strict()).min(28).max(31)
 }).strict();
 
