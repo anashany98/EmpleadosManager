@@ -1,5 +1,5 @@
 import { Building2, MessageCircle, User } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import type { Employee } from '../types';
 import { getEmployeeDisplayName, getEmployeeInitials } from '../../../utils/employeeDisplay';
 

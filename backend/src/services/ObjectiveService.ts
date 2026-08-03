@@ -218,7 +218,7 @@ export class ObjectiveService {
         return mainObjective;
     }
 
-    // Obtener estadÃ­sticas de objetivos
+    // Obtener estadísticas de objetivos
     static async getObjectiveStats(employeeId?: string) {
         const where: any = {};
         if (employeeId) where.employeeId = employeeId;

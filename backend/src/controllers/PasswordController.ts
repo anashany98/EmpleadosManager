@@ -9,6 +9,7 @@ import { EmailService } from '../services/EmailService';
 import { coercePermissionMap, normalizeRole } from '../../../shared/authz';
 import { validatePassword } from '../utils/passwordPolicy';
 import { getBcryptRounds } from '../utils/bcryptRounds';
+import { assertCompanyAccess } from '../utils/companyAccess';
 import { AuthenticatedRequest } from '../types/express';
 import { createLogger } from '../services/LoggerService';
 import { AuditService } from '../services/AuditService';
@@ -231,6 +232,14 @@ export const PasswordController = {
 
             const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
             if (!employee) throw new AppError('Empleado no encontrado', 404);
+
+            // MED-1: un admin de empresa solo puede generar acceso para
+            // empleados de SU empresa. `assertCompanyAccess` deja pasar a
+            // admins globales y rechaza (403) a usuarios con empresa si el
+            // empleado es de otra (o no tiene empresa asignada). Así se
+            // evita enumerar empleados de otros tenants y filtrar su email.
+            assertCompanyAccess(requester, employee.companyId, 'No tienes acceso a este empleado');
+
             if (!employee.dni) throw new AppError('El empleado no tiene DNI registrado', 400);
 
             const welcomeToken = await createOneTimePasswordToken(

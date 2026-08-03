@@ -1,5 +1,5 @@
 import { FileSpreadsheet, Loader2, Plus, Upload, UserCheck, UserX, Users } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface EmployeesHeaderProps {
     total: number;

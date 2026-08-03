@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { api, API_URL } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import ReportScheduleModal from '../components/reports/ReportScheduleModal';

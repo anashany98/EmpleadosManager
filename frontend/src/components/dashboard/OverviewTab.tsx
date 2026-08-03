@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, Clock, AlertTriangle, Sparkles, Cake } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router';
 import { api } from '../../api/client';
 import { WhosOutWidget } from './WhosOutWidget';
 import TimeTrackerWidget from '../TimeTrackerWidget';

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { useAuth } from "../contexts/AuthContext";
 import { api } from "../api/client";
 import { motion } from "framer-motion";

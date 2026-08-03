@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Menu, Sun, Moon, DoorOpen, User, Search, Command } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import AlertCenter from './AlertCenter';
 import NotificationBell from './NotificationBell';
 import { navItems } from './sidebarNavigation';
