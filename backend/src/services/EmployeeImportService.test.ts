@@ -209,6 +209,65 @@ describe('EmployeeImportService', () => {
         expect(createdEmployee.companyId).toBe('company-nueva-empresa-importada');
     });
 
+    it('fills dniEnc, socialSecurityNumberEnc and ibanEnc on create (BAJ-8)', async () => {
+        const csv = Buffer.from([
+            'Nombre,DNI,Numero Seguridad Social,IBAN',
+            'Pedro Sanchez,12345678D,1234567890123,ES9121000418450200051332'
+        ].join('\n'));
+
+        const mapping = {
+            fullName: 'Nombre',
+            dni: 'DNI',
+            socialSecurityNumber: 'Numero Seguridad Social',
+            iban: 'IBAN'
+        };
+        const result = await EmployeeImportService.processFile(csv, { forceCompanyId: 'company-1' }, mapping);
+
+        expect(result.errors).toEqual([]);
+        expect(result.importedCount).toBe(1);
+
+        const created = mocks.prismaMock.employee.create.mock.calls.at(-1)?.[0]?.data as any;
+        // El mock de EncryptionService.encrypt es determinista (`enc:${value}`),
+        // así que el ciphertext de las columnas *Enc debe ser idéntico al de las
+        // columnas legacy (mismo patrón que EmployeeWriteService).
+        expect(created.dniEnc).toBe('enc:12345678D');
+        expect(created.socialSecurityNumber).toBe('enc:1234567890123');
+        expect(created.socialSecurityNumberEnc).toBe(created.socialSecurityNumber);
+        expect(created.iban).toBe('enc:ES9121000418450200051332');
+        expect(created.ibanEnc).toBe(created.iban);
+    });
+
+    it('fills dniEnc and *Enc columns when updating an existing employee on re-import (BAJ-8)', async () => {
+        mocks.prismaMock.employee.findUnique.mockResolvedValue({ id: 'emp-existing', dni: '12345678E' });
+        mocks.prismaMock.employee.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({
+            id: 'emp-existing',
+            ...data
+        }));
+
+        const csv = Buffer.from([
+            'Nombre,DNI,Numero Seguridad Social,IBAN',
+            'Ana Torres,12345678E,9876543210987,ES7620850100030200051332'
+        ].join('\n'));
+
+        const mapping = {
+            fullName: 'Nombre',
+            dni: 'DNI',
+            socialSecurityNumber: 'Numero Seguridad Social',
+            iban: 'IBAN'
+        };
+        const result = await EmployeeImportService.processFile(csv, { forceCompanyId: 'company-1' }, mapping);
+
+        expect(result.errors).toEqual([]);
+        expect(result.importedCount).toBe(1);
+
+        const updated = mocks.prismaMock.employee.update.mock.calls.at(-1)?.[0]?.data as any;
+        expect(updated.dniEnc).toBe('enc:12345678E');
+        expect(updated.socialSecurityNumberEnc).toBe('enc:9876543210987');
+        expect(updated.socialSecurityNumberEnc).toBe(updated.socialSecurityNumber);
+        expect(updated.ibanEnc).toBe('enc:ES7620850100030200051332');
+        expect(updated.ibanEnc).toBe(updated.iban);
+    });
+
     it('imports separated vacation balance columns into the current year balance', async () => {
         const csv = Buffer.from([
             'Nombre,DNI,Vacaciones anuales,Vacaciones arrastradas,Vacaciones gastadas',

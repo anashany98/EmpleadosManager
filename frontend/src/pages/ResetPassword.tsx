@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 import { Lock, Loader2, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 
 export default function ResetPassword() {

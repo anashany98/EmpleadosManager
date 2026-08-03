@@ -3,7 +3,7 @@ import { Briefcase, AlertTriangle, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { api, getErrorMessage } from '../../api/client';
 import { useApiUnwrap } from '../../hooks/useApiUnwrap';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { formatCurrency } from '../../features/reports/reportHelpers';
 
 interface ObrasSummary {

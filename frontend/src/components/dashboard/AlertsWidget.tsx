@@ -1,5 +1,5 @@
 import { AlertTriangle, Shield, Briefcase, FileText } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface AlertsWidgetProps {
     metrics?: any;

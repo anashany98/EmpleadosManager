@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save, Upload, Users, FileDown, Check, AlertTriangle, ChevronDown, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../api/client';

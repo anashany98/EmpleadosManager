@@ -7,7 +7,7 @@
  * rápidos al "Control general" y a la "Exportación".
  */
 import { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
     ArrowRight,
     Calendar as CalendarIcon,
@@ -25,7 +25,7 @@ import { ApiError, getErrorMessage } from '../api/client';
 import Modal from '../components/ui/Modal';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { EmptyState } from '../components/ui/EmptyState';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 const MONTHS = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',

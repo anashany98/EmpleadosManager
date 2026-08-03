@@ -10,7 +10,7 @@
  *  - Botón "Generar y descargar" + historial de exports
  */
 import { useEffect, useState, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import {
     AlertTriangle,
     CheckCircle2,

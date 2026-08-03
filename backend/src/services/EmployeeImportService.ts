@@ -282,8 +282,14 @@ export const EmployeeImportService = {
                             const contactPhone = getMappedString(row, currentMapping, 'emergencyContactPhone');
                             const contactRelationship = getMappedString(row, currentMapping, 'emergencyContactRelationship');
 
+                            // Same ciphertext is written to the legacy columns and the new *Enc
+                            // columns, mirroring EmployeeWriteService (BAJ-8).
+                            const encryptedSocialSecurityNumber = socialSecurityNumber ? EncryptionService.encrypt(socialSecurityNumber) : null;
+                            const encryptedIban = iban ? EncryptionService.encrypt(iban) : null;
+
                             const employeeData: any = {
                                 dni,
+                                dniEnc: EncryptionService.encrypt(dni),
                                 name: fullName,
                                 firstName,
                                 lastName,
@@ -296,8 +302,10 @@ export const EmployeeImportService = {
                                 province: getMappedString(row, currentMapping, 'province') || null,
                                 country: getMappedString(row, currentMapping, 'country') || 'España',
                                 subaccount465: getMappedString(row, currentMapping, 'subaccount465') || null,
-                                socialSecurityNumber: socialSecurityNumber ? EncryptionService.encrypt(socialSecurityNumber) : null,
-                                iban: iban ? EncryptionService.encrypt(iban) : null,
+                                socialSecurityNumber: encryptedSocialSecurityNumber,
+                                socialSecurityNumberEnc: encryptedSocialSecurityNumber,
+                                iban: encryptedIban,
+                                ibanEnc: encryptedIban,
                                 gender: normalizeGender(getMappedRawValue(row, currentMapping, 'gender')) ?? undefined,
                                 dniExpiration: parseDate(getMappedRawValue(row, currentMapping, 'dniExpiration')),
                                 birthDate: parseDate(getMappedRawValue(row, currentMapping, 'birthDate')),

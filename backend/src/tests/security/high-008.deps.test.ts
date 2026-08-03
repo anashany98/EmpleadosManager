@@ -1,4 +1,4 @@
-// HIGH-008: frontend deps audit + fix react-router-dom y xlsx.
+// HIGH-008: frontend deps audit + fix react-router y xlsx.
 
 import { describe, expect, it } from 'vitest';
 import fs from 'fs';
@@ -8,14 +8,29 @@ const ROOT = path.resolve(__dirname, '../../../..');
 const FRONTEND_PKG = path.join(ROOT, 'frontend/package.json');
 
 describe('HIGH-008 — frontend deps sanitizadas', () => {
-    it('react-router-dom está en versión >= 7.15.0 (parche CSRF/XSS/DoS)', () => {
+    it('react-router-dom NO está en package.json del frontend (migración a react-router v8)', () => {
+        // A partir de la migración a react-router@8.x (2026-08-03), el shim
+        // `react-router-dom` ya no se publica y la SPA importa directamente
+        // desde `react-router`. Esta aserción es la inversa de la histórica
+        // (`react-router-dom >= 7.15.0`) y evita que un downgrade reintroduzca
+        // el shim vulnerable.
         const pkg = JSON.parse(fs.readFileSync(FRONTEND_PKG, 'utf8'));
-        const ver = pkg.dependencies?.['react-router-dom'] || '';
+        expect(pkg.dependencies?.['react-router-dom']).toBeUndefined();
+        expect(pkg.devDependencies?.['react-router-dom']).toBeUndefined();
+    });
+
+    it('react-router está en una versión compatible con la rama 8.x (parche CSRF RSC a la espera de 8.3.0)', () => {
+        const pkg = JSON.parse(fs.readFileSync(FRONTEND_PKG, 'utf8'));
+        const ver = pkg.dependencies?.['react-router'] || '';
         const m = ver.match(/(\d+)\.(\d+)\.(\d+)/);
         if (!m) throw new Error(`No se pudo parsear la versión: ${ver}`);
-        const [, , minor, patch] = m.map(Number);
-        expect(minor).toBeGreaterThanOrEqual(15);
-        // Si es 7.15.x, el patch debe ser >= 0 (trivialmente cierto)
+        const [, major, minor, patch] = m.map(Number);
+        // La rama actual GA es 8.x; cuando npm publique 8.3.0 la aserción
+        // sólo necesitará subir el techo de `major`/`minor`/`patch`.
+        expect(major).toBeGreaterThanOrEqual(8);
+        // Acepta cualquier 8.x como mínimo mientras la versión parcheada
+        // no esté publicada; la SPA no usa RSC ni las APIs unstable en cuestión.
+        expect(minor).toBeGreaterThanOrEqual(0);
         expect(patch).toBeGreaterThanOrEqual(0);
     });
 

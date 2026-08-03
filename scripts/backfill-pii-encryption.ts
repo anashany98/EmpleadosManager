@@ -46,11 +46,13 @@ async function main() {
     // Fail fast if encryption key is missing/invalid
     EncryptionService.validateKey();
 
-    // Touch rows that have any non-empty plaintext PII AND no encrypted value yet
+    // Touch rows that have any non-empty plaintext PII AND no encrypted value yet.
+    // Note: `dni` is a required column, so Prisma's StringFilter does not accept
+    // `{ not: null }` — filter out the empty string instead.
     const employees = await prisma.employee.findMany({
         where: {
             OR: [
-                { dni: { not: null } },
+                { dni: { not: '' } },
                 { socialSecurityNumber: { not: null } },
                 { iban: { not: null } }
             ]

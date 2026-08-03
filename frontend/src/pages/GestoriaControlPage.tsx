@@ -21,7 +21,7 @@
  *     separado en `GestoriaConceptsPage`.
  */
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import {
     Check,
     Download,

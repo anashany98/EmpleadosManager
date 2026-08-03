@@ -3,7 +3,7 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
 import { Bell, Info, AlertTriangle, CheckCircle, AlertOctagon, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface NotificationItem {
     id: string;

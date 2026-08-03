@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
 import { Network, ChevronDown, ChevronRight, Building2, User, ZoomIn, ZoomOut, Maximize2, MousePointer2, FlaskConical, Save, X, RefreshCw } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 

@@ -16,7 +16,7 @@
  *   - Si el periodo está cerrado, todos los inputs están disabled.
  */
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { ArrowLeft, Check, Save } from 'lucide-react';
 import { toast } from 'sonner';
 

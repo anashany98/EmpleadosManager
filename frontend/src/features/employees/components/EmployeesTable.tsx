@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { Building2, CreditCard, MessageCircle, MoreHorizontal, Plus, User } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { Employee } from '../types';
 import { getEmployeeDisplayName, getEmployeeInitials } from '../../../utils/employeeDisplay';
 

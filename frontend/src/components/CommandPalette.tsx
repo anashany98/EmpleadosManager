@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Search, User, Package, LayoutDashboard, Inbox, Settings, X, Command, FileText, Calendar, Clock, Users, Building2, AlertCircle, Shield, Upload, GitBranch, BriefcaseBusiness, BellRing, CalendarCheck, ClipboardCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
