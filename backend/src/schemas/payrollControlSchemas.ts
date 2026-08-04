@@ -31,10 +31,13 @@ export const updateRecordCellSchema = z.object({
     productivity: z.coerce.number().finite().min(0).max(1_000_000).optional(),
     hoursAmount: money.optional(),
     difference: money.optional(),
-    category: z.string().trim().max(100).optional(),
-    department: z.string().trim().max(100).optional(),
+    // sanitizeBodyMiddleware convierte las cadenas vacías en null antes de la
+    // validación; se acepta null y se normaliza a texto vacío para no bloquear
+    // el guardado cuando el cliente limpia un campo.
+    category: z.string().trim().max(100).nullable().transform((value) => value ?? '').optional(),
+    department: z.string().trim().max(100).nullable().transform((value) => value ?? '').optional(),
     gestoriaCode: z.string().trim().max(50).nullable().optional(),
-    observations: z.string().trim().max(2000).optional()
+    observations: z.string().trim().max(2000).nullable().transform((value) => value ?? '').optional()
 }).strict();
 
 export const updateConceptValueSchema = z.object({
@@ -51,7 +54,9 @@ export const restoreCellSchema = z.object({
 export const updatePeriodStatusSchema = z.object({
     periodId: z.string().uuid(),
     status: z.enum(['IN_REVIEW', 'CLOSED', 'SENT_TO_AGENCY', 'REOPENED']),
-    reopenReason: z.string().trim().min(5).max(1000).optional()
+    // El sanitizer convierte el motivo vacío en null; se deja pasar para que la
+    // validación de negocio devuelva un 4xx claro en vez de un 500 de zod.
+    reopenReason: z.string().trim().min(5).max(1000).nullable().optional()
 }).strict().superRefine((value, context) => {
     if (value.status === 'REOPENED' && !value.reopenReason) {
         context.addIssue({ code: z.ZodIssueCode.custom, path: ['reopenReason'], message: 'La reapertura requiere un motivo.' });

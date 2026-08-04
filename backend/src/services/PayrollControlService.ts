@@ -610,7 +610,7 @@ export class PayrollControlService {
         return prisma.payrollControlRecord.findUniqueOrThrow({ where: { id: recordId }, include: recordInclude });
     }
 
-    static async updatePeriodStatus(periodId: string, status: string, reopenReason: string | undefined, userId: string) {
+    static async updatePeriodStatus(periodId: string, status: string, reopenReason: string | null | undefined, userId: string) {
         const period = await prisma.payrollControlPeriod.findUnique({ where: { id: periodId } });
         if (!period) throw new AppError('Período no encontrado.', 404);
         const transitions: Record<string, string[]> = {
