@@ -132,6 +132,55 @@ export class InboxService {
 
 
     /**
+     * Traduce un error de conexión IMAP a un mensaje claro para el usuario.
+     */
+    private static describeImapError(err: any): string {
+        const code = err?.code || '';
+        const msg = String(err?.message || err || '');
+        if (code === 'EAUTH' || /auth/i.test(msg)) return 'Credenciales IMAP incorrectas. En Gmail debes usar una "contraseña de aplicación" (no tu contraseña normal).';
+        if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'No se puede resolver el servidor IMAP. Revisa el nombre del host (ej: imap.gmail.com).';
+        if (code === 'ECONNREFUSED') return 'El servidor rechazó la conexión. Revisa el puerto (para TLS suele ser 993).';
+        if (code === 'ETIMEDOUT' || code === 'ESOCKET') return 'Tiempo de espera agotado al conectar. Revisa host/puerto y el firewall.';
+        if (/certificate|tls|ssl/i.test(msg)) return 'Error de certificado/TLS. Prueba a activar/desactivar TLS o usa el puerto 993.';
+        return `Error de conexión IMAP: ${msg}`;
+    }
+
+    /**
+     * Prueba la conexión IMAP con la configuración dada y devuelve el nº de
+     * correos no leídos. Lanza un Error con mensaje amigable si falla, para
+     * que el usuario vea la causa real en vez de un fallo silencioso.
+     */
+    async testImapConnection(imap: { host: string; port?: number; user: string; password: string; tls?: boolean }): Promise<{ unread: number }> {
+        if (!imap?.host || !imap?.user) {
+            throw new Error('Indica al menos el servidor IMAP y el usuario.');
+        }
+        const client = new ImapFlow({
+            host: imap.host,
+            port: imap.port || 993,
+            secure: imap.tls !== false,
+            auth: { user: imap.user, pass: imap.password || '' },
+            logger: false
+        });
+
+        try {
+            await client.connect();
+            const lock = await client.getMailboxLock('INBOX');
+            let unread = 0;
+            try {
+                const uids = await client.search({ seen: false });
+                unread = Array.isArray(uids) ? uids.length : 0;
+            } finally {
+                lock.release();
+            }
+            await client.logout();
+            return { unread };
+        } catch (err) {
+            log.error({ err }, 'IMAP test connection failed');
+            throw new Error(InboxService.describeImapError(err));
+        }
+    }
+
+    /**
      * Polls the configured email inbox for new document attachments.
      */
     async pollEmails() {

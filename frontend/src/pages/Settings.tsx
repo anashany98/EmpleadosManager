@@ -14,6 +14,8 @@ export default function SettingsPage() {
     const [savingInbox, setSavingInbox] = useState(false);
     const [savingSmtp, setSavingSmtp] = useState(false);
     const [sendingTest, setSendingTest] = useState(false);
+    const [testingImap, setTestingImap] = useState(false);
+    const [imapTestMsg, setImapTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
     // Inbox config state
     const [inboxConfig, setInboxConfig] = useState({
@@ -90,6 +92,23 @@ export default function SettingsPage() {
             toast.error('Error al guardar configuración');
         } finally {
             setSavingInbox(false);
+        }
+    };
+
+    const handleTestImap = async () => {
+        setTestingImap(true);
+        setImapTestMsg(null);
+        try {
+            const res = await api.post('/config/inbox/test', { imap: inboxConfig.imap });
+            const msg = (res as any)?.data?.message || 'Conexión IMAP correcta';
+            setImapTestMsg({ ok: true, text: msg });
+            toast.success(msg);
+        } catch (error: unknown) {
+            const text = getErrorMessage(error, 'Error al probar la conexión IMAP');
+            setImapTestMsg({ ok: false, text });
+            toast.error(text);
+        } finally {
+            setTestingImap(false);
         }
     };
 
@@ -527,6 +546,23 @@ export default function SettingsPage() {
                                                     className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
                                                 />
                                             </div>
+                                        </div>
+
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={handleTestImap}
+                                                disabled={testingImap}
+                                                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                                            >
+                                                <Send size={16} />
+                                                {testingImap ? 'Probando...' : 'Probar conexión IMAP'}
+                                            </button>
+                                            {imapTestMsg && (
+                                                <p className={`text-xs font-semibold ${imapTestMsg.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                    {imapTestMsg.text}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 )}

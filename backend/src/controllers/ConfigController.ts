@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { ApiResponse } from '../utils/ApiResponse';
 import { BackupService } from '../services/BackupService';
+import { inboxService } from '../services/InboxService';
 import path from 'path';
 import fs from 'fs';
 import { createLogger } from '../services/LoggerService';
@@ -45,6 +46,27 @@ export const ConfigController = {
         } catch (error) {
             log.error({ error }, 'Error saving config');
             return ApiResponse.error(res, 'Error al guardar la configuración');
+        }
+    },
+
+    // Prueba la conexión IMAP con los datos del formulario (o los guardados si
+    // no se envían) y devuelve el nº de correos sin leer, o el error real de
+    // conexión para que el usuario pueda diagnosticar por qué no llega nada.
+    testImap: async (req: Request, res: Response) => {
+        try {
+            let imap = (req.body as any)?.imap;
+            if (!imap) {
+                const entry = await (prisma as any).configuration.findUnique({ where: { key: 'inbox_settings' } });
+                if (entry) imap = JSON.parse(entry.value)?.imap;
+            }
+            if (!imap?.host || !imap?.user) {
+                return ApiResponse.error(res, 'Configura el servidor IMAP y el usuario antes de probar la conexión.', 400);
+            }
+            const result = await inboxService.testImapConnection(imap);
+            return ApiResponse.success(res, result, `Conexión IMAP correcta. ${result.unread} correo(s) sin leer en la bandeja.`);
+        } catch (error: any) {
+            log.error({ error }, 'IMAP connection test failed');
+            return ApiResponse.error(res, error.message || 'Error al probar la conexión IMAP');
         }
     },
 
