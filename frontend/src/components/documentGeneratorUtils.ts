@@ -12,6 +12,7 @@ export interface InventorySelection {
     quantity?: number;
     detail?: string;
     serialNumber?: string;
+    imei?: string;
 }
 
 export interface DocumentGeneratorExtraData {
@@ -205,7 +206,8 @@ export const getDocumentGenerationRequest = ({
                 ...payload,
                 deviceName: selectedTechItem.name,
                 serialNumber: selectedTechItem.serialNumber || '',
-                itemId: selectedTechItem.id
+                itemId: selectedTechItem.id,
+                imei: selectedTechItem.imei || ''
             }
         };
     }

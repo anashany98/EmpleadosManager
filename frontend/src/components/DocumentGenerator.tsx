@@ -44,6 +44,7 @@ interface InventoryItem {
     unit?: string;
     category?: string;
     serialNumber?: string;
+    imei?: string;
 }
 
 interface TemplateCardMeta {
@@ -480,7 +481,8 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                             onClick={() => setSelectedTechItem(isSelected ? null : {
                                                 id: item.id,
                                                 name: item.name,
-                                                serialNumber: item.serialNumber
+                                                serialNumber: item.serialNumber,
+                                                imei: item.imei
                                             })}
                                             className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center justify-between group ${
                                                 isSelected
@@ -499,6 +501,31 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                     );
                                 })}
                             </div>
+
+                            {selectedTechItem && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Numero de serie</label>
+                                        <input
+                                            value={selectedTechItem.serialNumber || ''}
+                                            onChange={(event) => setSelectedTechItem((current) => current ? { ...current, serialNumber: event.target.value } : current)}
+                                            className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 text-xs font-bold focus:ring-2 focus:ring-blue-500"
+                                            placeholder="S/N"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">IMEI</label>
+                                        <input
+                                            value={selectedTechItem.imei || ''}
+                                            onChange={(event) => setSelectedTechItem((current) => current ? { ...current, imei: event.target.value } : current)}
+                                            className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 text-xs font-bold focus:ring-2 focus:ring-blue-500 font-mono"
+                                            placeholder="15 digitos"
+                                            inputMode="numeric"
+                                            pattern="[0-9]{15}"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

@@ -374,7 +374,9 @@ export const InventoryController = {
                 docRecord = await DocumentTemplateService.generateTechDeviceInternal(
                     employeeId,
                     deviceName || item.name,
-                    serialNumber || 'N/A'
+                    serialNumber || 'N/A',
+                    undefined,
+                    item.imei || undefined
                 );
             } else if (item.category === 'EPI') {
                 docRecord = await DocumentTemplateService.generateEPIInternal(

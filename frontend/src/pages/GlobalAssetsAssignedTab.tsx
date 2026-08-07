@@ -11,6 +11,7 @@ interface Asset {
     status: string;
     employee?: { id: string; firstName: string; lastName: string };
     serialNumber?: string;
+    imei?: string;
     assignedDate?: string;
 }
 
@@ -113,6 +114,7 @@ export default function GlobalAssetsAssignedTab({ searchTerm, filterCategory }: 
                     <p className="text-sm text-slate-500 mb-3">
                         Categoría: {CATEGORY_LABELS[asset.category] || asset.category}
                         {asset.serialNumber ? ` · SN: ${asset.serialNumber}` : ''}
+                        {asset.imei ? ` · IMEI: ${asset.imei}` : ''}
                     </p>
                     <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
                         <p className="text-xs text-slate-500 mb-1">Asignado a:</p>
