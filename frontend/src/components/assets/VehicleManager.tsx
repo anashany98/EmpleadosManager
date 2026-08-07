@@ -331,6 +331,7 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
 
 function DocumentsSection({ vehicleId, documents = [] }: { vehicleId: string, documents?: VehicleDocument[] }) {
     const queryClient = useQueryClient();
+    const { confirm: confirmDialog } = useConfirm();
     const [docExpiryDates, setDocExpiryDates] = useState<Record<string, string>>({});
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 

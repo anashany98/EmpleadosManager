@@ -1,10 +1,9 @@
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { api, getErrorMessage } from '../api/client';
 import Modal from '../components/ui/Modal';
-import { Package, Search, AlertTriangle, Plus, Pencil, Trash2, Download, Upload, History, ArrowDownCircle, ArrowUpCircle, Image as ImageIcon, LayoutGrid, List, BarChart3, TrendingDown, TrendingUp, PackageX } from 'lucide-react';
+import { Package, AlertTriangle, Plus, Pencil, Trash2, Download, Upload, History, ArrowDownCircle, ArrowUpCircle, Image as ImageIcon, LayoutGrid, List, BarChart3, TrendingDown, PackageX } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { motion, AnimatePresence } from 'framer-motion';
 
 interface InventoryItem {
   id: string;
@@ -73,11 +72,11 @@ const itemToForm = (item: InventoryItem): ItemForm => ({
 });
 
 const CATEGORY_LABELS: Record<string, string> = {
-  EPI: 'EPI', TECH: 'Tecnologia', TOOL: 'Herramienta', CLOTHING: 'Ropa', UNIFORM: 'Uniforme', OTHER: 'Otro'
+  EPI: 'EPI', TECH: 'Tecnologia', DEVICE: 'Tecnologia', TOOL: 'Herramienta', CLOTHING: 'Ropa', UNIFORM: 'Uniforme', OTHER: 'Otro'
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
-  EPI: 'bg-amber-100 text-amber-700', TECH: 'bg-purple-100 text-purple-700',
+  EPI: 'bg-amber-100 text-amber-700', TECH: 'bg-purple-100 text-purple-700', DEVICE: 'bg-purple-100 text-purple-700',
   TOOL: 'bg-blue-100 text-blue-700', CLOTHING: 'bg-pink-100 text-pink-700',
   UNIFORM: 'bg-indigo-100 text-indigo-700', OTHER: 'bg-gray-100 text-gray-700'
 };
@@ -107,12 +106,12 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
 
   const { data: inventory = [], isLoading } = useQuery({
     queryKey: ['inventory'],
-    queryFn: async () => (await api.get('/inventory')).data as InventoryItem[],
+    queryFn: async () => (await api.get<{ data: InventoryItem[] }>('/inventory')).data,
   });
 
   const { data: movements = [] } = useQuery({
     queryKey: ['inventory-movements', movementsItem?.id],
-    queryFn: async () => (await api.get(`/inventory/${movementsItem!.id}/movements`)).data as StockMovement[],
+    queryFn: async () => (await api.get<{ data: StockMovement[] }>(`/inventory/${movementsItem!.id}/movements`)).data,
     enabled: !!movementsItem
   });
 
@@ -172,6 +171,17 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
     onError: () => toast.error('Error al importar CSV')
   });
 
+  const handleEdit = (item: InventoryItem) => {
+    setEditItem(item);
+    setEditForm(itemToForm(item));
+    setShowEditModal(true);
+  };
+
+  const handleDelete = (item: InventoryItem) => {
+    setDeleteItem(item);
+    setShowDeleteConfirm(true);
+  };
+
   const filteredInventory = useMemo(() => {
     return inventory
       .filter((item) => {
@@ -179,7 +189,9 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
         const matchesSearch = item.name.toLowerCase().includes(searchLower) ||
           (item.sku && item.sku.toLowerCase().includes(searchLower)) ||
           (item.brand && item.brand.toLowerCase().includes(searchLower));
-        const matchesCategory = filterCategory === 'ALL' || item.category === filterCategory;
+        // TECH y DEVICE son la misma categoría (históricamente se usaron ambas)
+        const normalize = (c: string) => (c === 'DEVICE' ? 'TECH' : c);
+        const matchesCategory = filterCategory === 'ALL' || normalize(item.category) === normalize(filterCategory);
         return matchesSearch && matchesCategory;
       })
       .sort((a, b) => {
@@ -200,13 +212,15 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
   }, [inventory]);
 
   const handleExportCSV = () => {
+    // Cabeceras compatibles con el importador (alias en InventoryController)
     const headers = ['Nombre', 'Categoria', 'Cantidad', 'Stock Minimo', 'Talla', 'SKU', 'Marca', 'Precio Unitario', 'Proveedor', 'Ubicacion'];
     const rows = filteredInventory.map(item => [
       item.name, item.category, item.quantity, item.minQuantity,
       item.size || '', item.sku || '', item.brand || '', item.unitPrice || 0,
       item.supplier || '', item.warehouseLocation || ''
     ]);
-    const csvContent = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    // Escapado RFC 4180: comillas internas se duplican
+    const csvContent = [headers, ...rows].map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
