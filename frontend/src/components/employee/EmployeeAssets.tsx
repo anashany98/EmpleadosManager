@@ -71,10 +71,9 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
     };
 
     const getCategoryIcon = (cat: string) => {
-        switch (cat) {
-            case 'CLOTHING': return <Tag className="w-4 h-4" />;
-            default: return <Package className="w-4 h-4" />;
-        }
+        // CLOTHING se muestra como UNIFORM (categoría fusionada).
+        if (cat === 'CLOTHING' || cat === 'UNIFORM') return <Tag className="w-4 h-4" />;
+        return <Package className="w-4 h-4" />;
     };
 
     if (loading) return <div>Cargando activos...</div>;
@@ -121,7 +120,7 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
                                         </div>
                                     </td>
                                     <td className="py-4 text-sm">
-                                        {asset.category === 'CLOTHING' ? (
+                                        {asset.category === 'UNIFORM' || asset.category === 'CLOTHING' ? (
                                             <span className="bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded text-xs font-bold border border-purple-800/50">
                                                 Talla: {asset.size || 'N/A'}
                                             </span>

@@ -16,7 +16,7 @@ interface Asset {
 
 const CATEGORY_LABELS: Record<string, string> = {
     EPI: 'EPI', TECH: 'Dispositivo', DEVICE: 'Dispositivo', TOOL: 'Herramienta',
-    CLOTHING: 'Ropa', UNIFORM: 'Uniforme', OTHER: 'Otro'
+    UNIFORM: 'Uniforme', CLOTHING: 'Uniforme', OTHER: 'Otro'
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -52,8 +52,12 @@ export default function GlobalAssetsAssignedTab({ searchTerm, filterCategory }: 
             const matchesSearch = asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                 (employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
                 (asset.serialNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
-            // TECH y DEVICE son la misma categoría (históricamente se usaron ambas)
-            const normalize = (c: string) => (c === 'DEVICE' ? 'TECH' : c);
+            // DEVICE se normaliza a TECH y CLOTHING a UNIFORM (alias históricos).
+            const normalize = (c: string) => {
+                if (c === 'DEVICE') return 'TECH';
+                if (c === 'CLOTHING') return 'UNIFORM';
+                return c;
+            };
             const matchesCategory = filterCategory === 'ALL' || normalize(asset.category) === normalize(filterCategory);
             return matchesSearch && matchesCategory;
         });
