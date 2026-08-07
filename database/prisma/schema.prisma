@@ -397,7 +397,7 @@ model Asset {
   inventoryItemId String?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
-  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  inventoryItem   InventoryItem? @relation(fields: [inventoryItemId], references: [id], onDelete: Restrict)
   employee        Employee?      @relation(fields: [employeeId], references: [id])
 
   @@index([employeeId])

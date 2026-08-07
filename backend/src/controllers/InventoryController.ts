@@ -211,18 +211,21 @@ export const InventoryController = {
         try {
             const { id } = req.params;
 
-            // Bloquear el borrado si hay activos asignados vinculados:
-            // borrar el producto dejaría referencias colgantes y las
-            // devoluciones futuras fallarían o descuadrarían el stock.
-            const assignedAssets = await prisma.asset.count({
-                where: { inventoryItemId: id, status: 'ASSIGNED' }
+            // Bloquear el borrado si hay CUALQUIER activo vinculado
+            // (asignado o devuelto). El historial de entregas es
+            // auditable y no debe desaparecer solo porque se retira
+            // el producto del catálogo.
+            const assetCount = await prisma.asset.count({
+                where: { inventoryItemId: id }
             });
-            if (assignedAssets > 0) {
-                return ApiResponse.error(
-                    res,
-                    `No se puede eliminar: hay ${assignedAssets} activo(s) asignado(s) de este producto. Devuélvelos primero.`,
-                    400
-                );
+            if (assetCount > 0) {
+                const assigned = await prisma.asset.count({
+                    where: { inventoryItemId: id, status: 'ASSIGNED' }
+                });
+                const msg = assigned > 0
+                    ? `No se puede eliminar: hay ${assigned} activo(s) asignado(s) de este producto. Devuélvelos primero.`
+                    : `No se puede eliminar: hay ${assetCount} registro(s) historico(s) vinculado(s) a este producto.`;
+                return ApiResponse.error(res, msg, 400);
             }
 
             await prisma.inventoryItem.delete({

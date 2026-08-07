@@ -240,7 +240,9 @@ describe('InventoryController.delete', () => {
     });
 
     it('blocks deletion when assets are still assigned', async () => {
-        (prisma.asset.count as any).mockResolvedValue(2);
+        // Primera llamada: total = 3. Segunda: ASSIGNED = 2.
+        (prisma.asset.count as any).mockResolvedValueOnce(3);
+        (prisma.asset.count as any).mockResolvedValueOnce(2);
 
         await InventoryController.delete(req, res);
 
@@ -248,15 +250,26 @@ describe('InventoryController.delete', () => {
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    it('deletes the item when no assigned assets remain', async () => {
+    it('blocks deletion when only RETURNED assets are linked (historical records preserved)', async () => {
+        // No hay asignados pero sí 5 históricos. El borrado debe
+        // quedar bloqueado para no perder la trazabilidad.
+        (prisma.asset.count as any).mockResolvedValueOnce(5);
+        (prisma.asset.count as any).mockResolvedValueOnce(0);
+
+        await InventoryController.delete(req, res);
+
+        expect(prisma.inventoryItem.delete).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(400);
+        const jsonArg = (res.json as any).mock.calls[0][0];
+        expect(jsonArg.message).toMatch(/registro\(s\) historico\(s\)/);
+    });
+
+    it('deletes the item when no assets are linked', async () => {
         (prisma.asset.count as any).mockResolvedValue(0);
         (prisma.inventoryItem.delete as any).mockResolvedValue({ id: 'item-1' });
 
         await InventoryController.delete(req, res);
 
-        expect(prisma.asset.count).toHaveBeenCalledWith({
-            where: { inventoryItemId: 'item-1', status: 'ASSIGNED' }
-        });
         expect(prisma.inventoryItem.delete).toHaveBeenCalledWith({ where: { id: 'item-1' } });
     });
 });
