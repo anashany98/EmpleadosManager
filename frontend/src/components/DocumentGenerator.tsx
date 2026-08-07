@@ -248,10 +248,6 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
         ]);
     };
 
-    const updateItemSize = (id: string, size: string) => {
-        setSelectedItems((current) => current.map((item) => item.id === id ? { ...item, size } : item));
-    };
-
     const handleAbsenceDateChange = (field: 'fechaInicio' | 'fechaFin', value: string) => {
         setAbsenceData((current) => {
             const next = { ...current, [field]: value };
@@ -406,7 +402,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                             {selectedItems.length > 0 && (
                                 <div className="space-y-4 animate-in fade-in duration-300">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                        {docType === 'ENTREGA_MATERIAL' ? 'Configurar detalles' : 'Configurar tallas / notas'}
+                                        {docType === 'ENTREGA_MATERIAL' ? 'Configurar detalles' : 'Configurar unidades'}
                                     </label>
                                     {selectedItems.map((item) => (
                                         <div key={item.id} className="flex flex-col gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 md:flex-row md:items-center">
@@ -429,10 +425,13 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                                 </>
                                             ) : (
                                                 <input
-                                                    placeholder="Talla / nota"
-                                                    className="w-full md:w-40 px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border-none text-xs font-bold"
-                                                    value={item.size || ''}
-                                                    onChange={(event) => updateItemSize(item.id || '', event.target.value)}
+                                                    type="number"
+                                                    min="1"
+                                                    title="Unidades a entregar"
+                                                    aria-label="Unidades a entregar"
+                                                    className="w-24 px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border-none text-xs font-bold"
+                                                    value={item.quantity || 1}
+                                                    onChange={(event) => updateItemQuantity(item.id || '', event.target.value)}
                                                 />
                                             )}
                                         </div>

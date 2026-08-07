@@ -72,13 +72,15 @@ const itemToForm = (item: InventoryItem): ItemForm => ({
 });
 
 const CATEGORY_LABELS: Record<string, string> = {
-  EPI: 'EPI', TECH: 'Tecnologia', DEVICE: 'Tecnologia', TOOL: 'Herramienta', CLOTHING: 'Ropa', UNIFORM: 'Uniforme', OTHER: 'Otro'
+  EPI: 'EPI', TECH: 'Tecnologia', DEVICE: 'Tecnologia', TOOL: 'Herramienta',
+  UNIFORM: 'Uniforme', CLOTHING: 'Uniforme', OTHER: 'Otro'
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
   EPI: 'bg-amber-100 text-amber-700', TECH: 'bg-purple-100 text-purple-700', DEVICE: 'bg-purple-100 text-purple-700',
-  TOOL: 'bg-blue-100 text-blue-700', CLOTHING: 'bg-pink-100 text-pink-700',
-  UNIFORM: 'bg-indigo-100 text-indigo-700', OTHER: 'bg-gray-100 text-gray-700'
+  TOOL: 'bg-blue-100 text-blue-700',
+  UNIFORM: 'bg-indigo-100 text-indigo-700', CLOTHING: 'bg-indigo-100 text-indigo-700',
+  OTHER: 'bg-gray-100 text-gray-700'
 };
 
 export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: StockTabProps) {
@@ -189,8 +191,12 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
         const matchesSearch = item.name.toLowerCase().includes(searchLower) ||
           (item.sku && item.sku.toLowerCase().includes(searchLower)) ||
           (item.brand && item.brand.toLowerCase().includes(searchLower));
-        // TECH y DEVICE son la misma categoría (históricamente se usaron ambas)
-        const normalize = (c: string) => (c === 'DEVICE' ? 'TECH' : c);
+        // DEVICE se normaliza a TECH y CLOTHING a UNIFORM (alias históricos).
+        const normalize = (c: string) => {
+            if (c === 'DEVICE') return 'TECH';
+            if (c === 'CLOTHING') return 'UNIFORM';
+            return c;
+        };
         const matchesCategory = filterCategory === 'ALL' || normalize(item.category) === normalize(filterCategory);
         return matchesSearch && matchesCategory;
       })
@@ -244,7 +250,6 @@ export default function GlobalAssetsStockTab({ searchTerm, filterCategory }: Sto
             <option value="EPI">EPI</option>
             <option value="TECH">Tecnologia</option>
             <option value="TOOL">Herramienta</option>
-            <option value="CLOTHING">Ropa</option>
             <option value="UNIFORM">Uniforme</option>
             <option value="OTHER">Otro</option>
           </select>
