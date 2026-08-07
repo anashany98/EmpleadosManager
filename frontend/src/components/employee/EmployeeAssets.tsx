@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { Package, Trash2, Tag, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -27,7 +27,7 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
 
     const fetchAssets = async () => {
         try {
-            const resp = await api.get(`/assets?employeeId=${employeeId}`);
+            const resp = await api.get<{ data: Asset[] }>(`/assets?employeeId=${employeeId}`);
             setAssets(resp.data);
         } catch (error) {
             toast.error('Error al cargar activos');
@@ -140,12 +140,24 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
                                         </span>
                                     </td>
                                     <td className="py-4 text-right">
-                                        <button
-                                            onClick={() => handleDelete(asset.id)}
-                                            className="p-2 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex items-center justify-end gap-1">
+                                            {asset.status === 'ASSIGNED' && (
+                                                <button
+                                                    onClick={() => handleReturn(asset.id)}
+                                                    title="Devolver al inventario"
+                                                    className="p-2 text-slate-500 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
+                                                >
+                                                    <RotateCcw className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleDelete(asset.id)}
+                                                title="Eliminar activo"
+                                                className="p-2 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))

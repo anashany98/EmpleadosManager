@@ -166,19 +166,23 @@ export const AssetController = {
                 assertCompanyAccess(user, employee.companyId, 'No autorizado para modificar activos de otra empresa');
             }
 
+            // Semántica parcial: solo se actualizan los campos presentes en
+            // el body. Un PUT incompleto ya no desasigna el empleado ni
+            // borra fechas por omisión (employeeId: null explícito sí desasigna).
+            const data: Record<string, unknown> = {};
+            if (employeeId !== undefined) data.employeeId = employeeId || null;
+            if (category !== undefined) data.category = category;
+            if (name !== undefined) data.name = name;
+            if (serialNumber !== undefined) data.serialNumber = serialNumber;
+            if (size !== undefined) data.size = size;
+            if (assignedDate !== undefined) data.assignedDate = assignedDate ? new Date(assignedDate) : null;
+            if (returnDate !== undefined) data.returnDate = returnDate ? new Date(returnDate) : null;
+            if (status !== undefined) data.status = status;
+            if (notes !== undefined) data.notes = notes;
+
             const asset = await prisma.asset.update({
                 where: { id },
-                data: {
-                    employeeId: employeeId || null,
-                    category,
-                    name,
-                    serialNumber,
-                    size,
-                    assignedDate: assignedDate ? new Date(assignedDate) : null,
-                    returnDate: returnDate ? new Date(returnDate) : null,
-                    status,
-                    notes
-                }
+                data
             });
             return ApiResponse.success(res, asset, 'Activo actualizado correctamente');
         } catch (error) {
