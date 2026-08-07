@@ -11,7 +11,9 @@ export interface InventorySelection {
     size?: string;
     quantity?: number;
     detail?: string;
+    sku?: string;
     serialNumber?: string;
+    imei?: string;
 }
 
 export interface DocumentGeneratorExtraData {
@@ -199,13 +201,19 @@ export const getDocumentGenerationRequest = ({
             throw new Error('Selecciona un dispositivo del inventario');
         }
 
+        // El número de serie del acta se toma de la Referencia/SKU del item
+        // (campo que el usuario mantiene al crear productos). Si el item no
+        // tiene SKU, caemos al serialNumber del item o, en último caso, al id.
+        const skuSource = (selectedTechItem as any).sku || selectedTechItem.serialNumber || selectedTechItem.id || '';
+
         return {
             endpoint: '/documents/generate-tech',
             payload: {
                 ...payload,
                 deviceName: selectedTechItem.name,
-                serialNumber: selectedTechItem.serialNumber || '',
-                itemId: selectedTechItem.id
+                serialNumber: String(skuSource),
+                itemId: selectedTechItem.id,
+                imei: selectedTechItem.imei || ''
             }
         };
     }

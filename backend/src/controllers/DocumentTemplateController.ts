@@ -257,7 +257,7 @@ export const DocumentTemplateController = {
     },
 
     generateTech: async (req: Request, res: Response) => {
-        const { employeeId, deviceName, serialNumber, itemId } = req.body;
+        const { employeeId, deviceName, serialNumber, itemId, imei } = req.body;
         if (!employeeId) {
             throw new AppError('employeeId es obligatorio', 400);
         }
@@ -265,7 +265,7 @@ export const DocumentTemplateController = {
         const authorName = req.body.authorName || user?.name || 'Administrador';
 
         try {
-            const doc = await DocumentTemplateService.generateTechDevice(employeeId, deviceName, serialNumber, authorName, itemId);
+            const doc = await DocumentTemplateService.generateTechDevice(employeeId, deviceName, serialNumber, authorName, itemId, imei);
             return ApiResponse.success(res, { message: 'Documento generado', fileName: doc.name, documentId: doc.id, fileUrl: doc?.id ? `/documents/${doc.id}/download` : undefined });
         } catch (error: unknown) { throw new AppError(error instanceof Error ? error.message : 'Error al generar documento', 500); }
     },

@@ -124,7 +124,7 @@ describe('InventoryController.generateReceipt', () => {
         }
 
         expect(prisma.inventoryItem.findUnique).toHaveBeenCalledWith({ where: { id: 'item-123' } });
-        expect(mockGenerateTech).toHaveBeenCalledWith('emp-123', 'Test Device', 'SN-123');
+        expect(mockGenerateTech).toHaveBeenCalledWith('emp-123', 'Test Device', 'SN-123', undefined, undefined);
         // El controller delega en `serveLocalUploadFile` (helper
         // compartido que centraliza la defensa contra path
         // traversal, sanitización del nombre de descarga y

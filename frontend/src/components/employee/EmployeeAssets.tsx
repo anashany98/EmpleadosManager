@@ -9,6 +9,7 @@ interface Asset {
     category: string;
     name: string;
     serialNumber?: string;
+    imei?: string;
     size?: string;
     assignedDate?: string;
     returnDate?: string;
@@ -125,7 +126,12 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
                                                 Talla: {asset.size || 'N/A'}
                                             </span>
                                         ) : (
-                                            <span className="text-slate-400">{asset.serialNumber || '-'}</span>
+                                            <div className="flex flex-col gap-0.5 text-slate-400">
+                                                <span>{asset.serialNumber || '-'}</span>
+                                                {asset.imei && (
+                                                    <span className="text-[11px] font-mono text-slate-500">IMEI {asset.imei}</span>
+                                                )}
+                                            </div>
                                         )}
                                     </td>
                                     <td className="py-4 text-sm text-slate-400">
