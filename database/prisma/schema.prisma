@@ -318,6 +318,7 @@ model ObraExpense {
   id            String           @id @default(uuid())
   obraId        String
   employeeId    String?
+  contractorId  String?
   type          String
   date          DateTime
   endDate       DateTime?
@@ -343,6 +344,7 @@ model ObraExpense {
   updatedAt     DateTime         @updatedAt
   obra          Project          @relation(fields: [obraId], references: [id], onDelete: Cascade)
   employee      Employee?        @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  contractor    ObraContractor?  @relation(fields: [contractorId], references: [id], onDelete: SetNull)
   importBatch   ObraImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   createdBy     User             @relation(fields: [createdById], references: [id], onDelete: NoAction)
 
@@ -357,9 +359,31 @@ model ObraExpense {
   @@index([obraId, type])
   @@index([obraId, date])
   @@index([employeeId])
+  @@index([contractorId])
   @@index([allocationGroupId])
   @@index([status])
   @@index([importBatchId])
+}
+
+model ObraContractor {
+  id        String        @id @default(uuid())
+  name      String
+  nif       String        @unique
+  vatRate   Decimal?      @db.Decimal(5, 2)
+  irpfRate  Decimal?      @db.Decimal(5, 2)
+  iban      String?
+  activity  String?
+  email     String?
+  phone     String?
+  address   String?
+  notes     String?
+  active    Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  expenses  ObraExpense[]
+
+  @@index([active])
+  @@index([name])
 }
 
 model ObraImportBatch {

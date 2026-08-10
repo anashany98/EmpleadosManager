@@ -4,6 +4,7 @@ import {
     Building2,
     Briefcase,
     HardHat,
+    Handshake,
     FileText,
     TrendingUp,
     ClipboardList,
@@ -91,7 +92,8 @@ export const navCategories: NavCategory[] = [
         icon: <HardHat size={20} />,
         items: [
             { path: '/obras', label: 'Obras', icon: <HardHat size={18} />, feature: 'projects' },
-            { path: '/obras/imports', label: 'Importar Gastos', icon: <FileUp size={18} />, feature: 'projects' }
+            { path: '/obras/imports', label: 'Importar Gastos', icon: <FileUp size={18} />, feature: 'projects' },
+            { path: '/obras/contractors', label: 'Autónomos', icon: <Handshake size={18} />, feature: 'projects' }
         ]
     },
     {
