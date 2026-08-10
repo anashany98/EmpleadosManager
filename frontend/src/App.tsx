@@ -51,6 +51,7 @@ const AbsenceTypesPage = lazy(() => import('./pages/AbsenceTypesPage'));
 const ObrasPage = lazy(() => import('./pages/ObrasPage'));
 const ObraDetailPage = lazy(() => import('./pages/ObraDetailPage'));
 const ObraImportPage = lazy(() => import('./pages/ObraImportPage'));
+const ContractorsPage = lazy(() => import('./pages/ContractorsPage'));
 const PayrollControlPage = lazy(() => import('./pages/PayrollControlPage'));
 const HrTaskCenterPage = lazy(() => import('./pages/HrTaskCenterPage'));
 const HrMonthlyClosePage = lazy(() => import('./pages/HrMonthlyClosePage'));
@@ -206,6 +207,7 @@ function AppContent() {
                   <Route path="/performance" element={<ProtectedRoute feature="performance"><PerformancePage /></ProtectedRoute>} />
                   <Route path="/obras" element={<ProtectedRoute feature="projects"><ObrasPage /></ProtectedRoute>} />
                   <Route path="/obras/imports" element={<ProtectedRoute feature="projects"><ObraImportPage /></ProtectedRoute>} />
+                  <Route path="/obras/contractors" element={<ProtectedRoute feature="projects"><ContractorsPage /></ProtectedRoute>} />
                   <Route path="/obras/:id" element={<ProtectedRoute feature="projects"><ObraDetailPage /></ProtectedRoute>} />
                   <Route path="/login" element={<Navigate to="/" replace />} />
                 </Routes>

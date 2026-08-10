@@ -1,8 +1,9 @@
 import { useCallback, useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { Clock, Calendar, ChevronLeft, ChevronRight, User, MapPin } from 'lucide-react';
+import { Clock, Calendar, ChevronLeft, ChevronRight, User, MapPin, HardHat } from 'lucide-react';
 import LocationMapModal from '../components/LocationMapModal';
+import ObraHoursModal from '../features/employee-detail/components/ObraHoursModal';
 
 interface Employee {
   id: string;
@@ -144,6 +145,7 @@ export default function TimesheetPage() {
 
   const [mapLocation, setMapLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [isMapOpen, setIsMapOpen] = useState(false);
+  const [obraModal, setObraModal] = useState<{ employeeId: string; date: string; hours: number } | null>(null);
 
   const handleViewMap = (lat?: number, lng?: number) => {
     const hasCoords = typeof lat === 'number' && Number.isFinite(lat) &&
@@ -471,6 +473,15 @@ export default function TimesheetPage() {
                               <MapPin size={16} />
                             </button>
                           )}
+                          {entry.employee?.id && entry.employee.id !== 'unknown' && (
+                            <button
+                              onClick={() => setObraModal({ employeeId: entry.employee.id, date: entry.date.split('T')[0], hours: entry.totalHours })}
+                              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded transition-colors touch-active"
+                              title="Imputar horas de este día a una obra"
+                            >
+                              <HardHat size={16} />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -485,6 +496,13 @@ export default function TimesheetPage() {
         isOpen={isMapOpen}
         onClose={() => setIsMapOpen(false)}
         location={mapLocation}
+      />
+      <ObraHoursModal
+        open={obraModal !== null}
+        onClose={() => setObraModal(null)}
+        employeeId={obraModal?.employeeId || ''}
+        date={obraModal?.date || ''}
+        defaultHours={obraModal?.hours || 0}
       />
     </div>
   );

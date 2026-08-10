@@ -195,6 +195,14 @@ export class InboxService {
             const config = JSON.parse(configEntry.value);
             if (!config.emailEnabled || !config.imap?.host) return;
 
+            // La IMAP puede ser global pero los InboxDocument deben
+            // etiquetarse con la empresa del mailbox. Si no se
+            // configuró un companyId, el doc queda como "huérfano"
+            // (lo verá solo el admin global para reasignar).
+            const mailboxCompanyId = typeof config.imap.companyId === 'string' && config.imap.companyId.trim()
+                ? config.imap.companyId
+                : null;
+
             // 2. Connect to IMAP
             const client = new ImapFlow({
                 host: config.imap.host,
@@ -223,8 +231,11 @@ export class InboxService {
                                     const newFilename = `${uuidv4()}${ext}`;
                                     const filePath = path.join(this.inboxDir, newFilename);
                                     fs.writeFileSync(filePath, attachment.content);
-                                    log.info({ filename: newFilename }, 'Saved email attachment');
-                                    // Watcher will pick this up automatically!
+                                    log.info({ filename: newFilename, mailboxCompanyId }, 'Saved email attachment');
+                                    // Pasamos companyId directamente en vez de
+                                    // depender del watcher: el doc queda
+                                    // etiquetado desde el primer momento.
+                                    this.processFile(filePath, mailboxCompanyId).catch(err => log.error({ err, filename: newFilename }, 'Email -> processFile error'));
                                 }
                             }
                         }

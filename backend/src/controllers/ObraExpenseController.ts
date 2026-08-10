@@ -50,6 +50,7 @@ export const ObraExpenseController = {
                 orderBy: { date: 'desc' },
                 include: {
                     employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } },
+                    contractor: { select: { id: true, name: true, nif: true } },
                     createdBy: { select: { id: true, email: true } }
                 }
             });
@@ -68,7 +69,7 @@ export const ObraExpenseController = {
             const { obraId } = req.params;
             const {
                 type, date, endDate, amount, amountMode, currency, description, vendor,
-                reference, origin, destination, employeeId, employeeIds
+                reference, origin, destination, employeeId, employeeIds, contractorId
             } = req.body || {};
 
             await ObraAuthorization.ensureActive(obraId);
@@ -84,6 +85,13 @@ export const ObraExpenseController = {
                 });
                 if (employeeCount !== selectedEmployeeIds.length) {
                     throw new AppError('Uno o varios empleados seleccionados no existen', 400);
+                }
+            }
+
+            if (contractorId) {
+                const contractor = await prisma.obraContractor.findUnique({ where: { id: contractorId } });
+                if (!contractor) {
+                    throw new AppError('El autónomo seleccionado no existe', 400);
                 }
             }
 
@@ -109,6 +117,7 @@ export const ObraExpenseController = {
                     data: {
                         obraId,
                         employeeId: targetEmployeeId,
+                        contractorId: contractorId || null,
                         type,
                         date: new Date(date),
                         endDate: new Date(endDate || date),
@@ -147,6 +156,7 @@ export const ObraExpenseController = {
                     unitCount,
                     allocationCount,
                     employeeIds: selectedEmployeeIds,
+                    contractorId: contractorId || null,
                     expenseIds: expenses.map((expense) => expense.id)
                 }
             });
@@ -190,6 +200,13 @@ export const ObraExpenseController = {
             if ('endDate' in updateData && updateData.endDate) updateData.endDate = new Date(updateData.endDate as string);
             if ('amount' in updateData) updateData.amount = Math.round(Number(updateData.amount) * 100) / 100;
             if ('employeeId' in updateData) updateData.employeeId = updateData.employeeId || null;
+            if ('contractorId' in updateData) {
+                updateData.contractorId = updateData.contractorId || null;
+                if (updateData.contractorId) {
+                    const contractor = await prisma.obraContractor.findUnique({ where: { id: updateData.contractorId as string } });
+                    if (!contractor) throw new AppError('El autónomo seleccionado no existe', 400);
+                }
+            }
 
             const effectiveType = String(updateData.type || existing.type);
             if (effectiveType === 'PER_DIEM' && amountMode === 'PER_EMPLOYEE_DAY') {
@@ -296,7 +313,8 @@ export const ObraExpenseController = {
                 orderBy: { date: 'desc' },
                 include: {
                     obra: { select: { id: true, code: true, name: true } },
-                    employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } }
+                    employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } },
+                    contractor: { select: { id: true, name: true, nif: true } }
                 },
                 take: cap
             });

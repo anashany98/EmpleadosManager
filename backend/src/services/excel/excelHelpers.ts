@@ -324,5 +324,6 @@ export const TIPO_LABEL_ES: Record<string, string> = {
     LODGING: 'Hospedaje',
     FLIGHT: 'Vuelo',
     TRANSPORT: 'Transporte',
+    CONTRACTOR: 'Autónomos',
     OTHER: 'Otros'
 };

@@ -391,8 +391,8 @@ export const renderLayoutTemplate = async (
             try {
                 const qrValue = buildQrValue(element, context, options);
                 const qrBuffer = await QRCode.toBuffer(qrValue || subjectPayload, {
-                    errorCorrectionLevel: 'M',
-                    margin: 1,
+                    errorCorrectionLevel: 'H',
+                    margin: 4,
                     color: {
                         dark: element.color || '#0f172a',
                         light: element.backgroundColor || '#ffffff'
@@ -408,12 +408,12 @@ export const renderLayoutTemplate = async (
 
     if (!hasVisibleSystemQr) {
         const qrBuffer = await QRCode.toBuffer(subjectPayload, {
-            errorCorrectionLevel: 'M',
-            margin: 1,
-            width: 160
+            errorCorrectionLevel: 'H',
+            margin: 4,
+            width: 240
         });
-        const size = Math.min(pageWidth * 0.08, pageHeight * 0.057);
-        doc.image(qrBuffer, (pageWidth - size) / 2, pageHeight * 0.905, {
+        const size = Math.min(pageWidth * 0.10, pageHeight * 0.07);
+        doc.image(qrBuffer, (pageWidth - size) / 2, pageHeight * 0.895, {
             width: size,
             height: size
         });

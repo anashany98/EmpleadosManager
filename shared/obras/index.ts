@@ -1,4 +1,4 @@
-export const OBRA_EXPENSE_TYPES = ['PER_DIEM', 'LODGING', 'FLIGHT', 'TRANSPORT', 'CAR_RENTAL', 'OTHER'] as const;
+export const OBRA_EXPENSE_TYPES = ['PER_DIEM', 'LODGING', 'FLIGHT', 'TRANSPORT', 'CAR_RENTAL', 'CONTRACTOR', 'OTHER'] as const;
 
 export type ObraExpenseType = typeof OBRA_EXPENSE_TYPES[number];
 
@@ -32,6 +32,7 @@ export const OBRA_TYPE_LABELS: Record<ObraExpenseType, string> = {
     FLIGHT: 'Vuelo',
     TRANSPORT: 'Transporte',
     CAR_RENTAL: 'Alquiler de coche',
+    CONTRACTOR: 'Autónomos',
     OTHER: 'Otros'
 };
 
