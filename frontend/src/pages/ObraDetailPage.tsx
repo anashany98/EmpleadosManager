@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
-import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save, Upload, Users, FileDown, Check, AlertTriangle, ChevronDown, Search } from 'lucide-react';
+import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save, Upload, Users, Handshake, FileDown, Check, AlertTriangle, ChevronDown, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../api/client';
 import { useConfirm } from '../context/ConfirmContext';
@@ -37,6 +37,7 @@ const emptyExpenseForm = () => ({
     amount: '',
     currency: 'EUR',
     employeeIds: [] as string[],
+    contractorIds: [] as string[],
     contractorId: '',
     description: '',
     vendor: '',
@@ -92,6 +93,7 @@ export default function ObraDetailPage() {
     const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([]);
     const [generatingReceipts, setGeneratingReceipts] = useState(false);
     const [employeeExpenseSearch, setEmployeeExpenseSearch] = useState('');
+    const [contractorExpenseSearch, setContractorExpenseSearch] = useState('');
 
     // Filtros avanzados para los tabs de expenses y horas
     const [filters, setFilters] = useState({
@@ -162,7 +164,12 @@ export default function ObraDetailPage() {
         const name = employee.name || `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
         return `${name} ${employee.dni || ''}`.toLowerCase().includes(employeeExpenseSearch.trim().toLowerCase());
     });
-    const dietGrandTotal = Number(expenseForm.amount || 0) * expenseDays * expenseForm.employeeIds.length;
+    const selectedExpenseContractors = contractors.filter((c: any) => expenseForm.contractorIds.includes(c.id));
+    const filteredExpenseContractors = contractors.filter((c: any) =>
+        `${c.name || ''} ${c.nif || ''}`.toLowerCase().includes(contractorExpenseSearch.trim().toLowerCase())
+    );
+    const totalExpensePeople = expenseForm.employeeIds.length + expenseForm.contractorIds.length;
+    const dietGrandTotal = Number(expenseForm.amount || 0) * expenseDays * totalExpensePeople;
 
     const handleSaveExpense = async () => {
         if (!expenseForm.date || !expenseForm.endDate || !expenseForm.amount) return toast.error('Las fechas y el importe son obligatorios');
@@ -186,7 +193,11 @@ export default function ObraDetailPage() {
                     : expenseEditingId
                         ? { employeeId: expenseForm.employeeIds[0] || null }
                         : { employeeIds: expenseForm.employeeIds }),
-                contractorId: expenseForm.type === 'CONTRACTOR' ? expenseForm.contractorId || null : null,
+                ...(expenseForm.type === 'CONTRACTOR'
+                    ? { contractorId: expenseForm.contractorId || null }
+                    : expenseEditingId
+                        ? { contractorId: expenseForm.contractorIds[0] || null }
+                        : { contractorIds: expenseForm.contractorIds }),
                 description: expenseForm.description || null,
                 vendor: expenseForm.vendor || null,
                 reference: expenseForm.reference || null,
@@ -202,6 +213,7 @@ export default function ObraDetailPage() {
             }
             setExpenseForm(emptyExpenseForm());
             setEmployeeExpenseSearch('');
+            setContractorExpenseSearch('');
             setExpenseEditingId(null);
             fetchObra();
         } catch (err: any) {
@@ -215,6 +227,15 @@ export default function ObraDetailPage() {
             employeeIds: current.employeeIds.includes(employeeId)
                 ? current.employeeIds.filter((id) => id !== employeeId)
                 : [...current.employeeIds, employeeId]
+        }));
+    };
+
+    const toggleExpenseContractor = (contractorId: string) => {
+        setExpenseForm((current) => ({
+            ...current,
+            contractorIds: current.contractorIds.includes(contractorId)
+                ? current.contractorIds.filter((id) => id !== contractorId)
+                : [...current.contractorIds, contractorId]
         }));
     };
 
@@ -563,6 +584,71 @@ export default function ObraDetailPage() {
                             </details>
                             )}
 
+                            {expenseForm.type !== 'CONTRACTOR' && (
+                            <details className="group relative lg:col-span-12">
+                                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800">
+                                    <span className="flex min-w-0 items-center gap-2">
+                                        <Handshake size={16} className="shrink-0 text-slate-500" />
+                                        <span className="truncate">
+                                            {selectedExpenseContractors.length === 0
+                                                ? 'Seleccionar autónomos…'
+                                                : selectedExpenseContractors.length === 1
+                                                    ? (selectedExpenseContractors[0].name || selectedExpenseContractors[0].nif)
+                                                    : `${selectedExpenseContractors.length} autónomos seleccionados`}
+                                        </span>
+                                    </span>
+                                    <ChevronDown size={16} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                                </summary>
+                                <div className="absolute z-30 mt-1 w-full rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                                    <div className="relative mb-2">
+                                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="search"
+                                            value={contractorExpenseSearch}
+                                            onChange={(event) => setContractorExpenseSearch(event.target.value)}
+                                            placeholder="Buscar por nombre o NIF"
+                                            className="min-h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-800"
+                                        />
+                                    </div>
+                                    {!expenseEditingId && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpenseForm((current) => ({
+                                                ...current,
+                                                contractorIds: filteredExpenseContractors.every((c) => current.contractorIds.includes(c.id))
+                                                    ? current.contractorIds.filter((id) => !filteredExpenseContractors.some((c) => c.id === id))
+                                                    : Array.from(new Set([...current.contractorIds, ...filteredExpenseContractors.map((c) => c.id)]))
+                                            }))}
+                                            className="mb-2 min-h-9 rounded-md px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                                        >
+                                            {filteredExpenseContractors.every((c) => expenseForm.contractorIds.includes(c.id)) ? 'Quitar resultados' : 'Seleccionar resultados'}
+                                        </button>
+                                    )}
+                                    <div className="max-h-56 overflow-y-auto">
+                                        {filteredExpenseContractors.map((c: any) => {
+                                            const selected = expenseForm.contractorIds.includes(c.id);
+                                            return (
+                                                <button
+                                                    key={c.id}
+                                                    type="button"
+                                                    disabled={Boolean(expenseEditingId && !selected)}
+                                                    onClick={() => toggleExpenseContractor(c.id)}
+                                                    className={`flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${selected ? 'bg-blue-50 text-blue-900 dark:bg-blue-950/40 dark:text-blue-100' : 'hover:bg-slate-50 dark:hover:bg-slate-800'} disabled:opacity-40`}
+                                                >
+                                                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 dark:border-slate-600'}`}>{selected && <Check size={13} />}</span>
+                                                    <span className="truncate">{c.name}</span>
+                                                    <span className="ml-auto text-xs text-slate-400">{c.nif}</span>
+                                                </button>
+                                            );
+                                        })}
+                                        {filteredExpenseContractors.length === 0 && (
+                                            <p className="px-2 py-3 text-xs text-slate-400">No hay autónomos dados de alta.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </details>
+                            )}
+
                             {expenseForm.type === 'CONTRACTOR' && (
                                 <label className="space-y-1 lg:col-span-12">
                                     <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Autónomo *</span>
@@ -583,11 +669,11 @@ export default function ObraDetailPage() {
 
                             {expenseForm.type === 'PER_DIEM' ? (
                                 <div className="lg:col-span-12 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                                    <strong>{Number(expenseForm.amount || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> × {expenseDays || 0} día{expenseDays === 1 ? '' : 's'} × {expenseForm.employeeIds.length} empleado{expenseForm.employeeIds.length === 1 ? '' : 's'} = <strong>{dietGrandTotal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong>
+                                    <strong>{Number(expenseForm.amount || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> × {expenseDays || 0} día{expenseDays === 1 ? '' : 's'} × {totalExpensePeople} {totalExpensePeople === 1 ? 'persona' : 'personas'} = <strong>{dietGrandTotal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong>
                                 </div>
-                            ) : expenseForm.employeeIds.length > 0 && Number(expenseForm.amount) > 0 ? (
+                            ) : totalExpensePeople > 0 && Number(expenseForm.amount) > 0 ? (
                                 <div className="lg:col-span-12 text-xs text-slate-600">
-                                    Cada empleado recibirá aproximadamente {(Number(expenseForm.amount) / expenseForm.employeeIds.length).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}.
+                                    Cada {selectedExpenseContractors.length > 0 ? 'persona' : 'empleado'} recibirá aproximadamente {(Number(expenseForm.amount) / totalExpensePeople).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}.
                                 </div>
                             ) : null}
                             <input className="min-h-11 px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 lg:col-span-6" placeholder="Descripción" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} />
@@ -659,7 +745,7 @@ export default function ObraDetailPage() {
                                             {Number(e.allocationCount || 1) > 1 && <span className="block text-[10px] font-normal text-slate-400">Reparto {e.allocationIndex}/{e.allocationCount}</span>}
                                         </td>
                                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                                            <button onClick={() => { setExpenseEditingId(e.id); setExpenseForm({ type: e.type as ObraExpenseType, date: String(e.date).substring(0, 10), endDate: String(e.endDate || e.date).substring(0, 10), amount: e.type === 'PER_DIEM' && e.unitAmount ? e.unitAmount : e.amount, currency: e.currency || 'EUR', employeeIds: e.employeeId ? [e.employeeId] : [], contractorId: e.contractorId || '', description: e.description || '', vendor: e.vendor || '', reference: e.sourceReference || e.reference || '', origin: e.origin || '', destination: e.destination || '' }); }} className="text-blue-600 mr-2" aria-label="Editar"><Pencil size={14} /></button>
+                                            <button onClick={() => { setExpenseEditingId(e.id); setExpenseForm({ type: e.type as ObraExpenseType, date: String(e.date).substring(0, 10), endDate: String(e.endDate || e.date).substring(0, 10), amount: e.type === 'PER_DIEM' && e.unitAmount ? e.unitAmount : e.amount, currency: e.currency || 'EUR', employeeIds: e.employeeId ? [e.employeeId] : [], contractorIds: e.contractorId ? [e.contractorId] : [], contractorId: e.contractorId || '', description: e.description || '', vendor: e.vendor || '', reference: e.sourceReference || e.reference || '', origin: e.origin || '', destination: e.destination || '' }); }} className="text-blue-600 mr-2" aria-label="Editar"><Pencil size={14} /></button>
                                             <button onClick={() => handleDeleteExpense(e.id)} className="text-rose-600" aria-label="Eliminar"><Trash2 size={14} /></button>
                                         </td>
                                     </tr>
