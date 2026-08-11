@@ -73,19 +73,49 @@ export class PayrollControlImportService {
                 if (rowNumber <= headerRow) return;
                 const workDate = dateFromCell(cellValue(row.getCell(2)));
                 if (!workDate || !workDate.startsWith(prefix)) return;
-                const times = [3, 4, 5, 6].map((column) => timeFromCell(cellValue(row.getCell(column))));
                 const rawTimes = [3, 4, 5, 6].map((column) => cellValue(row.getCell(column)));
+                const times = rawTimes.map((value) => timeFromCell(value));
                 if (rawTimes.some((value, index) => hasTimeValue(value) && !times[index])) {
                     warnings.push(`Fila ${rowNumber}: una hora no se ha podido interpretar.`);
                     return;
                 }
                 const notes = String(cellValue(row.getCell(12)) ?? '').trim();
-                if (!times.some(Boolean) && !notes) return;
+                const normalizedNotes = normalize(notes);
+                // La plantilla marca el festivo en la columna OBSERVACIONES
+                // ("Festivo"); la columna K depende de un libro externo, así que
+                // no es fiable como señal.
+                const isHoliday = normalizedNotes.includes('FESTIVO');
+                // Sin turno partido, SALIDA 1 es el fin de jornada (la pausa la
+                // recoge la columna DESCONTAR). Con turno partido, SALIDA 1 /
+                // ENTRADA 2 son la pausa de comer y SALIDA 2 el fin de jornada.
+                const hasSecondShift = Boolean(times[2] || times[3]);
+                const entryTime = times[0];
+                const breakOutTime = hasSecondShift ? times[1] : null;
+                const breakInTime = hasSecondShift ? times[2] : null;
+                const exitTime = hasSecondShift ? times[3] : (times[1] ?? null);
+                if (!entryTime && !breakOutTime && !breakInTime && !exitTime && !notes) return;
+                // DESCONTAR (col 8) y H.LAB (col 9) de la plantilla; si faltan,
+                // se usan los valores por defecto (0,5 h de descanso y 8 h de jornada).
+                const parseHoursCell = (column: number, fallback: number): number => {
+                    const raw = cellValue(row.getCell(column));
+                    const numeric = typeof raw === 'number' && Number.isFinite(raw)
+                        ? raw
+                        : typeof raw === 'string'
+                            ? Number(raw.trim().replace(',', '.'))
+                            : NaN;
+                    return Number.isFinite(numeric) ? Math.round(numeric * 100) / 100 : fallback;
+                };
                 entries.push({
                     workDate,
-                    entryTime: times[0], breakOutTime: times[1], breakInTime: times[2], exitTime: times[3],
-                    discountHours: 0.5, scheduledHours: 8, isHoliday: false, dietAmount: 0,
-                    notes
+                    entryTime,
+                    breakOutTime,
+                    breakInTime,
+                    exitTime,
+                    discountHours: parseHoursCell(8, 0.5),
+                    scheduledHours: parseHoursCell(9, 8),
+                    isHoliday,
+                    dietAmount: 0,
+                    notes: isHoliday ? notes.replace(/festivo/gi, '').trim() : notes
                 });
             });
             if (entries.length) return { sheetName: sheet.name, entries, warnings };

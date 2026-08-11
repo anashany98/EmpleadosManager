@@ -15,7 +15,8 @@ describe('PayrollControlImportService', () => {
         expect(preview.sheetName).toBe('JULIO');
         expect(preview.entries).toEqual(expect.arrayContaining([
             expect.objectContaining({ workDate: '2026-07-01', entryTime: '08:00', breakOutTime: '14:00', breakInTime: '15:00', exitTime: '18:30', notes: 'Obra centro' }),
-            expect.objectContaining({ workDate: '2026-07-02', entryTime: '08:00', breakOutTime: '16:00', breakInTime: null, exitTime: null })
+            // Turno único: SALIDA 1 es el fin de jornada (la pausa la recoge DESCONTAR).
+            expect.objectContaining({ workDate: '2026-07-02', entryTime: '08:00', breakOutTime: null, breakInTime: null, exitTime: '16:00' })
         ]));
     });
 });

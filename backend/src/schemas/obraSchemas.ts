@@ -172,6 +172,7 @@ export const obraExpenseCreateSchema = z.object({
         employeeId: optionalId,
         employeeIds: z.array(z.string().min(1)).min(1).max(200).optional(),
         contractorId: optionalId,
+        contractorIds: z.array(z.string().min(1)).min(1).max(200).optional(),
         distributeEvenly: z.boolean().optional()
     })
         .refine((value) => !value.endDate || new Date(value.endDate) >= new Date(value.date), {
@@ -186,9 +187,9 @@ export const obraExpenseCreateSchema = z.object({
             message: 'Selecciona el autónomo para un gasto tipo CONTRACTOR',
             path: ['contractorId']
         })
-        .refine((value) => value.type === 'CONTRACTOR' || value.contractorId == null, {
-            message: 'El autónomo solo se asigna a gastos tipo CONTRACTOR',
-            path: ['contractorId']
+        .refine((value) => value.type !== 'CONTRACTOR' || (value.employeeId == null && (!value.employeeIds || value.employeeIds.length === 0)), {
+            message: 'Los empleados no se asignan a gastos tipo CONTRACTOR',
+            path: ['employeeIds']
         })
 });
 
@@ -211,10 +212,6 @@ export const obraExpenseUpdateSchema = z.object({
     })
         .refine((value) => value.type !== 'CONTRACTOR' || Boolean(value.contractorId), {
             message: 'Selecciona el autónomo para un gasto tipo CONTRACTOR',
-            path: ['contractorId']
-        })
-        .refine((value) => value.type === undefined || value.type === 'CONTRACTOR' || value.contractorId == null, {
-            message: 'El autónomo solo se asigna a gastos tipo CONTRACTOR',
             path: ['contractorId']
         })
 });

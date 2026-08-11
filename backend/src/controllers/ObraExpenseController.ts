@@ -69,7 +69,7 @@ export const ObraExpenseController = {
             const { obraId } = req.params;
             const {
                 type, date, endDate, amount, amountMode, currency, description, vendor,
-                reference, origin, destination, employeeId, employeeIds, contractorId
+                reference, origin, destination, employeeId, employeeIds, contractorId, contractorIds
             } = req.body || {};
 
             await ObraAuthorization.ensureActive(obraId);
@@ -88,36 +88,47 @@ export const ObraExpenseController = {
                 }
             }
 
-            if (contractorId) {
-                const contractor = await prisma.obraContractor.findUnique({ where: { id: contractorId } });
-                if (!contractor) {
-                    throw new AppError('El autónomo seleccionado no existe', 400);
+            // Los autónomos se aceptan como array (reparto con empleados) o como id
+            // único (gasto tipo CONTRACTOR). Se validan y se reparten igual que empleados.
+            const selectedContractorIds = Array.from(new Set([
+                ...(Array.isArray(contractorIds) ? contractorIds : []),
+                ...(contractorId ? [contractorId] : [])
+            ])) as string[];
+            if (selectedContractorIds.length > 0) {
+                const contractorCount = await prisma.obraContractor.count({
+                    where: { id: { in: selectedContractorIds } }
+                });
+                if (contractorCount !== selectedContractorIds.length) {
+                    throw new AppError('Uno o varios autónomos seleccionados no existen', 400);
                 }
             }
 
-            const allocationCount = Math.max(1, selectedEmployeeIds.length);
+            const allocationCount = Math.max(1, selectedEmployeeIds.length + selectedContractorIds.length);
             const enteredAmount = Math.round(Number(amount) * 100) / 100;
             const dailyMode = type === 'PER_DIEM' && amountMode === 'PER_EMPLOYEE_DAY';
             const unitCount = dailyMode ? countInclusiveDays(date, endDate || date) : 1;
-            const amountPerEmployee = dailyMode
+            const amountPerPerson = dailyMode
                 ? Math.round(enteredAmount * unitCount * 100) / 100
                 : null;
             const allocatedAmounts = dailyMode
-                ? Array.from({ length: allocationCount }, () => amountPerEmployee as number)
+                ? Array.from({ length: allocationCount }, () => amountPerPerson as number)
                 : splitAmountEvenly(enteredAmount, allocationCount);
             const originalAmount = dailyMode
-                ? Math.round((amountPerEmployee as number) * allocationCount * 100) / 100
+                ? Math.round((amountPerPerson as number) * allocationCount * 100) / 100
                 : enteredAmount;
             const allocationGroupId = allocationCount > 1 ? randomUUID() : null;
             const sourceReference = reference ?? null;
-            const targets: Array<string | null> = selectedEmployeeIds.length > 0 ? selectedEmployeeIds : [null];
+            const targets: Array<{ employeeId: string | null; contractorId: string | null }> = [];
+            for (const eid of selectedEmployeeIds) targets.push({ employeeId: eid, contractorId: null });
+            for (const cid of selectedContractorIds) targets.push({ employeeId: null, contractorId: cid });
+            if (targets.length === 0) targets.push({ employeeId: null, contractorId: null });
 
-            const expenses = await prisma.$transaction(targets.map((targetEmployeeId, index) =>
+            const expenses = await prisma.$transaction(targets.map((target, index) =>
                 prisma.obraExpense.create({
                     data: {
                         obraId,
-                        employeeId: targetEmployeeId,
-                        contractorId: contractorId || null,
+                        employeeId: target.employeeId,
+                        contractorId: target.contractorId,
                         type,
                         date: new Date(date),
                         endDate: new Date(endDate || date),
@@ -156,7 +167,7 @@ export const ObraExpenseController = {
                     unitCount,
                     allocationCount,
                     employeeIds: selectedEmployeeIds,
-                    contractorId: contractorId || null,
+                    contractorIds: selectedContractorIds,
                     expenseIds: expenses.map((expense) => expense.id)
                 }
             });
@@ -164,12 +175,16 @@ export const ObraExpenseController = {
             CacheService.invalidateByPrefix('report:obra-summary:');
             CacheService.invalidateByPrefix('report:obra-employee:');
 
+            const successMessage = allocationCount > 1
+                ? `Gasto repartido entre ${allocationCount} ${selectedContractorIds.length > 0 ? 'personas' : 'empleados'}`
+                : 'Gasto creado';
+
             return ApiResponse.success(res, {
                 expenses,
                 allocationGroupId,
                 originalAmount,
                 allocationCount
-            }, allocationCount > 1 ? `Gasto repartido entre ${allocationCount} empleados` : 'Gasto creado', 201);
+            }, successMessage, 201);
         } catch (err: unknown) {
             if (err instanceof AppError) return ApiResponse.error(res, err.message, err.statusCode);
             return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al crear el gasto', 500);

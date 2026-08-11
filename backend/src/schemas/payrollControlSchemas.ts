@@ -48,7 +48,7 @@ export const updateConceptValueSchema = z.object({
 
 export const restoreCellSchema = z.object({
     expectedVersion: z.coerce.number().int().positive(),
-    fieldName: z.enum(['totalOvertimeAmount', 'availablePercentage', 'gross', 'productivity', 'hoursAmount', 'difference'])
+    fieldName: z.enum(['totalOvertimeAmount', 'availablePercentage', 'gross', 'productivity', 'hoursAmount', 'difference', 'overtimeHours', 'holidayOvertimeHours', 'diets'])
 }).strict();
 
 export const updatePeriodStatusSchema = z.object({

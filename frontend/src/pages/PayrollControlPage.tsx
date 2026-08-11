@@ -775,7 +775,7 @@ export default function PayrollControlPage() {
                                     <th className="px-5 py-2.5">Periodo</th>
                                     <th className="px-3 py-2.5">Estado</th>
                                     <th className="px-3 py-2.5 text-right">Empleados</th>
-                                    <th className="px-3 py-2.5 text-right">Horas extra</th>
+                                    <th className="px-3 py-2.5 text-right">H. extra (€)</th>
                                     <th className="px-3 py-2.5 text-right">Dietas</th>
                                     <th className="px-3 py-2.5 text-right">Bruto</th>
                                     <th className="px-3 py-2.5 text-right">Exportaciones</th>
@@ -1258,28 +1258,52 @@ export default function PayrollControlPage() {
                                                             {empName}
                                                         </td>
 
-                                                        {/* Cantidad H.Ext */}
-                                                        <td className="p-1 border-r border-slate-100 dark:border-slate-800 text-right">
-                                                            <input
-                                                                type="number"
-                                                                step="0.5"
-                                                                disabled={isClosed}
-                                                                defaultValue={Number(r.overtimeHours || 0)}
-                                                                onBlur={(e) => handleCellBlur(r.id, 'overtimeHours', Number(e.target.value))}
-                                                                className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-1 focus:ring-blue-500 rounded"
-                                                            />
+                                                        {/* Cantidad H.Ext (suma diaria, sobrescribible) */}
+                                                        <td title={r.isOvertimeHoursManual ? 'Sobrescrito a mano en Control Gestoría. Restaura para volver a la suma de la rejilla diaria.' : 'Suma automática de las entradas diarias del empleado'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isOvertimeHoursManual ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}>
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {r.isOvertimeHoursManual && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRestoreField(r.id, 'overtimeHours')}
+                                                                        title="Restaurar suma automática de la rejilla diaria"
+                                                                        className="text-amber-600 hover:text-amber-800"
+                                                                    >
+                                                                        <RotateCcw size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.5"
+                                                                    disabled={isClosed}
+                                                                    defaultValue={Number(r.overtimeHours || 0)}
+                                                                    onBlur={(e) => handleCellBlur(r.id, 'overtimeHours', Number(e.target.value))}
+                                                                    className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-1 focus:ring-blue-500 rounded"
+                                                                />
+                                                            </div>
                                                         </td>
 
-                                                        {/* Cantidad H.Fest */}
-                                                        <td className="p-1 border-r border-slate-100 dark:border-slate-800 text-right">
-                                                            <input
-                                                                type="number"
-                                                                step="0.5"
-                                                                disabled={isClosed}
-                                                                defaultValue={Number(r.holidayOvertimeHours || 0)}
-                                                                onBlur={(e) => handleCellBlur(r.id, 'holidayOvertimeHours', Number(e.target.value))}
-                                                                className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-1 focus:ring-blue-500 rounded"
-                                                            />
+                                                        {/* Cantidad H.Fest (suma diaria, sobrescribible) */}
+                                                        <td title={r.isHolidayOvertimeHoursManual ? 'Sobrescrito a mano en Control Gestoría. Restaura para volver a la suma de la rejilla diaria.' : 'Suma automática de las entradas diarias del empleado'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isHolidayOvertimeHoursManual ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}>
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {r.isHolidayOvertimeHoursManual && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRestoreField(r.id, 'holidayOvertimeHours')}
+                                                                        title="Restaurar suma automática de la rejilla diaria"
+                                                                        className="text-amber-600 hover:text-amber-800"
+                                                                    >
+                                                                        <RotateCcw size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.5"
+                                                                    disabled={isClosed}
+                                                                    defaultValue={Number(r.holidayOvertimeHours || 0)}
+                                                                    onBlur={(e) => handleCellBlur(r.id, 'holidayOvertimeHours', Number(e.target.value))}
+                                                                    className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-1 focus:ring-blue-500 rounded"
+                                                                />
+                                                            </div>
                                                         </td>
 
                                                         {/* Total Importe (Calculado/Sobrescrito) */}
@@ -1330,16 +1354,28 @@ export default function PayrollControlPage() {
                                                             />
                                                         </td>
 
-                                                        {/* Dietas */}
-                                                        <td className="p-1 border-r border-slate-100 dark:border-slate-800 text-right">
-                                                            <input
-                                                                type="number"
-                                                                step="0.01"
-                                                                disabled={isLocked}
-                                                                defaultValue={Number(r.diets || 0)}
-                                                                onBlur={(e) => handleCellBlur(r.id, 'diets', Number(e.target.value))}
-                                                                className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 rounded"
-                                                            />
+                                                        {/* Dietas (suma diaria, sobrescribible) */}
+                                                        <td title={r.isDietsManual ? 'Sobrescrito a mano en Control Gestoría. Restaura para volver a la suma de la rejilla diaria.' : 'Suma automática de las entradas diarias del empleado'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isDietsManual ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}>
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {r.isDietsManual && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRestoreField(r.id, 'diets')}
+                                                                        title="Restaurar suma automática de la rejilla diaria"
+                                                                        className="text-amber-600 hover:text-amber-800"
+                                                                    >
+                                                                        <RotateCcw size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    disabled={isLocked}
+                                                                    defaultValue={Number(r.diets || 0)}
+                                                                    onBlur={(e) => handleCellBlur(r.id, 'diets', Number(e.target.value))}
+                                                                    className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 rounded"
+                                                                />
+                                                            </div>
                                                         </td>
 
                                                         {/* IRPF % */}
