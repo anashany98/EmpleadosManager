@@ -91,11 +91,17 @@ export const updateDailyEntriesSchema = z.object({
     }).strict()).min(28).max(31)
 }).strict();
 
-export const timeSheetImportSchema = z.object({
+export const timeSheetImportBodySchema = z.object({
     year: z.coerce.number().int().min(2000).max(2100),
     month: z.coerce.number().int().min(1).max(12),
     expectedVersion: z.coerce.number().int().positive().optional()
 }).strict();
+
+// Envuelto para validateResource (valida { body, query, params });
+// el wrapper no es strict para que zod descarte query/params (patrón del repo)
+export const timeSheetImportSchema = z.object({
+    body: timeSheetImportBodySchema
+});
 
 export const exportGestoriaSchema = z.object({ periodId: z.string().uuid() }).strict();
 
