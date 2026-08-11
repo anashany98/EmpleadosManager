@@ -14,6 +14,8 @@ export default function SettingsPage() {
     const [savingInbox, setSavingInbox] = useState(false);
     const [savingSmtp, setSavingSmtp] = useState(false);
     const [sendingTest, setSendingTest] = useState(false);
+    const [testingImap, setTestingImap] = useState(false);
+    const [imapTestMsg, setImapTestMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
     // Inbox config state
     const [inboxConfig, setInboxConfig] = useState({
@@ -24,9 +26,11 @@ export default function SettingsPage() {
             port: 993,
             user: '',
             password: '',
-            tls: true
+            tls: true,
+            companyId: '' as string
         }
     });
+    const [companies, setCompanies] = useState<Array<{ id: string; name: string }>>([]);
 
     // SMTP Config State
     const [smtpConfig, setSmtpConfig] = useState({
@@ -52,16 +56,22 @@ export default function SettingsPage() {
 
     const fetchData = async () => {
         try {
-            const [ratesRes, configRes, smtpRes, employeeOptionsRes] = await Promise.all([
+            const [ratesRes, configRes, smtpRes, employeeOptionsRes, companiesRes] = await Promise.all([
                 api.get('/overtime/rates'),
                 api.get('/config/inbox_settings'),
                 api.get('/config/smtp').catch(() => ({ data: {} })), // Handle error if route not ready
-                api.get('/employees/options').catch(() => ({ data: { data: { categories: [] } } }))
+                api.get('/employees/options').catch(() => ({ data: { data: { categories: [] } } })),
+                api.get<{ data: Array<{ id: string; name: string }> }>('/companies').catch(() => ({ data: { data: [] } }))
             ]);
-            setRates(ratesRes.data || ratesRes || []);
-            setEmployeeCategories(employeeOptionsRes.data?.data?.categories || employeeOptionsRes.data?.categories || []);
+            setRates((ratesRes as any).data || ratesRes || []);
+            setEmployeeCategories((employeeOptionsRes as any)?.data?.data?.categories || (employeeOptionsRes as any)?.data?.categories || []);
+            setCompanies((companiesRes as any)?.data?.data || (companiesRes as any)?.data || []);
             if (configRes.data) {
-                setInboxConfig(prev => ({ ...prev, ...configRes.data }));
+                setInboxConfig(prev => ({
+                    ...prev,
+                    ...configRes.data,
+                    imap: { ...prev.imap, ...(configRes.data.imap || {}) }
+                }));
             }
             if (smtpRes.data && smtpRes.data.success) {
                 const s = smtpRes.data.data;
@@ -90,6 +100,23 @@ export default function SettingsPage() {
             toast.error('Error al guardar configuración');
         } finally {
             setSavingInbox(false);
+        }
+    };
+
+    const handleTestImap = async () => {
+        setTestingImap(true);
+        setImapTestMsg(null);
+        try {
+            const res = await api.post('/config/inbox/test', { imap: inboxConfig.imap });
+            const msg = (res as any)?.data?.message || 'Conexión IMAP correcta';
+            setImapTestMsg({ ok: true, text: msg });
+            toast.success(msg);
+        } catch (error: unknown) {
+            const text = getErrorMessage(error, 'Error al probar la conexión IMAP');
+            setImapTestMsg({ ok: false, text });
+            toast.error(text);
+        } finally {
+            setTestingImap(false);
         }
     };
 
@@ -527,6 +554,42 @@ export default function SettingsPage() {
                                                     className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
                                                 />
                                             </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5 ml-1">
+                                                Empresa destino de los adjuntos
+                                            </label>
+                                            <select
+                                                value={inboxConfig.imap.companyId || ''}
+                                                onChange={(e) => setInboxConfig({ ...inboxConfig, imap: { ...inboxConfig.imap, companyId: e.target.value } })}
+                                                className="w-full px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm outline-none"
+                                            >
+                                                <option value="">— Sin asignar (solo admin global) —</option>
+                                                {companies.map(c => (
+                                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                                ))}
+                                            </select>
+                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                                                Cada adjunto que llegue por email se etiqueta con esta empresa para que los usuarios de ese tenant lo vean en su Bandeja.
+                                            </p>
+                                        </div>
+
+                                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={handleTestImap}
+                                                disabled={testingImap}
+                                                className="flex items-center gap-2 px-4 py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50"
+                                            >
+                                                <Send size={16} />
+                                                {testingImap ? 'Probando...' : 'Probar conexión IMAP'}
+                                            </button>
+                                            {imapTestMsg && (
+                                                <p className={`text-xs font-semibold ${imapTestMsg.ok ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                                    {imapTestMsg.text}
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
                                 )}

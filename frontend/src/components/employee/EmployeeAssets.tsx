@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
 import { Package, Trash2, Tag, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,6 +9,7 @@ interface Asset {
     category: string;
     name: string;
     serialNumber?: string;
+    imei?: string;
     size?: string;
     assignedDate?: string;
     returnDate?: string;
@@ -27,7 +28,7 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
 
     const fetchAssets = async () => {
         try {
-            const resp = await api.get(`/assets?employeeId=${employeeId}`);
+            const resp = await api.get<{ data: Asset[] }>(`/assets?employeeId=${employeeId}`);
             setAssets(resp.data);
         } catch (error) {
             toast.error('Error al cargar activos');
@@ -71,10 +72,9 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
     };
 
     const getCategoryIcon = (cat: string) => {
-        switch (cat) {
-            case 'CLOTHING': return <Tag className="w-4 h-4" />;
-            default: return <Package className="w-4 h-4" />;
-        }
+        // CLOTHING se muestra como UNIFORM (categoría fusionada).
+        if (cat === 'CLOTHING' || cat === 'UNIFORM') return <Tag className="w-4 h-4" />;
+        return <Package className="w-4 h-4" />;
     };
 
     if (loading) return <div>Cargando activos...</div>;
@@ -121,12 +121,17 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
                                         </div>
                                     </td>
                                     <td className="py-4 text-sm">
-                                        {asset.category === 'CLOTHING' ? (
+                                        {asset.category === 'UNIFORM' || asset.category === 'CLOTHING' ? (
                                             <span className="bg-purple-900/30 text-purple-400 px-2 py-0.5 rounded text-xs font-bold border border-purple-800/50">
                                                 Talla: {asset.size || 'N/A'}
                                             </span>
                                         ) : (
-                                            <span className="text-slate-400">{asset.serialNumber || '-'}</span>
+                                            <div className="flex flex-col gap-0.5 text-slate-400">
+                                                <span>{asset.serialNumber || '-'}</span>
+                                                {asset.imei && (
+                                                    <span className="text-[11px] font-mono text-slate-500">IMEI {asset.imei}</span>
+                                                )}
+                                            </div>
                                         )}
                                     </td>
                                     <td className="py-4 text-sm text-slate-400">
@@ -140,12 +145,24 @@ export default function EmployeeAssets({ employeeId }: { employeeId: string }) {
                                         </span>
                                     </td>
                                     <td className="py-4 text-right">
-                                        <button
-                                            onClick={() => handleDelete(asset.id)}
-                                            className="p-2 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
-                                        >
-                                            <Trash2 className="w-4 h-4" />
-                                        </button>
+                                        <div className="flex items-center justify-end gap-1">
+                                            {asset.status === 'ASSIGNED' && (
+                                                <button
+                                                    onClick={() => handleReturn(asset.id)}
+                                                    title="Devolver al inventario"
+                                                    className="p-2 text-slate-500 hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100"
+                                                >
+                                                    <RotateCcw className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={() => handleDelete(asset.id)}
+                                                title="Eliminar activo"
+                                                className="p-2 text-slate-500 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))

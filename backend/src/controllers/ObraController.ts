@@ -161,7 +161,10 @@ export const ObraController = {
                 prisma.obraExpense.findMany({
                     where: expenseWhere,
                     orderBy: { date: 'desc' },
-                    include: { employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } } },
+                    include: {
+                        employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } },
+                        contractor: { select: { id: true, name: true, nif: true } }
+                    },
                     skip: expensesSkip,
                     take: expensesLimit
                 }),

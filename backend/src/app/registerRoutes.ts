@@ -23,6 +23,7 @@ import employeeProjectWorkRoutes from '../routes/employeeProjectWorkRoutes';
 import obraRoutes from '../routes/obraRoutes';
 import obraExpenseRoutes from '../routes/obraExpenseRoutes';
 import obraImportRoutes from '../routes/obraImportRoutes';
+import obraContractorRoutes from '../routes/obraContractorRoutes';
 import authRoutes from '../routes/authRoutes';
 import userRoutes from '../routes/userRoutes';
 import permissionProfileRoutes from '../routes/permissionProfileRoutes';
@@ -48,6 +49,7 @@ import lockRoutes from '../routes/lockRoutes';
 import absenceTypeConfigRoutes from '../routes/absenceTypeConfigRoutes';
 import consentRoutes from '../routes/consentRoutes';
 import meRoutes from '../routes/meRoutes';
+import hrWorkspaceRoutes from '../routes/hrWorkspaceRoutes';
 
 export function registerRoutes(app: Express): void {
     app.use('/api/kiosk', kioskRoutes);
@@ -91,9 +93,11 @@ export function registerRoutes(app: Express): void {
     app.use('/api/obras', protect, checkPermission('projects', 'read'), obraRoutes);
     app.use('/api/obra-expenses', protect, checkPermission('projects', 'read'), obraExpenseRoutes);
     app.use('/api/obra-imports', protect, checkPermission('projects', 'read'), obraImportRoutes);
+    app.use('/api/obra-contractors', protect, checkPermission('projects', 'read'), obraContractorRoutes);
     app.use('/api/performance', protect, performanceRoutes);
     app.use('/api/locks', protect, lockRoutes);
     app.use('/api/consents', protect, consentRoutes);
     app.use('/api/me', protect, meRoutes);
+    app.use('/api/hr-workspace', protect, hrWorkspaceRoutes);
     app.use('/api/absence-types', absenceTypeConfigRoutes);
 }

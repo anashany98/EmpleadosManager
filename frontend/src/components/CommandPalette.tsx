@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, User, Package, LayoutDashboard, Inbox, Settings, X, Command, FileText, Calendar, Clock, Users, Building2, AlertCircle, Shield, Upload, GitBranch } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { Search, User, Package, LayoutDashboard, Inbox, Settings, X, Command, FileText, Calendar, Clock, Users, Building2, AlertCircle, Shield, Upload, GitBranch, BriefcaseBusiness, BellRing, CalendarCheck, ClipboardCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 
 interface SearchResult {
     id: string;
-    type: 'employee' | 'inventory' | 'page';
+    type: 'employee' | 'document' | 'task' | 'project' | 'asset' | 'page';
     title: string;
     subtitle?: string;
     path: string;
@@ -48,6 +48,9 @@ export default function CommandPalette() {
         { id: 'p18', type: 'page', title: 'Mis Documentos', path: '/my-documents', icon: <FileText size={18} />, subtitle: 'Documentos personales' },
         { id: 'p19', type: 'page', title: 'Organigrama', path: '/employees/org-chart', icon: <GitBranch size={18} />, subtitle: 'Estructura organizativa' },
         { id: 'p20', type: 'page', title: 'Reconciliación', path: '/reconciliation', icon: <Clock size={18} />, subtitle: 'Reconciliación de asistencia' },
+        { id: 'p21', type: 'page', title: 'Centro de tareas de RRHH', path: '/hr/tasks', icon: <ClipboardCheck size={18} />, subtitle: 'Pendientes y prioridades del equipo' },
+        { id: 'p22', type: 'page', title: 'Cierre mensual de RRHH', path: '/hr/monthly-close', icon: <CalendarCheck size={18} />, subtitle: 'Comprobaciones del periodo' },
+        { id: 'p23', type: 'page', title: 'Alertas configurables', path: '/hr/alerts', icon: <BellRing size={18} />, subtitle: 'Reglas y antelación de avisos' },
     ], []);
 
     const availablePages = useMemo(() => pages.filter((page) => {
@@ -56,6 +59,9 @@ export default function CommandPalette() {
                 return canAccessFeature('dashboard');
             case '/employees':
             case '/employees/org-chart':
+            case '/hr/tasks':
+            case '/hr/monthly-close':
+            case '/hr/alerts':
                 return canAccessFeature('employees');
             case '/calendar':
                 return canAccessFeature('calendar');
@@ -139,45 +145,34 @@ export default function CommandPalette() {
 
             setIsLoading(true);
             try {
-                const includeEmployees = canAccessFeature('employees');
-                const includeInventory = isGlobalAdmin && canAccessFeature('assets');
-                const [empRes, invRes] = await Promise.all([
-                    includeEmployees ? api.get(`/employees?search=${query}`).catch(() => ({ data: [] })) : Promise.resolve({ data: [] }),
-                    includeInventory ? api.get('/inventory').catch(() => ({ data: [] })) : Promise.resolve({ data: [] })
-                ]);
-
-                const employees = includeEmployees
-                    ? (empRes.data?.data || empRes.data || []).slice(0, 5).map((e: any) => ({
-                        id: e.id,
-                        type: 'employee' as const,
-                        title: `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.name || 'Sin nombre',
-                        subtitle: e.dni || e.department || 'Empleado',
-                        path: `/employees/${e.id}`,
-                        icon: <User size={18} className="text-blue-500" />
-                    }))
-                    : [];
-
-                const inventorySource = includeInventory ? (invRes.data?.data || invRes.data || []) : [];
-                const inventory = inventorySource
-                    .filter((i: any) => String(i.name || '').toLowerCase().includes(query.toLowerCase()))
-                    .slice(0, 5)
-                    .map((i: any) => ({
-                        id: i.id,
-                        type: 'inventory' as const,
-                        title: i.name,
-                        subtitle: i.category || 'Activo',
-                        path: `/assets?q=${i.name}`,
-                        icon: <Package size={18} className="text-amber-500" />
-                    }));
-
                 const filteredPages = availablePages.filter(p => 
                     p.title.toLowerCase().includes(query.toLowerCase()) ||
                     p.subtitle?.toLowerCase().includes(query.toLowerCase())
                 );
-
-                setResults([...filteredPages, ...employees, ...inventory]);
+                const response: any = await api.get('/hr-workspace/search', { params: { q: query, companyId: user?.companyId || undefined } });
+                const source = response?.data?.data ?? response?.data ?? [];
+                const iconByKind: Record<string, React.ReactNode> = {
+                    employee: <User size={18} className="text-blue-500" />,
+                    document: <FileText size={18} className="text-violet-500" />,
+                    task: <ClipboardCheck size={18} className="text-rose-500" />,
+                    project: <BriefcaseBusiness size={18} className="text-emerald-500" />,
+                    asset: <Package size={18} className="text-amber-500" />
+                };
+                const serverResults: SearchResult[] = source.map((item: any) => ({
+                    id: `${item.kind}-${item.id}`,
+                    type: item.kind,
+                    title: item.title,
+                    subtitle: item.subtitle,
+                    path: item.path,
+                    icon: iconByKind[item.kind] || <Search size={18} />
+                }));
+                setResults([...filteredPages, ...serverResults]);
             } catch (error) {
                 console.error('Search failed', error);
+                setResults(availablePages.filter(p =>
+                    p.title.toLowerCase().includes(query.toLowerCase()) ||
+                    p.subtitle?.toLowerCase().includes(query.toLowerCase())
+                ));
             } finally {
                 setIsLoading(false);
             }
@@ -223,7 +218,10 @@ export default function CommandPalette() {
         switch (type) {
             case 'page': return 'Sección';
             case 'employee': return 'Empleado';
-            case 'inventory': return 'Inventario';
+            case 'document': return 'Documento';
+            case 'task': return 'Tarea';
+            case 'project': return 'Obra';
+            case 'asset': return 'Activo';
             default: return type;
         }
     };
@@ -259,7 +257,7 @@ export default function CommandPalette() {
                             <input
                                 ref={inputRef}
                                 type="text"
-                                placeholder="Buscar empleados, inventario, páginas..."
+                                placeholder="Buscar trabajador, DNI, documento, obra, activo o tarea…"
                                 className="flex-1 bg-transparent border-none outline-none text-base text-slate-900 dark:text-white placeholder:text-slate-400"
                                 value={query}
                                 onChange={(e) => {

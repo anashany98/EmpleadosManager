@@ -144,15 +144,22 @@ export function TopBar({
 
                     <div className="h-5 w-px bg-gray-200 mx-1" />
 
-                    {logoUploaded ? (
-                        <button type="button" onClick={onRemoveLogo} className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[12px] font-medium text-red-600 transition-colors hover:bg-red-100" title="Quitar logo">
-                            <X size={13} /> Logo
+                    <div className="flex items-center overflow-hidden rounded-lg border border-gray-200 bg-white">
+                        <button
+                            type="button"
+                            onClick={onUploadLogo}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-gray-600 transition-colors hover:bg-gray-50 hover:text-indigo-700"
+                            title="Subir o cambiar el logo corporativo usado en todos los documentos"
+                        >
+                            <Upload size={13} />
+                            {logoUploaded ? 'Cambiar logo empresa' : 'Subir logo empresa'}
                         </button>
-                    ) : (
-                        <button type="button" onClick={onUploadLogo} className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-[12px] font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700" title="Subir logo">
-                            <Upload size={13} /> Logo
-                        </button>
-                    )}
+                        {logoUploaded && (
+                            <button type="button" onClick={onRemoveLogo} className="border-l border-gray-200 p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600" title="Quitar logo corporativo">
+                                <X size={13} />
+                            </button>
+                        )}
+                    </div>
 
                     <button type="button" onClick={onSave} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-1.5 text-[12px] font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50 shadow-sm hover:shadow-md" data-testid="save-button">
                         <Save size={14} />

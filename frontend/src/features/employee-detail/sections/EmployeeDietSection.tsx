@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, FileDown, RefreshCw, Receipt, Search } from 'lucide-react';
+import { Check, FileDown, RefreshCw, Receipt, Search, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../../../api/client';
 import { downloadExpenseReceipts } from '../../expenses/downloadExpenseReceipts';
+import { useConfirm } from '../../../hooks/useConfirm';
 import { OBRA_TYPE_LABELS, type ObraExpenseType } from '@shared/obras';
 
 interface EmployeeObraExpense {
@@ -31,6 +32,7 @@ const formatMoney = (value: string | number, currency = 'EUR') => Number(value).
 });
 
 export function EmployeeDietSection({ employeeId }: { employeeId: string }) {
+    const { confirm } = useConfirm();
     const [expenses, setExpenses] = useState<EmployeeObraExpense[]>([]);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
     const [query, setQuery] = useState('');
@@ -38,6 +40,8 @@ export function EmployeeDietSection({ employeeId }: { employeeId: string }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [generating, setGenerating] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [pendingDelete, setPendingDelete] = useState<EmployeeObraExpense | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -78,6 +82,48 @@ export function EmployeeDietSection({ employeeId }: { employeeId: string }) {
             setGenerating(false);
         }
     };
+
+    const performDelete = useCallback(async (expense: EmployeeObraExpense, scope: 'single' | 'all') => {
+        try {
+            setDeletingId(expense.id);
+            setSelectedIds((current) => current.filter((id) => id !== expense.id));
+            await api.delete(`/obra-expenses/${expense.id}${scope === 'all' ? '?allGroup=true' : ''}`);
+            toast.success(
+                scope === 'all' && (expense.allocationCount || 1) > 1
+                    ? `Gasto repartido entre ${expense.allocationCount} empleados eliminado`
+                    : 'Gasto eliminado'
+            );
+            await load();
+        } catch (deleteError: unknown) {
+            toast.error(getErrorMessage(deleteError, 'No se pudo eliminar el gasto'));
+        } finally {
+            setDeletingId(null);
+        }
+    }, [load]);
+
+    const requestDelete = useCallback(async (expense: EmployeeObraExpense) => {
+        const allocationCount = expense.allocationCount || 1;
+        const isShared = Boolean(expense.allocationGroupId) && allocationCount > 1;
+        if (isShared) {
+            // El confirm simple no soporta 3 opciones; abrimos el mini-modal inline.
+            setPendingDelete(expense);
+            return;
+        }
+        const ok = await confirm({
+            title: 'Eliminar gasto',
+            message: '¿Eliminar este gasto? La acción no se puede deshacer.',
+            confirmText: 'Eliminar',
+            type: 'danger'
+        });
+        if (ok) {
+            await performDelete(expense, 'single');
+        }
+    }, [confirm, performDelete]);
+
+    const closePendingDelete = useCallback(() => {
+        if (deletingId) return;
+        setPendingDelete(null);
+    }, [deletingId]);
 
     if (loading) {
         return <div className="p-8 text-sm text-slate-500">Cargando dietas y gastos…</div>;
@@ -140,11 +186,13 @@ export function EmployeeDietSection({ employeeId }: { employeeId: string }) {
                                 <th className="px-4 py-3 text-left">Obra</th>
                                 <th className="px-4 py-3 text-left">Detalle</th>
                                 <th className="px-4 py-3 text-right">Importe</th>
+                                <th className="w-16 px-4 py-3 text-right">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {filtered.map((expense) => {
                                 const selected = selectedIds.includes(expense.id);
+                                const isDeleting = deletingId === expense.id;
                                 return (
                                     <tr key={expense.id} className={selected ? 'bg-blue-50/60 dark:bg-blue-950/20' : ''}>
                                         <td className="px-4 py-3">
@@ -161,16 +209,77 @@ export function EmployeeDietSection({ employeeId }: { employeeId: string }) {
                                             {expense.type === 'PER_DIEM' && expense.unitAmount && <span className="block text-[10px] font-normal text-slate-500">{formatMoney(expense.unitAmount, expense.currency)}/día × {expense.unitCount || 1}</span>}
                                             {(expense.allocationCount || 1) > 1 && <span className="block text-[10px] font-normal text-slate-400">Parte {expense.allocationIndex}/{expense.allocationCount} de {formatMoney(expense.originalAmount || expense.amount, expense.currency)}</span>}
                                         </td>
+                                        <td className="px-4 py-3 text-right">
+                                            <button
+                                                type="button"
+                                                onClick={() => void requestDelete(expense)}
+                                                disabled={isDeleting}
+                                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-rose-400 dark:hover:bg-rose-950/40"
+                                                aria-label={`Eliminar gasto de ${expense.obra.name}`}
+                                                title="Eliminar gasto"
+                                            >
+                                                <Trash2 size={15} />
+                                            </button>
+                                        </td>
                                     </tr>
                                 );
                             })}
                             {filtered.length === 0 && (
-                                <tr><td colSpan={6} className="px-6 py-12 text-center text-slate-500"><Receipt className="mx-auto mb-3 text-slate-300" size={28} />No hay gastos asignados con estos filtros.</td></tr>
+                                <tr><td colSpan={7} className="px-6 py-12 text-center text-slate-500"><Receipt className="mx-auto mb-3 text-slate-300" size={28} />No hay gastos asignados con estos filtros.</td></tr>
                             )}
                         </tbody>
                     </table>
                 </div>
             </div>
+            {pendingDelete && (() => {
+                const allocationCount = pendingDelete.allocationCount || 1;
+                const totalAmount = formatMoney(pendingDelete.originalAmount || pendingDelete.amount, pendingDelete.currency);
+                const isWorking = Boolean(deletingId);
+                return (
+                    <div
+                        className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="diet-delete-modal-title"
+                        onClick={(event) => { if (event.target === event.currentTarget) closePendingDelete(); }}
+                    >
+                        <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-900">
+                            <h3 id="diet-delete-modal-title" className="text-lg font-bold text-slate-950 dark:text-white">Eliminar gasto repartido</h3>
+                            <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">
+                                Este gasto está repartido entre <strong className="text-slate-900 dark:text-white">{allocationCount}</strong> empleados
+                                ({totalAmount} en total). Tu parte es la <strong className="text-slate-900 dark:text-white">{pendingDelete.allocationIndex}/{allocationCount}</strong>.
+                            </p>
+                            <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">¿Qué quieres eliminar?</p>
+                            <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={closePendingDelete}
+                                    disabled={isWorking}
+                                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-slate-300 px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { const target = pendingDelete; setPendingDelete(null); void performDelete(target, 'single'); }}
+                                    disabled={isWorking}
+                                    className="inline-flex min-h-11 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-4 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60"
+                                >
+                                    Solo mi parte
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => { const target = pendingDelete; setPendingDelete(null); void performDelete(target, 'all'); }}
+                                    disabled={isWorking}
+                                    className="inline-flex min-h-11 items-center justify-center rounded-lg bg-rose-700 px-4 text-sm font-semibold text-white transition hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Borrar las {allocationCount} partes
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </section>
     );
 }

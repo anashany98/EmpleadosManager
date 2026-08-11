@@ -99,7 +99,10 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
 
     // --- UI state (not server-derived) ---
     const [isEditing, setIsEditing] = useState(isNew);
-    const [activeTab, setActiveTab] = useState(isNew ? 'personal' : 'resumen');
+    const [activeTab, setActiveTab] = useState(() => {
+        if (isNew) return 'personal';
+        return new URLSearchParams(window.location.search).get('tab') || 'resumen';
+    });
     const [showOnboardingWizard, setShowOnboardingWizard] = useState(false);
     const [showOffboardingWizard, setShowOffboardingWizard] = useState(false);
     const [newContact, setNewContact] = useState<NewEmergencyContact>({ name: '', phone: '', relationship: '' });

@@ -3,6 +3,8 @@ import {
     Calendar as CalendarIcon,
     Building2,
     Briefcase,
+    HardHat,
+    Handshake,
     FileText,
     TrendingUp,
     ClipboardList,
@@ -14,7 +16,10 @@ import {
     UserPlus,
     LayoutDashboard,
     Activity,
-    FileUp
+    FileUp,
+    BellRing,
+    CalendarCheck,
+    ClipboardCheck
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import type { AppFeatureKey } from '@shared/authz';
@@ -55,6 +60,16 @@ export const navCategories: NavCategory[] = [
         ]
     },
     {
+        id: 'rrhh-operaciones',
+        label: 'Operaciones RRHH',
+        icon: <ClipboardCheck size={20} />,
+        items: [
+            { path: '/hr/tasks', label: 'Centro de tareas', icon: <ClipboardCheck size={18} />, feature: 'employees' },
+            { path: '/hr/monthly-close', label: 'Cierre mensual', icon: <CalendarCheck size={18} />, feature: 'employees' },
+            { path: '/hr/alerts', label: 'Alertas', icon: <BellRing size={18} />, feature: 'employees' }
+        ]
+    },
+    {
         id: 'tiempo',
         label: 'Tiempo',
         icon: <CalendarIcon size={20} />,
@@ -74,10 +89,11 @@ export const navCategories: NavCategory[] = [
     {
         id: 'obras',
         label: 'Obras',
-        icon: <Briefcase size={20} />,
+        icon: <HardHat size={20} />,
         items: [
-            { path: '/obras', label: 'Obras', icon: <Briefcase size={18} />, feature: 'projects' },
-            { path: '/obras/imports', label: 'Importar Gastos', icon: <FileUp size={18} />, feature: 'projects' }
+            { path: '/obras', label: 'Obras', icon: <HardHat size={18} />, feature: 'projects' },
+            { path: '/obras/imports', label: 'Importar Gastos', icon: <FileUp size={18} />, feature: 'projects' },
+            { path: '/obras/contractors', label: 'Autónomos', icon: <Handshake size={18} />, feature: 'projects' }
         ]
     },
     {

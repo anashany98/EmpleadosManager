@@ -14,6 +14,7 @@ interface OnboardingOptions {
         techItemId?: string;
         deviceName?: string; // If techItemId is not provided
         serialNumber?: string;
+        imei?: string;
     };
     authorName: string;
 }
@@ -125,7 +126,8 @@ export const OnboardingService = {
                         techItem.name,
                         options.inventory.serialNumber || 'S/N Desconocido',
                         options.authorName,
-                        techItem.id
+                        techItem.id,
+                        options.inventory.imei
                     );
                     results.documents.push('Entrega Tecnología');
                 }
@@ -139,7 +141,9 @@ export const OnboardingService = {
                     employeeId,
                     options.inventory.deviceName,
                     options.inventory.serialNumber || '',
-                    options.authorName
+                    options.authorName,
+                    undefined,
+                    options.inventory.imei
                 );
                 results.documents.push('Entrega Tecnología (Manual)');
             } catch (error: any) {

@@ -581,22 +581,40 @@ export default function PayrollControlPage() {
         }, 0);
         return [column.code, total];
     })), [gestoriaColumns, visibleGestoriaRecords]);
-    const columnCount = 17 + configurableConcepts.length;
+    const columnCount = 20 + configurableConcepts.length;
+
+    // Suma del control horario de un registro: las entradas diarias ya viajan
+    // en cada registro (recordInclude.dailyEntries), pero la vista no las usaba.
+    // Estas tres columnas hacen que la revisión mensual CALCULE el control
+    // horario igual que la rejilla del empleado (trabajadas/planificadas/diferencia).
+    const controlHorarioTotals = (record: any) => {
+        const entries = record?.dailyEntries || [];
+        const trabajadas = entries.reduce((sum: number, entry: any) => sum + Number(entry.workedHours || 0), 0);
+        const planificadas = entries.reduce((sum: number, entry: any) => sum + Number(entry.scheduledHours || 0), 0);
+        return { trabajadas, planificadas, diferencia: trabajadas - planificadas };
+    };
 
     // Totales Generales
     const grandTotals = useMemo(() => {
-        return filteredRecords.reduce((acc, r) => ({
-            overtimeAmount: acc.overtimeAmount + Number(r.totalOvertimeAmount || 0),
-            positiveVar: acc.positiveVar + Number(r.positiveVariable || 0),
-            negativeVar: acc.negativeVar + Number(r.negativeVariable || 0),
-            diets: acc.diets + Number(r.diets || 0),
-            gross: acc.gross + Number(r.gross || 0),
-            productivity: acc.productivity + Number(r.productivity || 0),
-            hoursAmount: acc.hoursAmount + Number(r.hoursAmount || 0),
-            difference: acc.difference + Number(r.difference || 0)
-        }), {
+        return filteredRecords.reduce((acc, r) => {
+            const horario = controlHorarioTotals(r);
+            return {
+                overtimeAmount: acc.overtimeAmount + Number(r.totalOvertimeAmount || 0),
+                positiveVar: acc.positiveVar + Number(r.positiveVariable || 0),
+                negativeVar: acc.negativeVar + Number(r.negativeVariable || 0),
+                diets: acc.diets + Number(r.diets || 0),
+                gross: acc.gross + Number(r.gross || 0),
+                productivity: acc.productivity + Number(r.productivity || 0),
+                hoursAmount: acc.hoursAmount + Number(r.hoursAmount || 0),
+                difference: acc.difference + Number(r.difference || 0),
+                trabajadas: acc.trabajadas + horario.trabajadas,
+                planificadas: acc.planificadas + horario.planificadas,
+                horarioDiferencia: acc.horarioDiferencia + horario.diferencia
+            };
+        }, {
             overtimeAmount: 0, positiveVar: 0, negativeVar: 0, diets: 0,
-            gross: 0, productivity: 0, hoursAmount: 0, difference: 0
+            gross: 0, productivity: 0, hoursAmount: 0, difference: 0,
+            trabajadas: 0, planificadas: 0, horarioDiferencia: 0
         });
     }, [filteredRecords]);
 
@@ -775,7 +793,7 @@ export default function PayrollControlPage() {
                                     <th className="px-5 py-2.5">Periodo</th>
                                     <th className="px-3 py-2.5">Estado</th>
                                     <th className="px-3 py-2.5 text-right">Empleados</th>
-                                    <th className="px-3 py-2.5 text-right">Horas extra</th>
+                                    <th className="px-3 py-2.5 text-right">H. extra (€)</th>
                                     <th className="px-3 py-2.5 text-right">Dietas</th>
                                     <th className="px-3 py-2.5 text-right">Bruto</th>
                                     <th className="px-3 py-2.5 text-right">Exportaciones</th>
@@ -1160,7 +1178,7 @@ export default function PayrollControlPage() {
                             <thead className="bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-300 font-semibold sticky top-0 z-20 shadow-sm">
                                 <tr className="bg-slate-950 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-300">
                                     <th colSpan={4} className="border-r border-slate-700 px-3 py-2 text-left">Empleado y tarifas</th>
-                                    <th colSpan={3} className="border-r border-slate-700 px-3 py-2 text-center">Horas</th>
+                                    <th colSpan={6} className="border-r border-slate-700 px-3 py-2 text-center">Horas</th>
                                     <th colSpan={3} className="border-r border-slate-700 px-3 py-2 text-center">Variables</th>
                                     <th colSpan={3} className="border-r border-slate-700 px-3 py-2 text-center">Retenciones</th>
                                     <th colSpan={4} className="border-r border-slate-700 px-3 py-2 text-center">Resultados efectivos</th>
@@ -1177,6 +1195,9 @@ export default function PayrollControlPage() {
                                     <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right">Cant. H.Ext</th>
                                     <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right">Cant. H.Fest</th>
                                     <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right font-bold text-blue-600 dark:text-blue-400">Total Importe</th>
+                                    <th title="Suma de las horas trabajadas de la rejilla diaria del empleado" className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right">Trabajadas</th>
+                                    <th title="Suma de la jornada planificada (festivos y fines de semana = 0)" className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right">Planificadas</th>
+                                    <th title="Trabajadas − Planificadas" className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right">Diferencia</th>
                                     <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right">Var. Positiva</th>
                                     <th title="Campo informativo. No resta en las fórmulas automáticas." className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right">Var. Negativa ⓘ</th>
                                     <th className="p-2.5 border-b border-r border-slate-200 dark:border-slate-700 text-right">Dietas</th>
@@ -1193,15 +1214,21 @@ export default function PayrollControlPage() {
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {Object.entries(groupedRecords).map(([dept, deptRecords]) => {
                                     // Subtotales del grupo
-                                    const subtotal = deptRecords.reduce((acc, r) => ({
-                                        total: acc.total + Number(r.totalOvertimeAmount || 0),
-                                        posVar: acc.posVar + Number(r.positiveVariable || 0),
-                                        diets: acc.diets + Number(r.diets || 0),
-                                        gross: acc.gross + Number(r.gross || 0),
-                                        prod: acc.prod + Number(r.productivity || 0),
-                                        hours: acc.hours + Number(r.hoursAmount || 0),
-                                        diff: acc.diff + Number(r.difference || 0)
-                                    }), { total: 0, posVar: 0, diets: 0, gross: 0, prod: 0, hours: 0, diff: 0 });
+                                    const subtotal = deptRecords.reduce((acc, r) => {
+                                        const horario = controlHorarioTotals(r);
+                                        return {
+                                            total: acc.total + Number(r.totalOvertimeAmount || 0),
+                                            posVar: acc.posVar + Number(r.positiveVariable || 0),
+                                            diets: acc.diets + Number(r.diets || 0),
+                                            gross: acc.gross + Number(r.gross || 0),
+                                            prod: acc.prod + Number(r.productivity || 0),
+                                            hours: acc.hours + Number(r.hoursAmount || 0),
+                                            diff: acc.diff + Number(r.difference || 0),
+                                            trabajadas: acc.trabajadas + horario.trabajadas,
+                                            planificadas: acc.planificadas + horario.planificadas,
+                                            horarioDiferencia: acc.horarioDiferencia + horario.diferencia
+                                        };
+                                    }, { total: 0, posVar: 0, diets: 0, gross: 0, prod: 0, hours: 0, diff: 0, trabajadas: 0, planificadas: 0, horarioDiferencia: 0 });
 
                                     return (
                                         <Fragment key={dept}>
@@ -1258,28 +1285,52 @@ export default function PayrollControlPage() {
                                                             {empName}
                                                         </td>
 
-                                                        {/* Cantidad H.Ext */}
-                                                        <td className="p-1 border-r border-slate-100 dark:border-slate-800 text-right">
-                                                            <input
-                                                                type="number"
-                                                                step="0.5"
-                                                                disabled={isClosed}
-                                                                defaultValue={Number(r.overtimeHours || 0)}
-                                                                onBlur={(e) => handleCellBlur(r.id, 'overtimeHours', Number(e.target.value))}
-                                                                className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-1 focus:ring-blue-500 rounded"
-                                                            />
+                                                        {/* Cantidad H.Ext (suma diaria, sobrescribible) */}
+                                                        <td title={r.isOvertimeHoursManual ? 'Sobrescrito a mano en Control Gestoría. Restaura para volver a la suma de la rejilla diaria.' : 'Suma automática de las entradas diarias del empleado'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isOvertimeHoursManual ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}>
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {r.isOvertimeHoursManual && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRestoreField(r.id, 'overtimeHours')}
+                                                                        title="Restaurar suma automática de la rejilla diaria"
+                                                                        className="text-amber-600 hover:text-amber-800"
+                                                                    >
+                                                                        <RotateCcw size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.5"
+                                                                    disabled={isClosed}
+                                                                    defaultValue={Number(r.overtimeHours || 0)}
+                                                                    onBlur={(e) => handleCellBlur(r.id, 'overtimeHours', Number(e.target.value))}
+                                                                    className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-1 focus:ring-blue-500 rounded"
+                                                                />
+                                                            </div>
                                                         </td>
 
-                                                        {/* Cantidad H.Fest */}
-                                                        <td className="p-1 border-r border-slate-100 dark:border-slate-800 text-right">
-                                                            <input
-                                                                type="number"
-                                                                step="0.5"
-                                                                disabled={isClosed}
-                                                                defaultValue={Number(r.holidayOvertimeHours || 0)}
-                                                                onBlur={(e) => handleCellBlur(r.id, 'holidayOvertimeHours', Number(e.target.value))}
-                                                                className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-1 focus:ring-blue-500 rounded"
-                                                            />
+                                                        {/* Cantidad H.Fest (suma diaria, sobrescribible) */}
+                                                        <td title={r.isHolidayOvertimeHoursManual ? 'Sobrescrito a mano en Control Gestoría. Restaura para volver a la suma de la rejilla diaria.' : 'Suma automática de las entradas diarias del empleado'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isHolidayOvertimeHoursManual ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}>
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {r.isHolidayOvertimeHoursManual && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRestoreField(r.id, 'holidayOvertimeHours')}
+                                                                        title="Restaurar suma automática de la rejilla diaria"
+                                                                        className="text-amber-600 hover:text-amber-800"
+                                                                    >
+                                                                        <RotateCcw size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.5"
+                                                                    disabled={isClosed}
+                                                                    defaultValue={Number(r.holidayOvertimeHours || 0)}
+                                                                    onBlur={(e) => handleCellBlur(r.id, 'holidayOvertimeHours', Number(e.target.value))}
+                                                                    className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-1 focus:ring-blue-500 rounded"
+                                                                />
+                                                            </div>
                                                         </td>
 
                                                         {/* Total Importe (Calculado/Sobrescrito) */}
@@ -1306,6 +1357,24 @@ export default function PayrollControlPage() {
                                                             </div>
                                                         </td>
 
+                                                        {/* Control horario: suma de las entradas diarias (solo lectura) */}
+                                                        {(() => {
+                                                            const horario = controlHorarioTotals(r);
+                                                            return (
+                                                                <>
+                                                                    <td title="Suma de las horas trabajadas de la rejilla diaria" className="p-1 border-r border-slate-100 dark:border-slate-800 text-right font-mono text-slate-700 dark:text-slate-300">
+                                                                        {horario.trabajadas.toFixed(2)} h
+                                                                    </td>
+                                                                    <td title="Suma de la jornada planificada" className="p-1 border-r border-slate-100 dark:border-slate-800 text-right font-mono text-slate-700 dark:text-slate-300">
+                                                                        {horario.planificadas.toFixed(2)} h
+                                                                    </td>
+                                                                    <td title="Trabajadas − Planificadas" className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right font-mono ${horario.diferencia < 0 ? 'text-rose-600 dark:text-rose-400' : horario.diferencia > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-700 dark:text-slate-300'}`}>
+                                                                        {horario.diferencia.toFixed(2)} h
+                                                                    </td>
+                                                                </>
+                                                            );
+                                                        })()}
+
                                                         {/* Var. Positiva */}
                                                         <td className="p-1 border-r border-slate-100 dark:border-slate-800 text-right">
                                                             <input
@@ -1330,16 +1399,28 @@ export default function PayrollControlPage() {
                                                             />
                                                         </td>
 
-                                                        {/* Dietas */}
-                                                        <td className="p-1 border-r border-slate-100 dark:border-slate-800 text-right">
-                                                            <input
-                                                                type="number"
-                                                                step="0.01"
-                                                                disabled={isLocked}
-                                                                defaultValue={Number(r.diets || 0)}
-                                                                onBlur={(e) => handleCellBlur(r.id, 'diets', Number(e.target.value))}
-                                                                className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 rounded"
-                                                            />
+                                                        {/* Dietas (suma diaria, sobrescribible) */}
+                                                        <td title={r.isDietsManual ? 'Sobrescrito a mano en Control Gestoría. Restaura para volver a la suma de la rejilla diaria.' : 'Suma automática de las entradas diarias del empleado'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isDietsManual ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}>
+                                                            <div className="flex items-center justify-end gap-1">
+                                                                {r.isDietsManual && (
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleRestoreField(r.id, 'diets')}
+                                                                        title="Restaurar suma automática de la rejilla diaria"
+                                                                        className="text-amber-600 hover:text-amber-800"
+                                                                    >
+                                                                        <RotateCcw size={12} />
+                                                                    </button>
+                                                                )}
+                                                                <input
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    disabled={isLocked}
+                                                                    defaultValue={Number(r.diets || 0)}
+                                                                    onBlur={(e) => handleCellBlur(r.id, 'diets', Number(e.target.value))}
+                                                                    className="w-full bg-transparent px-2 py-1 text-right text-slate-800 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 rounded"
+                                                                />
+                                                            </div>
                                                         </td>
 
                                                         {/* IRPF % */}
@@ -1442,6 +1523,9 @@ export default function PayrollControlPage() {
                                                 <td className="p-2 bg-slate-200/50 dark:bg-slate-800 sticky left-0">--</td>
                                                 <td colSpan={2}></td>
                                                 <td className="p-2 text-right text-blue-600 dark:text-blue-400 font-bold">{subtotal.total.toFixed(2)} €</td>
+                                                <td className="p-2 text-right font-mono">{subtotal.trabajadas.toFixed(2)} h</td>
+                                                <td className="p-2 text-right font-mono">{subtotal.planificadas.toFixed(2)} h</td>
+                                                <td className="p-2 text-right font-mono">{subtotal.horarioDiferencia.toFixed(2)} h</td>
                                                 <td className="p-2 text-right">{subtotal.posVar.toFixed(2)} €</td>
                                                 <td colSpan={1}></td>
                                                 <td className="p-2 text-right">{subtotal.diets.toFixed(2)} €</td>
@@ -1462,6 +1546,9 @@ export default function PayrollControlPage() {
                                     <td className="p-3 bg-slate-900 sticky left-0">TOTALES</td>
                                     <td colSpan={2}></td>
                                     <td className="p-3 text-right text-blue-400">{grandTotals.overtimeAmount.toFixed(2)} €</td>
+                                    <td className="p-3 text-right font-mono">{grandTotals.trabajadas.toFixed(2)} h</td>
+                                    <td className="p-3 text-right font-mono">{grandTotals.planificadas.toFixed(2)} h</td>
+                                    <td className="p-3 text-right font-mono">{grandTotals.horarioDiferencia.toFixed(2)} h</td>
                                     <td className="p-3 text-right text-emerald-400">{grandTotals.positiveVar.toFixed(2)} €</td>
                                     <td className="p-3 text-right text-rose-400">{grandTotals.negativeVar.toFixed(2)} €</td>
                                     <td className="p-3 text-right">{grandTotals.diets.toFixed(2)} €</td>
@@ -1475,7 +1562,7 @@ export default function PayrollControlPage() {
                             </tbody>
                         </table>
                     </div>
-                    <div className="sticky bottom-0 z-30 grid shrink-0 grid-cols-2 gap-px border-t border-slate-700 bg-slate-700 text-white sm:grid-cols-3 xl:grid-cols-6" aria-label="Resumen de cierre mensual">
+                    <div className="sticky bottom-0 z-30 grid shrink-0 grid-cols-2 gap-px border-t border-slate-700 bg-slate-700 text-white sm:grid-cols-3 xl:grid-cols-7" aria-label="Resumen de cierre mensual">
                         <div className="bg-slate-950 px-4 py-2.5">
                             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Trabajadores visibles</span>
                             <strong className="text-base">{filteredRecords.length}</strong>
@@ -1491,6 +1578,10 @@ export default function PayrollControlPage() {
                         <div className="bg-slate-950 px-4 py-2.5">
                             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Horas extra</span>
                             <strong>{grandTotals.overtimeAmount.toFixed(2)} €</strong>
+                        </div>
+                        <div className="bg-slate-950 px-4 py-2.5">
+                            <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Horas trabajadas</span>
+                            <strong>{grandTotals.trabajadas.toFixed(2)} h</strong>
                         </div>
                         <div className="bg-slate-950 px-4 py-2.5">
                             <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Dietas</span>

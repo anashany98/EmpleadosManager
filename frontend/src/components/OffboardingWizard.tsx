@@ -205,7 +205,7 @@ export default function OffboardingWizard({ employeeId, employeeName, onClose, o
                                 </div>
                                 <div className="bg-amber-50 dark:bg-amber-900/10 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30 flex gap-3 text-amber-700 dark:text-amber-400 text-sm">
                                     <AlertTriangle size={20} className="shrink-0" />
-                                    <p>Confirmar la baja desactivará automáticamente el acceso del empleado al portal y cerrará cualquier registro horario abierto.</p>
+                                    <p>Confirmar la baja desactivará el acceso, cerrará el periodo laboral y dejará el saldo de vacaciones del empleado a 0.</p>
                                 </div>
                             </motion.div>
                         )}
@@ -233,6 +233,7 @@ export default function OffboardingWizard({ employeeId, employeeName, onClose, o
                                         <li className="flex items-center gap-2">✅ Devolución de {selectedAssets.length} activos</li>
                                         <li className="flex items-center gap-2">✅ Desactivación de ficha de empleado</li>
                                         <li className="flex items-center gap-2">✅ Bloqueo de credenciales de usuario</li>
+                                        <li className="flex items-center gap-2">✅ Saldo de vacaciones a 0</li>
                                         <li className="flex items-center gap-2">✅ Histórico de auditoría registrado</li>
                                     </ul>
                                 </div>

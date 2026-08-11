@@ -3,11 +3,11 @@ import { employeeProjectWorkController } from '../controllers/EmployeeProjectWor
 import { checkPermission } from '../middlewares/authMiddleware';
 import { validateResource } from '../middlewares/validateResource';
 import { z } from 'zod';
-import { employeeProjectWorkCreateSchema, employeeProjectWorkIdParamSchema, employeeProjectWorkUpdateSchema } from '../schemas/obraSchemas';
+import { employeeProjectWorkCreateSchema, employeeProjectWorkIdParamSchema, employeeProjectWorkUpdateSchema, employeeProjectWorkListByEmployeeSchema } from '../schemas/obraSchemas';
 
 const router = Router();
 
-router.get('/employee/:employeeId', checkPermission('projects', 'read'), employeeProjectWorkController.getByEmployee);
+router.get('/employee/:employeeId', checkPermission('projects', 'read'), validateResource(employeeProjectWorkListByEmployeeSchema), employeeProjectWorkController.getByEmployee);
 router.get(
     '/project/:projectId',
     checkPermission('projects', 'read'),

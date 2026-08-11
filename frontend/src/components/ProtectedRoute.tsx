@@ -1,4 +1,4 @@
-import { Navigate, useLocation } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader2, ShieldAlert } from 'lucide-react';
 import { normalizeRole } from '@shared/authz';

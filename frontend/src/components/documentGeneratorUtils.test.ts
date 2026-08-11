@@ -153,7 +153,7 @@ describe('document generator request builder', () => {
 });
 
 describe('document generator template catalog', () => {
-    it('resolves one visible card per standard type, prefers company templates, and keeps canonical labels', () => {
+    it('resolves one visible card per standard type and shows the effective company template name', () => {
         const { standardTemplates, customTemplates } = resolveDocumentGeneratorTemplates(
             {
                 data: [
@@ -212,17 +212,17 @@ describe('document generator template catalog', () => {
 
         expect(standardTemplates.find((template) => template.type === 'NDA')).toMatchObject({
             type: 'NDA',
-            name: 'Confidencialidad',
+            name: 'Acuerdo empresa',
             source: 'company',
             hasStoredTemplate: true
         });
         expect(standardTemplates.find((template) => template.type === 'RGPD')).toMatchObject({
             type: 'RGPD',
-            name: 'Clausula RGPD'
+            name: 'Acuerdo de confidencialidad'
         });
         expect(standardTemplates.find((template) => template.type === 'EPI')).toMatchObject({
             type: 'EPI',
-            name: 'Entrega EPI'
+            name: 'Acuerdo de confidencialidad'
         });
         expect(standardTemplates.find((template) => template.type === 'MODEL_145')).toMatchObject({
             type: 'MODEL_145',
@@ -230,6 +230,11 @@ describe('document generator template catalog', () => {
             source: 'official',
             hasStoredTemplate: false
         });
+        expect(standardTemplates.find((template) => template.type === 'OBRA_EXPENSE_RECEIPT')).toMatchObject({
+            type: 'OBRA_EXPENSE_RECEIPT',
+            name: 'Recibí Dietas / Obra'
+        });
+        expect(standardTemplates.map((template) => template.type)).not.toContain('FIRMA_DIETAS');
         expect(customTemplates).toEqual([
             {
                 type: 'CUSTOM_CERT',

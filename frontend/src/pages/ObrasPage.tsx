@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Plus, Briefcase, X, Save, Eye, Search, Filter, Pencil, Lock, Unlock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ const TIPO_LABELS: Record<string, string> = {
     LODGING: 'Hospedaje',
     FLIGHT: 'Vuelo',
     TRANSPORT: 'Transporte',
+    CONTRACTOR: 'Autónomos',
     OTHER: 'Otros'
 };
 

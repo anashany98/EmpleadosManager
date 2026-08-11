@@ -54,6 +54,68 @@ const uuidObraIdParam = z.object({
     obraId: z.string().min(1, 'obraId requerido')
 });
 
+const optionalNif = z.union([z.string(), z.null(), z.undefined()]).transform((v, ctx) => {
+    if (v == null) return null;
+    const s = String(v).trim().toUpperCase().replace(/\s+/g, '');
+    if (s === '') return null;
+    if (!/^[A-Z0-9][A-Z0-9-]{2,19}$/.test(s)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'NIF/CIF no válido' });
+        return z.NEVER;
+    }
+    return s;
+});
+
+const optionalRate = z.union([z.number(), z.string(), z.null(), z.undefined()]).transform((v) => {
+    if (v == null || v === '') return null;
+    const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.').trim());
+    if (!Number.isFinite(n) || n < 0 || n > 100) return null;
+    return Math.round(n * 100) / 100;
+});
+
+export const contractorCreateSchema = z.object({
+    body: z.object({
+        name: z.string().trim().min(1, 'name obligatorio').max(200),
+        nif: optionalNif.refine((v) => v != null, { message: 'NIF/CIF obligatorio' }),
+        vatRate: optionalRate,
+        irpfRate: optionalRate,
+        iban: optionalTextShort,
+        activity: optionalTextShort,
+        email: optionalTextShort,
+        phone: optionalTextShort,
+        address: optionalText,
+        notes: optionalText
+    })
+});
+
+export const contractorUpdateSchema = z.object({
+    body: z.object({
+        name: z.string().trim().min(1).max(200).optional(),
+        nif: optionalNif,
+        vatRate: optionalRate,
+        irpfRate: optionalRate,
+        iban: optionalTextShort,
+        activity: optionalTextShort,
+        email: optionalTextShort,
+        phone: optionalTextShort,
+        address: optionalText,
+        notes: optionalText,
+        active: z.boolean().optional()
+    })
+});
+
+export const contractorIdParamSchema = z.object({
+    params: uuidParam
+});
+
+export const contractorListQuerySchema = z.object({
+    query: z.object({
+        q: z.string().trim().min(1).max(100).optional(),
+        active: z.enum(['true', 'false']).optional(),
+        page: z.coerce.number().int().min(1).optional(),
+        limit: z.coerce.number().int().min(1).max(200).optional()
+    })
+});
+
 export const obraCreateSchema = z.object({
     body: z.object({
         code: z.string().trim().min(1, 'code obligatorio').max(50),
@@ -109,6 +171,8 @@ export const obraExpenseCreateSchema = z.object({
         destination: optionalTextShort,
         employeeId: optionalId,
         employeeIds: z.array(z.string().min(1)).min(1).max(200).optional(),
+        contractorId: optionalId,
+        contractorIds: z.array(z.string().min(1)).min(1).max(200).optional(),
         distributeEvenly: z.boolean().optional()
     })
         .refine((value) => !value.endDate || new Date(value.endDate) >= new Date(value.date), {
@@ -118,6 +182,14 @@ export const obraExpenseCreateSchema = z.object({
         .refine((value) => value.type !== 'PER_DIEM' || Boolean(value.destination), {
             message: 'El destino es obligatorio para una dieta',
             path: ['destination']
+        })
+        .refine((value) => value.type !== 'CONTRACTOR' || Boolean(value.contractorId), {
+            message: 'Selecciona el autónomo para un gasto tipo CONTRACTOR',
+            path: ['contractorId']
+        })
+        .refine((value) => value.type !== 'CONTRACTOR' || (value.employeeId == null && (!value.employeeIds || value.employeeIds.length === 0)), {
+            message: 'Los empleados no se asignan a gastos tipo CONTRACTOR',
+            path: ['employeeIds']
         })
 });
 
@@ -135,8 +207,13 @@ export const obraExpenseUpdateSchema = z.object({
         origin: optionalTextShort,
         destination: optionalTextShort,
         employeeId: optionalId,
+        contractorId: optionalId,
         status: obraExpenseStatusSchema.optional()
     })
+        .refine((value) => value.type !== 'CONTRACTOR' || Boolean(value.contractorId), {
+            message: 'Selecciona el autónomo para un gasto tipo CONTRACTOR',
+            path: ['contractorId']
+        })
 });
 
 export const obraExpenseListByObraSchema = z.object({
@@ -187,6 +264,14 @@ export const obraImportBatchIdParamSchema = z.object({
 
 export const employeeProjectWorkIdParamSchema = z.object({
     params: uuidParam
+});
+
+export const employeeProjectWorkListByEmployeeSchema = z.object({
+    params: z.object({ employeeId: z.string().min(1, 'employeeId requerido') }),
+    query: z.object({
+        from: dateQuery,
+        to: dateQuery
+    })
 });
 
 export const employeeProjectWorkCreateSchema = z.object({

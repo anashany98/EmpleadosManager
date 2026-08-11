@@ -10,7 +10,14 @@ import { createLogger } from '../../services/LoggerService';
 
 const logger = createLogger('TechDeviceService');
 
-export const generateTechDevice = async (employeeId: string, deviceName: string, serialNumber: string, authorName?: string, itemId?: string): Promise<any> => {
+export const generateTechDevice = async (
+    employeeId: string,
+    deviceName: string,
+    serialNumber: string,
+    authorName?: string,
+    itemId?: string,
+    imei?: string
+): Promise<any> => {
     // --- PHASE 1: pre-validate stock (only if itemId provided).
     let resolvedItemId: string | null = itemId || null;
     if (!resolvedItemId) {
@@ -24,7 +31,7 @@ export const generateTechDevice = async (employeeId: string, deviceName: string,
     }
 
     // --- PHASE 2: generate PDF + save document.
-    const doc = await generateTechDeviceInternal(employeeId, deviceName, serialNumber, authorName);
+    const doc = await generateTechDeviceInternal(employeeId, deviceName, serialNumber, authorName, imei);
 
     // --- PHASE 3: atomic commit (inventory + asset). Both in one
     // transaction so the document row, the stock decrement, and the
@@ -38,14 +45,15 @@ export const generateTechDevice = async (employeeId: string, deviceName: string,
                     quantity: 1,
                     userId: authorName || 'SYSTEM',
                     employeeId,
-                    notes: `Acta Material Tecnológico: ${deviceName}`
+                    notes: `Acta Material Tecnológico: ${deviceName}${imei ? ` (IMEI: ${imei})` : ''}`
                 });
                 await tx.asset.create({
                     data: {
                         employeeId,
                         category: 'TECH',
                         name: deviceName,
-                        serialNumber,
+                        serialNumber: serialNumber || null,
+                        imei: imei || null,
                         status: 'ASSIGNED',
                         inventoryItemId: resolvedItemId,
                         assignedDate: new Date(),
@@ -70,7 +78,13 @@ export const generateTechDevice = async (employeeId: string, deviceName: string,
     return doc;
 };
 
-export const generateTechDeviceInternal = async (employeeId: string, deviceName: string, serialNumber: string, authorName?: string): Promise<any> => {
+export const generateTechDeviceInternal = async (
+    employeeId: string,
+    deviceName: string,
+    serialNumber: string,
+    authorName?: string,
+    imei?: string
+): Promise<any> => {
     const employee = await prisma.employee.findUnique({
         where: { id: employeeId },
         include: { company: true }
@@ -89,7 +103,8 @@ export const generateTechDeviceInternal = async (employeeId: string, deviceName:
             entrega: {
                 listado: `- ${deviceName}`,
                 dispositivo: deviceName,
-                numeroSerie: serialNumber || 'Sin numero de serie'
+                numeroSerie: serialNumber || 'Sin numero de serie',
+                numeroImei: imei || ''
             }
         }
     });
@@ -99,10 +114,10 @@ export const generateTechDeviceInternal = async (employeeId: string, deviceName:
         await renderLayoutTemplate(doc, layout, context as Record<string, unknown>, {
             employeeId,
             documentType: 'TECH_DEVICE',
-            qrData: { name: deviceName, sn: serialNumber }
+            qrData: { t: 'TECH_DEVICE', name: deviceName, sn: serialNumber, imei }
         });
     } else {
-        await addQRCodeToPDF(doc, { t: 'TECH_DEVICE', name: deviceName, sn: serialNumber }, employeeId);
+        await addQRCodeToPDF(doc, { t: 'TECH_DEVICE', name: deviceName, sn: serialNumber, imei }, employeeId);
         if (logoPath) doc.image(logoPath, 50, 40, { width: 100 });
         doc.y = logoPath ? 110 : 50;
         const rendered = CompanyDocumentTemplateService.renderTemplate(template?.content || '', context);

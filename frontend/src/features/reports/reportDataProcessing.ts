@@ -12,7 +12,7 @@ export function buildRequestParams(activeTab: ReportType, filters: Record<string
         params.end = filters.end;
     } else if (activeTab === 'VACATIONS') {
         params.year = filters.year;
-    } else if (activeTab === 'COSTS' || activeTab === 'KPIS') {
+    } else if (activeTab === 'COSTS' || activeTab === 'KPIS' || activeTab === 'TERMINATIONS') {
         params.year = filters.year;
         if (filters.month) params.month = filters.month;
     } else if (activeTab === 'GENDER_GAP') {
@@ -158,6 +158,24 @@ export function getNormalizedRows(activeTab: ReportType, data: any) {
         }));
     }
 
+    if (activeTab === 'TERMINATIONS') {
+        const typeLabels: Record<string, string> = {
+            DISMISSAL: 'Despido',
+            VOLUNTARY_LEAVE: 'Baja voluntaria',
+            CONTRACT_END: 'Fin de contrato',
+            OTHER: 'Otra baja'
+        };
+        return rows.map((item: any) => ({
+            employee: item.employee || 'N/A',
+            dni: item.dni || '-',
+            department: item.department || 'Sin asignar',
+            date: item.date,
+            type: item.type || 'OTHER',
+            typeLabel: typeLabels[item.type] || 'Otra baja',
+            reason: item.reason || 'Sin motivo especificado'
+        }));
+    }
+
     return rows.map((item: any) => ({
         employee: item.employee?.name || 'N/A',
         dni: item.employee?.dni || '-',
@@ -263,6 +281,15 @@ export function buildSummaryCards(activeTab: ReportType, rows: any[], data: any)
             { label: 'Personas', value: formatNumber(new Set(rows.map((row) => row.employee)).size), helper: 'Empleados afectados', tone: 'blue' },
             { label: 'Días', value: formatNumber(totalDays, ' días'), helper: 'Impacto acumulado', tone: 'amber' },
             { label: 'Mayor caso', value: formatNumber(maxDays, ' días'), helper: 'Ausencia más larga', tone: 'rose' }
+        ];
+    }
+
+    if (activeTab === 'TERMINATIONS') {
+        return [
+            { label: 'Bajas', value: formatNumber(rows.length), helper: 'Salidas registradas en el periodo', tone: 'rose' },
+            { label: 'Despidos', value: formatNumber(rows.filter((row) => row.type === 'DISMISSAL').length), helper: 'Extinciones por despido', tone: 'rose' },
+            { label: 'Voluntarias', value: formatNumber(rows.filter((row) => row.type === 'VOLUNTARY_LEAVE').length), helper: 'Bajas solicitadas por la persona', tone: 'amber' },
+            { label: 'Fin contrato', value: formatNumber(rows.filter((row) => row.type === 'CONTRACT_END').length), helper: 'Contratos finalizados', tone: 'blue' }
         ];
     }
 
@@ -373,6 +400,14 @@ export function buildInsight(activeTab: ReportType, rows: any[], data: any) {
             : 'No se registran ausencias en el rango actual.';
     }
 
+    if (activeTab === 'TERMINATIONS') {
+        if (rows.length === 0) return 'No se registran bajas de plantilla en el mes seleccionado.';
+        const dismissals = rows.filter((row) => row.type === 'DISMISSAL').length;
+        return dismissals > 0
+            ? `${dismissals} de ${rows.length} salida(s) corresponden a despidos. Revisa los motivos y la documentación asociada.`
+            : `${rows.length} salida(s) registradas sin despidos en el periodo seleccionado.`;
+    }
+
     if (activeTab === 'KPIS') {
         const topDepartment = [...rows].sort((left, right) => (right.rate || 0) - (left.rate || 0))[0];
         return topDepartment
@@ -472,6 +507,19 @@ export function buildPdfTable(activeTab: ReportType, rows: any[], data: any) {
         return {
             headers: ['Empleado', 'Bruto', 'SS Empresa', 'IRPF', 'Coste total'],
             body: rows.map((row) => [row.employee, formatCurrency(row.bruto), formatCurrency(row.ssEmpresa), formatCurrency(row.irpf), formatCurrency(row.totalCost)])
+        };
+    }
+
+    if (activeTab === 'TERMINATIONS') {
+        return {
+            headers: ['Nombre', 'DNI/NIE', 'Tipo', 'Fecha', 'Motivo'],
+            body: rows.map((row) => [
+                row.employee,
+                row.dni,
+                row.typeLabel,
+                formatDate(row.date),
+                row.reason
+            ])
         };
     }
 

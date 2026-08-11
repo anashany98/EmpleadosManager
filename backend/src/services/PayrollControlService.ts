@@ -123,11 +123,19 @@ function calculateDailyEntry(entry: DailyEntryPayload, calendarHolidayName?: str
         ? intervalHours(entryAt, breakOutAt).plus(intervalHours(breakInAt, exitAt))
         : intervalHours(entryAt, exitAt);
     const workedHours = worked.toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const discountHours = decimal(entry.discountHours).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const scheduledHours = decimal(entry.scheduledHours).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const date = utcDate(entry.workDate);
     const day = date.getUTCDay();
     const holidayOrWeekend = entry.isHoliday || Boolean(calendarHolidayName) || day === 0 || day === 6;
+    // Festivos y fines de semana no tienen jornada planificada ni descuento,
+    // igual que la plantilla de control horario (H.LAB = 0 y DESCONTAR = 0).
+    // Sin esta regla, un festivo trabajado suma 8 h a las horas planificadas
+    // del mes y descuadra el total frente a la plantilla de gestoría.
+    const discountHours = holidayOrWeekend
+        ? new Decimal(0)
+        : decimal(entry.discountHours).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    const scheduledHours = holidayOrWeekend
+        ? new Decimal(0)
+        : decimal(entry.scheduledHours).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const netWorked = workedHours.minus(discountHours);
     const overtimeHours = holidayOrWeekend
         ? new Decimal(0)
@@ -463,18 +471,23 @@ export class PayrollControlService {
                     }
                 }
             });
-            const overtimeHours = dailyEntries.reduce(
+            const calculatedOvertimeHours = dailyEntries.reduce(
                 (sum, entry) => sum.plus(Decimal.max(entry.overtimeHours, 0)),
                 new Decimal(0)
             ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-            const holidayOvertimeHours = dailyEntries.reduce(
+            const calculatedHolidayOvertimeHours = dailyEntries.reduce(
                 (sum, entry) => sum.plus(entry.holidayOvertimeHours),
                 new Decimal(0)
             ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-            const diets = dailyEntries.reduce(
+            const calculatedDiets = dailyEntries.reduce(
                 (sum, entry) => sum.plus(entry.dietAmount),
                 new Decimal(0)
             ).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+            // Las cantidades sobrescritas a mano en Control Gestoría prevalecen
+            // sobre la suma diaria: solo se recalculan si no hay marca manual.
+            const overtimeHours = manualOrCalculated(record, 'overtimeHours', calculatedOvertimeHours);
+            const holidayOvertimeHours = manualOrCalculated(record, 'holidayOvertimeHours', calculatedHolidayOvertimeHours);
+            const diets = manualOrCalculated(record, 'diets', calculatedDiets);
             const calculatedRecord = this.calculateRecordState({
                 ...record,
                 overtimeHours,
@@ -518,12 +531,28 @@ export class PayrollControlService {
 
         const { expectedVersion: _expectedVersion, ...input } = payload;
         const manualFields = new Set(['totalOvertimeAmount', 'availablePercentage', 'gross', 'productivity', 'hoursAmount', 'difference']);
+        // Campos que la rejilla diaria alimenta automáticamente, pero que se
+        // pueden sobrescribir a mano en Control Gestoría. La marca manual hace
+        // que la suma diaria posterior respete el valor editado.
+        const inputManualFields = new Set(['overtimeHours', 'holidayOvertimeHours', 'diets']);
         const updateData: Record<string, unknown> = {};
         const overrides: Array<{ fieldName: string; calculatedValue: string; manualValue: string; previousValue: string; newValue: string; userId: string }> = [];
 
         for (const [field, value] of Object.entries(input)) {
             if (value === undefined) continue;
-            if (manualFields.has(field)) {
+            if (inputManualFields.has(field)) {
+                updateData[field] = value;
+                updateData[`${field}Manual`] = value;
+                updateData[`is${field.charAt(0).toUpperCase()}${field.slice(1)}Manual`] = true;
+                overrides.push({
+                    fieldName: field,
+                    calculatedValue: String((record as unknown as Record<string, unknown>)[field]),
+                    manualValue: String(value),
+                    previousValue: String((record as unknown as Record<string, unknown>)[field]),
+                    newValue: String(value),
+                    userId
+                });
+            } else if (manualFields.has(field)) {
                 const calculated = (record as unknown as Record<string, unknown>)[`${field}Calculated`] ?? (record as unknown as Record<string, unknown>)[field];
                 updateData[`${field}Manual`] = value;
                 updateData[`is${field.charAt(0).toUpperCase()}${field.slice(1)}Manual`] = true;
@@ -570,6 +599,21 @@ export class PayrollControlService {
             [`${fieldName}Manual`]: null,
             [`is${fieldName.charAt(0).toUpperCase()}${fieldName.slice(1)}Manual`]: false
         };
+        // Al restaurar una cantidad derivada de la rejilla diaria, se recalcula
+        // la suma real de las entradas diarias del período en vez de dejar un
+        // valor obsoleto hasta el siguiente guardado de la rejilla.
+        if (fieldName === 'overtimeHours' || fieldName === 'holidayOvertimeHours' || fieldName === 'diets') {
+            const monthStart = new Date(Date.UTC(record.period.year, record.period.month - 1, 1));
+            const monthEnd = new Date(Date.UTC(record.period.year, record.period.month, 1));
+            const dailyEntries = await prisma.payrollControlDailyEntry.findMany({
+                where: { recordId, workDate: { gte: monthStart, lt: monthEnd } }
+            });
+            updateData[fieldName] = fieldName === 'overtimeHours'
+                ? dailyEntries.reduce((sum, entry) => sum.plus(Decimal.max(entry.overtimeHours, 0)), new Decimal(0)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+                : fieldName === 'holidayOvertimeHours'
+                    ? dailyEntries.reduce((sum, entry) => sum.plus(entry.holidayOvertimeHours), new Decimal(0)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+                    : dailyEntries.reduce((sum, entry) => sum.plus(entry.dietAmount), new Decimal(0)).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+        }
         Object.assign(updateData, this.calculateRecordState({ ...record, ...updateData }), { version: { increment: 1 } });
 
         await prisma.$transaction(async (tx) => {
@@ -610,7 +654,7 @@ export class PayrollControlService {
         return prisma.payrollControlRecord.findUniqueOrThrow({ where: { id: recordId }, include: recordInclude });
     }
 
-    static async updatePeriodStatus(periodId: string, status: string, reopenReason: string | undefined, userId: string) {
+    static async updatePeriodStatus(periodId: string, status: string, reopenReason: string | null | undefined, userId: string) {
         const period = await prisma.payrollControlPeriod.findUnique({ where: { id: periodId } });
         if (!period) throw new AppError('Período no encontrado.', 404);
         const transitions: Record<string, string[]> = {

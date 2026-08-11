@@ -7,6 +7,7 @@ import { EmployeesMobileList } from '../features/employees/components/EmployeesM
 import { EmployeesSelectionBar } from '../features/employees/components/EmployeesSelectionBar';
 import { EmployeesTable } from '../features/employees/components/EmployeesTable';
 import { useEmployeesPage } from '../features/employees/hooks/useEmployeesPage';
+import { EmployeeDeactivationDialog } from '../features/employees/components/EmployeeDeactivationDialog';
 
 export default function EmployeeList() {
     const page = useEmployeesPage();
@@ -106,6 +107,14 @@ export default function EmployeeList() {
                 onClose={page.handleCloseImportWizard}
                 onImported={page.handleImportCompleted}
                 onBusyChange={page.setImportBusy}
+            />
+
+            <EmployeeDeactivationDialog
+                open={page.showDeactivationDialog}
+                employeeCount={page.selectedIds.length}
+                busy={page.deactivationBusy}
+                onClose={() => page.setShowDeactivationDialog(false)}
+                onConfirm={page.handleConfirmDeactivation}
             />
         </div>
     );

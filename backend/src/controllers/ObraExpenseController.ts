@@ -50,6 +50,7 @@ export const ObraExpenseController = {
                 orderBy: { date: 'desc' },
                 include: {
                     employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } },
+                    contractor: { select: { id: true, name: true, nif: true } },
                     createdBy: { select: { id: true, email: true } }
                 }
             });
@@ -68,7 +69,7 @@ export const ObraExpenseController = {
             const { obraId } = req.params;
             const {
                 type, date, endDate, amount, amountMode, currency, description, vendor,
-                reference, origin, destination, employeeId, employeeIds
+                reference, origin, destination, employeeId, employeeIds, contractorId, contractorIds
             } = req.body || {};
 
             await ObraAuthorization.ensureActive(obraId);
@@ -87,28 +88,47 @@ export const ObraExpenseController = {
                 }
             }
 
-            const allocationCount = Math.max(1, selectedEmployeeIds.length);
+            // Los autónomos se aceptan como array (reparto con empleados) o como id
+            // único (gasto tipo CONTRACTOR). Se validan y se reparten igual que empleados.
+            const selectedContractorIds = Array.from(new Set([
+                ...(Array.isArray(contractorIds) ? contractorIds : []),
+                ...(contractorId ? [contractorId] : [])
+            ])) as string[];
+            if (selectedContractorIds.length > 0) {
+                const contractorCount = await prisma.obraContractor.count({
+                    where: { id: { in: selectedContractorIds } }
+                });
+                if (contractorCount !== selectedContractorIds.length) {
+                    throw new AppError('Uno o varios autónomos seleccionados no existen', 400);
+                }
+            }
+
+            const allocationCount = Math.max(1, selectedEmployeeIds.length + selectedContractorIds.length);
             const enteredAmount = Math.round(Number(amount) * 100) / 100;
             const dailyMode = type === 'PER_DIEM' && amountMode === 'PER_EMPLOYEE_DAY';
             const unitCount = dailyMode ? countInclusiveDays(date, endDate || date) : 1;
-            const amountPerEmployee = dailyMode
+            const amountPerPerson = dailyMode
                 ? Math.round(enteredAmount * unitCount * 100) / 100
                 : null;
             const allocatedAmounts = dailyMode
-                ? Array.from({ length: allocationCount }, () => amountPerEmployee as number)
+                ? Array.from({ length: allocationCount }, () => amountPerPerson as number)
                 : splitAmountEvenly(enteredAmount, allocationCount);
             const originalAmount = dailyMode
-                ? Math.round((amountPerEmployee as number) * allocationCount * 100) / 100
+                ? Math.round((amountPerPerson as number) * allocationCount * 100) / 100
                 : enteredAmount;
             const allocationGroupId = allocationCount > 1 ? randomUUID() : null;
             const sourceReference = reference ?? null;
-            const targets: Array<string | null> = selectedEmployeeIds.length > 0 ? selectedEmployeeIds : [null];
+            const targets: Array<{ employeeId: string | null; contractorId: string | null }> = [];
+            for (const eid of selectedEmployeeIds) targets.push({ employeeId: eid, contractorId: null });
+            for (const cid of selectedContractorIds) targets.push({ employeeId: null, contractorId: cid });
+            if (targets.length === 0) targets.push({ employeeId: null, contractorId: null });
 
-            const expenses = await prisma.$transaction(targets.map((targetEmployeeId, index) =>
+            const expenses = await prisma.$transaction(targets.map((target, index) =>
                 prisma.obraExpense.create({
                     data: {
                         obraId,
-                        employeeId: targetEmployeeId,
+                        employeeId: target.employeeId,
+                        contractorId: target.contractorId,
                         type,
                         date: new Date(date),
                         endDate: new Date(endDate || date),
@@ -147,6 +167,7 @@ export const ObraExpenseController = {
                     unitCount,
                     allocationCount,
                     employeeIds: selectedEmployeeIds,
+                    contractorIds: selectedContractorIds,
                     expenseIds: expenses.map((expense) => expense.id)
                 }
             });
@@ -154,12 +175,16 @@ export const ObraExpenseController = {
             CacheService.invalidateByPrefix('report:obra-summary:');
             CacheService.invalidateByPrefix('report:obra-employee:');
 
+            const successMessage = allocationCount > 1
+                ? `Gasto repartido entre ${allocationCount} ${selectedContractorIds.length > 0 ? 'personas' : 'empleados'}`
+                : 'Gasto creado';
+
             return ApiResponse.success(res, {
                 expenses,
                 allocationGroupId,
                 originalAmount,
                 allocationCount
-            }, allocationCount > 1 ? `Gasto repartido entre ${allocationCount} empleados` : 'Gasto creado', 201);
+            }, successMessage, 201);
         } catch (err: unknown) {
             if (err instanceof AppError) return ApiResponse.error(res, err.message, err.statusCode);
             return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al crear el gasto', 500);
@@ -190,6 +215,13 @@ export const ObraExpenseController = {
             if ('endDate' in updateData && updateData.endDate) updateData.endDate = new Date(updateData.endDate as string);
             if ('amount' in updateData) updateData.amount = Math.round(Number(updateData.amount) * 100) / 100;
             if ('employeeId' in updateData) updateData.employeeId = updateData.employeeId || null;
+            if ('contractorId' in updateData) {
+                updateData.contractorId = updateData.contractorId || null;
+                if (updateData.contractorId) {
+                    const contractor = await prisma.obraContractor.findUnique({ where: { id: updateData.contractorId as string } });
+                    if (!contractor) throw new AppError('El autónomo seleccionado no existe', 400);
+                }
+            }
 
             const effectiveType = String(updateData.type || existing.type);
             if (effectiveType === 'PER_DIEM' && amountMode === 'PER_EMPLOYEE_DAY') {
@@ -230,16 +262,49 @@ export const ObraExpenseController = {
             // C4: Verify obra is active (consistent with create)
             await ObraAuthorization.ensureActive(existing.obraId);
 
-            await prisma.obraExpense.delete({ where: { id } });
-            await AuditService.logWithContext('DELETE', 'OBRA_EXPENSE', id, {
-                userId,
-                ...ctx(req),
-                metadata: { snapshot: { type: existing.type, amount: Number(existing.amount), date: existing.date, obraId: existing.obraId } }
-            });
+            // ?allGroup=true borra todas las partes de un gasto repartido
+            // (mismo allocationGroupId) en una sola transacción, para que
+            // borrar desde la vista de un empleado no deje las partes de
+            // los demás como "huérfanas" de un grupo incompleto.
+            const allGroup = String(req.query.allGroup || '').toLowerCase() === 'true';
+            const hasGroup = Boolean(existing.allocationGroupId) && (existing.allocationCount || 1) > 1;
+
+            if (allGroup && hasGroup) {
+                const groupId = existing.allocationGroupId as string;
+                const groupSnapshot = await prisma.obraExpense.findMany({
+                    where: { allocationGroupId: groupId },
+                    select: { id: true, type: true, amount: true, date: true, obraId: true, employeeId: true }
+                });
+                await prisma.$transaction([
+                    prisma.obraExpense.deleteMany({ where: { allocationGroupId: groupId } })
+                ]);
+                await AuditService.logWithContext('DELETE', 'OBRA_EXPENSE_ALLOCATION', groupId, {
+                    userId,
+                    ...ctx(req),
+                    metadata: {
+                        scope: 'allGroup',
+                        obraId: existing.obraId,
+                        allocationCount: groupSnapshot.length,
+                        expenseIds: groupSnapshot.map((e) => e.id),
+                        snapshot: groupSnapshot.map((e) => ({ type: e.type, amount: Number(e.amount), date: e.date, employeeId: e.employeeId }))
+                    }
+                });
+            } else {
+                await prisma.obraExpense.delete({ where: { id } });
+                await AuditService.logWithContext('DELETE', 'OBRA_EXPENSE', id, {
+                    userId,
+                    ...ctx(req),
+                    metadata: { snapshot: { type: existing.type, amount: Number(existing.amount), date: existing.date, obraId: existing.obraId, employeeId: existing.employeeId } }
+                });
+            }
 
             CacheService.invalidateByPrefix('report:obra-summary:');
             CacheService.invalidateByPrefix('report:obra-employee:');
-            return ApiResponse.success(res, null, 'Gasto eliminado');
+            return ApiResponse.success(
+                res,
+                null,
+                allGroup && hasGroup ? 'Gasto repartido eliminado por completo' : 'Gasto eliminado'
+            );
         } catch (err: unknown) {
             return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al eliminar el gasto', 500);
         }
@@ -263,7 +328,8 @@ export const ObraExpenseController = {
                 orderBy: { date: 'desc' },
                 include: {
                     obra: { select: { id: true, code: true, name: true } },
-                    employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } }
+                    employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } },
+                    contractor: { select: { id: true, name: true, nif: true } }
                 },
                 take: cap
             });

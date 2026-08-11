@@ -13,6 +13,66 @@ import { serveLocalUploadFile } from '../utils/fileDownload';
 
 const log = createLogger('InventoryController');
 
+/**
+ * Alias de cabeceras aceptadas en la importación CSV. Permite que un
+ * CSV exportado por la propia app (p.ej. "Stock Minimo", "Precio
+ * Unitario") se pueda reimportar sin perder columnas, además de las
+ * variantes en inglés.
+ */
+const CSV_HEADER_ALIASES: Record<string, string> = {
+    nombre: 'nombre', name: 'nombre',
+    categoria: 'categoria', category: 'categoria',
+    cantidad: 'cantidad', quantity: 'cantidad',
+    minimo: 'minimo', 'stock minimo': 'minimo', 'min quantity': 'minimo', minquantity: 'minimo',
+    talla: 'talla', size: 'talla',
+    sku: 'sku', referencia: 'sku',
+    marca: 'marca', brand: 'marca',
+    precio: 'precio', price: 'precio', 'precio unitario': 'precio',
+    proveedor: 'proveedor', supplier: 'proveedor',
+    ubicacion: 'ubicacion', location: 'ubicacion',
+    descripcion: 'descripcion', description: 'descripcion'
+};
+
+/**
+ * Parser CSV mínimo con soporte de campos entrecomillados (RFC 4180):
+ * comas dentro de comillas, comillas escapadas ("") y saltos de línea
+ * dentro de campos. Devuelve filas de campos ya recortados.
+ */
+function parseCsv(content: string): string[][] {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = '';
+    let inQuotes = false;
+    for (let i = 0; i < content.length; i++) {
+        const ch = content[i];
+        if (inQuotes) {
+            if (ch === '"') {
+                if (content[i + 1] === '"') { field += '"'; i++; } else { inQuotes = false; }
+            } else {
+                field += ch;
+            }
+        } else if (ch === '"') {
+            inQuotes = true;
+        } else if (ch === ',') {
+            row.push(field.trim());
+            field = '';
+        } else if (ch === '\n' || ch === '\r') {
+            if (ch === '\r' && content[i + 1] === '\n') i++;
+            row.push(field.trim());
+            field = '';
+            if (row.some(f => f !== '')) rows.push(row);
+            row = [];
+        } else {
+            field += ch;
+        }
+    }
+    if (field !== '' || row.length > 0) {
+        row.push(field.trim());
+        if (row.some(f => f !== '')) rows.push(row);
+    }
+    return rows;
+}
+
 export const InventoryController = {
     getAll: async (req: Request, res: Response) => {
         try {
@@ -96,11 +156,11 @@ export const InventoryController = {
     try {
       const { id } = req.params;
       const { category, name, quantity, minQuantity, description, size, unitPrice, type, brand, sku, supplier, warehouseLocation } = req.body;
+      const userId = (req as AuthenticatedRequest).user?.id;
 
       const data: any = {};
       if (category !== undefined) data.category = category;
       if (name !== undefined) data.name = name;
-      if (quantity !== undefined) data.quantity = Number(quantity);
       if (minQuantity !== undefined) data.minQuantity = Number(minQuantity);
       if (description !== undefined) data.description = description;
       if (size !== undefined) data.size = size;
@@ -111,9 +171,33 @@ export const InventoryController = {
       if (supplier !== undefined) data.supplier = supplier;
       if (warehouseLocation !== undefined) data.warehouseLocation = warehouseLocation;
 
-      const item = await prisma.inventoryItem.update({
-        where: { id },
-        data
+      // La cantidad nunca se modifica en silencio: si cambia, se registra
+      // un movimiento ADJUSTMENT en la misma transacción para mantener la
+      // trazabilidad del stock (el historial y la cantidad no deben divergir).
+      const item = await prisma.$transaction(async (tx) => {
+        if (quantity !== undefined) {
+          const current = await tx.inventoryItem.findUnique({
+            where: { id },
+            select: { quantity: true }
+          });
+          if (!current) {
+            throw new AppError('Producto no encontrado', 404);
+          }
+          const delta = Number(quantity) - current.quantity;
+          if (delta !== 0) {
+            await tx.inventoryMovement.create({
+              data: {
+                inventoryItemId: id,
+                type: 'ADJUSTMENT',
+                quantity: delta,
+                userId,
+                notes: 'Ajuste de stock desde edición de producto'
+              }
+            });
+            data.quantity = { increment: delta };
+          }
+        }
+        return tx.inventoryItem.update({ where: { id }, data });
       });
 
       return ApiResponse.success(res, item);
@@ -126,6 +210,24 @@ export const InventoryController = {
     delete: async (req: Request, res: Response) => {
         try {
             const { id } = req.params;
+
+            // Bloquear el borrado si hay CUALQUIER activo vinculado
+            // (asignado o devuelto). El historial de entregas es
+            // auditable y no debe desaparecer solo porque se retira
+            // el producto del catálogo.
+            const assetCount = await prisma.asset.count({
+                where: { inventoryItemId: id }
+            });
+            if (assetCount > 0) {
+                const assigned = await prisma.asset.count({
+                    where: { inventoryItemId: id, status: 'ASSIGNED' }
+                });
+                const msg = assigned > 0
+                    ? `No se puede eliminar: hay ${assigned} activo(s) asignado(s) de este producto. Devuélvelos primero.`
+                    : `No se puede eliminar: hay ${assetCount} registro(s) historico(s) vinculado(s) a este producto.`;
+                return ApiResponse.error(res, msg, 400);
+            }
+
             await prisma.inventoryItem.delete({
                 where: { id }
             });
@@ -193,16 +295,20 @@ export const InventoryController = {
                     throw new AppError('Stock insuficiente', 400);
                 }
 
-                await tx.asset.create({
-                    data: {
-                        employeeId,
-                        name: item.name,
-                        category: item.category,
-                        serialNumber: serialNumber || undefined,
-                        status: 'ASSIGNED',
-                        inventoryItemId: id
-                    }
-                });
+                // Un Asset por unidad: cada devolución repone exactamente 1
+                // unidad, así el stock nunca descuadra al distribuir N > 1.
+                for (let i = 0; i < Number(quantity); i++) {
+                    await tx.asset.create({
+                        data: {
+                            employeeId,
+                            name: item.name,
+                            category: item.category,
+                            serialNumber: serialNumber || undefined,
+                            status: 'ASSIGNED',
+                            inventoryItemId: id
+                        }
+                    });
+                }
 
                 await tx.inventoryMovement.create({
                     data: {
@@ -271,7 +377,9 @@ export const InventoryController = {
                 docRecord = await DocumentTemplateService.generateTechDeviceInternal(
                     employeeId,
                     deviceName || item.name,
-                    serialNumber || 'N/A'
+                    serialNumber || 'N/A',
+                    undefined,
+                    item.imei || undefined
                 );
             } else if (item.category === 'EPI') {
                 docRecord = await DocumentTemplateService.generateEPIInternal(
@@ -377,43 +485,71 @@ export const InventoryController = {
                 return ApiResponse.error(res, 'No se ha subido ningun archivo', 400);
             }
 
-            const content = fs.readFileSync(req.file.path, 'utf-8');
-            const lines = content.split('\n').filter(l => l.trim());
-            if (lines.length < 2) {
+            // replace(/^\uFEFF/, ...): los CSV exportados desde Excel llevan
+            // BOM UTF-8; sin quitarlo la primera cabecera nunca coincide.
+            const content = fs.readFileSync(req.file.path, 'utf-8').replace(/^\uFEFF/, '');
+            const csvRows = parseCsv(content);
+            if (csvRows.length < 2) {
                 return ApiResponse.error(res, 'El CSV esta vacio o no tiene cabeceras', 400);
             }
 
-            const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+            const headers = csvRows[0].map(h => {
+                const clean = h.toLowerCase().replace(/^['"]|['"]$/g, '').trim();
+                return CSV_HEADER_ALIASES[clean] ?? clean;
+            });
             const results = { created: 0, errors: 0, errorDetails: [] as string[] };
+            const userId = (req as AuthenticatedRequest).user?.id;
 
-            for (let i = 1; i < lines.length; i++) {
+            for (let i = 1; i < csvRows.length; i++) {
                 try {
-                    const values = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g, ''));
+                    const values = csvRows[i];
                     const row: Record<string, string> = {};
                     headers.forEach((h, idx) => { row[h] = values[idx] || ''; });
 
                     const name = row.nombre || row.name || '';
                     if (!name) { results.errors++; results.errorDetails.push(`Fila ${i + 1}: sin nombre`); continue; }
 
+                    const qty = Number(row.cantidad || row.quantity || 0);
+                    if (!Number.isInteger(qty) || qty < 0) {
+                        results.errors++;
+                        results.errorDetails.push(`Fila ${i + 1}: cantidad invalida ("${row.cantidad || row.quantity || ''}")`);
+                        continue;
+                    }
+                    const minQtyRaw = Number(row.minimo || row.minQuantity);
+                    const minQuantity = Number.isInteger(minQtyRaw) && minQtyRaw >= 0 ? minQtyRaw : 5;
+
                     const existing = await prisma.inventoryItem.findFirst({ where: { name, size: row.talla || row.size || null } });
                     if (existing) {
                         await prisma.inventoryItem.update({
                             where: { id: existing.id },
                             data: {
-                                quantity: { increment: Number(row.cantidad || row.quantity || 0) },
+                                quantity: { increment: qty },
                                 category: row.categoria || row.category || existing.category,
                                 sku: row.sku || existing.sku,
                                 brand: row.marca || row.brand || existing.brand,
                                 unitPrice: row.precio || row.price ? Number(row.precio || row.price) : existing.unitPrice
                             }
                         });
+                        // El incremento de stock queda registrado como ENTRY
+                        // para mantener la trazabilidad del inventario.
+                        if (qty > 0) {
+                            await prisma.inventoryMovement.create({
+                                data: {
+                                    inventoryItemId: existing.id,
+                                    type: 'ENTRY',
+                                    quantity: qty,
+                                    userId,
+                                    notes: 'Importación CSV'
+                                }
+                            });
+                        }
                     } else {
-                        await prisma.inventoryItem.create({
+                        const createdItem = await prisma.inventoryItem.create({
                             data: {
                                 name,
                                 category: row.categoria || row.category || 'OTHER',
-                                quantity: Number(row.cantidad || row.quantity || 0),
-                                minQuantity: Number(row.minimo || row.minQuantity || 5),
+                                quantity: qty,
+                                minQuantity,
                                 size: row.talla || row.size || null,
                                 sku: row.sku || null,
                                 brand: row.marca || row.brand || null,
@@ -423,6 +559,17 @@ export const InventoryController = {
                                 description: row.descripcion || row.description || null
                             }
                         });
+                        if (qty > 0) {
+                            await prisma.inventoryMovement.create({
+                                data: {
+                                    inventoryItemId: createdItem.id,
+                                    type: 'ENTRY',
+                                    quantity: qty,
+                                    userId,
+                                    notes: 'Stock inicial (importación CSV)'
+                                }
+                            });
+                        }
                     }
                     results.created++;
                 } catch (e) {

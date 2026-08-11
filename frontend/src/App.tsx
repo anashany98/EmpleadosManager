@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, useLocation, Navigate } from 'react-router-dom';
+import { Routes, Route, useLocation, Navigate } from 'react-router';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Toaster } from 'sonner';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -51,7 +51,11 @@ const AbsenceTypesPage = lazy(() => import('./pages/AbsenceTypesPage'));
 const ObrasPage = lazy(() => import('./pages/ObrasPage'));
 const ObraDetailPage = lazy(() => import('./pages/ObraDetailPage'));
 const ObraImportPage = lazy(() => import('./pages/ObraImportPage'));
+const ContractorsPage = lazy(() => import('./pages/ContractorsPage'));
 const PayrollControlPage = lazy(() => import('./pages/PayrollControlPage'));
+const HrTaskCenterPage = lazy(() => import('./pages/HrTaskCenterPage'));
+const HrMonthlyClosePage = lazy(() => import('./pages/HrMonthlyClosePage'));
+const HrAlertSettingsPage = lazy(() => import('./pages/HrAlertSettingsPage'));
 
 function RouteLoading() {
   return (
@@ -170,6 +174,9 @@ function AppContent() {
                   <Route path="/employees/:id" element={<ProtectedRoute feature="employeeDetail"><EmployeeDetail /></ProtectedRoute>} />
                   <Route path="/employees/org-chart" element={<ProtectedRoute feature="orgChart"><OrgChart /></ProtectedRoute>} />
                   <Route path="/employees/rrhh-dashboard" element={<ProtectedRoute feature="employees"><RRHHDashboard /></ProtectedRoute>} />
+                  <Route path="/hr/tasks" element={<ProtectedRoute feature="employees"><HrTaskCenterPage /></ProtectedRoute>} />
+                  <Route path="/hr/monthly-close" element={<ProtectedRoute feature="employees"><HrMonthlyClosePage /></ProtectedRoute>} />
+                  <Route path="/hr/alerts" element={<ProtectedRoute feature="employees"><HrAlertSettingsPage /></ProtectedRoute>} />
                   <Route path="/companies" element={<ProtectedRoute feature="companies"><Companies /></ProtectedRoute>} />
                   <Route path="/calendar" element={<ProtectedRoute feature="calendar"><CalendarPage /></ProtectedRoute>} />
                   <Route path="/audit" element={<ProtectedRoute feature="audit"><AuditLogPage /></ProtectedRoute>} />
@@ -200,6 +207,7 @@ function AppContent() {
                   <Route path="/performance" element={<ProtectedRoute feature="performance"><PerformancePage /></ProtectedRoute>} />
                   <Route path="/obras" element={<ProtectedRoute feature="projects"><ObrasPage /></ProtectedRoute>} />
                   <Route path="/obras/imports" element={<ProtectedRoute feature="projects"><ObraImportPage /></ProtectedRoute>} />
+                  <Route path="/obras/contractors" element={<ProtectedRoute feature="projects"><ContractorsPage /></ProtectedRoute>} />
                   <Route path="/obras/:id" element={<ProtectedRoute feature="projects"><ObraDetailPage /></ProtectedRoute>} />
                   <Route path="/login" element={<Navigate to="/" replace />} />
                 </Routes>

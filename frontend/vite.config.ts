@@ -134,8 +134,7 @@ export default defineConfig({
           if (
             normalizedId.includes('/node_modules/react/') ||
             normalizedId.includes('/node_modules/react-dom/') ||
-            normalizedId.includes('/node_modules/react-router-dom/') ||
-            normalizedId.includes('/node_modules/@remix-run/router/') ||
+            normalizedId.includes('/node_modules/react-router/') ||
             normalizedId.includes('/node_modules/scheduler/') ||
             normalizedId.includes('/node_modules/react-is/') ||
             normalizedId.includes('/node_modules/use-sync-external-store/')

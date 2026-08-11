@@ -15,7 +15,7 @@ export const generateUniform = async (employeeId: string, items?: Array<{ id?: s
     const itemsWithId = (items || []).filter((it): it is { id: string; name: string; size?: string; quantity?: number } => Boolean(it.id));
     if (itemsWithId.length > 0) {
         await InventoryService.assertStockForItems(
-            itemsWithId.map((it) => ({ itemId: it.id, quantity: 1 }))
+            itemsWithId.map((it) => ({ itemId: it.id, quantity: Math.max(1, it.quantity ?? 1) }))
         );
     }
 
@@ -27,21 +27,26 @@ export const generateUniform = async (employeeId: string, items?: Array<{ id?: s
         try {
             await prisma.$transaction(async (tx) => {
                 for (const item of itemsWithId) {
+                    const qty = Math.max(1, item.quantity ?? 1);
                     await InventoryService.recordMovementInTx(tx, {
                         itemId: item.id,
                         type: 'ASSIGNMENT',
-                        quantity: 1,
+                        quantity: qty,
                         userId: authorName || 'SYSTEM',
                         employeeId,
-                        notes: `Acta Uniforme: ${item.name} ${item.size ? `(${item.size})` : ''}`
+                        notes: `Acta Uniforme: ${item.name} ${item.size ? `(${item.size})` : ''} x${qty}`
                     });
-                    await tx.asset.create({
-                        data: {
-                            employeeId, category: 'UNIFORM', name: item.name, status: 'ASSIGNED',
-                            inventoryItemId: item.id, assignedDate: new Date(),
-                            notes: `Acta Uniforme: ${item.name} ${item.size ? `(${item.size})` : ''}`
-                        }
-                    });
+                    // Un Asset por unidad entregada: las devoluciones
+                    // reponen exactamente 1 unidad por registro.
+                    for (let i = 0; i < qty; i++) {
+                        await tx.asset.create({
+                            data: {
+                                employeeId, category: 'UNIFORM', name: item.name, status: 'ASSIGNED',
+                                inventoryItemId: item.id, assignedDate: new Date(),
+                                notes: `Acta Uniforme: ${item.name} ${item.size ? `(${item.size})` : ''}`
+                            }
+                        });
+                    }
                 }
             });
         } catch (err) {

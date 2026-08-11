@@ -1,4 +1,4 @@
-export type ElementType = 'text' | 'variable' | 'box' | 'line' | 'image' | 'logo';
+export type ElementType = 'text' | 'variable' | 'box' | 'line' | 'image' | 'logo' | 'qr';
 
 export interface CanvasElement {
     id: string;
@@ -17,6 +17,9 @@ export interface CanvasElement {
     borderWidth?: number;
     src?: string;
     rotation?: number;
+    locked?: boolean;
+    qrDataSource?: 'document' | 'custom' | 'variable';
+    qrValue?: string;
 }
 
 export interface Template {

@@ -6,8 +6,10 @@ import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../types/express';
 
 function getRequesterIp(req: Request): string | undefined {
-    const forwardedFor = req.headers['x-forwarded-for'];
-    if (typeof forwardedFor === 'string') return forwardedFor.split(',')[0].trim();
+    // ALT-1: NO leer el header X-Forwarded-For crudo — la entrada de la
+    // izquierda la puede inventar el cliente y falsearía la IP del audit
+    // de consentimientos. Con `trust proxy = 1` (createApp.ts), Express
+    // ya calcula `req.ip` correctamente a partir del proxy de confianza.
     return req.ip;
 }
 

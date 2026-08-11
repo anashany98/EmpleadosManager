@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { AuthenticatedRequest } from '../types/express';
 import { canManageEmployee, canReadEmployeeDetail } from '../policies/employeeAccess';
 import { ApiResponse } from '../utils/ApiResponse';
+import { Prisma } from '@prisma/client';
 
 export class EmployeeProjectWorkController {
     async getByEmployee(req: Request, res: Response) {
@@ -22,8 +23,26 @@ export class EmployeeProjectWorkController {
                 return ApiResponse.error(res, 'No autorizado', 403);
             }
 
+            // Filtro opcional por rango de fechas (solape): sirve para
+            // imputar horas a obras desde el control horario (un día o un
+            // mes completos) sin traer todo el historial del empleado.
+            const { from, to } = req.query;
+            const where: Prisma.EmployeeProjectWorkWhereInput = { employeeId };
+            if (from || to) {
+                const gte = from ? new Date(String(from)) : null;
+                const lte = to ? new Date(String(to)) : null;
+                const validFrom = gte && !isNaN(gte.getTime());
+                const validTo = lte && !isNaN(lte.getTime());
+                if (validFrom || validTo) {
+                    where.AND = [
+                        ...(validFrom ? [{ endDate: { gte: gte } }] : []),
+                        ...(validTo ? [{ startDate: { lte: lte } }] : [])
+                    ];
+                }
+            }
+
             const entries = await prisma.employeeProjectWork.findMany({
-                where: { employeeId },
+                where,
                 include: { project: true },
                 orderBy: { startDate: 'desc' }
             });

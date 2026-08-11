@@ -124,7 +124,8 @@ export class ObraReportService {
                     where: employeeWhere,
                     include: {
                         obra: { select: { id: true, code: true, name: true } },
-                        employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } }
+                        employee: { select: { id: true, name: true, firstName: true, lastName: true, dni: true } },
+                        contractor: { select: { id: true, name: true } }
                     }
                 }),
                 prisma.employeeProjectWork.findMany({
@@ -169,9 +170,12 @@ export class ObraReportService {
             };
 
             for (const e of expenses) {
-                const empName = e.employee?.name || `${e.employee?.firstName || ''} ${e.employee?.lastName || ''}`.trim() || 'Sin empleado';
+                const empName = e.employee?.name
+                    || `${e.employee?.firstName || ''} ${e.employee?.lastName || ''}`.trim()
+                    || e.contractor?.name
+                    || 'Sin empleado';
                 const row = upsert(
-                    e.employeeId,
+                    e.employeeId || e.contractorId || null,
                     empName,
                     e.obraId,
                     e.obra?.code || '',

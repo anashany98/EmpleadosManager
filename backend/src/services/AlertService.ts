@@ -199,6 +199,29 @@ export class AlertService {
         await this.generateContractAlerts();
         await this.generateStockAlerts();
         await this.generateVehicleAlerts();
+        await this.generateHrWorkspaceTasks();
+    }
+
+    private async generateHrWorkspaceTasks() {
+        try {
+            const { HrWorkspaceService } = await import('./HrWorkspaceService');
+            const companies = await prisma.company.findMany({
+                select: { id: true }
+            });
+            const systemActor = {
+                id: 'SYSTEM',
+                email: 'sistema@local',
+                role: 'admin',
+                companyId: undefined,
+                permissions: {}
+            } as AuthUser;
+
+            for (const company of companies) {
+                await HrWorkspaceService.syncAutomaticTasks(systemActor, company.id);
+            }
+        } catch (error) {
+            log.error({ error }, 'Error synchronizing HR workspace tasks');
+        }
     }
 
     // Check for vehicle maintenance, ITV, and insurance

@@ -15,6 +15,9 @@ router.get('/smtp', protect, requireGlobalAdmin, SmtpController.getSmtpConfig);
 router.post('/smtp', protect, requireGlobalAdmin, SmtpController.saveSmtpConfig);
 router.post('/smtp/test', protect, requireGlobalAdmin, SmtpController.testSmtpConfig);
 
+// IMAP connection test (diagnose why inbox emails don't arrive)
+router.post('/inbox/test', protect, requireGlobalAdmin, ConfigController.testImap);
+
 // Generic config routes
 router.get('/:key', protect, requireGlobalAdmin, ConfigController.getConfig);
 router.post('/:key', protect, requireGlobalAdmin, ConfigController.saveConfig);

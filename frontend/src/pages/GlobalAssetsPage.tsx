@@ -8,12 +8,13 @@ import GlobalAssetsStockTab from './GlobalAssetsStockTab';
 import { useAuth } from '../contexts/AuthContext';
 
 export const CATEGORY_MAP: Record<string, string> = {
-    'DEVICE': 'Dispositivo',
+    'TECH': 'Dispositivo',
+    'DEVICE': 'Dispositivo', // alias histórico de TECH
     'VEHICLE': 'Vehículo',
     'EPI': 'EPI',
     'TOOL': 'Herramienta',
-    'CLOTHING': 'Ropa',
     'UNIFORM': 'Uniforme',
+    'CLOTHING': 'Uniforme', // alias histórico de UNIFORM (la "Ropa" se fusiona con Uniforme)
     'OTHER': 'Otro'
 };
 
@@ -149,9 +150,8 @@ export default function GlobalAssetsPage() {
                             >
                                 <option value="ALL">Todas</option>
                                 <option value="EPI">EPI</option>
-                                <option value="DEVICE">Dispositivos</option>
+                                <option value="TECH">Dispositivos</option>
                                 <option value="TOOL">Herramientas</option>
-                                <option value="CLOTHING">Ropa</option>
                                 <option value="UNIFORM">Uniformes</option>
                                 <option value="OTHER">Otros</option>
                             </select>

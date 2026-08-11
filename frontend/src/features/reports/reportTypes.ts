@@ -8,10 +8,11 @@ import {
     LineChart,
     Stethoscope,
     TrendingUp,
-    Users
+    Users,
+    UserMinus
 } from 'lucide-react';
 
-export type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'KPIS' | 'GENDER_GAP' | 'OBRA_SUMMARY' | 'OBRA_EMPLOYEES' | 'PRL_MEDICAL' | 'PRL_TRAINING';
+export type ReportType = 'ATTENDANCE' | 'OVERTIME' | 'VACATIONS' | 'COSTS' | 'ABSENCES_DETAILED' | 'TERMINATIONS' | 'KPIS' | 'GENDER_GAP' | 'OBRA_SUMMARY' | 'OBRA_EMPLOYEES' | 'PRL_MEDICAL' | 'PRL_TRAINING';
 export type ReportTone = 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
 
 /**
@@ -29,7 +30,7 @@ export interface ReportCategoryDefinition {
 export const reportCategories: ReportCategoryDefinition[] = [
     { id: 'ATTENDANCE', label: 'Asistencia',    description: 'Jornadas, horas extra y marcas de los empleados.' },
     { id: 'TIME',       label: 'Tiempo',        description: 'Vacaciones, bajas, permisos y demás ausencias.' },
-    { id: 'COSTS',      label: 'Costes y org.', description: 'Nóminas, KPIs globales y brecha de género.' },
+    { id: 'COSTS',      label: 'Plantilla y costes', description: 'Bajas de plantilla, nóminas, KPIs e igualdad.' },
     { id: 'OBRAS',      label: 'Obras',         description: 'Resumen de horas y gastos por proyecto.' },
     { id: 'PRL',        label: 'PRL',           description: 'Prevención de riesgos: médicas y formación.' }
 ];
@@ -108,6 +109,15 @@ export const reportsCatalog: ReportDefinition[] = [
         tone: 'violet',
         endpoint: '/reports/costs',
         icon: Building2,
+        category: 'COSTS'
+    },
+    {
+        id: 'TERMINATIONS',
+        name: 'Bajas y despidos',
+        description: 'Salidas mensuales de plantilla con nombre, DNI, fecha, tipo y motivo.',
+        tone: 'rose',
+        endpoint: '/reports/terminations',
+        icon: UserMinus,
         category: 'COSTS'
     },
     {

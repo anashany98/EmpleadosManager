@@ -6,6 +6,13 @@ vi.mock('../lib/prisma', () => ({
         documentTemplate: {
             findUnique: vi.fn(),
             delete: vi.fn()
+        },
+        employee: {
+            findUnique: vi.fn()
+        },
+        company: {
+            findUnique: vi.fn(),
+            update: vi.fn()
         }
     }
 }));
@@ -47,6 +54,7 @@ vi.mock('../services/LoggerService', () => ({
 import { DocumentTemplateController } from './DocumentTemplateController';
 import { CompanyDocumentTemplateService } from '../services/documents/DocumentTemplateService';
 import { DocumentTemplateService } from '../services/DocumentTemplateService';
+import { prisma } from '../lib/prisma';
 
 const mockResponse = () => {
     const res: Partial<Response> = {
@@ -87,7 +95,6 @@ describe('DocumentTemplateController.generateGeneric', () => {
         expect(CompanyDocumentTemplateService.generateDocumentFromTemplate).toHaveBeenCalledWith({
             employeeId: 'emp-1',
             type: 'CERTIFICADO_EMPRESA',
-            companyId: 'company-1',
             authorName: 'Directora RRHH',
             extraContext: undefined
         });
@@ -126,6 +133,66 @@ describe('DocumentTemplateController.generateGeneric', () => {
             type: 'NDA',
             authorName: 'Usuario actual'
         }));
+    });
+});
+
+describe('DocumentTemplateController.uploadLogo', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('persists the uploaded logo as the company-wide document logo', async () => {
+        vi.mocked(prisma.company.findUnique).mockResolvedValue({ logoUrl: null } as never);
+        vi.mocked(prisma.company.update).mockResolvedValue({ id: 'company-1' } as never);
+        const req = {
+            user: { id: 'user-1', companyId: 'company-1' },
+            file: {
+                filename: 'company-logo.png',
+                path: 'C:\\missing-test-file\\company-logo.png'
+            }
+        } as unknown as Request;
+        const res = mockResponse();
+
+        await DocumentTemplateController.uploadLogo(req, res);
+
+        expect(prisma.company.update).toHaveBeenCalledWith({
+            where: { id: 'company-1' },
+            data: { logoUrl: '/uploads/template-logos/company-logo.png' }
+        });
+        expect(res.status).toHaveBeenCalledWith(201);
+    });
+});
+
+describe('DocumentTemplateController.listStoredTemplates', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+    });
+
+    it('loads the effective catalog for the employee when a global admin opens the generator', async () => {
+        vi.mocked(prisma.employee.findUnique).mockResolvedValue({
+            id: 'emp-1',
+            companyId: 'company-employee'
+        } as never);
+        vi.mocked(CompanyDocumentTemplateService.listTemplates).mockResolvedValue([] as never);
+
+        const req = {
+            query: { employeeId: 'emp-1' },
+            user: {
+                id: 'admin-global',
+                name: 'Admin global',
+                role: 'admin',
+                companyId: null
+            }
+        } as unknown as Request;
+        const res = mockResponse();
+
+        await DocumentTemplateController.listStoredTemplates(req, res);
+
+        expect(CompanyDocumentTemplateService.listTemplates).toHaveBeenCalledWith({
+            companyId: 'company-employee',
+            includeGlobal: true
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
     });
 });
 

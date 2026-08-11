@@ -43,7 +43,9 @@ interface InventoryItem {
     size?: string;
     unit?: string;
     category?: string;
+    sku?: string;
     serialNumber?: string;
+    imei?: string;
 }
 
 interface TemplateCardMeta {
@@ -69,7 +71,7 @@ const TEMPLATE_CARD_META: Record<string, TemplateCardMeta> = {
     CERTIFICADO_TRABAJO: { icon: FileText, section: 'rrhh' },
     CARTA_FORMAL: { icon: FileText, section: 'rrhh' },
     JUSTIFICANTE_AUSENCIA: { icon: FileText, section: 'rrhh' },
-    FIRMA_DIETAS: { icon: FileText, section: 'rrhh' }
+    OBRA_EXPENSE_RECEIPT: { icon: FileText, section: 'rrhh' }
 };
 
 const SECTION_TITLES = {
@@ -159,7 +161,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                     api.get<unknown>('/inventory'),
                     api.get<unknown>(`/employees/${employeeId}`),
                     api.get<unknown>('/document-templates/list'),
-                    api.get<unknown>('/document-templates/stored')
+                    api.get<unknown>(`/document-templates/stored?employeeId=${encodeURIComponent(employeeId)}`)
                 ]);
 
                 setInventoryItems(extractApiArray<InventoryItem>(inventoryResponse));
@@ -246,10 +248,6 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                 serialNumber: item.serialNumber
             }
         ]);
-    };
-
-    const updateItemSize = (id: string, size: string) => {
-        setSelectedItems((current) => current.map((item) => item.id === id ? { ...item, size } : item));
     };
 
     const handleAbsenceDateChange = (field: 'fechaInicio' | 'fechaFin', value: string) => {
@@ -406,7 +404,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                             {selectedItems.length > 0 && (
                                 <div className="space-y-4 animate-in fade-in duration-300">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                                        {docType === 'ENTREGA_MATERIAL' ? 'Configurar detalles' : 'Configurar tallas / notas'}
+                                        {docType === 'ENTREGA_MATERIAL' ? 'Configurar detalles' : 'Configurar unidades'}
                                     </label>
                                     {selectedItems.map((item) => (
                                         <div key={item.id} className="flex flex-col gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700 md:flex-row md:items-center">
@@ -429,10 +427,13 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                                 </>
                                             ) : (
                                                 <input
-                                                    placeholder="Talla / nota"
-                                                    className="w-full md:w-40 px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border-none text-xs font-bold"
-                                                    value={item.size || ''}
-                                                    onChange={(event) => updateItemSize(item.id || '', event.target.value)}
+                                                    type="number"
+                                                    min="1"
+                                                    title="Unidades a entregar"
+                                                    aria-label="Unidades a entregar"
+                                                    className="w-24 px-4 py-2 rounded-xl bg-white dark:bg-slate-900 border-none text-xs font-bold"
+                                                    value={item.quantity || 1}
+                                                    onChange={(event) => updateItemQuantity(item.id || '', event.target.value)}
                                                 />
                                             )}
                                         </div>
@@ -481,7 +482,9 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                             onClick={() => setSelectedTechItem(isSelected ? null : {
                                                 id: item.id,
                                                 name: item.name,
-                                                serialNumber: item.serialNumber
+                                                sku: item.sku,
+                                                serialNumber: item.serialNumber,
+                                                imei: item.imei
                                             })}
                                             className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center justify-between group ${
                                                 isSelected
@@ -500,6 +503,27 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                                     );
                                 })}
                             </div>
+
+                            {selectedTechItem && (
+                                <div className="grid grid-cols-1 gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-700">
+                                    <div>
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                            IMEI <span className="text-slate-400 normal-case font-medium">(opcional)</span>
+                                        </label>
+                                        <input
+                                            value={selectedTechItem.imei || ''}
+                                            onChange={(event) => setSelectedTechItem((current) => current ? { ...current, imei: event.target.value } : current)}
+                                            className="w-full px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-700 text-xs font-bold focus:ring-2 focus:ring-blue-500 font-mono"
+                                            placeholder="15 digitos"
+                                            inputMode="numeric"
+                                            pattern="[0-9]{15}"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-1">
+                                            El número de serie del acta se toma de la <strong>Referencia / SKU</strong> del item ({selectedTechItem.sku || selectedTechItem.serialNumber || selectedTechItem.id || 'sin SKU'}).
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -576,11 +600,11 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                         </div>
                     )}
 
-                    {docType === 'FIRMA_DIETAS' && (
+                    {docType === 'OBRA_EXPENSE_RECEIPT' && (
                         <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 text-blue-950">
                             <p className="font-semibold">Los recibís de dietas se generan desde la pestaña Dietas.</p>
                             <p className="mt-1 text-sm text-blue-800">
-                                Allí se usan directamente los gastos de las obras, sus fechas, el importe repartido y el empleado. Así no se duplican ni se escriben datos distintos a los contabilizados.
+                                Esta es la misma plantilla que se aplica allí a los gastos contabilizados, sus fechas, importes, obra y empleado.
                             </p>
                         </div>
                     )}
@@ -641,7 +665,7 @@ export default function DocumentGenerator({ employeeId, onDocumentGenerated }: D
                     <div className="flex justify-end border-t border-slate-100 pt-6 dark:border-slate-800">
                         <button
                             onClick={handleGenerate}
-                            disabled={loading || docType === 'FIRMA_DIETAS' || (docType === 'TECH_DEVICE' && !selectedTechItem)}
+                            disabled={loading || docType === 'OBRA_EXPENSE_RECEIPT' || (docType === 'TECH_DEVICE' && !selectedTechItem)}
                             className="group flex min-h-11 items-center gap-3 rounded-lg bg-slate-900 px-6 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-white dark:text-slate-900"
                         >
                             {loading ? <Loader2 className="animate-spin" /> : <Sparkles className="group-hover:animate-pulse" />}

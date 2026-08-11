@@ -1,5 +1,5 @@
 import { Clock, CheckCircle, UserPlus, UserMinus } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 
 interface PendingRequestsWidgetProps {
     metrics?: any;

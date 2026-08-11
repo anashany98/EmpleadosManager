@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Moon, Settings, Wifi, WifiOff, Delete } from 'lucide-react';
 import { API_URL } from '../../api/client';
 import { KioskAdminPanel } from '../../components/KioskAdminPanel';

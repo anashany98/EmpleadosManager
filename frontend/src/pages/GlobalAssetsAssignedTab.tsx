@@ -1,8 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { api } from '../api/client';
-import { Package, Search, ChevronRight } from 'lucide-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { toast } from 'sonner';
+import { Package } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 
 interface Asset {
@@ -10,20 +9,36 @@ interface Asset {
     name: string;
     category: string;
     status: string;
-    assignedTo?: { name: string };
+    employee?: { id: string; firstName: string; lastName: string };
     serialNumber?: string;
-    assignedAt?: string;
+    imei?: string;
+    assignedDate?: string;
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+    EPI: 'EPI', TECH: 'Dispositivo', DEVICE: 'Dispositivo', TOOL: 'Herramienta',
+    UNIFORM: 'Uniforme', CLOTHING: 'Uniforme', OTHER: 'Otro'
+};
+
+const STATUS_LABELS: Record<string, string> = {
+    ASSIGNED: 'Asignado', RETURNED: 'Devuelto', ACTIVE: 'Activo',
+    MAINTENANCE: 'Mantenimiento', RETIRED: 'Retirado', LOST: 'Perdido',
+    DAMAGED: 'Dañado', AVAILABLE: 'Disponible'
+};
 
 interface AssignedTabProps {
     searchTerm: string;
     filterCategory: string;
 }
 
+const getEmployeeName = (asset: Asset): string | null => {
+    if (!asset.employee) return null;
+    return `${asset.employee.firstName} ${asset.employee.lastName}`.trim() || null;
+};
+
 export default function GlobalAssetsAssignedTab({ searchTerm, filterCategory }: AssignedTabProps) {
-    const queryClient = useQueryClient();
     const fetchAssets = async (): Promise<Asset[]> => {
-        const res = await api.get('/assets');
+        const res = await api.get<{ data: Asset[] }>('/assets');
         return res.data;
     };
 
@@ -34,9 +49,17 @@ export default function GlobalAssetsAssignedTab({ searchTerm, filterCategory }: 
 
     const filteredAssets = useMemo(() => {
         return assets.filter((asset: Asset) => {
+            const employeeName = getEmployeeName(asset);
             const matchesSearch = asset.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                asset.assignedTo?.name.toLowerCase().includes(searchTerm.toLowerCase());
-            const matchesCategory = filterCategory === 'ALL' || asset.category === filterCategory;
+                (employeeName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+                (asset.serialNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
+            // DEVICE se normaliza a TECH y CLOTHING a UNIFORM (alias históricos).
+            const normalize = (c: string) => {
+                if (c === 'DEVICE') return 'TECH';
+                if (c === 'CLOTHING') return 'UNIFORM';
+                return c;
+            };
+            const matchesCategory = filterCategory === 'ALL' || normalize(asset.category) === normalize(filterCategory);
             return matchesSearch && matchesCategory;
         });
     }, [assets, searchTerm, filterCategory]);
@@ -64,7 +87,7 @@ export default function GlobalAssetsAssignedTab({ searchTerm, filterCategory }: 
             animate={{ opacity: 1, y: 0 }}
             className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
         >
-            {filteredAssets.map((asset: Asset, idx: number) => (
+            {filteredAssets.map((asset: Asset) => (
                 <div
                     key={asset.id}
                     className="bg-white dark:bg-slate-800/50 rounded-2xl p-6 border border-slate-200 dark:border-slate-700 hover:shadow-lg transition-all"
@@ -72,28 +95,34 @@ export default function GlobalAssetsAssignedTab({ searchTerm, filterCategory }: 
                     <div className="flex items-start justify-between mb-3">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                             asset.category === 'VEHICLE' ? 'bg-blue-100 text-blue-600' :
-                            asset.category === 'DEVICE' ? 'bg-purple-100 text-purple-600' :
+                            asset.category === 'DEVICE' || asset.category === 'TECH' ? 'bg-purple-100 text-purple-600' :
                             asset.category === 'EPI' ? 'bg-amber-100 text-amber-600' :
                             'bg-slate-100 text-slate-600'
                         }`}>
                             <Package size={20} />
                         </div>
                         <span className={`px-2 py-1 rounded-lg text-xs font-bold ${
-                            asset.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
+                            asset.status === 'ASSIGNED' || asset.status === 'ACTIVE' ? 'bg-emerald-100 text-emerald-700' :
                             asset.status === 'MAINTENANCE' ? 'bg-amber-100 text-amber-700' :
+                            asset.status === 'RETURNED' ? 'bg-blue-100 text-blue-700' :
                             'bg-slate-100 text-slate-600'
                         }`}>
-                            {asset.status}
+                            {STATUS_LABELS[asset.status] || asset.status}
                         </span>
                     </div>
                     <h3 className="font-bold text-slate-900 dark:text-white mb-1">{asset.name}</h3>
-                    <p className="text-sm text-slate-500 mb-3">Categoría: {asset.category}</p>
-                    {asset.assignedTo && (
-                        <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
-                            <p className="text-xs text-slate-500 mb-1">Asignado a:</p>
-                            <p className="font-medium text-slate-900 dark:text-white">{asset.assignedTo.name}</p>
-                        </div>
-                    )}
+                    <p className="text-sm text-slate-500 mb-3">
+                        Categoría: {CATEGORY_LABELS[asset.category] || asset.category}
+                        {asset.serialNumber ? ` · SN: ${asset.serialNumber}` : ''}
+                        {asset.imei ? ` · IMEI: ${asset.imei}` : ''}
+                    </p>
+                    <div className="pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <p className="text-xs text-slate-500 mb-1">Asignado a:</p>
+                        <p className="font-medium text-slate-900 dark:text-white">{getEmployeeName(asset) || 'Sin asignar'}</p>
+                        {asset.assignedDate && (
+                            <p className="text-xs text-slate-400 mt-1">Desde {new Date(asset.assignedDate).toLocaleDateString('es-ES')}</p>
+                        )}
+                    </div>
                 </div>
             ))}
         </motion.div>

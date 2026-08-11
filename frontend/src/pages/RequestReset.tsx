@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { ArrowLeft, Mail, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function RequestReset() {

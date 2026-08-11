@@ -136,7 +136,7 @@ export default function AuditLogPage() {
                             <table className="w-full text-left">
                                 <thead>
                                     <tr className="border-b border-slate-100 dark:border-slate-900 bg-slate-50/50 dark:bg-slate-900/50">
-                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">AcciÃ³n</th>
+                                        <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Acción</th>
                                         <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Entidad</th>
                                         <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">Detalles</th>
                                         <th className="px-8 py-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 text-right">Fecha & Hora</th>
@@ -203,7 +203,7 @@ export default function AuditLogPage() {
 
                 <div className="p-8 border-t border-slate-100 dark:border-slate-900 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center relative z-10">
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">
-                        PÃ¡gina {page} de {totalPages}
+                        Página {page} de {totalPages}
                     </p>
                     <div className="flex gap-2">
                         <button

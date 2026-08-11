@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save, Upload, Users, FileDown, Check, AlertTriangle, ChevronDown, Search } from 'lucide-react';
+import { useParams, useNavigate } from 'react-router';
+import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save, Upload, Users, Handshake, FileDown, Check, AlertTriangle, ChevronDown, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../api/client';
 import { useConfirm } from '../context/ConfirmContext';
@@ -16,6 +16,7 @@ const TIPO_LABELS: Record<ObraExpenseType, string> = {
     FLIGHT: 'Vuelo',
     TRANSPORT: 'Transporte',
     CAR_RENTAL: 'Alquiler de coche',
+    CONTRACTOR: 'Autónomo',
     OTHER: 'Otro'
 };
 
@@ -25,6 +26,7 @@ const TIPO_COLORS: Record<ObraExpenseType, string> = {
     FLIGHT: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
     TRANSPORT: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
     CAR_RENTAL: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
+    CONTRACTOR: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
     OTHER: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
 };
 
@@ -35,6 +37,8 @@ const emptyExpenseForm = () => ({
     amount: '',
     currency: 'EUR',
     employeeIds: [] as string[],
+    contractorIds: [] as string[],
+    contractorId: '',
     description: '',
     vendor: '',
     reference: '',
@@ -79,6 +83,7 @@ export default function ObraDetailPage() {
     const unwrap = useApiUnwrap();
     const [obra, setObra] = useState<ObraShape | null>(null);
     const [employees, setEmployees] = useState<any[]>([]);
+    const [contractors, setContractors] = useState<any[]>([]);
     const [tab, setTab] = useState<Tab>('info');
     const [loading, setLoading] = useState(false);
     const [hoursForm, setHoursForm] = useState({ employeeId: '', startDate: '', endDate: '', hours: 8, notes: '' });
@@ -88,6 +93,7 @@ export default function ObraDetailPage() {
     const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([]);
     const [generatingReceipts, setGeneratingReceipts] = useState(false);
     const [employeeExpenseSearch, setEmployeeExpenseSearch] = useState('');
+    const [contractorExpenseSearch, setContractorExpenseSearch] = useState('');
 
     // Filtros avanzados para los tabs de expenses y horas
     const [filters, setFilters] = useState({
@@ -129,6 +135,17 @@ export default function ObraDetailPage() {
     useEffect(() => { if (id) fetchObra(); }, [id]);
     useEffect(() => { fetchEmployees(); }, []);
 
+    const fetchContractors = async () => {
+        try {
+            const res = await api.get('/obra-contractors', { params: { limit: 200 } });
+            const data = unwrap(res);
+            setContractors(Array.isArray(data) ? data : (data?.data ?? []));
+        } catch (err) {
+            console.error(err);
+        }
+    };
+    useEffect(() => { fetchContractors(); }, []);
+
     if (loading || !obra) {
         return (
             <div className="flex items-center justify-center h-48">
@@ -147,7 +164,12 @@ export default function ObraDetailPage() {
         const name = employee.name || `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
         return `${name} ${employee.dni || ''}`.toLowerCase().includes(employeeExpenseSearch.trim().toLowerCase());
     });
-    const dietGrandTotal = Number(expenseForm.amount || 0) * expenseDays * expenseForm.employeeIds.length;
+    const selectedExpenseContractors = contractors.filter((c: any) => expenseForm.contractorIds.includes(c.id));
+    const filteredExpenseContractors = contractors.filter((c: any) =>
+        `${c.name || ''} ${c.nif || ''}`.toLowerCase().includes(contractorExpenseSearch.trim().toLowerCase())
+    );
+    const totalExpensePeople = expenseForm.employeeIds.length + expenseForm.contractorIds.length;
+    const dietGrandTotal = Number(expenseForm.amount || 0) * expenseDays * totalExpensePeople;
 
     const handleSaveExpense = async () => {
         if (!expenseForm.date || !expenseForm.endDate || !expenseForm.amount) return toast.error('Las fechas y el importe son obligatorios');
@@ -155,6 +177,7 @@ export default function ObraDetailPage() {
         const amountNum = Number(expenseForm.amount);
         if (!Number.isFinite(amountNum) || amountNum <= 0) return toast.error('Importe debe ser > 0');
         if (expenseForm.type === 'PER_DIEM' && !expenseForm.destination.trim()) return toast.error('Indica el destino del viaje');
+        if (expenseForm.type === 'CONTRACTOR' && !expenseForm.contractorId) return toast.error('Selecciona el autónomo');
         try {
             const payload: any = {
                 type: expenseForm.type,
@@ -163,9 +186,18 @@ export default function ObraDetailPage() {
                 amount: amountNum,
                 amountMode: expenseForm.type === 'PER_DIEM' ? 'PER_EMPLOYEE_DAY' : 'TOTAL_SPLIT',
                 currency: expenseForm.currency || 'EUR',
-                ...(expenseEditingId
-                    ? { employeeId: expenseForm.employeeIds[0] || null }
-                    : { employeeIds: expenseForm.employeeIds }),
+                ...(expenseForm.type === 'CONTRACTOR'
+                    ? expenseEditingId
+                        ? { employeeId: null }
+                        : {}
+                    : expenseEditingId
+                        ? { employeeId: expenseForm.employeeIds[0] || null }
+                        : { employeeIds: expenseForm.employeeIds }),
+                ...(expenseForm.type === 'CONTRACTOR'
+                    ? { contractorId: expenseForm.contractorId || null }
+                    : expenseEditingId
+                        ? { contractorId: expenseForm.contractorIds[0] || null }
+                        : { contractorIds: expenseForm.contractorIds }),
                 description: expenseForm.description || null,
                 vendor: expenseForm.vendor || null,
                 reference: expenseForm.reference || null,
@@ -181,6 +213,7 @@ export default function ObraDetailPage() {
             }
             setExpenseForm(emptyExpenseForm());
             setEmployeeExpenseSearch('');
+            setContractorExpenseSearch('');
             setExpenseEditingId(null);
             fetchObra();
         } catch (err: any) {
@@ -194,6 +227,15 @@ export default function ObraDetailPage() {
             employeeIds: current.employeeIds.includes(employeeId)
                 ? current.employeeIds.filter((id) => id !== employeeId)
                 : [...current.employeeIds, employeeId]
+        }));
+    };
+
+    const toggleExpenseContractor = (contractorId: string) => {
+        setExpenseForm((current) => ({
+            ...current,
+            contractorIds: current.contractorIds.includes(contractorId)
+                ? current.contractorIds.filter((id) => id !== contractorId)
+                : [...current.contractorIds, contractorId]
         }));
     };
 
@@ -479,6 +521,7 @@ export default function ObraDetailPage() {
                                 <input type="number" step="0.01" min="0.01" className="min-h-11 w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={expenseForm.amount} onChange={(e) => setExpenseForm({ ...expenseForm, amount: e.target.value })} placeholder="0,00 €" />
                             </label>
 
+                            {expenseForm.type !== 'CONTRACTOR' && (
                             <details className="group relative lg:col-span-12">
                                 <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800">
                                     <span className="flex min-w-0 items-center gap-2">
@@ -539,14 +582,98 @@ export default function ObraDetailPage() {
                                     </div>
                                 </div>
                             </details>
+                            )}
+
+                            {expenseForm.type !== 'CONTRACTOR' && (
+                            <details className="group relative lg:col-span-12">
+                                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-800">
+                                    <span className="flex min-w-0 items-center gap-2">
+                                        <Handshake size={16} className="shrink-0 text-slate-500" />
+                                        <span className="truncate">
+                                            {selectedExpenseContractors.length === 0
+                                                ? 'Seleccionar autónomos…'
+                                                : selectedExpenseContractors.length === 1
+                                                    ? (selectedExpenseContractors[0].name || selectedExpenseContractors[0].nif)
+                                                    : `${selectedExpenseContractors.length} autónomos seleccionados`}
+                                        </span>
+                                    </span>
+                                    <ChevronDown size={16} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+                                </summary>
+                                <div className="absolute z-30 mt-1 w-full rounded-lg border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-700 dark:bg-slate-900">
+                                    <div className="relative mb-2">
+                                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            type="search"
+                                            value={contractorExpenseSearch}
+                                            onChange={(event) => setContractorExpenseSearch(event.target.value)}
+                                            placeholder="Buscar por nombre o NIF"
+                                            className="min-h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-slate-800"
+                                        />
+                                    </div>
+                                    {!expenseEditingId && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpenseForm((current) => ({
+                                                ...current,
+                                                contractorIds: filteredExpenseContractors.every((c) => current.contractorIds.includes(c.id))
+                                                    ? current.contractorIds.filter((id) => !filteredExpenseContractors.some((c) => c.id === id))
+                                                    : Array.from(new Set([...current.contractorIds, ...filteredExpenseContractors.map((c) => c.id)]))
+                                            }))}
+                                            className="mb-2 min-h-9 rounded-md px-2 text-xs font-semibold text-blue-700 hover:bg-blue-50"
+                                        >
+                                            {filteredExpenseContractors.every((c) => expenseForm.contractorIds.includes(c.id)) ? 'Quitar resultados' : 'Seleccionar resultados'}
+                                        </button>
+                                    )}
+                                    <div className="max-h-56 overflow-y-auto">
+                                        {filteredExpenseContractors.map((c: any) => {
+                                            const selected = expenseForm.contractorIds.includes(c.id);
+                                            return (
+                                                <button
+                                                    key={c.id}
+                                                    type="button"
+                                                    disabled={Boolean(expenseEditingId && !selected)}
+                                                    onClick={() => toggleExpenseContractor(c.id)}
+                                                    className={`flex min-h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm ${selected ? 'bg-blue-50 text-blue-900 dark:bg-blue-950/40 dark:text-blue-100' : 'hover:bg-slate-50 dark:hover:bg-slate-800'} disabled:opacity-40`}
+                                                >
+                                                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${selected ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 dark:border-slate-600'}`}>{selected && <Check size={13} />}</span>
+                                                    <span className="truncate">{c.name}</span>
+                                                    <span className="ml-auto text-xs text-slate-400">{c.nif}</span>
+                                                </button>
+                                            );
+                                        })}
+                                        {filteredExpenseContractors.length === 0 && (
+                                            <p className="px-2 py-3 text-xs text-slate-400">No hay autónomos dados de alta.</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </details>
+                            )}
+
+                            {expenseForm.type === 'CONTRACTOR' && (
+                                <label className="space-y-1 lg:col-span-12">
+                                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">Autónomo *</span>
+                                    <select
+                                        className="min-h-11 w-full px-3 py-2 border rounded-lg bg-white dark:bg-slate-800"
+                                        value={expenseForm.contractorId}
+                                        onChange={(e) => setExpenseForm({ ...expenseForm, contractorId: e.target.value })}
+                                    >
+                                        <option value="">Seleccionar autónomo...</option>
+                                        {contractors
+                                            .filter((c: any) => c.active !== false)
+                                            .map((c: any) => (
+                                                <option key={c.id} value={c.id}>{c.name} ({c.nif})</option>
+                                            ))}
+                                    </select>
+                                </label>
+                            )}
 
                             {expenseForm.type === 'PER_DIEM' ? (
                                 <div className="lg:col-span-12 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                                    <strong>{Number(expenseForm.amount || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> × {expenseDays || 0} día{expenseDays === 1 ? '' : 's'} × {expenseForm.employeeIds.length} empleado{expenseForm.employeeIds.length === 1 ? '' : 's'} = <strong>{dietGrandTotal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong>
+                                    <strong>{Number(expenseForm.amount || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong> × {expenseDays || 0} día{expenseDays === 1 ? '' : 's'} × {totalExpensePeople} {totalExpensePeople === 1 ? 'persona' : 'personas'} = <strong>{dietGrandTotal.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}</strong>
                                 </div>
-                            ) : expenseForm.employeeIds.length > 0 && Number(expenseForm.amount) > 0 ? (
+                            ) : totalExpensePeople > 0 && Number(expenseForm.amount) > 0 ? (
                                 <div className="lg:col-span-12 text-xs text-slate-600">
-                                    Cada empleado recibirá aproximadamente {(Number(expenseForm.amount) / expenseForm.employeeIds.length).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}.
+                                    Cada {selectedExpenseContractors.length > 0 ? 'persona' : 'empleado'} recibirá aproximadamente {(Number(expenseForm.amount) / totalExpensePeople).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}.
                                 </div>
                             ) : null}
                             <input className="min-h-11 px-3 py-2 border rounded-lg bg-white dark:bg-slate-800 lg:col-span-6" placeholder="Descripción" value={expenseForm.description} onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })} />
@@ -589,7 +716,7 @@ export default function ObraDetailPage() {
                                     </th>
                                     <th className="px-4 py-3 text-left">Tipo</th>
                                     <th className="px-4 py-3 text-left">Periodo</th>
-                                    <th className="px-4 py-3 text-left">Empleado</th>
+                                    <th className="px-4 py-3 text-left">Empleado / Autónomo</th>
                                     <th className="px-4 py-3 text-left">Descripción</th>
                                     <th className="px-4 py-3 text-right">Importe</th>
                                     <th className="px-4 py-3" />
@@ -603,7 +730,14 @@ export default function ObraDetailPage() {
                                         </td>
                                         <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded text-xs ${TIPO_COLORS[e.type as ObraExpenseType] || ''}`}>{TIPO_LABELS[e.type as ObraExpenseType] || e.type}</span></td>
                                         <td className="px-4 py-3">{String(e.date).substring(0, 10)}{e.endDate && String(e.endDate).substring(0, 10) !== String(e.date).substring(0, 10) ? ` → ${String(e.endDate).substring(0, 10)}` : ''}</td>
-                                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{e.employee?.name || '—'}</td>
+                                        <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                                            {e.contractor?.name ? (
+                                                <>
+                                                    <span>{e.contractor.name}</span>
+                                                    <span className="block text-[10px] font-normal text-slate-400">{e.contractor.nif}</span>
+                                                </>
+                                            ) : e.employee?.name || '—'}
+                                        </td>
                                         <td className="px-4 py-3 text-slate-500 text-xs">{e.description || e.vendor || e.origin ? `${e.origin || ''}${e.origin && e.destination ? ' → ' : ''}${e.destination || ''}` : '—'}</td>
                                         <td className="px-4 py-3 text-right font-semibold">
                                             {Number(e.amount).toLocaleString('es-ES', { style: 'currency', currency: e.currency || 'EUR' })}
@@ -611,7 +745,7 @@ export default function ObraDetailPage() {
                                             {Number(e.allocationCount || 1) > 1 && <span className="block text-[10px] font-normal text-slate-400">Reparto {e.allocationIndex}/{e.allocationCount}</span>}
                                         </td>
                                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                                            <button onClick={() => { setExpenseEditingId(e.id); setExpenseForm({ type: e.type as ObraExpenseType, date: String(e.date).substring(0, 10), endDate: String(e.endDate || e.date).substring(0, 10), amount: e.type === 'PER_DIEM' && e.unitAmount ? e.unitAmount : e.amount, currency: e.currency || 'EUR', employeeIds: e.employeeId ? [e.employeeId] : [], description: e.description || '', vendor: e.vendor || '', reference: e.sourceReference || e.reference || '', origin: e.origin || '', destination: e.destination || '' }); }} className="text-blue-600 mr-2" aria-label="Editar"><Pencil size={14} /></button>
+                                            <button onClick={() => { setExpenseEditingId(e.id); setExpenseForm({ type: e.type as ObraExpenseType, date: String(e.date).substring(0, 10), endDate: String(e.endDate || e.date).substring(0, 10), amount: e.type === 'PER_DIEM' && e.unitAmount ? e.unitAmount : e.amount, currency: e.currency || 'EUR', employeeIds: e.employeeId ? [e.employeeId] : [], contractorIds: e.contractorId ? [e.contractorId] : [], contractorId: e.contractorId || '', description: e.description || '', vendor: e.vendor || '', reference: e.sourceReference || e.reference || '', origin: e.origin || '', destination: e.destination || '' }); }} className="text-blue-600 mr-2" aria-label="Editar"><Pencil size={14} /></button>
                                             <button onClick={() => handleDeleteExpense(e.id)} className="text-rose-600" aria-label="Eliminar"><Trash2 size={14} /></button>
                                         </td>
                                     </tr>

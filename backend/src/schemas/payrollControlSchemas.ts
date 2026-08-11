@@ -31,10 +31,13 @@ export const updateRecordCellSchema = z.object({
     productivity: z.coerce.number().finite().min(0).max(1_000_000).optional(),
     hoursAmount: money.optional(),
     difference: money.optional(),
-    category: z.string().trim().max(100).optional(),
-    department: z.string().trim().max(100).optional(),
+    // sanitizeBodyMiddleware convierte las cadenas vacías en null antes de la
+    // validación; se acepta null y se normaliza a texto vacío para no bloquear
+    // el guardado cuando el cliente limpia un campo.
+    category: z.string().trim().max(100).nullable().transform((value) => value ?? '').optional(),
+    department: z.string().trim().max(100).nullable().transform((value) => value ?? '').optional(),
     gestoriaCode: z.string().trim().max(50).nullable().optional(),
-    observations: z.string().trim().max(2000).optional()
+    observations: z.string().trim().max(2000).nullable().transform((value) => value ?? '').optional()
 }).strict();
 
 export const updateConceptValueSchema = z.object({
@@ -45,13 +48,15 @@ export const updateConceptValueSchema = z.object({
 
 export const restoreCellSchema = z.object({
     expectedVersion: z.coerce.number().int().positive(),
-    fieldName: z.enum(['totalOvertimeAmount', 'availablePercentage', 'gross', 'productivity', 'hoursAmount', 'difference'])
+    fieldName: z.enum(['totalOvertimeAmount', 'availablePercentage', 'gross', 'productivity', 'hoursAmount', 'difference', 'overtimeHours', 'holidayOvertimeHours', 'diets'])
 }).strict();
 
 export const updatePeriodStatusSchema = z.object({
     periodId: z.string().uuid(),
     status: z.enum(['IN_REVIEW', 'CLOSED', 'SENT_TO_AGENCY', 'REOPENED']),
-    reopenReason: z.string().trim().min(5).max(1000).optional()
+    // El sanitizer convierte el motivo vacío en null; se deja pasar para que la
+    // validación de negocio devuelva un 4xx claro en vez de un 500 de zod.
+    reopenReason: z.string().trim().min(5).max(1000).nullable().optional()
 }).strict().superRefine((value, context) => {
     if (value.status === 'REOPENED' && !value.reopenReason) {
         context.addIssue({ code: z.ZodIssueCode.custom, path: ['reopenReason'], message: 'La reapertura requiere un motivo.' });
@@ -79,9 +84,24 @@ export const updateDailyEntriesSchema = z.object({
         scheduledHours: z.coerce.number().finite().min(0).max(24),
         isHoliday: z.boolean(),
         dietAmount: z.coerce.number().finite().min(0).max(10_000),
-        notes: z.string().trim().max(1000)
+        // Los registros ya existentes pueden tener la nota almacenada como NULL.
+        // Al volver a guardarlos, el cliente debe poder enviarlos sin bloquear
+        // todo el mes; se normalizan a texto vacío para el servicio.
+        notes: z.string().trim().max(1000).nullable().transform((value) => value ?? '')
     }).strict()).min(28).max(31)
 }).strict();
+
+export const timeSheetImportBodySchema = z.object({
+    year: z.coerce.number().int().min(2000).max(2100),
+    month: z.coerce.number().int().min(1).max(12),
+    expectedVersion: z.coerce.number().int().positive().optional()
+}).strict();
+
+// Envuelto para validateResource (valida { body, query, params });
+// el wrapper no es strict para que zod descarte query/params (patrón del repo)
+export const timeSheetImportSchema = z.object({
+    body: timeSheetImportBodySchema
+});
 
 export const exportGestoriaSchema = z.object({ periodId: z.string().uuid() }).strict();
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Plane, Plus, X } from 'lucide-react';
+import { Plane, Plus, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { hasModuleAccess, normalizeActor } from '@shared/authz';
@@ -275,28 +275,23 @@ export function EmployeeVacationWorkspace({ employeeId, mode = 'vacation' }: Emp
                 </div>
             </div>
 
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500 mb-1">Días disponibles</div>
-                    <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{stats.available}</div>
-                    <div className="text-xs text-slate-400 mt-2">De un total de {stats.total}</div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500 mb-1">Días aprobados</div>
-                    <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400">{stats.used}</div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500 mb-1">Días pendientes</div>
-                    <div className="text-3xl font-black text-amber-500">{stats.pending}</div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
-                    <div className="text-sm font-medium text-slate-500 mb-1">Estado operativo</div>
-                    <div className="flex items-center gap-2 mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">
-                        <CheckCircle2 size={18} className="text-emerald-500" />
-                        Flujo compartido activo
+            {isVacationMode && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <div className="mb-1 text-sm font-medium text-slate-500">Días disponibles</div>
+                        <div className="text-3xl font-black text-indigo-600 dark:text-indigo-400">{stats.available}</div>
+                        <div className="mt-2 text-xs text-slate-400">De un total de {stats.total}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <div className="mb-1 text-sm font-medium text-slate-500">Días aprobados</div>
+                        <div className="text-3xl font-black text-emerald-600 dark:text-emerald-400">{stats.used}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                        <div className="mb-1 text-sm font-medium text-slate-500">Días pendientes</div>
+                        <div className="text-3xl font-black text-amber-500">{stats.pending}</div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {activeTab === 'REQUESTS' && (
                 loading ? (

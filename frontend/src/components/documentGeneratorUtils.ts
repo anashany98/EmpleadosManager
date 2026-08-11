@@ -11,7 +11,9 @@ export interface InventorySelection {
     size?: string;
     quantity?: number;
     detail?: string;
+    sku?: string;
     serialNumber?: string;
+    imei?: string;
 }
 
 export interface DocumentGeneratorExtraData {
@@ -73,7 +75,7 @@ export const STANDARD_DOCUMENT_TYPES = [
     'CERTIFICADO_TRABAJO',
     'CARTA_FORMAL',
     'JUSTIFICANTE_AUSENCIA',
-    'FIRMA_DIETAS'
+    'OBRA_EXPENSE_RECEIPT'
 ] as const;
 
 const STANDARD_DOCUMENT_TYPE_SET = new Set<string>(STANDARD_DOCUMENT_TYPES);
@@ -129,7 +131,7 @@ export const resolveDocumentGeneratorTemplates = (
         const storedTemplate = storedByType.get(type);
         return {
             type,
-            name: STANDARD_TEMPLATE_NAME_BY_TYPE.get(type) || mergedByType.get(type)?.name || type,
+            name: storedTemplate?.name || STANDARD_TEMPLATE_NAME_BY_TYPE.get(type) || mergedByType.get(type)?.name || type,
             source: storedTemplate?.companyId
                 ? 'company'
                 : storedTemplate
@@ -199,13 +201,19 @@ export const getDocumentGenerationRequest = ({
             throw new Error('Selecciona un dispositivo del inventario');
         }
 
+        // El número de serie del acta se toma de la Referencia/SKU del item
+        // (campo que el usuario mantiene al crear productos). Si el item no
+        // tiene SKU, caemos al serialNumber del item o, en último caso, al id.
+        const skuSource = (selectedTechItem as any).sku || selectedTechItem.serialNumber || selectedTechItem.id || '';
+
         return {
             endpoint: '/documents/generate-tech',
             payload: {
                 ...payload,
                 deviceName: selectedTechItem.name,
-                serialNumber: selectedTechItem.serialNumber || '',
-                itemId: selectedTechItem.id
+                serialNumber: String(skuSource),
+                itemId: selectedTechItem.id,
+                imei: selectedTechItem.imei || ''
             }
         };
     }

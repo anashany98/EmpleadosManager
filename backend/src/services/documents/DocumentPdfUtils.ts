@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import QRCode from 'qrcode';
 import { createLogger } from '../../services/LoggerService';
+import { buildSystemQrPayload } from './QrDocumentService';
 
 const logger = createLogger('DocumentPdfUtils');
 
@@ -19,26 +20,29 @@ export const getLogoPath = (): string | null => {
  */
 export const addQRCodeToPDF = async (doc: typeof PDFDocument, data: any, employeeId: string) => {
     try {
-        const qrDataString = JSON.stringify({
-            ...data,
-            eid: employeeId,
-            d: new Date().toISOString()
-        });
+        const qrDataString = JSON.stringify(
+            buildSystemQrPayload(employeeId, String(data?.t || 'DOCUMENT'), data)
+        );
 
-        // Generate QR as buffer
+        // QR legible incluso tras imprimir + escanear + reenviar por email.
+        //   - width 240 px (buffer grande) y 90 pt en el PDF (~32 mm),
+        //     el triple que antes.
+        //   - errorCorrectionLevel 'H' (recupera hasta el 30% del QR
+        //     dañado por compresión JPEG/fax/impresión).
+        //   - margin 4 (quiet zone generosa; jsQR falla con zonas
+        //     blancas < 4 módulos).
         const qrBuffer = await QRCode.toBuffer(qrDataString, {
-            errorCorrectionLevel: 'M',
-            margin: 1,
-            width: 100
+            errorCorrectionLevel: 'H',
+            margin: 4,
+            width: 240
         });
 
-        // Add to PDF (bottom right)
-        // A4 is roughly 595 x 842 points
-        doc.image(qrBuffer, 495, 720, { width: 50 });
+        // Add to PDF (bottom right). A4 = 595 x 842 pt.
+        doc.image(qrBuffer, 460, 700, { width: 90 });
 
-        // Add metadata for backend parsing (pdfkit doesn't support setting subject directly easily,
-        // but we can add it to information dictionary if needed or just rely on image for now.
-        // Actually, we'll try to set the 'Subject' info field.
+        // También grabamos el payload en los metadatos del PDF
+        // para que jsQR no haga falta en documentos que no se
+        // hayan vuelto a escanear.
         doc.info['Subject'] = qrDataString;
     } catch (err) {
         logger.error({ err }, 'Error adding QR code to PDF:');

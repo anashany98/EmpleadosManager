@@ -6,16 +6,18 @@ import { AppError } from '../utils/AppError';
 import { ApiResponse } from '../utils/ApiResponse';
 import { TimeEntryIdempotencyService } from '../services/TimeEntryIdempotencyService';
 import { RedisRateLimiter } from '../services/RedisRateLimiter';
+import { resolveAuthorizedCompanyId } from '../utils/companyAccess';
+import type { AuthenticatedRequest } from '../types/express';
 
 const PIN_ATTEMPT_WINDOW_SECONDS = 15 * 60; // 15 minutes
 const PIN_ATTEMPT_LIMIT = 5;
 const CLOCK_REQUEST_TTL_SECONDS = 15 * 60; // 15 minutes
 
 function getRequesterIp(req: Request): string {
-    const forwardedFor = req.headers['x-forwarded-for'];
-    if (typeof forwardedFor === 'string') {
-        return forwardedFor.split(',')[0].trim();
-    }
+    // ALT-1: NO leer el header X-Forwarded-For crudo — la entrada de la
+    // izquierda la puede inventar el cliente y se evadiría el rate-limit
+    // de intentos de PIN (5 por IP+empleado). Con `trust proxy = 1`,
+    // Express ya calcula `req.ip` correctamente.
     return req.ip || 'unknown';
 }
 
@@ -188,12 +190,20 @@ export const KioskController = {
         );
     },
 
-    getKioskActivity: async (_req: Request, res: Response) => {
+    getKioskActivity: async (req: Request, res: Response) => {
+        // MED-2: acotar por empresa. `resolveAuthorizedCompanyId` es la
+        // variante estricta: para usuarios con empresa devuelve SU companyId
+        // (el query param solo lo puede usar un admin global) y lanza 403
+        // si un usuario sin empresa intenta acceder.
+        const { user } = req as AuthenticatedRequest;
+        const companyId = resolveAuthorizedCompanyId(user, req.query.companyId as string | undefined);
+
         const activity = await prisma.timeEntry.findMany({
             where: {
                 device: {
                     startsWith: 'Tablet Kiosk'
-                }
+                },
+                ...(companyId ? { employee: { companyId } } : {})
             },
             take: 10,
             orderBy: { timestamp: 'desc' },

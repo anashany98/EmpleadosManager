@@ -319,6 +319,7 @@ export const TimelineService = {
                 FLIGHT: 'Vuelo',
                 TRANSPORT: 'Transporte',
                 CAR_RENTAL: 'Alquiler de coche',
+                CONTRACTOR: 'Autónomo',
                 OTHER: 'Otro gasto'
             };
             events.push({

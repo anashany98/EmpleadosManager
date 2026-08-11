@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { Upload, FileUp, ArrowRight, CheckCircle, RefreshCw, FileText, Table, Save, BookTemplate, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '../api/client';

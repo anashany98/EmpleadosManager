@@ -1,18 +1,18 @@
-import { ChevronDown, ChevronUp, Image as ImageIcon, Minus, Square, Trash2, Type, Variable } from 'lucide-react';
+import { ChevronDown, ChevronUp, Image as ImageIcon, Minus, QrCode, Square, Trash2, Type, Variable } from 'lucide-react';
 import type { CanvasElement } from './types';
 
 const ICONS: Partial<Record<CanvasElement['type'], typeof Type>> = {
-    text: Type, variable: Variable, box: Square, line: Minus, image: ImageIcon
+    text: Type, variable: Variable, box: Square, line: Minus, image: ImageIcon, qr: QrCode
 };
 
 const TYPE_COLORS: Record<string, string> = {
     text: 'text-gray-500', variable: 'text-emerald-500', box: 'text-blue-500',
-    line: 'text-amber-500', image: 'text-purple-500'
+    line: 'text-amber-500', image: 'text-purple-500', qr: 'text-teal-600'
 };
 
 const TYPE_BG: Record<string, string> = {
     text: 'bg-gray-50', variable: 'bg-emerald-50', box: 'bg-blue-50',
-    line: 'bg-amber-50', image: 'bg-purple-50'
+    line: 'bg-amber-50', image: 'bg-purple-50', qr: 'bg-teal-50'
 };
 
 function describe(element: CanvasElement): string {
@@ -22,6 +22,7 @@ function describe(element: CanvasElement): string {
         case 'box': return 'Caja';
         case 'line': return 'Linea';
         case 'image': return 'Imagen';
+        case 'qr': return 'QR de archivo';
         default: return 'Elemento';
     }
 }
@@ -68,7 +69,9 @@ export function LayersPanel({ elements, selectedId, onSelect, onMove, onDelete }
                                     <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                         <button type="button" onClick={() => onMove(element.id, 'up')} className="rounded p-0.5 text-gray-300 hover:text-gray-600" title="Subir"><ChevronUp size={11} /></button>
                                         <button type="button" onClick={() => onMove(element.id, 'down')} className="rounded p-0.5 text-gray-300 hover:text-gray-600" title="Bajar"><ChevronDown size={11} /></button>
-                                        <button type="button" onClick={() => onDelete(element.id)} className="rounded p-0.5 text-gray-300 hover:text-red-500" title="Eliminar"><Trash2 size={11} /></button>
+                                        {!element.locked && (
+                                            <button type="button" onClick={() => onDelete(element.id)} className="rounded p-0.5 text-gray-300 hover:text-red-500" title="Eliminar"><Trash2 size={11} /></button>
+                                        )}
                                     </div>
                                 </li>
                             );

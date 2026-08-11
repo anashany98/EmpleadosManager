@@ -7,6 +7,7 @@ import { simpleParser } from 'mailparser';
 import * as chokidar from 'chokidar';
 import { queueService, QUEUES } from './QueueService';
 import { loggers } from './LoggerService';
+import { DEFAULT_QR_FILE_MAPPINGS } from './documents/QrDocumentService';
 
 const log = loggers.inbox;
 
@@ -28,20 +29,11 @@ export class InboxService {
      */
     private async initializeMappings() {
         try {
-            const count = await (prisma as any).fileMapping.count();
-            if (count === 0) {
-                log.info('Seeding default file mappings...');
-                await (prisma as any).fileMapping.createMany({
-                    data: [
-                        { qrType: 'VACATION', category: 'Justificante Ausencia', namePattern: 'Justificante Auto {{date}}' },
-                        { qrType: 'EPI', category: 'PRL', namePattern: 'Entrega EPIs Firmado {{date}}' },
-                        { qrType: 'UNIFORME', category: 'PRL', namePattern: 'Entrega Uniforme Firmado {{date}}' },
-                        { qrType: 'TECH_DEVICE', category: 'Equipamiento', namePattern: 'Entrega {{deviceName}} Firmado {{date}}' },
-                        { qrType: 'MODEL_145', category: 'Contrato', namePattern: 'Modelo 145 Firmado {{date}}' },
-                        { qrType: 'PAYROLL_SIGNED', category: 'Nómina', namePattern: 'Nómina Firmada {{date}}' }
-                    ]
-                });
-            }
+            log.info('Ensuring default file mappings...');
+            await (prisma as any).fileMapping.createMany({
+                data: DEFAULT_QR_FILE_MAPPINGS,
+                skipDuplicates: true
+            });
         } catch {
             log.error('Error seeding mappings');
         }
@@ -140,6 +132,55 @@ export class InboxService {
 
 
     /**
+     * Traduce un error de conexión IMAP a un mensaje claro para el usuario.
+     */
+    private static describeImapError(err: any): string {
+        const code = err?.code || '';
+        const msg = String(err?.message || err || '');
+        if (code === 'EAUTH' || /auth/i.test(msg)) return 'Credenciales IMAP incorrectas. En Gmail debes usar una "contraseña de aplicación" (no tu contraseña normal).';
+        if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return 'No se puede resolver el servidor IMAP. Revisa el nombre del host (ej: imap.gmail.com).';
+        if (code === 'ECONNREFUSED') return 'El servidor rechazó la conexión. Revisa el puerto (para TLS suele ser 993).';
+        if (code === 'ETIMEDOUT' || code === 'ESOCKET') return 'Tiempo de espera agotado al conectar. Revisa host/puerto y el firewall.';
+        if (/certificate|tls|ssl/i.test(msg)) return 'Error de certificado/TLS. Prueba a activar/desactivar TLS o usa el puerto 993.';
+        return `Error de conexión IMAP: ${msg}`;
+    }
+
+    /**
+     * Prueba la conexión IMAP con la configuración dada y devuelve el nº de
+     * correos no leídos. Lanza un Error con mensaje amigable si falla, para
+     * que el usuario vea la causa real en vez de un fallo silencioso.
+     */
+    async testImapConnection(imap: { host: string; port?: number; user: string; password: string; tls?: boolean }): Promise<{ unread: number }> {
+        if (!imap?.host || !imap?.user) {
+            throw new Error('Indica al menos el servidor IMAP y el usuario.');
+        }
+        const client = new ImapFlow({
+            host: imap.host,
+            port: imap.port || 993,
+            secure: imap.tls !== false,
+            auth: { user: imap.user, pass: imap.password || '' },
+            logger: false
+        });
+
+        try {
+            await client.connect();
+            const lock = await client.getMailboxLock('INBOX');
+            let unread = 0;
+            try {
+                const uids = await client.search({ seen: false });
+                unread = Array.isArray(uids) ? uids.length : 0;
+            } finally {
+                lock.release();
+            }
+            await client.logout();
+            return { unread };
+        } catch (err) {
+            log.error({ err }, 'IMAP test connection failed');
+            throw new Error(InboxService.describeImapError(err));
+        }
+    }
+
+    /**
      * Polls the configured email inbox for new document attachments.
      */
     async pollEmails() {
@@ -153,6 +194,14 @@ export class InboxService {
 
             const config = JSON.parse(configEntry.value);
             if (!config.emailEnabled || !config.imap?.host) return;
+
+            // La IMAP puede ser global pero los InboxDocument deben
+            // etiquetarse con la empresa del mailbox. Si no se
+            // configuró un companyId, el doc queda como "huérfano"
+            // (lo verá solo el admin global para reasignar).
+            const mailboxCompanyId = typeof config.imap.companyId === 'string' && config.imap.companyId.trim()
+                ? config.imap.companyId
+                : null;
 
             // 2. Connect to IMAP
             const client = new ImapFlow({
@@ -182,8 +231,11 @@ export class InboxService {
                                     const newFilename = `${uuidv4()}${ext}`;
                                     const filePath = path.join(this.inboxDir, newFilename);
                                     fs.writeFileSync(filePath, attachment.content);
-                                    log.info({ filename: newFilename }, 'Saved email attachment');
-                                    // Watcher will pick this up automatically!
+                                    log.info({ filename: newFilename, mailboxCompanyId }, 'Saved email attachment');
+                                    // Pasamos companyId directamente en vez de
+                                    // depender del watcher: el doc queda
+                                    // etiquetado desde el primer momento.
+                                    this.processFile(filePath, mailboxCompanyId).catch(err => log.error({ err, filename: newFilename }, 'Email -> processFile error'));
                                 }
                             }
                         }

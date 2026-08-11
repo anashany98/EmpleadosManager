@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { Response } from 'express';
 import crypto from 'crypto';
+import { ZodError } from 'zod';
 import { AppError } from './AppError';
 import { ApiResponse } from './ApiResponse';
 import { createLogger } from '../services/LoggerService';
@@ -35,6 +36,11 @@ export interface HandleControllerErrorOptions {
  *   `statusCode`. `AppError` is the explicit contract for
  *   "I checked and this is a user-facing error", so its
  *   message is always safe to expose.
+ *
+ * - `ZodError` (schema validation): returns 400 with the
+ *   field-level issues, matching `validateResource`. Keeps
+ *   client validation errors from surfacing as 5xx (which
+ *   also triggered client-side retries).
  *
  * - `Prisma.PrismaClientKnownRequestError` P2002 (unique
  *   constraint): returns 400 with a generic "duplicate" message.
@@ -74,6 +80,16 @@ export function handleControllerError(
     if (error instanceof AppError) {
         res.setHeader('X-Request-Id', correlationId);
         return ApiResponse.error(res, error.message, error.statusCode, null, correlationId);
+    }
+
+    // ZodError (validación de schemas): es un error del cliente, no del
+    // servidor. Antes terminaba como 500 cuando un controller hacía
+    // `.parse()` inline (p. ej. el guardado del control horario), lo que
+    // además disparaba los reintentos del cliente. Se devuelve 400 con el
+    // detalle de campos, igual que el middleware validateResource.
+    if (error instanceof ZodError) {
+        res.setHeader('X-Request-Id', correlationId);
+        return ApiResponse.error(res, 'Error de validación', 400, error.errors, correlationId);
     }
 
     // Prisma unique constraint: translate to 400 with a generic

@@ -118,6 +118,19 @@ export function ReportTableHead({ activeTab }: { activeTab: ReportType }) {
         );
     }
 
+    if (activeTab === 'TERMINATIONS') {
+        return (
+            <tr>
+                <th className="px-6 py-4 font-bold">Nombre</th>
+                <th className="px-6 py-4 font-bold">DNI/NIE</th>
+                <th className="px-6 py-4 font-bold">Departamento</th>
+                <th className="px-6 py-4 text-center font-bold">Tipo</th>
+                <th className="px-6 py-4 text-center font-bold">Fecha</th>
+                <th className="px-6 py-4 font-bold">Motivo</th>
+            </tr>
+        );
+    }
+
     if (activeTab === 'KPIS') {
         return (
             <tr>
@@ -274,6 +287,27 @@ export function ReportTableBody({ activeTab, rows }: { activeTab: ReportType; ro
                             <td className="px-6 py-4 text-right font-bold text-rose-500">{formatNumber(row.days)}</td>
                             <td className="px-6 py-4 text-center"><span className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-[10px] font-bold uppercase">{row.type}</span></td>
                             <td className="px-6 py-4 text-slate-500 max-w-[360px]">{row.reason}</td>
+                        </>
+                    ) : null}
+
+                    {activeTab === 'TERMINATIONS' ? (
+                        <>
+                            <td className="px-6 py-4 font-semibold text-slate-900 dark:text-white">{row.employee}</td>
+                            <td className="px-6 py-4 font-mono text-xs text-slate-600 dark:text-slate-300">{row.dni}</td>
+                            <td className="px-6 py-4 text-slate-500">{row.department}</td>
+                            <td className="px-6 py-4 text-center">
+                                <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                                    row.type === 'DISMISSAL'
+                                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+                                        : row.type === 'VOLUNTARY_LEAVE'
+                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300'
+                                            : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
+                                }`}>
+                                    {row.typeLabel}
+                                </span>
+                            </td>
+                            <td className="px-6 py-4 text-center font-semibold text-slate-700 dark:text-slate-200">{formatDate(row.date)}</td>
+                            <td className="max-w-[420px] px-6 py-4 leading-6 text-slate-600 dark:text-slate-300">{row.reason}</td>
                         </>
                     ) : null}
 

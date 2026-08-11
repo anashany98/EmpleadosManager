@@ -227,12 +227,19 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
     });
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in">
+        <div
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md animate-in fade-in"
+            onClick={(e) => {
+                // Cerrar al hacer click fuera del modal
+                if (e.target === e.currentTarget) onClose();
+            }}
+        >
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl p-8 shadow-2xl max-h-[90vh] overflow-y-auto"
+                className="relative bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl p-8 shadow-2xl max-h-[90vh] overflow-y-auto"
+                onClick={(e) => e.stopPropagation()}
             >
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white mb-6">
                     {isEdit ? 'Editar Vehículo' : 'Nuevo Vehículo'}
@@ -331,24 +338,39 @@ function VehicleModal({ vehicle, onClose, onSuccess }: { vehicle: Vehicle | null
 
 function DocumentsSection({ vehicleId, documents = [] }: { vehicleId: string, documents?: VehicleDocument[] }) {
     const queryClient = useQueryClient();
+    const { confirm: confirmDialog } = useConfirm();
     const [docExpiryDates, setDocExpiryDates] = useState<Record<string, string>>({});
     const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
     const handleDownload = async (doc: VehicleDocument) => {
         try {
             setDownloadingId(doc.id);
+            // Pedimos el blob con su Content-Type real; la respuesta
+            // trae `application/pdf` o `image/...` según el archivo.
             const blob = await api.get<Blob>(`/vehicles/${vehicleId}/documents/${doc.id}/download`, { responseType: 'blob' });
-            const blobWithType = new Blob([blob], { type: 'application/octet-stream' });
-            const downloadUrl = window.URL.createObjectURL(blobWithType);
+            if (!blob || blob.size === 0) {
+                toast.error('El documento está vacío o no se pudo descargar');
+                return;
+            }
+            const downloadUrl = window.URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = downloadUrl;
             link.download = doc.name || 'documento';
+            link.rel = 'noopener';
             document.body.appendChild(link);
             link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(downloadUrl);
-        } catch {
-            toast.error('Error al descargar el documento');
+            // Limpieza diferida: algunos navegadores cancelan la descarga
+            // si revocamos la URL inmediatamente después del click.
+            setTimeout(() => {
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(downloadUrl);
+            }, 0);
+        } catch (error) {
+            // Mostramos el mensaje real (en vez de un genérico) para
+            // poder diagnosticar 404/401/etc. sin abrir devtools.
+            const message = error instanceof Error ? error.message : 'Error desconocido';
+            console.error('Vehicle document download failed', error);
+            toast.error(`Error al descargar: ${message}`);
         } finally {
             setDownloadingId(null);
         }
