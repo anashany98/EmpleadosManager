@@ -20,7 +20,7 @@ import {
     updateConceptValueSchema,
     updatePeriodStatusSchema,
     updateRecordCellSchema,
-    timeSheetImportSchema
+    timeSheetImportBodySchema
 } from '../schemas/payrollControlSchemas';
 
 const log = createLogger('PayrollControlController');
@@ -263,7 +263,7 @@ export const PayrollControlController = {
             if (!req.file) throw new AppError('Selecciona un archivo Excel para importar.', 400);
             validateUpload(req.file);
             const user = requireUser(req);
-            const body = timeSheetImportSchema.parse(req.body);
+            const body = timeSheetImportBodySchema.parse(req.body);
             const employee = await prisma.employee.findUnique({ where: { id: req.params.employeeId }, select: { companyId: true } });
             if (!employee) throw new AppError('Empleado no encontrado.', 404);
             assertTenantAccess(user, employee.companyId);
@@ -278,7 +278,7 @@ export const PayrollControlController = {
             if (!req.file) throw new AppError('Selecciona un archivo Excel para importar.', 400);
             validateUpload(req.file);
             const user = requireUser(req);
-            const body = timeSheetImportSchema.parse(req.body);
+            const body = timeSheetImportBodySchema.parse(req.body);
             if (!body.expectedVersion) throw new AppError('Falta la versión del control horario. Recarga la página e inténtalo de nuevo.', 400);
             const employee = await prisma.employee.findUnique({ where: { id: req.params.employeeId }, select: { companyId: true } });
             if (!employee) throw new AppError('Empleado no encontrado.', 404);
