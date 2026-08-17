@@ -60,10 +60,12 @@ export function useLockPolling(employeeId: string | null, userId?: string) {
     const releaseLock = useCallback(async () => {
         if (!employeeId) return;
         try {
-            await api.delete(`/locks/employee/${employeeId}`);
+            if (typeof api?.delete === 'function') {
+                await api.delete(`/locks/employee/${employeeId}`);
+            }
             checkLock();
-        } catch (error) {
-            console.error('Failed to release lock:', error);
+        } catch {
+            // Silently ignore release lock errors on navigation/teardown
         }
     }, [employeeId, checkLock]);
 

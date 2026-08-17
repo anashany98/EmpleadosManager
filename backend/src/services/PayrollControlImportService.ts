@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs';
 import { AppError } from '../utils/AppError';
-import type { DailyEntryPayload } from './PayrollControlService';
+import { PayrollControlService, type DailyEntryPayload } from './PayrollControlService';
 
 export interface TimeSheetImportPreview {
     sheetName: string;
@@ -121,5 +121,15 @@ export class PayrollControlImportService {
             if (entries.length) return { sheetName: sheet.name, entries, warnings };
         }
         throw new AppError(`No se encontraron filas del ${String(month).padStart(2, '0')}/${year} con el formato de control horario.`, 422);
+    }
+
+    static async import(buffer: Buffer, recordId: string, expectedVersion: number, year: number, month: number, userId: string) {
+        const preview = await this.preview(buffer, year, month);
+        const record = await PayrollControlService.updateDailyEntries(recordId, expectedVersion, preview.entries, userId);
+        return {
+            record,
+            importedDays: preview.entries.length,
+            warnings: preview.warnings
+        };
     }
 }

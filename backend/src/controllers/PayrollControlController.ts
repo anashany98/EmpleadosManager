@@ -221,16 +221,41 @@ export const PayrollControlController = {
         }
     },
 
+    initEmployeePeriod: async (req: Request, res: Response) => {
+        try {
+            const user = requireUser(req);
+            const body = periodQuerySchema.omit({ companyId: true }).parse(req.body);
+            const employee = await prisma.employee.findUnique({ where: { id: req.params.employeeId }, select: { companyId: true } });
+            if (!employee?.companyId) throw new AppError('Empleado sin empresa asignada.', 404);
+            assertTenantAccess(user, employee.companyId);
+            const period = await PayrollControlService.getPeriod(employee.companyId, body.year, body.month);
+            if (!period) {
+                await PayrollControlService.createPeriod(employee.companyId, body.year, body.month, user.id);
+            }
+            const info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, body.year, body.month);
+            return ApiResponse.success(res, info, 'Período mensual inicializado.');
+        } catch (error: unknown) {
+            log.error({ error }, 'Error initializing employee payroll control period');
+            return handleControllerError(res, error, 'Error al inicializar el período mensual');
+        }
+    },
+
     updateEmployeeRecord: async (req: Request, res: Response) => {
         try {
             const user = requireUser(req);
             const body = employeeRecordBodySchema.parse(req.body);
             const employee = await prisma.employee.findUnique({ where: { id: req.params.employeeId }, select: { companyId: true } });
-            if (!employee) throw new AppError('Empleado no encontrado.', 404);
+            if (!employee?.companyId) throw new AppError('Empleado no encontrado.', 404);
             assertTenantAccess(user, employee.companyId);
             const { year, month, ...payload } = body;
-            const info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, year, month);
-            if (!info.record) throw new AppError('No existe registro mensual para el empleado.', 404);
+            let info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, year, month);
+            if (!info.record) {
+                if (info.periodStatus === 'NOT_CREATED') {
+                    await PayrollControlService.createPeriod(employee.companyId, year, month, user.id);
+                    info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, year, month);
+                }
+                if (!info.record) throw new AppError('No existe registro mensual para el empleado.', 404);
+            }
             return ApiResponse.success(res, await PayrollControlService.updateRecordCell(info.record.id, payload, user.id), 'Control horario guardado.');
         } catch (error: unknown) {
             log.error({ error }, 'Error updating employee payroll control');
@@ -243,13 +268,19 @@ export const PayrollControlController = {
             const user = requireUser(req);
             const body = updateDailyEntriesSchema.parse(req.body);
             const employee = await prisma.employee.findUnique({ where: { id: req.params.employeeId }, select: { companyId: true } });
-            if (!employee) throw new AppError('Empleado no encontrado.', 404);
+            if (!employee?.companyId) throw new AppError('Empleado no encontrado.', 404);
             assertTenantAccess(user, employee.companyId);
-            const info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, body.year, body.month);
-            if (!info.record) throw new AppError('No existe registro mensual para el empleado.', 404);
+            let info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, body.year, body.month);
+            if (!info.record) {
+                if (info.periodStatus === 'NOT_CREATED') {
+                    await PayrollControlService.createPeriod(employee.companyId, body.year, body.month, user.id);
+                    info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, body.year, body.month);
+                }
+                if (!info.record) throw new AppError('No existe registro mensual para el empleado.', 404);
+            }
             return ApiResponse.success(
                 res,
-                await PayrollControlService.updateDailyEntries(info.record.id, body.expectedVersion, body.entries, user.id),
+                await PayrollControlService.updateDailyEntries(info.record.id, info.record.version, body.entries, user.id),
                 'Detalle diario guardado.'
             );
         } catch (error: unknown) {
@@ -269,7 +300,8 @@ export const PayrollControlController = {
             assertTenantAccess(user, employee.companyId);
             return ApiResponse.success(res, await PayrollControlImportService.preview(req.file.buffer, body.year, body.month));
         } catch (error: unknown) {
-            return handleControllerError(res, error, 'Error al analizar el Excel de control horario');
+            log.error({ error }, 'Error previewing employee timesheet import');
+            return handleControllerError(res, error, 'Error al procesar la vista previa del Excel');
         }
     },
 
@@ -285,32 +317,19 @@ export const PayrollControlController = {
             assertTenantAccess(user, employee.companyId);
             const info = await PayrollControlService.getEmployeeRecord(req.params.employeeId, body.year, body.month);
             if (!info.record) throw new AppError('No existe registro mensual para el empleado.', 404);
-            const preview = await PayrollControlImportService.preview(req.file.buffer, body.year, body.month);
-            const imported = new Map(preview.entries.map((entry) => [entry.workDate, entry]));
-            const existing = new Map(info.record.dailyEntries.map((entry) => [entry.workDate.toISOString().slice(0, 10), entry]));
-            const days = new Date(Date.UTC(body.year, body.month, 0)).getUTCDate();
-            const entries = Array.from({ length: days }, (_, index) => {
-                const workDate = `${body.year}-${String(body.month).padStart(2, '0')}-${String(index + 1).padStart(2, '0')}`;
-                const source = imported.get(workDate);
-                if (source) return source;
-                const current = existing.get(workDate);
-                const weekend = new Date(`${workDate}T00:00:00.000Z`).getUTCDay() % 6 === 0;
-                return {
-                    workDate,
-                    entryTime: current?.entryAt ? current.entryAt.toISOString().slice(11, 16) : null,
-                    breakOutTime: current?.breakOutAt ? current.breakOutAt.toISOString().slice(11, 16) : null,
-                    breakInTime: current?.breakInAt ? current.breakInAt.toISOString().slice(11, 16) : null,
-                    exitTime: current?.exitAt ? current.exitAt.toISOString().slice(11, 16) : null,
-                    discountHours: Number(current?.discountHours ?? (weekend ? 0 : 0.5)),
-                    scheduledHours: Number(current?.scheduledHours ?? (weekend ? 0 : 8)),
-                    isHoliday: current?.isHoliday ?? false,
-                    dietAmount: Number(current?.dietAmount ?? 0), notes: current?.notes ?? ''
-                };
-            });
-            const record = await PayrollControlService.updateDailyEntries(info.record.id, body.expectedVersion, entries, user.id);
-            return ApiResponse.success(res, { record, importedDays: preview.entries.length, warnings: preview.warnings }, 'Horas importadas correctamente.');
+            const expectedVersion = req.body.expectedVersion !== undefined ? Number(req.body.expectedVersion) : info.record.version;
+            const result = await PayrollControlImportService.import(
+                req.file.buffer,
+                info.record.id,
+                expectedVersion,
+                body.year,
+                body.month,
+                user.id
+            );
+            return ApiResponse.success(res, result, 'Detalle horario importado correctamente desde Excel.');
         } catch (error: unknown) {
-            return handleControllerError(res, error, 'Error al importar el Excel de control horario');
+            log.error({ error }, 'Error importing employee timesheet');
+            return handleControllerError(res, error, 'Error al importar las horas desde Excel');
         }
     },
 
@@ -321,34 +340,26 @@ export const PayrollControlController = {
             const period = await prisma.payrollControlPeriod.findUnique({ where: { id: payload.periodId } });
             if (!period) throw new AppError('Período no encontrado.', 404);
             assertTenantAccess(user, period.companyId);
-            const preview = await PayrollControlService.buildGestoriaPreview(payload.periodId);
-            return ApiResponse.success(res, {
-                templateHash: preview.templateHash,
-                errors: preview.errors,
-                rows: preview.mappings.map((row) => ({ employeeId: row.employeeId, code: row.code, row: row.row }))
-            });
+            return ApiResponse.success(res, await PayrollControlService.buildGestoriaPreview(payload.periodId));
         } catch (error: unknown) {
             log.error({ error }, 'Error previewing gestoria export');
-            return handleControllerError(res, error, 'Error al previsualizar la exportación');
+            return handleControllerError(res, error, 'Error al previsualizar la exportación a gestoría');
         }
     },
 
     exportToGestoria: async (req: Request, res: Response) => {
         try {
             const user = requireUser(req);
+            assertPeriodAdministrator(user);
             const payload = exportGestoriaSchema.parse(req.body);
             const period = await prisma.payrollControlPeriod.findUnique({ where: { id: payload.periodId } });
             if (!period) throw new AppError('Período no encontrado.', 404);
             assertTenantAccess(user, period.companyId);
             const result = await PayrollControlService.exportToGestoria(payload.periodId, user.id);
-            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-            res.setHeader('X-Template-Hash', result.templateHash);
-            res.setHeader('X-Output-Hash', result.outputHash);
-            return res.status(200).send(result.buffer);
+            return ApiResponse.success(res, result, 'Archivo para gestoría generado correctamente.');
         } catch (error: unknown) {
             log.error({ error }, 'Error exporting to gestoria');
-            return handleControllerError(res, error, 'Error al generar la exportación para gestoría');
+            return handleControllerError(res, error, 'Error al exportar los datos a gestoría');
         }
     },
 
@@ -359,12 +370,10 @@ export const PayrollControlController = {
             assertTenantAccess(user, exportRecord.period.companyId);
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
             res.setHeader('Content-Disposition', `attachment; filename="${exportRecord.filename}"`);
-            res.setHeader('X-Template-Hash', exportRecord.templateHash);
-            res.setHeader('X-Output-Hash', exportRecord.outputHash);
-            return res.status(200).send(exportRecord.content);
+            return res.send(exportRecord.content);
         } catch (error: unknown) {
             log.error({ error }, 'Error downloading gestoria export');
-            return handleControllerError(res, error, 'Error al descargar la exportación histórica');
+            return handleControllerError(res, error, 'Error al descargar la exportación de gestoría');
         }
     }
 };

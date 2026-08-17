@@ -54,7 +54,7 @@ export interface VacationBalanceSummary {
 }
 
 export function roundVacationValue(value: number | Decimal): number {
-    return Number(value.toFixed(2));
+    return Number(Number(value).toFixed(2));
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
@@ -68,7 +68,7 @@ function normalizeDay(value: Date | string): Date {
     return normalized;
 }
 
-export const VACATION_TYPES_FOR_BALANCE = ['VACATION', 'MATERNIDAD', 'PATERNIDAD', 'MATERNITY', 'PATERNITY'];
+export const VACATION_TYPES_FOR_BALANCE = ['VACATION'];
 
 export function isVacationType(type?: string | null): boolean {
     if (!type) {

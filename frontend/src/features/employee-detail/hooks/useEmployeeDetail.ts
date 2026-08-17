@@ -157,7 +157,12 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
     const auditLogsQuery = useQuery({
         queryKey: ['audit-logs', 'EMPLOYEE', employeeId],
         queryFn: async () => {
-            await api.get(`/audit/EMPLOYEE/${employeeId}`);
+            const res = await api.get<{ data?: unknown[] } | unknown[]>(`/audit/EMPLOYEE/${employeeId}`);
+            if (Array.isArray(res)) return res;
+            if (res && typeof res === 'object' && 'data' in res && Array.isArray((res as any).data)) {
+                return (res as any).data;
+            }
+            return [];
         },
         enabled: !!employeeId && isAdmin && !isNew,
         staleTime: 60 * 1000,
@@ -360,6 +365,7 @@ export function useEmployeeDetail({ employeeId, isAdmin, isNew, navigate }: UseE
             contractTypes: [],
             agreementTypes: []
         },
+        auditLogs: auditLogsQuery.data ?? [],
         setActiveTab,
         setShowOnboardingWizard,
         setShowOffboardingWizard,

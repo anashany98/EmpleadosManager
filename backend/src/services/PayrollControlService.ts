@@ -328,6 +328,25 @@ export class PayrollControlService {
         });
         const configs = await this.ensureDefaultConceptConfigs(companyId);
 
+        // Herencia de tarifas: buscar período inmediatamente anterior y tarifas por categoría
+        const previousPeriod = await prisma.payrollControlPeriod.findFirst({
+            where: {
+                companyId,
+                OR: [
+                    { year: { lt: year } },
+                    { year, month: { lt: month } }
+                ]
+            },
+            orderBy: [{ year: 'desc' }, { month: 'desc' }],
+            include: { records: { select: { employeeId: true, overtimeRate: true, holidayOvertimeRate: true, irpf: true, tgss: true } } }
+        });
+        const prevRatesByEmployee = new Map(
+            (previousPeriod?.records || []).map((r) => [r.employeeId, r])
+        );
+
+        const categoryRates = await prisma.categoryRate.findMany();
+        const categoryRateMap = new Map(categoryRates.map((cr) => [cr.category.toLowerCase().trim(), cr]));
+
         try {
             return await prisma.$transaction(async (tx) => {
                 const created = await tx.payrollControlPeriod.create({
@@ -335,19 +354,34 @@ export class PayrollControlService {
                 });
                 if (employees.length > 0) {
                     await tx.payrollControlRecord.createMany({
-                        data: employees.map((employee) => ({
-                            periodId: created.id,
-                            employeeId: employee.id,
-                            category: employee.category || 'General',
-                            department: employee.department || 'Otros',
-                            gestoriaCode: employee.payrollAgencyEmployeeCode || null,
-                            overtimeRate: 0,
-                            holidayOvertimeRate: 0,
-                            overtimeHours: 0,
-                            holidayOvertimeHours: 0,
-                            irpf: 0,
-                            tgss: 0
-                        }))
+                        data: employees.map((employee) => {
+                            const prev = prevRatesByEmployee.get(employee.id);
+                            const catKey = (employee.category || '').toLowerCase().trim();
+                            const catRate = categoryRateMap.get(catKey);
+
+                            const overtimeRate = prev && Number(prev.overtimeRate) > 0
+                                ? prev.overtimeRate
+                                : catRate ? catRate.overtimeRate : 0;
+                            const holidayOvertimeRate = prev && Number(prev.holidayOvertimeRate) > 0
+                                ? prev.holidayOvertimeRate
+                                : catRate ? catRate.holidayOvertimeRate : 0;
+                            const irpf = prev ? prev.irpf : 0;
+                            const tgss = prev ? prev.tgss : 0;
+
+                            return {
+                                periodId: created.id,
+                                employeeId: employee.id,
+                                category: employee.category || 'General',
+                                department: employee.department || 'Otros',
+                                gestoriaCode: employee.payrollAgencyEmployeeCode || null,
+                                overtimeRate,
+                                holidayOvertimeRate,
+                                overtimeHours: 0,
+                                holidayOvertimeHours: 0,
+                                irpf,
+                                tgss
+                            };
+                        })
                     });
                     const records = await tx.payrollControlRecord.findMany({
                         where: { periodId: created.id },
@@ -389,15 +423,119 @@ export class PayrollControlService {
         }
     }
 
+    static async addEmployeeToPeriod(
+        periodId: string,
+        employee: { id: string; category: string | null; department: string | null; payrollAgencyEmployeeCode: string | null },
+        companyId: string,
+        year: number,
+        month: number
+    ) {
+        const previousPeriod = await prisma.payrollControlPeriod.findFirst({
+            where: {
+                companyId,
+                OR: [
+                    { year: { lt: year } },
+                    { year, month: { lt: month } }
+                ]
+            },
+            orderBy: [{ year: 'desc' }, { month: 'desc' }],
+            include: { records: { where: { employeeId: employee.id }, select: { overtimeRate: true, holidayOvertimeRate: true, irpf: true, tgss: true } } }
+        });
+        const prev = previousPeriod?.records?.[0];
+        const catRate = employee.category
+            ? await prisma.categoryRate.findFirst({ where: { category: { equals: employee.category, mode: 'insensitive' } } })
+            : null;
+
+        const overtimeRate = prev && Number(prev.overtimeRate) > 0
+            ? prev.overtimeRate
+            : catRate ? catRate.overtimeRate : 0;
+        const holidayOvertimeRate = prev && Number(prev.holidayOvertimeRate) > 0
+            ? prev.holidayOvertimeRate
+            : catRate ? catRate.holidayOvertimeRate : 0;
+        const irpf = prev ? prev.irpf : 0;
+        const tgss = prev ? prev.tgss : 0;
+
+        const configs = await this.ensureDefaultConceptConfigs(companyId);
+
+        return prisma.$transaction(async (tx) => {
+            const newRecord = await tx.payrollControlRecord.create({
+                data: {
+                    periodId,
+                    employeeId: employee.id,
+                    category: employee.category || 'General',
+                    department: employee.department || 'Otros',
+                    gestoriaCode: employee.payrollAgencyEmployeeCode || null,
+                    overtimeRate,
+                    holidayOvertimeRate,
+                    overtimeHours: 0,
+                    holidayOvertimeHours: 0,
+                    irpf,
+                    tgss
+                }
+            });
+            if (configs.length > 0) {
+                await tx.payrollControlConceptValue.createMany({
+                    data: configs.map((config) => ({
+                        recordId: newRecord.id,
+                        conceptConfigId: config.id,
+                        key: config.key,
+                        label: config.label,
+                        gestoriaCode: config.gestoriaCode,
+                        value: 0
+                    }))
+                });
+            }
+            return tx.payrollControlRecord.findUniqueOrThrow({
+                where: { id: newRecord.id },
+                include: recordInclude
+            });
+        });
+    }
+
     static async getEmployeeRecord(employeeId: string, year: number, month: number) {
         const employee = await prisma.employee.findFirst({
             where: { id: employeeId, deletedAt: null },
-            select: { companyId: true }
+            select: { id: true, companyId: true, category: true, department: true, payrollAgencyEmployeeCode: true, active: true }
         });
         if (!employee?.companyId) throw new AppError('Empleado sin empresa asignada.', 404);
+
+        const monthStart = new Date(Date.UTC(year, month - 1, 1));
+        const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+        const vacations = await prisma.vacation.findMany({
+            where: {
+                employeeId,
+                status: { in: ['APPROVED', 'EXISTING'] },
+                startDate: { lte: monthEnd },
+                endDate: { gte: monthStart }
+            },
+            select: {
+                id: true,
+                startDate: true,
+                endDate: true,
+                type: true,
+                reason: true,
+                days: true,
+                status: true
+            },
+            orderBy: { startDate: 'asc' }
+        });
+
         const period = await this.getPeriod(employee.companyId, year, month);
-        if (!period) return { periodStatus: 'NOT_CREATED', periodId: null, record: null };
-        return { periodStatus: period.status, periodId: period.id, record: period.records.find((record) => record.employeeId === employeeId) || null };
+        if (!period) return { periodStatus: 'NOT_CREATED', periodId: null, record: null, companyId: employee.companyId, vacations };
+
+        let record = period.records.find((r) => r.employeeId === employeeId) || null;
+
+        if (!record && EDITABLE_PERIOD_STATUSES.has(period.status) && employee.active) {
+            record = await this.addEmployeeToPeriod(period.id, employee, period.companyId, period.year, period.month);
+        } else if (record && !record.gestoriaCode && employee.payrollAgencyEmployeeCode) {
+            await prisma.payrollControlRecord.update({
+                where: { id: record.id },
+                data: { gestoriaCode: employee.payrollAgencyEmployeeCode }
+            });
+            record.gestoriaCode = employee.payrollAgencyEmployeeCode;
+        }
+
+        return { periodStatus: period.status, periodId: period.id, record, vacations };
     }
 
     static async listExports(periodId: string) {
@@ -488,11 +626,16 @@ export class PayrollControlService {
             const overtimeHours = manualOrCalculated(record, 'overtimeHours', calculatedOvertimeHours);
             const holidayOvertimeHours = manualOrCalculated(record, 'holidayOvertimeHours', calculatedHolidayOvertimeHours);
             const diets = manualOrCalculated(record, 'diets', calculatedDiets);
+
+            // Al actualizar horas diarias explícitamente, se limpia cualquier sobrescritura manual
+            // previa sobre el importe de horas para sincronizar con las nuevas horas introducidas:
             const calculatedRecord = this.calculateRecordState({
                 ...record,
                 overtimeHours,
                 holidayOvertimeHours,
-                diets
+                diets,
+                isTotalOvertimeAmountManual: false,
+                totalOvertimeAmountManual: null
             });
             const updated = await tx.payrollControlRecord.updateMany({
                 where: { id: recordId, version: expectedVersion },
@@ -500,6 +643,8 @@ export class PayrollControlService {
                     overtimeHours,
                     holidayOvertimeHours,
                     diets,
+                    isTotalOvertimeAmountManual: false,
+                    totalOvertimeAmountManual: null,
                     ...calculatedRecord,
                     version: { increment: 1 }
                 }
@@ -573,6 +718,22 @@ export class PayrollControlService {
         Object.assign(updateData, calculations, { version: { increment: 1 } });
 
         await prisma.$transaction(async (tx) => {
+            if (input.gestoriaCode !== undefined && record.employeeId) {
+                const rawCode = typeof input.gestoriaCode === 'string' ? input.gestoriaCode.trim() || null : null;
+                updateData.gestoriaCode = rawCode;
+                try {
+                    await tx.employee.update({
+                        where: { id: record.employeeId },
+                        data: { payrollAgencyEmployeeCode: rawCode }
+                    });
+                } catch (err) {
+                    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+                        throw new AppError(`El código de gestoría '${rawCode}' ya está asignado a otro empleado en esta empresa.`, 409);
+                    }
+                    throw err;
+                }
+            }
+
             const result = await tx.payrollControlRecord.updateMany({
                 where: { id: recordId, version: payload.expectedVersion },
                 data: updateData as Prisma.PayrollControlRecordUpdateManyMutationInput
