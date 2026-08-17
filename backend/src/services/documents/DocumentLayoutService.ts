@@ -408,12 +408,12 @@ export const renderLayoutTemplate = async (
 
     if (!hasVisibleSystemQr) {
         const qrBuffer = await QRCode.toBuffer(subjectPayload, {
-            errorCorrectionLevel: 'H',
-            margin: 4,
-            width: 240
+            errorCorrectionLevel: 'M',
+            margin: 2,
+            width: 320
         });
-        const size = Math.min(pageWidth * 0.10, pageHeight * 0.07);
-        doc.image(qrBuffer, (pageWidth - size) / 2, pageHeight * 0.895, {
+        const size = Math.min(pageWidth * 0.12, pageHeight * 0.085);
+        doc.image(qrBuffer, (pageWidth - size) / 2, pageHeight * 0.88, {
             width: size,
             height: size
         });

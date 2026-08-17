@@ -81,7 +81,8 @@ describe('document generator request builder', () => {
                 authorName: 'Responsable',
                 deviceName: 'iPhone 16',
                 serialNumber: 'SN-001',
-                itemId: 'tech-1'
+                itemId: 'tech-1',
+                imei: ''
             }
         });
     });

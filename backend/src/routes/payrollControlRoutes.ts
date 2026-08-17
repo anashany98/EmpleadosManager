@@ -23,6 +23,7 @@ router.post('/period/status', checkPermission('payroll', 'write'), PayrollContro
 
 // Integración con Perfil de Empleado (Pestaña Control horario)
 router.get('/employee/:employeeId', checkPermission('employees', 'read'), PayrollControlController.getEmployeeRecord);
+router.post('/employee/:employeeId/init-period', checkPermission('employees', 'write'), PayrollControlController.initEmployeePeriod);
 router.put('/employee/:employeeId', checkPermission('employees', 'write'), PayrollControlController.updateEmployeeRecord);
 router.put('/employee/:employeeId/daily', checkPermission('employees', 'write'), PayrollControlController.updateEmployeeDailyEntries);
 router.post('/employee/:employeeId/daily/import-preview', checkPermission('employees', 'write'), timeSheetUpload.single('file'), validateResource(timeSheetImportSchema), PayrollControlController.previewEmployeeTimeSheetImport);

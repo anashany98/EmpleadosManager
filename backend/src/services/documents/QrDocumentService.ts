@@ -160,7 +160,7 @@ export const extractSystemQrFromPdf = async (
         });
         const pdf = await loadingTask.promise;
         const pagesToScan = Math.min(pdf.numPages, Math.max(1, options.maxPages || 3));
-        const scale = Math.max(1.5, Math.min(3, options.renderScale || 2.25));
+        const scale = Math.max(1.5, Math.min(3.5, options.renderScale || 2.5));
 
         for (let pageNumber = 1; pageNumber <= pagesToScan; pageNumber += 1) {
             const page = await pdf.getPage(pageNumber);

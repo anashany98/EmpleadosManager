@@ -11,7 +11,9 @@ import {
     Keyboard,
     Loader2,
     Lock,
+    RotateCcw,
     Save,
+    Sun,
     Upload,
     WandSparkles
 } from 'lucide-react';
@@ -23,40 +25,47 @@ interface EmployeeControlHorarioSectionProps {
     employeeId: string;
 }
 
-interface DailyEntryApi {
-    workDate: string;
-    entryAt: string | null;
-    breakOutAt: string | null;
-    breakInAt: string | null;
-    exitAt: string | null;
-    workedHours: string | number;
-    discountHours: string | number;
-    scheduledHours: string | number;
-    overtimeHours: string | number;
-    holidayOvertimeHours: string | number;
-    dietAmount: string | number;
-    isHoliday: boolean;
-    isCalendarHoliday: boolean;
-    holidayName: string | null;
-    notes: string | null;
+interface ApiEnvelope<T> {
+    success: boolean;
+    data: T;
+    error?: string;
+    message?: string;
 }
 
-interface PayrollRecord {
-    version: number;
-    overtimeRate: string | number;
-    holidayOvertimeRate: string | number;
-    overtimeHours: string | number;
-    holidayOvertimeHours: string | number;
-    positiveVariable: string | number;
-    negativeVariable: string | number;
-    diets: string | number;
-    irpf: string | number;
-    tgss: string | number;
-    productivity: string | number;
-    totalOvertimeAmount: string | number;
-    observations: string | null;
-    dailyEntries: DailyEntryApi[];
+interface CalendarEventApi {
+    title: string;
+    start: string;
+    end: string;
+    type: string;
+    source?: string;
+    description?: string;
 }
+
+interface VacationItemApi {
+    id: string;
+    startDate: string;
+    endDate: string;
+    type: string;
+    reason: string | null;
+    status: string;
+}
+
+interface TimeSheetImportPreview {
+    sheetName: string;
+    entries: Array<Pick<DailyRow, 'workDate' | 'entryTime' | 'breakOutTime' | 'breakInTime' | 'exitTime' | 'notes'>>;
+    warnings: string[];
+}
+
+type DailyEditableField =
+    | 'entryTime'
+    | 'breakOutTime'
+    | 'breakInTime'
+    | 'exitTime'
+    | 'discountHours'
+    | 'scheduledHours'
+    | 'dietAmount'
+    | 'isHoliday'
+    | 'notes';
 
 interface DailyRow {
     workDate: string;
@@ -76,19 +85,67 @@ interface DailyRow {
     isHoliday: boolean;
     isCalendarHoliday: boolean;
     holidayName: string;
+    isVacation: boolean;
+    vacationReason: string;
+    vacationType: string;
     notes: string;
 }
 
-type DailyEditableField =
-    | 'entryTime'
-    | 'breakOutTime'
-    | 'breakInTime'
-    | 'exitTime'
-    | 'discountHours'
-    | 'scheduledHours'
-    | 'dietAmount'
-    | 'isHoliday'
-    | 'notes';
+interface DailyEntryApi {
+    id?: string;
+    workDate: string;
+    entryAt: string | null;
+    breakOutAt: string | null;
+    breakInAt: string | null;
+    exitAt: string | null;
+    workedHours: number | string;
+    discountHours: number | string;
+    scheduledHours: number | string;
+    overtimeHours: number | string;
+    holidayOvertimeHours: number | string;
+    dietAmount: number | string;
+    isHoliday: boolean;
+    isCalendarHoliday: boolean;
+    holidayName: string | null;
+    notes: string | null;
+}
+
+interface PayrollRecord {
+    id: string;
+    periodId: string;
+    employeeId: string;
+    category?: string | null;
+    department?: string | null;
+    gestoriaCode?: string | null;
+    overtimeRate: number | string;
+    holidayOvertimeRate: number | string;
+    overtimeHours: number | string;
+    holidayOvertimeHours: number | string;
+    totalOvertimeAmount: number | string;
+    totalOvertimeAmountManual?: number | string | null;
+    isTotalOvertimeAmountManual?: boolean;
+    positiveVariable: number | string;
+    negativeVariable: number | string;
+    diets: number | string;
+    irpf: number | string;
+    tgss: number | string;
+    availablePercentage?: number | string;
+    gross?: number | string;
+    productivity?: number | string;
+    hoursAmount?: number | string;
+    difference?: number | string;
+    observations?: string | null;
+    version: number;
+    dailyEntries?: DailyEntryApi[];
+}
+
+interface EmployeeRecordResponse {
+    periodStatus: string;
+    periodId: string | null;
+    record: PayrollRecord | null;
+    companyId?: string;
+    vacations?: VacationItemApi[];
+}
 
 interface QuickSchedule {
     entryTime: string;
@@ -97,29 +154,6 @@ interface QuickSchedule {
     exitTime: string;
     discountHours: number;
     scheduledHours: number;
-}
-
-interface EmployeeRecordResponse {
-    periodStatus: string;
-    periodId: string | null;
-    record: PayrollRecord | null;
-}
-
-interface ApiEnvelope<T> {
-    data: T;
-}
-
-interface CalendarEventApi {
-    title: string;
-    start: string;
-    end: string;
-    type: string;
-}
-
-interface TimeSheetImportPreview {
-    sheetName: string;
-    entries: Array<Pick<DailyRow, 'workDate' | 'entryTime' | 'breakOutTime' | 'breakInTime' | 'exitTime' | 'notes'>>;
-    warnings: string[];
 }
 
 const MONTHS = [
@@ -227,11 +261,63 @@ function getCalendarHolidays(events: CalendarEventApi[], year: number, month: nu
     return holidays;
 }
 
+function getEmployeeVacations(
+    vacations: VacationItemApi[] = [],
+    calendarEvents: CalendarEventApi[] = [],
+    year: number,
+    month: number
+): Map<string, { type: string; reason?: string }> {
+    const map = new Map<string, { type: string; reason?: string }>();
+    const monthStart = new Date(Date.UTC(year, month - 1, 1));
+    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+
+    vacations.forEach((vac) => {
+        const start = new Date(vac.startDate);
+        const end = new Date(vac.endDate);
+        const cursor = new Date(Math.max(start.getTime(), monthStart.getTime()));
+        cursor.setUTCHours(0, 0, 0, 0);
+        const limit = new Date(Math.min(end.getTime(), monthEnd.getTime()));
+        limit.setUTCHours(23, 59, 59, 999);
+        while (cursor <= limit) {
+            const key = cursor.toISOString().slice(0, 10);
+            map.set(key, {
+                type: vac.type || 'VACATION',
+                reason: vac.reason || undefined
+            });
+            cursor.setUTCDate(cursor.getUTCDate() + 1);
+        }
+    });
+
+    calendarEvents
+        .filter((e) => e.type?.startsWith('vacation') || e.source === 'vacation')
+        .forEach((e) => {
+            const start = new Date(e.start);
+            const end = new Date(e.end);
+            const cursor = new Date(Math.max(start.getTime(), monthStart.getTime()));
+            cursor.setUTCHours(0, 0, 0, 0);
+            const limit = new Date(Math.min(end.getTime(), monthEnd.getTime()));
+            limit.setUTCHours(23, 59, 59, 999);
+            while (cursor <= limit) {
+                const key = cursor.toISOString().slice(0, 10);
+                if (!map.has(key)) {
+                    map.set(key, {
+                        type: 'VACATION',
+                        reason: e.description || undefined
+                    });
+                }
+                cursor.setUTCDate(cursor.getUTCDate() + 1);
+            }
+        });
+
+    return map;
+}
+
 function buildRows(
     year: number,
     month: number,
     entries: DailyEntryApi[] = [],
-    calendarHolidays?: Map<string, string>
+    calendarHolidays?: Map<string, string>,
+    vacationsMap?: Map<string, { type: string; reason?: string }>
 ): DailyRow[] {
     const byDate = new Map(entries.map((entry) => [entry.workDate.slice(0, 10), entry]));
     const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -241,6 +327,14 @@ function buildRows(
         const day = new Date(`${key}T00:00:00.000Z`).getUTCDay();
         const weekend = day === 0 || day === 6;
         const entry = byDate.get(key);
+        const vacationInfo = vacationsMap?.get(key);
+        const isVacation = Boolean(vacationInfo);
+        const vacationReason = vacationInfo?.reason || '';
+        const vacationType = vacationInfo?.type || 'VACATION';
+        const defaultVacationNotes = isVacation
+            ? (vacationReason ? `Vacaciones (${vacationReason})` : 'Vacaciones')
+            : '';
+
         if (entry) {
             const isCalendarHoliday = calendarHolidays
                 ? calendarHolidays.has(key)
@@ -263,7 +357,10 @@ function buildRows(
                 isHoliday: entry.isHoliday,
                 isCalendarHoliday,
                 holidayName: calendarHolidays?.get(key) || entry.holidayName || '',
-                notes: entry.notes || ''
+                isVacation,
+                vacationReason,
+                vacationType,
+                notes: entry.notes || defaultVacationNotes
             };
         }
         return {
@@ -284,7 +381,10 @@ function buildRows(
             isHoliday: false,
             isCalendarHoliday: calendarHolidays?.has(key) || false,
             holidayName: calendarHolidays?.get(key) || '',
-            notes: ''
+            isVacation,
+            vacationReason,
+            vacationType,
+            notes: defaultVacationNotes
         } satisfies DailyRow;
     });
 }
@@ -354,17 +454,18 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+    const [initializingPeriod, setInitializingPeriod] = useState(false);
     const [periodStatus, setPeriodStatus] = useState('DRAFT');
     const [record, setRecord] = useState<PayrollRecord | null>(null);
     const [rows, setRows] = useState<DailyRow[]>([]);
+    const [calendarHolidays, setCalendarHolidays] = useState<Map<string, string>>(new Map());
+    const [vacationsMap, setVacationsMap] = useState<Map<string, { type: string; reason?: string }>>(new Map());
     const [dirty, setDirty] = useState(false);
     const [modifiedRows, setModifiedRows] = useState<Set<string>>(new Set());
     const [monthlyFieldsDirty, setMonthlyFieldsDirty] = useState(false);
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState(false);
     const [importing, setImporting] = useState(false);
-    const [importFile, setImportFile] = useState<File | null>(null);
-    const [importPreview, setImportPreview] = useState<TimeSheetImportPreview | null>(null);
     const importInputRef = useRef<HTMLInputElement>(null);
     const [quickSchedule, setQuickSchedule] = useState<QuickSchedule>({
         entryTime: '',
@@ -390,10 +491,14 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                 api.get<ApiEnvelope<CalendarEventApi[]>>(`/calendar/unified?start=${start}&end=${end}`)
             ]);
             const data = unwrap(recordResponse);
-            const calendarHolidays = getCalendarHolidays(unwrap(calendarResponse), year, month);
+            const calendarEvents = unwrap(calendarResponse);
+            const holidays = getCalendarHolidays(calendarEvents, year, month);
+            const vacMap = getEmployeeVacations(data.vacations || [], calendarEvents, year, month);
+            setCalendarHolidays(holidays);
+            setVacationsMap(vacMap);
             setPeriodStatus(data.periodStatus || 'DRAFT');
             setRecord(data.record);
-            setRows(buildRows(year, month, data.record?.dailyEntries || [], calendarHolidays));
+            setRows(buildRows(year, month, data.record?.dailyEntries || [], holidays, vacMap));
             setDirty(false);
             setSaved(false);
             setModifiedRows(new Set());
@@ -405,6 +510,34 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
             setLoading(false);
         }
     }, [employeeId, month, year]);
+
+    const handleInitPeriod = async () => {
+        setInitializingPeriod(true);
+        try {
+            await api.post(`/payroll/control/employee/${employeeId}/init-period`, { year, month });
+            toast.success(`Período de ${MONTHS[month - 1]} ${year} inicializado`);
+            await loadRecord();
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'No se pudo inicializar el período mensual'));
+        } finally {
+            setInitializingPeriod(false);
+        }
+    };
+
+    const handleRestoreOvertimeAmount = async () => {
+        if (!record?.id || isLocked) return;
+        try {
+            const res = await api.post<ApiEnvelope<PayrollRecord>>(`/payroll/control/records/${record.id}/restore`, {
+                fieldName: 'totalOvertimeAmount',
+                expectedVersion: record.version
+            });
+            const updated = unwrap(res);
+            setRecord(updated);
+            toast.success('Cálculo automático de importe de horas restaurado');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'No se pudo restaurar el cálculo automático'));
+        }
+    };
 
     useEffect(() => {
         void loadRecord();
@@ -427,8 +560,9 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         diets: total.diets + row.dietAmount
     }), { worked: 0, scheduled: 0, overtime: 0, holiday: 0, diets: 0 }), [rows]);
     const incompleteDays = useMemo(() => rows.filter(rowIsIncomplete).length, [rows]);
+    const vacationDaysCount = useMemo(() => rows.filter((row) => row.isVacation).length, [rows]);
     const emptyWorkingDays = useMemo(() => rows.filter((row) => (
-        !row.weekend && !row.isHoliday && !row.isCalendarHoliday && !rowHasTimes(row)
+        !row.weekend && !row.isHoliday && !row.isCalendarHoliday && !row.isVacation && !rowHasTimes(row)
     )).length, [rows]);
     const hourDifference = totals.worked - totals.scheduled;
 
@@ -451,7 +585,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         }
         let changed = 0;
         setRows((current) => current.map((row) => {
-            if (row.weekend || row.isHoliday || row.isCalendarHoliday || (onlyEmpty && rowHasTimes(row))) return row;
+            if (row.weekend || row.isHoliday || row.isCalendarHoliday || row.isVacation || (onlyEmpty && rowHasTimes(row))) return row;
             changed += 1;
             return recalculateRow({ ...row, ...quickSchedule });
         }));
@@ -463,7 +597,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         setSaved(false);
         setSaveError(false);
         setModifiedRows(new Set(rows
-            .filter((row) => !row.weekend && !row.isHoliday && !row.isCalendarHoliday && (!onlyEmpty || !rowHasTimes(row)))
+            .filter((row) => !row.weekend && !row.isHoliday && !row.isCalendarHoliday && !row.isVacation && (!onlyEmpty || !rowHasTimes(row)))
             .map((row) => row.workDate)));
         toast.success(`Horario aplicado a ${changed} días laborables.`);
     };
@@ -628,12 +762,13 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                     negativeVariable: Number(record.negativeVariable || 0),
                     irpf: Number(record.irpf || 0),
                     tgss: Number(record.tgss || 0),
+                    gestoriaCode: record.gestoriaCode || null,
                     observations: record.observations || ''
                 }
             );
             const updated = unwrap(monthlyResponse);
             setRecord(updated);
-            setRows(buildRows(year, month, updated.dailyEntries || []));
+            setRows(buildRows(year, month, updated.dailyEntries || [], calendarHolidays, vacationsMap));
             setDirty(false);
             setSaved(true);
             setModifiedRows(new Set());
@@ -688,7 +823,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
             );
             const result = unwrap(response);
             setRecord(result.record);
-            setRows(buildRows(year, month, result.record.dailyEntries || []));
+            setRows(buildRows(year, month, result.record.dailyEntries || [], calendarHolidays, vacationsMap));
             setDirty(false);
             setSaved(true);
             setModifiedRows(new Set());
@@ -741,6 +876,12 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                 <ChevronRight size={16} />
                             </button>
                         </div>
+                        {vacationDaysCount > 0 && (
+                            <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 dark:border-red-800/80 dark:bg-red-950/40 dark:text-red-300">
+                                <Sun size={14} className="text-red-600 dark:text-red-400" />
+                                {vacationDaysCount} {vacationDaysCount === 1 ? 'día vacaciones' : 'días vacaciones'}
+                            </span>
+                        )}
                         <span className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-medium ${saveError ? 'bg-rose-50 text-rose-700' : saved ? 'bg-emerald-50 text-emerald-700' : dirty ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
                             {saveError ? <AlertTriangle size={14} /> : saved ? <Check size={14} /> : <Clock size={14} />}
                             {saveError
@@ -835,29 +976,63 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
 
                 {!record ? (
                     <div className="p-10 text-center">
-                        <p className="font-semibold text-slate-800 dark:text-slate-100">
-                            {missingPeriod ? 'Este período mensual todavía no está creado.' : 'No hay un registro mensual para este empleado.'}
+                        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                            <CalendarDays size={24} />
+                        </div>
+                        <p className="text-base font-semibold text-slate-800 dark:text-slate-100">
+                            {missingPeriod ? `El período de ${MONTHS[month - 1]} ${year} aún no está creado.` : 'No hay un registro mensual para este empleado.'}
                         </p>
                         {missingPeriod && (
+                            <>
                             <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
-                                Créalo de forma explícita desde Control General de RRHH. Al crearlo se asignarán los empleados activos y se congelarán sus códigos y tarifas del período.
+                                Puedes inicializar este mes para cargar los partes de horas de los empleados activos y aplicar automáticamente las tarifas y códigos de gestoría correspondientes.
                             </p>
+                            <button
+                                type="button"
+                                onClick={handleInitPeriod}
+                                disabled={initializingPeriod}
+                                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-800 disabled:opacity-50"
+                            >
+                                {initializingPeriod ? <Loader2 size={16} className="animate-spin" /> : <CalendarDays size={16} />}
+                                Inicializar período de {MONTHS[month - 1]} {year}
+                            </button>
+                            </>
                         )}
                     </div>
                 ) : (
                     <>
                     <div className="md:hidden space-y-3 p-3">
                         {rows.map((row, index) => {
+                            const isVacation = row.isVacation;
                             const highlighted = row.weekend || row.isHoliday || row.isCalendarHoliday;
                             const incomplete = rowIsIncomplete(row);
                             return (
-                                <article key={row.workDate} className={`rounded-xl border p-3 shadow-sm ${highlighted ? 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/20' : incomplete ? 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900'}`}>
+                                <article key={row.workDate} className={`rounded-xl border p-3 shadow-sm ${isVacation ? 'border-red-300 bg-red-50/90 dark:border-red-800 dark:bg-red-950/30' : highlighted ? 'border-rose-200 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/20' : incomplete ? 'border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/20' : 'border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900'}`}>
                                     <div className="mb-3 flex items-start justify-between gap-3">
                                         <div>
-                                            <p className="text-sm font-bold text-slate-950 dark:text-white">{row.dayLabel} · {String(row.dayNumber).padStart(2, '0')} de {MONTHS[month - 1]}</p>
-                                            <p className="text-xs text-slate-500">{highlighted ? row.holidayName || (row.weekend ? 'Fin de semana' : 'Festivo') : `${row.workedHours.toFixed(2)} h trabajadas · ${row.overtimeHours.toFixed(2)} h extra`}</p>
+                                            <p className={`text-sm font-bold ${isVacation ? 'text-red-700 dark:text-red-300' : 'text-slate-950 dark:text-white'}`}>
+                                                {row.dayLabel} · {String(row.dayNumber).padStart(2, '0')} de {MONTHS[month - 1]}
+                                            </p>
+                                            <p className="text-xs text-slate-500">
+                                                {isVacation
+                                                    ? (row.vacationReason ? `Vacaciones (${row.vacationReason})` : 'Vacaciones')
+                                                    : highlighted
+                                                        ? row.holidayName || (row.weekend ? 'Fin de semana' : 'Festivo')
+                                                        : `${row.workedHours.toFixed(2)} h trabajadas · ${row.overtimeHours.toFixed(2)} h extra`}
+                                            </p>
                                         </div>
-                                        {modifiedRows.has(row.workDate) && <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-bold text-blue-800">Pendiente</span>}
+                                        <div className="flex items-center gap-1.5">
+                                            {isVacation && (
+                                                <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700 border border-red-300 dark:bg-red-900/60 dark:text-red-200">
+                                                    Vacaciones
+                                                </span>
+                                            )}
+                                            {modifiedRows.has(row.workDate) && (
+                                                <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-bold text-blue-800">
+                                                    Pendiente
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <MobileTimeInput label="Entrada 1" value={row.entryTime} disabled={isLocked} onChange={(value) => updateRow(index, { entryTime: value })} />
@@ -873,7 +1048,14 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                             <input type="checkbox" checked={row.isHoliday || row.isCalendarHoliday} disabled={isLocked || row.isCalendarHoliday} onChange={(event) => updateRow(index, { isHoliday: event.target.checked })} className="h-5 w-5 rounded border-slate-300 text-rose-600" /> Festivo
                                         </label>
                                     </div>
-                                    <input type="text" disabled={isLocked} value={row.notes} onChange={(event) => updateRow(index, { notes: event.target.value })} placeholder="Añadir observación…" className="mt-2 h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:text-slate-500 dark:border-slate-700 dark:bg-slate-800" />
+                                    <input
+                                        type="text"
+                                        disabled={isLocked}
+                                        value={row.notes}
+                                        onChange={(event) => updateRow(index, { notes: event.target.value })}
+                                        placeholder={isVacation ? 'Vacaciones' : 'Añadir observación…'}
+                                        className={`mt-2 h-10 w-full rounded-lg border px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:text-slate-500 ${isVacation ? 'border-red-300 bg-red-50 text-red-800 font-semibold placeholder:text-red-500 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'}`}
+                                    />
                                 </article>
                             );
                         })}
@@ -883,6 +1065,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                             <div className="flex items-center gap-4">
                                 <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-white ring-1 ring-slate-300" />Dato editable</span>
                                 <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-slate-200" />Cálculo automático</span>
+                                <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-red-200 border border-red-300" />Vacaciones</span>
                                 <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-rose-200" />Fin de semana o festivo</span>
                                 <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-amber-200" />Marcaje incompleto</span>
                             </div>
@@ -918,24 +1101,33 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                             </thead>
                             <tbody>
                                 {rows.map((row, index) => {
+                                    const isVacation = row.isVacation;
                                     const highlighted = row.weekend || row.isHoliday || row.isCalendarHoliday;
                                     const incomplete = rowIsIncomplete(row);
-                                    const rowBackground = highlighted
-                                        ? 'bg-rose-50 dark:bg-rose-950/20'
-                                        : incomplete
-                                            ? 'bg-amber-50 dark:bg-amber-950/20'
-                                            : 'bg-white dark:bg-slate-900';
+                                    const rowBackground = isVacation
+                                        ? 'bg-red-50/90 dark:bg-red-950/30'
+                                        : highlighted
+                                            ? 'bg-rose-50 dark:bg-rose-950/20'
+                                            : incomplete
+                                                ? 'bg-amber-50 dark:bg-amber-950/20'
+                                                : 'bg-white dark:bg-slate-900';
                                     return (
-                                        <tr key={row.workDate} className={`${rowBackground} ${modifiedRows.has(row.workDate) ? 'outline outline-1 -outline-offset-1 outline-blue-300 dark:outline-blue-700' : ''} hover:bg-blue-50/70 dark:hover:bg-blue-950/20`}>
-                                            <td title={row.holidayName || undefined} className={`sticky left-0 z-10 h-9 border-b border-r border-slate-200 px-2 font-semibold ${rowBackground} ${highlighted ? 'text-rose-700' : 'text-slate-600'} dark:border-slate-700`}>
+                                        <tr key={row.workDate} className={`${rowBackground} ${modifiedRows.has(row.workDate) ? 'outline outline-1 -outline-offset-1 outline-blue-300 dark:outline-blue-700' : ''} hover:bg-red-100/70 dark:hover:bg-red-950/50 transition-colors`}>
+                                            <td title={isVacation ? (row.vacationReason ? `Vacaciones: ${row.vacationReason}` : 'Vacaciones') : (row.holidayName || undefined)} className={`sticky left-0 z-10 h-9 border-b border-r border-slate-200 px-2 font-semibold ${rowBackground} ${isVacation ? 'text-red-700 font-bold dark:text-red-300' : highlighted ? 'text-rose-700' : 'text-slate-600'} dark:border-slate-700`}>
                                                 <span className="flex items-center gap-1">
                                                     {modifiedRows.has(row.workDate) && <span className="h-2 w-2 rounded-full bg-blue-600" title="Fila modificada sin guardar" />}
                                                     {row.dayLabel}
+                                                    {isVacation && (
+                                                        <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 py-0.2 text-[9px] font-black tracking-tight text-red-800 border border-red-300 dark:bg-red-900 dark:text-red-200 dark:border-red-700" title={row.vacationReason ? `Vacaciones (${row.vacationReason})` : 'Vacaciones'}>
+                                                            <Sun size={10} className="shrink-0 text-red-700 dark:text-red-300" />
+                                                            VAC
+                                                        </span>
+                                                    )}
                                                     {incomplete && <AlertTriangle size={12} className="text-amber-600" aria-label="Marcaje incompleto" />}
-                                                    {row.isCalendarHoliday && <CalendarDays size={12} className="text-rose-600" aria-label={row.holidayName || 'Festivo del calendario'} />}
+                                                    {row.isCalendarHoliday && !isVacation && <CalendarDays size={12} className="text-rose-600" aria-label={row.holidayName || 'Festivo del calendario'} />}
                                                 </span>
                                             </td>
-                                            <td className={`sticky left-14 z-10 h-9 border-b border-r border-slate-200 px-2 font-mono font-medium ${rowBackground} dark:border-slate-700`}>
+                                            <td className={`sticky left-14 z-10 h-9 border-b border-r border-slate-200 px-2 font-mono font-medium ${rowBackground} ${isVacation ? 'text-red-700 font-bold dark:text-red-300' : ''} dark:border-slate-700`}>
                                                 {String(row.dayNumber).padStart(2, '0')}/{String(month).padStart(2, '0')}/{year}
                                             </td>
                                             {(['entryTime', 'breakOutTime', 'breakInTime', 'exitTime'] as const).map((field) => (
@@ -947,11 +1139,11 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                                         value={row[field]}
                                                         onChange={(event) => updateRow(index, { [field]: event.target.value })}
                                                         onBlur={(event) => {
-                                                            const normalized = normalizeTimeInput(event.target.value);
-                                                            if (event.target.value && !normalized) {
-                                                                toast.error('Hora no válida. Usa 08:00 o escribe 800.');
-                                                            }
-                                                            updateRow(index, { [field]: normalized });
+                                                             const normalized = normalizeTimeInput(event.target.value);
+                                                             if (event.target.value && !normalized) {
+                                                                 toast.error('Hora no válida. Usa 08:00 o escribe 800.');
+                                                             }
+                                                             updateRow(index, { [field]: normalized });
                                                         }}
                                                         placeholder="00:00"
                                                         aria-label={`${field} ${row.workDate}`}
@@ -992,8 +1184,26 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                                     className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500 disabled:opacity-100"
                                                 />
                                             </td>
-                                            <td className="border-b border-slate-200 p-0 dark:border-slate-700">
-                                                <input type="text" disabled={isLocked} value={row.notes} onChange={(event) => updateRow(index, { notes: event.target.value })} aria-label={`Observaciones ${row.workDate}`} data-grid-row={index} data-grid-col={11} placeholder="Añadir nota…" className="h-8 w-full min-w-64 border-0 bg-transparent px-2 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 disabled:cursor-not-allowed dark:focus:bg-blue-950/40" />
+                                            <td className={`border-b border-slate-200 p-0 dark:border-slate-700 ${isVacation ? 'bg-red-50/70 dark:bg-red-950/40' : ''}`}>
+                                                <div className="flex items-center gap-1.5 px-2">
+                                                    {isVacation && (
+                                                        <span className="inline-flex shrink-0 items-center gap-1 rounded bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700 border border-red-300 dark:bg-red-900/60 dark:text-red-200 dark:border-red-800">
+                                                            <Sun size={12} className="text-red-600 dark:text-red-400" />
+                                                            Vacaciones
+                                                        </span>
+                                                    )}
+                                                    <input
+                                                        type="text"
+                                                        disabled={isLocked}
+                                                        value={row.notes}
+                                                        onChange={(event) => updateRow(index, { notes: event.target.value })}
+                                                        aria-label={`Observaciones ${row.workDate}`}
+                                                        data-grid-row={index}
+                                                        data-grid-col={11}
+                                                        placeholder={isVacation ? 'Vacaciones' : 'Añadir nota…'}
+                                                        className={`h-8 w-full min-w-60 border-0 bg-transparent px-1 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 disabled:cursor-not-allowed dark:focus:bg-blue-950/40 ${isVacation ? 'font-semibold text-red-800 placeholder:text-red-500 dark:text-red-200' : ''}`}
+                                                    />
+                                                </div>
                                             </td>
                                         </tr>
                                     );
@@ -1035,9 +1245,30 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                 <section className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
                     <div className="mb-3">
                         <h4 className="text-sm font-semibold text-slate-900 dark:text-white">Datos para la liquidación mensual</h4>
-                        <p className="text-xs text-slate-500">Las horas y dietas proceden automáticamente de la tabla diaria.</p>
+                        <p className="text-xs text-slate-500">Las horas y dietas proceden automáticamente de la tabla diaria y se trasladan al control de gestoría.</p>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+
+                    {((totals.overtime > 0 && Number(record.overtimeRate || 0) === 0) || (totals.holiday > 0 && Number(record.holidayOvertimeRate || 0) === 0)) && (
+                        <div className="mb-4 flex items-center gap-2.5 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                            <AlertTriangle size={18} className="shrink-0 text-amber-600 dark:text-amber-400" />
+                            <span>
+                                Hay horas computadas ({totals.overtime > 0 ? `${totals.overtime.toFixed(2)}h extras` : ''} {totals.holiday > 0 ? `${totals.holiday.toFixed(2)}h festivas` : ''}) pero su tarifa está a 0.00 €/h. Introduce el precio/hora para que el importe se calcule correctamente para gestoría.
+                            </span>
+                        </div>
+                    )}
+
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                        <label className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                            Código Gestoría
+                            <input
+                                type="text"
+                                disabled={isLocked}
+                                value={record.gestoriaCode || ''}
+                                placeholder="Sin código"
+                                onChange={(event) => updateRecordField('gestoriaCode', event.target.value.trim() || '')}
+                                className={`mt-1 h-9 w-full rounded-lg border px-3 font-mono text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:bg-slate-100 dark:bg-slate-800 ${!record.gestoriaCode ? 'border-amber-300 bg-amber-50/50 dark:border-amber-700' : 'border-slate-300 bg-white dark:border-slate-600'}`}
+                            />
+                        </label>
                         {[
                             ['overtimeRate', 'Precio hora extra', '0.01'],
                             ['holidayOvertimeRate', 'Precio hora festiva', '0.01'],
@@ -1058,33 +1289,30 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                         <div className="grid grid-cols-3 gap-2 rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800">
                             <div><span className="block text-slate-500">Horas extra</span><strong>{totals.overtime.toFixed(2)} h</strong></div>
                             <div><span className="block text-slate-500">Horas festivas</span><strong>{totals.holiday.toFixed(2)} h</strong></div>
-                            <div><span className="block text-slate-500">Importe horas</span><strong>{Number(record.totalOvertimeAmount || 0).toFixed(2)} €</strong></div>
+                            <div>
+                                <div className="flex items-center justify-between">
+                                    <span className="block text-slate-500">Importe horas</span>
+                                    {record.isTotalOvertimeAmountManual && (
+                                        <span className="rounded bg-amber-100 px-1.5 py-0.2 text-[10px] font-bold text-amber-800 dark:bg-amber-900/50 dark:text-amber-200">Manual</span>
+                                    )}
+                                </div>
+                                <div className="mt-0.5 flex items-center gap-1.5">
+                                    <strong>{Number(record.totalOvertimeAmount || 0).toFixed(2)} €</strong>
+                                    {record.isTotalOvertimeAmountManual && !isLocked && (
+                                        <button
+                                            type="button"
+                                            onClick={handleRestoreOvertimeAmount}
+                                            title="Restaurar cálculo automático desde tarifas"
+                                            className="rounded p-0.5 text-amber-600 hover:bg-amber-100 dark:text-amber-400 dark:hover:bg-amber-900/50"
+                                        >
+                                            <RotateCcw size={13} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>
-            )}
-            {record && (
-                <aside className="sticky bottom-0 z-30 grid gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white shadow-2xl safe-bottom xl:grid-cols-[1fr_auto] xl:items-center">
-                    <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs xl:grid-cols-6">
-                        <div><span className="block text-slate-400">Trabajadas</span><strong className="font-mono text-sm">{totals.worked.toFixed(2)} h</strong></div>
-                        <div><span className="block text-slate-400">Planificadas</span><strong className="font-mono text-sm">{totals.scheduled.toFixed(2)} h</strong></div>
-                        <div><span className="block text-slate-400">Diferencia</span><strong className={`font-mono text-sm ${hourDifference < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{hourDifference.toFixed(2)} h</strong></div>
-                        <div><span className="block text-slate-400">H. extra</span><strong className="font-mono text-sm">{totals.overtime.toFixed(2)} h</strong></div>
-                        <div><span className="block text-slate-400">H. festivas</span><strong className="font-mono text-sm">{totals.holiday.toFixed(2)} h</strong></div>
-                        <div><span className="block text-slate-400">Dietas</span><strong className="font-mono text-sm">{totals.diets.toFixed(2)} €</strong></div>
-                    </div>
-                    <div className="flex items-center justify-end gap-3">
-                        <span className={`text-xs font-semibold ${incompleteDays || emptyWorkingDays ? 'text-amber-300' : 'text-emerald-300'}`}>
-                            {incompleteDays} incompletos · {emptyWorkingDays} laborables vacíos
-                        </span>
-                        {!isLocked && (
-                            <button type="button" onClick={handleSave} disabled={saving || !dirty} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold hover:bg-blue-500 disabled:opacity-40">
-                                {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                                Guardar mes
-                            </button>
-                        )}
-                    </div>
-                </aside>
             )}
         </div>
     );

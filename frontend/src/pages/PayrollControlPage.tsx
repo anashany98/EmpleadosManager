@@ -562,6 +562,10 @@ export default function PayrollControlPage() {
     }), [filteredRecords, gestoriaPreview, gestoriaStatus, gestoriaStatusFilter]);
     const reviewSummary = useMemo(() => ({
         missingCodes: records.filter((record) => !(record.gestoriaCode || record.employee?.payrollAgencyEmployeeCode)).length,
+        missingRates: records.filter((record) => (
+            (Number(record.overtimeHours || 0) > 0 && Number(record.overtimeRate || 0) === 0) ||
+            (Number(record.holidayOvertimeHours || 0) > 0 && Number(record.holidayOvertimeRate || 0) === 0)
+        )).length,
         manualOverrides: records.filter((record) => [
             record.isTotalOvertimeAmountManual,
             record.isAvailablePercentageManual,
@@ -1028,6 +1032,7 @@ export default function PayrollControlPage() {
                         <div className="flex flex-wrap items-center gap-2">
                             <span className="rounded-full bg-white px-3 py-1.5 font-bold text-slate-700 shadow-sm dark:bg-slate-800 dark:text-slate-200">{records.length} empleados</span>
                             <span className={`rounded-full px-3 py-1.5 font-bold ${reviewSummary.missingCodes ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>{reviewSummary.missingCodes} sin código</span>
+                            {reviewSummary.missingRates > 0 && <span className="rounded-full bg-amber-100 px-3 py-1.5 font-bold text-amber-800">{reviewSummary.missingRates} horas sin tarifa (0€)</span>}
                             <span className="rounded-full bg-amber-100 px-3 py-1.5 font-bold text-amber-800">{reviewSummary.manualOverrides} con correcciones</span>
                             {gestoriaPreview && <span className={`rounded-full px-3 py-1.5 font-bold ${gestoriaPreview.errors?.length ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'}`}>{gestoriaPreview.errors?.length || 0} incidencias de plantilla</span>}
                         </div>
@@ -1069,6 +1074,10 @@ export default function PayrollControlPage() {
                                     const previewRow = gestoriaPreviewRows.get(record.employeeId) as any;
                                     const missingCode = !employeeCode;
                                     const missingTemplateRow = Boolean(gestoriaPreview) && !previewRow?.row;
+                                    const hasMissingRate = (
+                                        (Number(record.overtimeHours || 0) > 0 && Number(record.overtimeRate || 0) === 0) ||
+                                        (Number(record.holidayOvertimeHours || 0) > 0 && Number(record.holidayOvertimeRate || 0) === 0)
+                                    );
                                     const invalid = missingCode || missingTemplateRow;
 
                                     return (
@@ -1119,6 +1128,8 @@ export default function PayrollControlPage() {
                                                     <span className="inline-flex items-center gap-1 font-semibold text-rose-700"><AlertCircle size={13} /> Falta código</span>
                                                 ) : missingTemplateRow ? (
                                                     <span className="inline-flex items-center gap-1 font-semibold text-rose-700"><AlertCircle size={13} /> No está en plantilla</span>
+                                                ) : hasMissingRate ? (
+                                                    <span className="inline-flex items-center gap-1 font-semibold text-amber-700" title="Horas calculadas con tarifa a 0.00 €/h"><AlertCircle size={13} /> Tarifa 0 €</span>
                                                 ) : gestoriaPreview ? (
                                                     <span className="inline-flex items-center gap-1 font-semibold text-emerald-700"><CheckCircle2 size={13} /> Preparado</span>
                                                 ) : (
