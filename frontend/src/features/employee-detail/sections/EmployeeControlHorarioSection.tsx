@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../../../api/client';
-import { normalizeDailyRowsForSave, normalizeTimeInput } from './employeeControlHorarioForm';
+import { getEmployeeVacations, normalizeDailyRowsForSave, normalizeTimeInput } from './employeeControlHorarioForm';
 import ObraHoursModal from '../components/ObraHoursModal';
 
 interface EmployeeControlHorarioSectionProps {
@@ -295,57 +295,6 @@ function getCalendarHolidays(events: CalendarEventApi[], year: number, month: nu
     return holidays;
 }
 
-function getEmployeeVacations(
-    vacations: VacationItemApi[] = [],
-    calendarEvents: CalendarEventApi[] = [],
-    year: number,
-    month: number
-): Map<string, { type: string; reason?: string }> {
-    const map = new Map<string, { type: string; reason?: string }>();
-    const monthStart = new Date(Date.UTC(year, month - 1, 1));
-    const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
-
-    vacations.forEach((vac) => {
-        const start = new Date(vac.startDate);
-        const end = new Date(vac.endDate);
-        const cursor = new Date(Math.max(start.getTime(), monthStart.getTime()));
-        cursor.setUTCHours(0, 0, 0, 0);
-        const limit = new Date(Math.min(end.getTime(), monthEnd.getTime()));
-        limit.setUTCHours(23, 59, 59, 999);
-        while (cursor <= limit) {
-            const key = cursor.toISOString().slice(0, 10);
-            map.set(key, {
-                type: vac.type || 'VACATION',
-                reason: vac.reason || undefined
-            });
-            cursor.setUTCDate(cursor.getUTCDate() + 1);
-        }
-    });
-
-    calendarEvents
-        .filter((e) => e.type?.startsWith('vacation') || e.source === 'vacation')
-        .forEach((e) => {
-            const start = new Date(e.start);
-            const end = new Date(e.end);
-            const cursor = new Date(Math.max(start.getTime(), monthStart.getTime()));
-            cursor.setUTCHours(0, 0, 0, 0);
-            const limit = new Date(Math.min(end.getTime(), monthEnd.getTime()));
-            limit.setUTCHours(23, 59, 59, 999);
-            while (cursor <= limit) {
-                const key = cursor.toISOString().slice(0, 10);
-                if (!map.has(key)) {
-                    map.set(key, {
-                        type: 'VACATION',
-                        reason: e.description || undefined
-                    });
-                }
-                cursor.setUTCDate(cursor.getUTCDate() + 1);
-            }
-        });
-
-    return map;
-}
-
 function buildRows(
     year: number,
     month: number,
@@ -561,7 +510,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
             const data = unwrap(recordResponse);
             const calendarEvents = unwrap(calendarResponse);
             const holidays = getCalendarHolidays(calendarEvents, year, month);
-            const vacMap = getEmployeeVacations(data.vacations || [], calendarEvents, year, month);
+            const vacMap = getEmployeeVacations(data.vacations || [], year, month);
             setCalendarHolidays(holidays);
             setVacationsMap(vacMap);
             setPeriodStatus(data.periodStatus || 'DRAFT');
