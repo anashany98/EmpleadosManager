@@ -735,6 +735,7 @@ export class ExcelService {
                 { header: 'Vuelo', key: 'flight', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
                 { header: 'Transporte', key: 'transport', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
                 { header: 'Otros', key: 'other', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Autónomos', key: 'autonomos', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
                 { header: 'Horas', key: 'hours', width: 12, align: 'right', numFmt: '#,##0.00' },
                 { header: 'Presupuesto', key: 'budget', width: 16, align: 'right', numFmt: '#,##0.00"€"' },
                 { header: '% consumido', key: 'pct', width: 14, align: 'right', numFmt: '0.0%' }
@@ -753,6 +754,7 @@ export class ExcelService {
                     flight: safeNumber(totals.FLIGHT),
                     transport: safeNumber(totals.TRANSPORT),
                     other: safeNumber(totals.OTHER),
+                    autonomos: safeNumber(totals.CONTRACTOR),
                     hours: safeNumber(o.hours),
                     budget: budget || 0,
                     pct: budget > 0 ? total / budget : 0
@@ -819,6 +821,7 @@ export class ExcelService {
                 { header: 'Vuelo', key: 'FLIGHT', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
                 { header: 'Transporte', key: 'TRANSPORT', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
                 { header: 'Otros', key: 'OTHER', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
+                { header: 'Autónomos', key: 'CONTRACTOR', width: 14, align: 'right', numFmt: '#,##0.00"€"' },
                 { header: 'Total', key: 'total', width: 14, align: 'right', numFmt: '#,##0.00"€"' }
             ],
             rows
@@ -830,6 +833,7 @@ export class ExcelService {
                     FLIGHT: safeNumber(r.byType?.FLIGHT),
                     TRANSPORT: safeNumber(r.byType?.TRANSPORT),
                     OTHER: safeNumber(r.byType?.OTHER),
+                    CONTRACTOR: safeNumber(r.byType?.CONTRACTOR),
                     total: safeNumber(r.total)
                 }))
                 .sort((a, b) => safeNumber(b.total) - safeNumber(a.total)),

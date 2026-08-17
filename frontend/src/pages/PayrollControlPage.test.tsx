@@ -152,4 +152,63 @@ describe('PayrollControlPage para administrador global', () => {
             }));
         });
     });
+
+    it('calcula el control horario en la vista mensual desde las entradas diarias', async () => {
+        vi.mocked(api.get).mockImplementation(async (endpoint: string, config?: any) => {
+            if (endpoint === '/companies') {
+                return { data: [{ id: 'company-1', name: 'Empresa Uno' }] } as never;
+            }
+            if (endpoint === '/payroll/control') {
+                return {
+                    data: {
+                        id: 'period-company-1',
+                        year: 2026,
+                        month: 7,
+                        status: 'DRAFT',
+                        records: [
+                            {
+                                id: 'record-1',
+                                employeeId: 'emp-1',
+                                department: 'Taller',
+                                category: 'General',
+                                employee: { id: 'emp-1', firstName: 'Mónica', lastName: 'Pérez' },
+                                overtimeRate: 10,
+                                holidayOvertimeRate: 12,
+                                overtimeHours: 0,
+                                holidayOvertimeHours: 15,
+                                diets: 0,
+                                gross: 0,
+                                totalOvertimeAmount: 0,
+                                positiveVariable: 0,
+                                negativeVariable: 0,
+                                irpf: 0,
+                                tgss: 0,
+                                productivity: 0,
+                                hoursAmount: 0,
+                                difference: 0,
+                                conceptValues: [],
+                                dailyEntries: [
+                                    { workedHours: 8, scheduledHours: 8 },
+                                    { workedHours: 5, scheduledHours: 0 }
+                                ]
+                            }
+                        ]
+                    }
+                } as never;
+            }
+            return { data: [] } as never;
+        });
+
+        render(<PayrollControlPage />);
+
+        const openButton = await screen.findByRole('button', { name: /abrir control mensual/i });
+        fireEvent.click(openButton);
+
+        await screen.findByRole('dialog', { name: /revisión mensual/i });
+
+        // 8 + 5 = 13.00 h trabajadas · 8 + 0 = 8.00 h planificadas · 13 − 8 = 5.00 h diferencia
+        expect(screen.getAllByText('13.00 h').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('8.00 h').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('5.00 h').length).toBeGreaterThan(0);
+    });
 });

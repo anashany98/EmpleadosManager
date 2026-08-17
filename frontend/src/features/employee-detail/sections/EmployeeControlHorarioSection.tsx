@@ -8,18 +8,22 @@ import {
     ClipboardPaste,
     Clock,
     Eraser,
+    HardHat,
     Keyboard,
     Loader2,
     Lock,
+    Maximize2,
     RotateCcw,
     Save,
     Sun,
     Upload,
-    WandSparkles
+    WandSparkles,
+    X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../../../api/client';
 import { normalizeDailyRowsForSave, normalizeTimeInput } from './employeeControlHorarioForm';
+import ObraHoursModal from '../components/ObraHoursModal';
 
 interface EmployeeControlHorarioSectionProps {
     employeeId: string;
@@ -156,6 +160,28 @@ interface QuickSchedule {
     scheduledHours: number;
 }
 
+interface CalendarEventApi {
+    title: string;
+    start: string;
+    end: string;
+    type: string;
+}
+
+interface TimeSheetImportPreview {
+    sheetName: string;
+    entries: Array<Pick<DailyRow, 'workDate' | 'entryTime' | 'breakOutTime' | 'breakInTime' | 'exitTime' | 'notes'>>;
+    warnings: string[];
+}
+
+interface ObraWorkEntryApi {
+    id: string;
+    projectId: string;
+    startDate: string;
+    endDate: string;
+    hours: number;
+    notes?: string | null;
+    project?: { code: string; name: string; destination?: string | null } | null;
+}
 const MONTHS = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -211,11 +237,19 @@ function recalculateRow(row: DailyRow): DailyRow {
         ? intervalHours(row.entryTime, row.breakOutTime) + intervalHours(row.breakInTime, row.exitTime)
         : intervalHours(row.entryTime, row.exitTime);
     const holidayOrWeekend = row.isHoliday || row.isCalendarHoliday || row.weekend;
-    const netWorked = workedHours - row.discountHours;
+    // Festivos y fines de semana no tienen jornada planificada ni descuento,
+    // igual que la plantilla de control horario (H.LAB = 0 y DESCONTAR = 0).
+    // Sin esta regla, un festivo trabajado suma 8 h a las planificadas y
+    // descuadra el total frente a la plantilla de gestoría.
+    const discountHours = holidayOrWeekend ? 0 : row.discountHours;
+    const scheduledHours = holidayOrWeekend ? 0 : row.scheduledHours;
+    const netWorked = workedHours - discountHours;
     return {
         ...row,
         workedHours: Number(workedHours.toFixed(2)),
-        overtimeHours: holidayOrWeekend ? 0 : Number(Math.max(netWorked - row.scheduledHours, 0).toFixed(2)),
+        discountHours: Number(discountHours.toFixed(2)),
+        scheduledHours: Number(scheduledHours.toFixed(2)),
+        overtimeHours: holidayOrWeekend ? 0 : Number(Math.max(netWorked - scheduledHours, 0).toFixed(2)),
         holidayOvertimeHours: holidayOrWeekend ? Number(Math.max(netWorked, 0).toFixed(2)) : 0
     };
 }
@@ -339,6 +373,7 @@ function buildRows(
             const isCalendarHoliday = calendarHolidays
                 ? calendarHolidays.has(key)
                 : Boolean(entry.isCalendarHoliday);
+            const festivo = entry.isHoliday || isCalendarHoliday;
             return {
                 workDate: key,
                 dayLabel: DAY_LABELS[day],
@@ -349,8 +384,8 @@ function buildRows(
                 breakInTime: timeValue(entry.breakInAt),
                 exitTime: timeValue(entry.exitAt),
                 workedHours: Number(entry.workedHours),
-                discountHours: Number(entry.discountHours),
-                scheduledHours: Number(entry.scheduledHours),
+                discountHours: festivo ? 0 : Number(entry.discountHours),
+                scheduledHours: festivo ? 0 : Number(entry.scheduledHours),
                 overtimeHours: Number(entry.overtimeHours),
                 holidayOvertimeHours: Number(entry.holidayOvertimeHours),
                 dietAmount: Number(entry.dietAmount),
@@ -363,6 +398,7 @@ function buildRows(
                 notes: entry.notes || defaultVacationNotes
             };
         }
+        const isCalendarHoliday = calendarHolidays?.has(key) || false;
         return {
             workDate: key,
             dayLabel: DAY_LABELS[day],
@@ -373,13 +409,13 @@ function buildRows(
             breakInTime: '',
             exitTime: '',
             workedHours: 0,
-            discountHours: weekend ? 0 : 0.5,
-            scheduledHours: weekend ? 0 : 8,
+            discountHours: (weekend || isCalendarHoliday) ? 0 : 0.5,
+            scheduledHours: (weekend || isCalendarHoliday) ? 0 : 8,
             overtimeHours: 0,
             holidayOvertimeHours: 0,
             dietAmount: 0,
             isHoliday: false,
-            isCalendarHoliday: calendarHolidays?.has(key) || false,
+            isCalendarHoliday,
             holidayName: calendarHolidays?.get(key) || '',
             isVacation,
             vacationReason,
@@ -387,6 +423,27 @@ function buildRows(
             notes: defaultVacationNotes
         } satisfies DailyRow;
     });
+}
+
+function aggregateObraWork(entries: ObraWorkEntryApi[]) {
+    const dayHours: Record<string, number> = {};
+    const projectTotals = new Map<string, { code: string; name: string; hours: number }>();
+    for (const entry of entries) {
+        const startDay = String(entry.startDate).slice(0, 10);
+        const endDay = String(entry.endDate).slice(0, 10);
+        const entryHours = Number(entry.hours || 0);
+        if (startDay === endDay) {
+            dayHours[startDay] = (dayHours[startDay] || 0) + entryHours;
+        }
+        const current = projectTotals.get(entry.projectId) || {
+            code: entry.project?.code || '',
+            name: entry.project?.name || 'Obra',
+            hours: 0
+        };
+        current.hours += entryHours;
+        projectTotals.set(entry.projectId, current);
+    }
+    return { dayHours, monthProjects: Array.from(projectTotals.values()) };
 }
 
 function NumericCell({
@@ -466,6 +523,9 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
     const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState(false);
     const [importing, setImporting] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [importPreview, setImportPreview] = useState<TimeSheetImportPreview | null>(null);
+    const [gridExpanded, setGridExpanded] = useState(false);
     const importInputRef = useRef<HTMLInputElement>(null);
     const [quickSchedule, setQuickSchedule] = useState<QuickSchedule>({
         entryTime: '',
@@ -476,6 +536,11 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         scheduledHours: 8
     });
 
+    // Imputación de horas a obras desde el propio control horario
+    const [obraModalDate, setObraModalDate] = useState<string | null>(null);
+    const [obraDayHours, setObraDayHours] = useState<Record<string, number>>({});
+    const [obraMonthProjects, setObraMonthProjects] = useState<Array<{ code: string; name: string; hours: number }>>([]);
+
     const missingPeriod = periodStatus === 'NOT_CREATED';
     const isLocked = missingPeriod || !EDITABLE_STATUSES.has(periodStatus);
 
@@ -484,11 +549,14 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         try {
             const start = dateKey(year, month, 1);
             const end = dateKey(year, month, new Date(Date.UTC(year, month, 0)).getUTCDate());
-            const [recordResponse, calendarResponse] = await Promise.all([
+            const [recordResponse, calendarResponse, workResponse] = await Promise.all([
                 api.get<ApiEnvelope<EmployeeRecordResponse>>(`/payroll/control/employee/${employeeId}`, {
                     params: { year, month }
                 }),
-                api.get<ApiEnvelope<CalendarEventApi[]>>(`/calendar/unified?start=${start}&end=${end}`)
+                api.get<ApiEnvelope<CalendarEventApi[]>>(`/calendar/unified?start=${start}&end=${end}`),
+                api.get<ApiEnvelope<ObraWorkEntryApi[]>>(`/employee-project-work/employee/${employeeId}`, {
+                    params: { from: start, to: end }
+                })
             ]);
             const data = unwrap(recordResponse);
             const calendarEvents = unwrap(calendarResponse);
@@ -499,6 +567,11 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
             setPeriodStatus(data.periodStatus || 'DRAFT');
             setRecord(data.record);
             setRows(buildRows(year, month, data.record?.dailyEntries || [], holidays, vacMap));
+
+            // Horas imputadas a obras del mes (para el indicador por día y el resumen por obra)
+            const { dayHours, monthProjects } = aggregateObraWork(unwrap(workResponse) || []);
+            setObraDayHours(dayHours);
+            setObraMonthProjects(monthProjects);
             setDirty(false);
             setSaved(false);
             setModifiedRows(new Set());
@@ -543,6 +616,23 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         void loadRecord();
     }, [loadRecord]);
 
+    // Refresco ligero de las horas imputadas a obras (sin recargar todo el mes
+    // ni parpadear la tabla) — se usa al guardar desde el modal de imputación.
+    const refreshObraWork = useCallback(async () => {
+        const start = dateKey(year, month, 1);
+        const end = dateKey(year, month, new Date(Date.UTC(year, month, 0)).getUTCDate());
+        try {
+            const workResponse = await api.get<ApiEnvelope<ObraWorkEntryApi[]>>(`/employee-project-work/employee/${employeeId}`, {
+                params: { from: start, to: end }
+            });
+            const { dayHours, monthProjects } = aggregateObraWork(unwrap(workResponse) || []);
+            setObraDayHours(dayHours);
+            setObraMonthProjects(monthProjects);
+        } catch {
+            // Silencioso: no interrumpir el control horario si falla el refresco
+        }
+    }, [employeeId, month, year]);
+
     useEffect(() => {
         const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
             if (!dirty) return;
@@ -552,13 +642,29 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         return () => window.removeEventListener('beforeunload', warnBeforeLeaving);
     }, [dirty]);
 
+    // Vista de pantalla completa: bloquea el scroll del fondo y cierra con Escape.
+    useEffect(() => {
+        if (!gridExpanded) return;
+        const previousOverflow = document.body.style.overflow;
+        const closeOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setGridExpanded(false);
+        };
+        document.body.style.overflow = 'hidden';
+        document.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.body.style.overflow = previousOverflow;
+            document.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [gridExpanded]);
+
     const totals = useMemo(() => rows.reduce((total, row) => ({
         worked: total.worked + row.workedHours,
+        discount: total.discount + row.discountHours,
         scheduled: total.scheduled + row.scheduledHours,
         overtime: total.overtime + Math.max(row.overtimeHours, 0),
         holiday: total.holiday + row.holidayOvertimeHours,
         diets: total.diets + row.dietAmount
-    }), { worked: 0, scheduled: 0, overtime: 0, holiday: 0, diets: 0 }), [rows]);
+    }), { worked: 0, discount: 0, scheduled: 0, overtime: 0, holiday: 0, diets: 0 }), [rows]);
     const incompleteDays = useMemo(() => rows.filter(rowIsIncomplete).length, [rows]);
     const vacationDaysCount = useMemo(() => rows.filter((row) => row.isVacation).length, [rows]);
     const emptyWorkingDays = useMemo(() => rows.filter((row) => (
@@ -849,7 +955,12 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
 
     return (
         <div className="space-y-4">
-            <section className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <section
+                role={gridExpanded ? 'dialog' : undefined}
+                aria-modal={gridExpanded ? true : undefined}
+                aria-label={gridExpanded ? `Control horario de ${MONTHS[month - 1]} ${year} en pantalla completa` : undefined}
+                className={`overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${gridExpanded ? 'fixed inset-0 z-[100] flex min-h-0 flex-col rounded-none border-0 shadow-none' : ''}`}
+            >
                 <header className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
                         <div className="grid h-9 w-9 place-items-center rounded-lg bg-blue-700 text-white">
@@ -882,6 +993,15 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                 {vacationDaysCount} {vacationDaysCount === 1 ? 'día vacaciones' : 'días vacaciones'}
                             </span>
                         )}
+                        <button
+                            type="button"
+                            onClick={() => setGridExpanded((current) => !current)}
+                            aria-label={gridExpanded ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
+                            title={gridExpanded ? 'Salir de pantalla completa' : 'Ver en pantalla completa'}
+                            className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${gridExpanded ? 'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'}`}
+                        >
+                            {gridExpanded ? <X size={16} /> : <Maximize2 size={16} />}
+                        </button>
                         <span className={`inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-medium ${saveError ? 'bg-rose-50 text-rose-700' : saved ? 'bg-emerald-50 text-emerald-700' : dirty ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
                             {saveError ? <AlertTriangle size={14} /> : saved ? <Check size={14} /> : <Clock size={14} />}
                             {saveError
@@ -1056,11 +1176,25 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                         placeholder={isVacation ? 'Vacaciones' : 'Añadir observación…'}
                                         className={`mt-2 h-10 w-full rounded-lg border px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:text-slate-500 ${isVacation ? 'border-red-300 bg-red-50 text-red-800 font-semibold placeholder:text-red-500 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'}`}
                                     />
+                                    <div className="mt-2 flex items-center justify-between gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setObraModalDate(row.workDate)}
+                                            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                                        >
+                                            <HardHat size={13} /> Imputar a obra
+                                        </button>
+                                        {obraDayHours[row.workDate] != null && (
+                                            <span className="text-[10px] font-semibold text-slate-500">
+                                                {obraDayHours[row.workDate].toFixed(2)} h imputadas
+                                            </span>
+                                        )}
+                                    </div>
                                 </article>
                             );
                         })}
                     </div>
-                    <div className="hidden max-h-[620px] overflow-auto md:block">
+                    <div className={gridExpanded ? 'min-h-0 flex-1 overflow-auto' : 'hidden max-h-[620px] overflow-auto md:block'}>
                         <div className="sticky left-0 z-10 flex min-w-[1260px] items-center justify-between gap-4 border-b border-slate-200 bg-white px-3 py-2 text-[11px] dark:border-slate-700 dark:bg-slate-900">
                             <div className="flex items-center gap-4">
                                 <span className="inline-flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm bg-white ring-1 ring-slate-300" />Dato editable</span>
@@ -1085,13 +1219,14 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                     <th colSpan={5} className="border-r border-slate-700 px-2 text-center">Cálculos de horas</th>
                                     <th colSpan={2} className="border-r border-slate-700 px-2 text-center">Variables</th>
                                     <th className="px-2 text-center">Revisión</th>
+                                    <th className="px-2 text-center">Obra</th>
                                 </tr>
                                 <tr>
                                     {[
                                         ['Día', 'w-14'], ['Fecha', 'w-24'], ['Entrada 1', 'w-24'], ['Salida 1', 'w-24'],
                                         ['Entrada 2', 'w-24'], ['Salida 2', 'w-24'], ['H. trabaj.', 'w-20'], ['Descanso', 'w-20'],
                                         ['H. jornada', 'w-20'], ['H. extra', 'w-20'], ['H. ext. fest.', 'w-24'], ['Dieta €', 'w-20'],
-                                        ['Festivo', 'w-16'], ['Observaciones', 'min-w-64']
+                                        ['Festivo', 'w-16'], ['Observaciones', 'min-w-64'], ['Obra', 'w-36']
                                     ].map(([label, width], index) => (
                                         <th key={label} className={`h-10 border-b border-r border-slate-600 px-2 text-left font-semibold uppercase tracking-wide ${width} ${index < 2 ? `sticky ${index === 0 ? 'left-0' : 'left-14'} z-30 bg-slate-800` : ''}`}>
                                             {label}
@@ -1205,6 +1340,23 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                                     />
                                                 </div>
                                             </td>
+                                            <td className="border-b border-slate-200 px-2 dark:border-slate-700">
+                                                <div className="flex items-center gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setObraModalDate(row.workDate)}
+                                                        title="Imputar horas de este día a una obra"
+                                                        className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                                                    >
+                                                        <HardHat size={12} /> Imputar
+                                                    </button>
+                                                    {obraDayHours[row.workDate] != null && (
+                                                        <span className="font-mono text-[10px] font-semibold text-slate-500" title="Horas imputadas a obras este día">
+                                                            {obraDayHours[row.workDate].toFixed(2)}h
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </td>
                                         </tr>
                                     );
                                 })}
@@ -1213,14 +1365,35 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                                 <tr className="h-10 font-semibold">
                                     <td colSpan={6} className="sticky left-0 border-r border-slate-600 bg-slate-800 px-3 text-right uppercase tracking-wide">Totales del mes</td>
                                     <td className="border-r border-slate-600 px-2 text-right font-mono">{totals.worked.toFixed(2)}</td>
-                                    <td colSpan={2} className="border-r border-slate-600" />
+                                    <td className="border-r border-slate-600 px-2 text-right font-mono">{totals.discount.toFixed(2)}</td>
+                                    <td className="border-r border-slate-600 px-2 text-right font-mono">{totals.scheduled.toFixed(2)}</td>
                                     <td className="border-r border-slate-600 px-2 text-right font-mono">{totals.overtime.toFixed(2)}</td>
                                     <td className="border-r border-slate-600 px-2 text-right font-mono">{totals.holiday.toFixed(2)}</td>
                                     <td className="border-r border-slate-600 px-2 text-right font-mono">{totals.diets.toFixed(2)} €</td>
-                                    <td colSpan={2} />
+                                    <td colSpan={3} />
                                 </tr>
                             </tfoot>
                         </table>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-4 py-3 dark:border-slate-700">
+                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
+                            <HardHat size={13} className="text-amber-500" /> Horas imputadas a obras
+                        </span>
+                        {obraMonthProjects.length === 0 ? (
+                            <span className="text-xs text-slate-400">Ninguna este mes</span>
+                        ) : (
+                            obraMonthProjects.map((project) => (
+                                <span key={`${project.code}-${project.name}`} className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                                    {project.name} <strong className="font-mono">{project.hours.toFixed(2)}h</strong>
+                                </span>
+                            ))
+                        )}
+                        <span className="ml-auto text-[11px] text-slate-500">
+                            Total imputado: <strong className="font-mono text-slate-800 dark:text-slate-100">{obraMonthProjects.reduce((sum, project) => sum + project.hours, 0).toFixed(2)}h</strong>
+                            <span className="mx-1">·</span>
+                            Trabajadas: <strong className="font-mono">{totals.worked.toFixed(2)}h</strong>
+                        </span>
                     </div>
                     </>
                 )}
@@ -1314,6 +1487,39 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                     </div>
                 </section>
             )}
+
+            {record && (
+                <aside className="sticky bottom-0 z-30 grid gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white shadow-2xl safe-bottom xl:grid-cols-[1fr_auto] xl:items-center">
+                    <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs xl:grid-cols-6">
+                        <div><span className="block text-slate-400">Trabajadas</span><strong className="font-mono text-sm">{totals.worked.toFixed(2)} h</strong></div>
+                        <div><span className="block text-slate-400">Planificadas</span><strong className="font-mono text-sm">{totals.scheduled.toFixed(2)} h</strong></div>
+                        <div><span className="block text-slate-400">Diferencia</span><strong className={`font-mono text-sm ${hourDifference < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{hourDifference.toFixed(2)} h</strong></div>
+                        <div><span className="block text-slate-400">H. extra</span><strong className="font-mono text-sm">{totals.overtime.toFixed(2)} h</strong></div>
+                        <div><span className="block text-slate-400">H. festivas</span><strong className="font-mono text-sm">{totals.holiday.toFixed(2)} h</strong></div>
+                        <div><span className="block text-slate-400">Dietas</span><strong className="font-mono text-sm">{totals.diets.toFixed(2)} €</strong></div>
+                    </div>
+                    <div className="flex items-center justify-end gap-3">
+                        <span className={`text-xs font-semibold ${incompleteDays || emptyWorkingDays ? 'text-amber-300' : 'text-emerald-300'}`}>
+                            {incompleteDays} incompletos · {emptyWorkingDays} laborables vacíos
+                        </span>
+                        {!isLocked && (
+                            <button type="button" onClick={handleSave} disabled={saving || !dirty} className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-4 text-sm font-bold hover:bg-blue-500 disabled:opacity-40">
+                                {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                                Guardar mes
+                            </button>
+                        )}
+                    </div>
+                </aside>
+            )}
+
+            <ObraHoursModal
+                open={obraModalDate !== null}
+                onClose={() => setObraModalDate(null)}
+                employeeId={employeeId}
+                date={obraModalDate || ''}
+                defaultHours={obraModalDate ? (rows.find((row) => row.workDate === obraModalDate)?.workedHours || 0) : 0}
+                onSaved={() => void refreshObraWork()}
+            />
         </div>
     );
 }
