@@ -23,10 +23,14 @@ interface ObraRow {
     status: string;
     clientName?: string | null;
     destination?: string | null;
+    description?: string | null;
+    startDate?: string | null;
+    endDate?: string | null;
     budget?: string | number | null;
     managerId?: string | null;
     manager?: { id: string; name?: string | null } | null;
     active: boolean;
+    totals?: Record<string, number>;
 }
 
 interface EmployeeOption {
@@ -37,12 +41,24 @@ interface EmployeeOption {
     dni?: string;
 }
 
+interface ObraForm {
+    code: string;
+    name: string;
+    destination: string;
+    clientName: string;
+    description: string;
+    startDate: string;
+    endDate: string;
+    budget: string;
+    managerId: string;
+}
+
 export default function ObrasPage() {
     const navigate = useNavigate();
     const confirmAction = useConfirm();
     const unwrap = useApiUnwrap();
-    const [obras, setObras] = useState<any[]>([]);
-    const [employees, setEmployees] = useState<any[]>([]);
+    const [obras, setObras] = useState<ObraRow[]>([]);
+    const [employees, setEmployees] = useState<EmployeeOption[]>([]);
     const [loading, setLoading] = useState(false);
     const [isAdding, setIsAdding] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -53,7 +69,7 @@ export default function ObrasPage() {
     const [totalPages, setTotalPages] = useState(1);
     const [total, setTotal] = useState(0);
 
-    const empty = {
+    const empty: ObraForm = {
         code: '',
         name: '',
         destination: '',
@@ -64,12 +80,12 @@ export default function ObrasPage() {
         budget: '',
         managerId: ''
     };
-    const [form, setForm] = useState<any>(empty);
+    const [form, setForm] = useState<ObraForm>(empty);
 
     const fetchObras = async () => {
         try {
             setLoading(true);
-            const params: any = { page, limit: 50 };
+            const params: Record<string, string | number> = { page, limit: 50 };
             if (statusFilter) params.status = statusFilter;
             if (committedSearch) params.q = committedSearch;
             const res = await api.get('/obras', { params });
@@ -110,7 +126,7 @@ export default function ObrasPage() {
         setIsAdding(false);
     };
 
-    const handleEdit = (o: any) => {
+    const handleEdit = (o: ObraRow) => {
         setForm({
             code: o.code,
             name: o.name,
@@ -119,7 +135,7 @@ export default function ObrasPage() {
             description: o.description || '',
             startDate: o.startDate ? String(o.startDate).substring(0, 10) : '',
             endDate: o.endDate ? String(o.endDate).substring(0, 10) : '',
-            budget: o.budget ?? '',
+            budget: o.budget != null ? String(o.budget) : '',
             managerId: o.managerId || ''
         });
         setEditingId(o.id);
@@ -132,7 +148,7 @@ export default function ObrasPage() {
             return toast.error('Fecha fin debe ser posterior o igual a fecha inicio');
         }
         try {
-            const payload: any = { ...form };
+            const payload: Record<string, string | number> = { ...form };
             if (payload.budget === '' || payload.budget == null) delete payload.budget;
             else payload.budget = Number(payload.budget);
             if (!payload.managerId) delete payload.managerId;
@@ -153,7 +169,7 @@ export default function ObrasPage() {
         }
     };
 
-    const toggleStatus = async (o: any) => {
+    const toggleStatus = async (o: ObraRow) => {
         const isClosing = o.status === 'ACTIVE';
         const ok = await confirmAction({
             title: isClosing ? 'Cerrar obra' : 'Reabrir obra',
@@ -278,7 +294,7 @@ export default function ObrasPage() {
                                     <label htmlFor="obra-manager" className="text-xs font-medium text-slate-500">Responsable</label>
                                     <select id="obra-manager" name="managerId" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.managerId} onChange={(e) => setForm({ ...form, managerId: e.target.value })}>
                                         <option value="">— Ninguno —</option>
-                                        {employees.map((e: any) => (
+                                        {employees.map((e: EmployeeOption) => (
                                             <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>
                                         ))}
                                     </select>
@@ -309,7 +325,7 @@ export default function ObrasPage() {
             ) : (
                 <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {obras.map((o: any) => {
+                        {obras.map((o: ObraRow) => {
                             const totals: Record<string, number> = o.totals || {};
                             const totalAll = Object.values(totals).reduce((a, b) => Number(a) + Number(b), 0);
                             const closed = o.status === 'INACTIVE';

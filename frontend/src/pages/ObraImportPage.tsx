@@ -123,7 +123,7 @@ export default function ObraImportPage() {
     const [loading, setLoading] = useState(false);
     const [layout, setLayout] = useState<LayoutHint>('flat');
     const [prestoPedidosCount, setPrestoPedidosCount] = useState(0);
-    const [obras, setObras] = useState<any[]>([]);
+    const [obras, setObras] = useState<ObraOption[]>([]);
     const [obraOverride, setObraOverride] = useState<string>('');
 
     const fetchObras = async () => {
@@ -296,7 +296,7 @@ export default function ObraImportPage() {
                                 className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-sm"
                             >
                                 <option value="">— Usar el código del archivo (comportamiento por defecto) —</option>
-                                {obras.map((o: any) => (
+                                {obras.map((o: ObraOption) => (
                                     <option key={o.id} value={o.code}>
                                         {o.code} · {o.name}
                                     </option>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { ArrowLeft, Briefcase, Calendar, DollarSign, Plus, Trash2, Pencil, Save, Upload, Users, Handshake, FileDown, Check, AlertTriangle, ChevronDown, Search } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, getErrorMessage } from '../api/client';
 import { useConfirm } from '../context/ConfirmContext';
@@ -30,7 +31,7 @@ const TIPO_COLORS: Record<ObraExpenseType, string> = {
     OTHER: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'
 };
 
-const emptyExpenseForm = () => ({
+const emptyExpenseForm = (): ExpenseForm => ({
     type: 'PER_DIEM' as ObraExpenseType,
     date: '',
     endDate: '',
@@ -71,9 +72,58 @@ interface ObraShape {
     active: boolean;
     createdAt: string;
     updatedAt: string;
-    expenses?: any[];
-    employeeWork?: any[];
+    expenses?: ObraExpense[];
+    employeeWork?: ObraWorkEntry[];
     totals?: { hours: number; byType: Record<string, number>; totalExpenses: number };
+}
+
+interface ObraExpense {
+    id: string;
+    employeeId?: string | null;
+    contractorId?: string | null;
+    type: ObraExpenseType;
+    date: string;
+    endDate?: string | null;
+    amount: number;
+    unitAmount?: number | null;
+    unitCount?: number | null;
+    allocationCount?: number | null;
+    allocationIndex?: number | null;
+    currency?: string | null;
+    description?: string | null;
+    vendor?: string | null;
+    reference?: string | null;
+    sourceReference?: string | null;
+    origin?: string | null;
+    destination?: string | null;
+    employee?: { name?: string | null } | null;
+    contractor?: { name?: string | null; nif?: string | null } | null;
+}
+
+interface ObraWorkEntry {
+    id: string;
+    employeeId: string;
+    startDate: string;
+    endDate: string;
+    hours: number;
+    notes?: string | null;
+    employee?: { name?: string | null; firstName?: string | null; lastName?: string | null } | null;
+}
+
+interface ExpenseForm {
+    type: ObraExpenseType;
+    date: string;
+    endDate: string;
+    amount: string | number;
+    currency: string;
+    employeeIds: string[];
+    contractorIds: string[];
+    contractorId: string;
+    description: string;
+    vendor: string;
+    reference: string;
+    origin: string;
+    destination: string;
 }
 
 interface EmployeeOption {
@@ -97,8 +147,8 @@ export default function ObraDetailPage() {
     const confirmAction = useConfirm();
     const unwrap = useApiUnwrap();
     const [obra, setObra] = useState<ObraShape | null>(null);
-    const [employees, setEmployees] = useState<any[]>([]);
-    const [contractors, setContractors] = useState<any[]>([]);
+    const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+    const [contractors, setContractors] = useState<ContractorOption[]>([]);
     const [tab, setTab] = useState<Tab>('info');
     const [loading, setLoading] = useState(false);
     const [hoursForm, setHoursForm] = useState({ employeeId: '', startDate: '', endDate: '', hours: 8, notes: '' });
@@ -130,7 +180,7 @@ export default function ObraDetailPage() {
             if (f.to) params.to = f.to;
             const res = await api.get(`/obras/${id}`, { params });
             setObra(unwrap<ObraShape>(res));
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Error al cargar la obra'));
             navigate('/obras');
         } finally {
@@ -179,8 +229,8 @@ export default function ObraDetailPage() {
         const name = employee.name || `${employee.firstName || ''} ${employee.lastName || ''}`.trim();
         return `${name} ${employee.dni || ''}`.toLowerCase().includes(employeeExpenseSearch.trim().toLowerCase());
     });
-    const selectedExpenseContractors = contractors.filter((c: any) => expenseForm.contractorIds.includes(c.id));
-    const filteredExpenseContractors = contractors.filter((c: any) =>
+    const selectedExpenseContractors = contractors.filter((c) => expenseForm.contractorIds.includes(c.id));
+    const filteredExpenseContractors = contractors.filter((c) =>
         `${c.name || ''} ${c.nif || ''}`.toLowerCase().includes(contractorExpenseSearch.trim().toLowerCase())
     );
     const totalExpensePeople = expenseForm.employeeIds.length + expenseForm.contractorIds.length;
@@ -195,7 +245,7 @@ export default function ObraDetailPage() {
         if (expenseForm.type === 'PER_DIEM' && totalExpensePeople === 0) return toast.error('Selecciona al menos un empleado o autónomo para la dieta');
         if (expenseForm.type === 'CONTRACTOR' && !expenseForm.contractorId) return toast.error('Selecciona el autónomo');
         try {
-            const payload: any = {
+            const payload = {
                 type: expenseForm.type,
                 date: expenseForm.date,
                 endDate: expenseForm.endDate,
@@ -236,7 +286,7 @@ export default function ObraDetailPage() {
             setContractorExpenseSearch('');
             setExpenseEditingId(null);
             fetchObra();
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Error al guardar gasto'));
         }
     };
@@ -292,7 +342,7 @@ export default function ObraDetailPage() {
             return toast.error('Fecha fin debe ser posterior o igual a fecha inicio');
         }
         try {
-            const payload: any = {
+            const payload = {
                 employeeId: hoursForm.employeeId,
                 projectId: id,
                 startDate: hoursForm.startDate,
@@ -310,7 +360,7 @@ export default function ObraDetailPage() {
             setHoursForm({ employeeId: '', startDate: '', endDate: '', hours: 8, notes: '' });
             setHoursEditingId(null);
             fetchObra();
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Error al guardar horas'));
         }
     };
@@ -327,7 +377,7 @@ export default function ObraDetailPage() {
         }
     };
 
-    const tabs: { id: Tab; label: string; icon: any }[] = [
+    const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
         { id: 'info', label: 'Información', icon: Briefcase },
         { id: 'hours', label: `Horas (${obra.employeeWork?.length || 0})`, icon: Calendar },
         { id: 'expenses', label: `Gastos (${obra.expenses?.length || 0})`, icon: DollarSign }
@@ -433,7 +483,7 @@ export default function ObraDetailPage() {
                             onChange={(e) => { setFilters({ ...filters, employeeId: e.target.value }); fetchObra({ ...filters, employeeId: e.target.value }); }}
                         >
                             <option value="">Todos</option>
-                            {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>)}
+                            {employees.map((e: EmployeeOption) => <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>)}
                         </select>
                     </div>
                     <div className="flex flex-col gap-1">
@@ -462,7 +512,7 @@ export default function ObraDetailPage() {
                         <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
                             <select className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={hoursForm.employeeId} onChange={(e) => setHoursForm({ ...hoursForm, employeeId: e.target.value })}>
                                 <option value="">Empleado...</option>
-                                {employees.map((e: any) => <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>)}
+                                {employees.map((e: EmployeeOption) => <option key={e.id} value={e.id}>{e.name || `${e.firstName || ''} ${e.lastName || ''}`.trim() || e.dni}</option>)}
                             </select>
                             <input type="date" className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={hoursForm.startDate} onChange={(e) => setHoursForm({ ...hoursForm, startDate: e.target.value })} />
                             <input type="date" className="px-3 py-2 border rounded-lg bg-white dark:bg-slate-800" value={hoursForm.endDate} onChange={(e) => setHoursForm({ ...hoursForm, endDate: e.target.value })} />
@@ -484,7 +534,7 @@ export default function ObraDetailPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {(obra.employeeWork || []).map((w: any) => (
+                                {(obra.employeeWork || []).map((w: ObraWorkEntry) => (
                                     <tr key={w.id}>
                                         <td className="px-4 py-3">{w.employee?.name || `${w.employee?.firstName || ''} ${w.employee?.lastName || ''}`.trim() || '—'}</td>
                                         <td className="px-4 py-3">{String(w.startDate).substring(0, 10)}</td>
@@ -582,7 +632,7 @@ export default function ObraDetailPage() {
                                         </button>
                                     )}
                                     <div className="max-h-56 overflow-y-auto">
-                                        {filteredExpenseEmployees.map((employee: any) => {
+                                        {filteredExpenseEmployees.map((employee) => {
                                             const selected = expenseForm.employeeIds.includes(employee.id);
                                             const name = employee.name || `${employee.firstName || ''} ${employee.lastName || ''}`.trim() || employee.dni;
                                             return (
@@ -645,7 +695,7 @@ export default function ObraDetailPage() {
                                         </button>
                                     )}
                                     <div className="max-h-56 overflow-y-auto">
-                                        {filteredExpenseContractors.map((c: any) => {
+                                        {filteredExpenseContractors.map((c) => {
                                             const selected = expenseForm.contractorIds.includes(c.id);
                                             return (
                                                 <button
@@ -679,8 +729,8 @@ export default function ObraDetailPage() {
                                     >
                                         <option value="">Seleccionar autónomo...</option>
                                         {contractors
-                                            .filter((c: any) => c.active !== false)
-                                            .map((c: any) => (
+                                            .filter((c) => c.active !== false)
+                                            .map((c) => (
                                                 <option key={c.id} value={c.id}>{c.name} ({c.nif})</option>
                                             ))}
                                     </select>
@@ -730,8 +780,8 @@ export default function ObraDetailPage() {
                                         <input
                                             type="checkbox"
                                             aria-label="Seleccionar todos los gastos con empleado"
-                                            checked={(obra.expenses || []).filter((expense: any) => expense.employeeId).length > 0 && (obra.expenses || []).filter((expense: any) => expense.employeeId).every((expense: any) => selectedExpenseIds.includes(expense.id))}
-                                            onChange={(event) => setSelectedExpenseIds(event.target.checked ? (obra.expenses || []).filter((expense: any) => expense.employeeId).map((expense: any) => expense.id) : [])}
+                                            checked={(obra.expenses || []).filter((expense) => expense.employeeId).length > 0 && (obra.expenses || []).filter((expense) => expense.employeeId).every((expense) => selectedExpenseIds.includes(expense.id))}
+                                            onChange={(event) => setSelectedExpenseIds(event.target.checked ? (obra.expenses || []).filter((expense) => expense.employeeId).map((expense) => expense.id) : [])}
                                         />
                                     </th>
                                     <th className="px-4 py-3 text-left">Tipo</th>
@@ -743,7 +793,7 @@ export default function ObraDetailPage() {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                {(obra.expenses || []).map((e: any) => (
+                                {(obra.expenses || []).map((e: ObraExpense) => (
                                     <tr key={e.id}>
                                         <td className="px-4 py-3">
                                             <input type="checkbox" disabled={!e.employeeId} aria-label={`Seleccionar gasto ${e.id}`} checked={selectedExpenseIds.includes(e.id)} onChange={() => setSelectedExpenseIds((current) => current.includes(e.id) ? current.filter((id) => id !== e.id) : [...current, e.id])} />
