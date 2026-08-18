@@ -1,6 +1,6 @@
 import { AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 import type { ReviewSummary } from './types';
-import CellInput from './CellInput';
+import CellInput, { formatAmount, parseNumber } from './CellInput';
 
 export interface GestoriaColumn {
     code: string;
@@ -109,7 +109,7 @@ export default function GestoriaView({
                                                 <td key={column.code} className={`border-b border-r border-slate-200 p-1 dark:border-slate-700 ${record.isTotalOvertimeAmountManual ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}>
                                                     <div className="flex items-center">
                                                         {record.isTotalOvertimeAmountManual && <button type="button" onClick={() => onRestoreField(record.id, 'totalOvertimeAmount')} title="Restaurar cálculo" className="text-amber-600"><RotateCcw size={12} /></button>}
-                                                        <CellInput recordId={record.id} field="totalOvertimeAmount" display={String(Number(record.totalOvertimeAmount || 0))} parse={(raw) => Number(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
+                                                        <CellInput recordId={record.id} field="totalOvertimeAmount" display={formatAmount(record.totalOvertimeAmount)} parse={(raw) => parseNumber(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
                                                     </div>
                                                 </td>
                                             );
@@ -117,14 +117,14 @@ export default function GestoriaView({
                                         if (column.conceptConfigId === 'diets') {
                                             return (
                                                 <td key={column.code} className="border-b border-r border-slate-200 p-1 dark:border-slate-700">
-                                                    <CellInput recordId={record.id} field="diets" display={String(Number(record.diets || 0))} parse={(raw) => Number(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
+                                                    <CellInput recordId={record.id} field="diets" display={formatAmount(record.diets)} parse={(raw) => parseNumber(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
                                                 </td>
                                             );
                                         }
                                         const concept = (record.conceptValues || []).find((item: any) => item.conceptConfigId === column.conceptConfigId);
                                         return (
                                             <td key={column.code} className="border-b border-r border-slate-200 p-1 dark:border-slate-700">
-                                                <CellInput recordId={record.id} field={`concept-${column.conceptConfigId}`} display={String(Number(concept?.value || 0))} parse={(raw) => Number(raw)} onBlur={(_, __, value) => concept && onConceptBlur(record, concept.conceptConfigId, Number(value))} disabled={isLocked || !concept} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
+                                                <CellInput recordId={record.id} field={`concept-${column.conceptConfigId}`} display={formatAmount(concept?.value)} parse={(raw) => parseNumber(raw)} onBlur={(_, __, value) => concept && onConceptBlur(record, concept.conceptConfigId, parseNumber(String(value)))} disabled={isLocked || !concept} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
                                             </td>
                                         );
                                     })}

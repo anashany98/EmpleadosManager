@@ -4,7 +4,16 @@ import { RotateCcw } from 'lucide-react';
 import { controlHorarioTotals } from './types';
 import type { GrandTotals } from './types';
 import MonthlyTotalsBar from './MonthlyTotalsBar';
-import CellInput, { formatPercent } from './CellInput';
+import CellInput, {
+    availablePercentage,
+    brutoOf,
+    diferenciaOf,
+    formatAmount,
+    formatPercent,
+    horasOf,
+    parseNumber,
+    productividadOf
+} from './CellInput';
 
 interface MonthlyControlGridProps {
     controlModalOpen: boolean;
@@ -99,10 +108,10 @@ export default function MonthlyControlGrid({
                                     total: acc.total + Number(r.totalOvertimeAmount || 0),
                                     posVar: acc.posVar + Number(r.positiveVariable || 0),
                                     diets: acc.diets + Number(r.diets || 0),
-                                    gross: acc.gross + Number(r.gross || 0),
-                                    prod: acc.prod + Number(r.productivity || 0),
-                                    hours: acc.hours + Number(r.hoursAmount || 0),
-                                    diff: acc.diff + Number(r.difference || 0),
+                                    gross: acc.gross + brutoOf(r),
+                                    prod: acc.prod + productividadOf(r),
+                                    hours: acc.hours + horasOf(r),
+                                    diff: acc.diff + diferenciaOf(r),
                                     trabajadas: acc.trabajadas + horario.trabajadas,
                                     planificadas: acc.planificadas + horario.planificadas,
                                     horarioDiferencia: acc.horarioDiferencia + horario.diferencia
@@ -142,8 +151,8 @@ export default function MonthlyControlGrid({
                                                     <CellInput
                                                         recordId={r.id}
                                                         field="overtimeRate"
-                                                        display={String(Number(r.overtimeRate || 0))}
-                                                        parse={(raw) => Number(raw)}
+                                                        display={formatAmount(r.overtimeRate)}
+                                                        parse={(raw) => parseNumber(raw)}
                                                         onBlur={onCellBlur}
                                                         disabled={isClosed}
                                                         type="number"
@@ -157,8 +166,8 @@ export default function MonthlyControlGrid({
                                                     <CellInput
                                                         recordId={r.id}
                                                         field="holidayOvertimeRate"
-                                                        display={String(Number(r.holidayOvertimeRate || 0))}
-                                                        parse={(raw) => Number(raw)}
+                                                        display={formatAmount(r.holidayOvertimeRate)}
+                                                        parse={(raw) => parseNumber(raw)}
                                                         onBlur={onCellBlur}
                                                         disabled={isClosed}
                                                         type="number"
@@ -188,8 +197,8 @@ export default function MonthlyControlGrid({
                                                         <CellInput
                                                             recordId={r.id}
                                                             field="overtimeHours"
-                                                            display={String(Number(r.overtimeHours || 0))}
-                                                            parse={(raw) => Number(raw)}
+                                                            display={formatAmount(r.overtimeHours)}
+                                                            parse={(raw) => parseNumber(raw)}
                                                             onBlur={onCellBlur}
                                                             disabled={isClosed}
                                                             type="number"
@@ -215,8 +224,8 @@ export default function MonthlyControlGrid({
                                                         <CellInput
                                                             recordId={r.id}
                                                             field="holidayOvertimeHours"
-                                                            display={String(Number(r.holidayOvertimeHours || 0))}
-                                                            parse={(raw) => Number(raw)}
+                                                            display={formatAmount(r.holidayOvertimeHours)}
+                                                            parse={(raw) => parseNumber(raw)}
                                                             onBlur={onCellBlur}
                                                             disabled={isClosed}
                                                             type="number"
@@ -242,8 +251,8 @@ export default function MonthlyControlGrid({
                                                         <CellInput
                                                             recordId={r.id}
                                                             field="totalOvertimeAmount"
-                                                            display={String(Number(r.totalOvertimeAmount || 0))}
-                                                            parse={(raw) => Number(raw)}
+                                                            display={formatAmount(r.totalOvertimeAmount)}
+                                                            parse={(raw) => parseNumber(raw)}
                                                             onBlur={onCellBlur}
                                                             disabled={isLocked}
                                                             type="number"
@@ -276,8 +285,8 @@ export default function MonthlyControlGrid({
                                                     <CellInput
                                                         recordId={r.id}
                                                         field="positiveVariable"
-                                                        display={String(Number(r.positiveVariable || 0))}
-                                                        parse={(raw) => Number(raw)}
+                                                        display={formatAmount(r.positiveVariable)}
+                                                        parse={(raw) => parseNumber(raw)}
                                                         onBlur={onCellBlur}
                                                         disabled={isLocked}
                                                         type="number"
@@ -291,8 +300,8 @@ export default function MonthlyControlGrid({
                                                     <CellInput
                                                         recordId={r.id}
                                                         field="negativeVariable"
-                                                        display={String(Number(r.negativeVariable || 0))}
-                                                        parse={(raw) => Number(raw)}
+                                                        display={formatAmount(r.negativeVariable)}
+                                                        parse={(raw) => parseNumber(raw)}
                                                         onBlur={onCellBlur}
                                                         disabled={isLocked}
                                                         type="number"
@@ -317,8 +326,8 @@ export default function MonthlyControlGrid({
                                                         <CellInput
                                                             recordId={r.id}
                                                             field="diets"
-                                                            display={String(Number(r.diets || 0))}
-                                                            parse={(raw) => Number(raw)}
+                                                            display={formatAmount(r.diets)}
+                                                            parse={(raw) => parseNumber(raw)}
                                                             onBlur={onCellBlur}
                                                             disabled={isLocked}
                                                             type="number"
@@ -334,7 +343,7 @@ export default function MonthlyControlGrid({
                                                         recordId={r.id}
                                                         field="irpf"
                                                         display={formatPercent(r.irpf)}
-                                                        parse={(raw) => Number(raw) / 100}
+                                                        parse={(raw) => parseNumber(raw) / 100}
                                                         onBlur={onCellBlur}
                                                         disabled={isLocked}
                                                         type="number"
@@ -355,12 +364,11 @@ export default function MonthlyControlGrid({
                                                     />
                                                 </td>
 
-                                                {/* % Disponible */}
-                                                <td title={r.isAvailablePercentageManual ? `Calculado: ${(Number(r.availablePercentageCalculated || 0) * 100).toFixed(2)} % · Manual efectivo: ${(Number(r.availablePercentage || 0) * 100).toFixed(2)} %` : 'Valor calculado automáticamente'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isAvailablePercentageManual ? 'bg-amber-50 dark:bg-amber-950/30' : 'bg-slate-50/60 dark:bg-slate-800/30'}`}>
-                                                    <div className="flex items-center justify-end gap-1">
-                                                        {r.isAvailablePercentageManual && <button type="button" onClick={() => onRestoreField(r.id, 'availablePercentage')} title="Restaurar cálculo automático" className="text-amber-600"><RotateCcw size={12} /></button>}
-                                                        <CellInput recordId={r.id} field="availablePercentage" display={formatPercent(r.availablePercentage)} parse={(raw) => Number(raw) / 100} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="w-full bg-transparent px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 rounded" />
-                                                    </div>
+                                                {/* % Disponible — siempre 100 − IRPF % − TGSS % (6,35% fijo) */}
+                                                <td title="% Disponible = 100 − IRPF % − TGSS % (6,35% fijo). Se recalcula solo al cambiar el IRPF." className="p-1 border-r border-slate-100 dark:border-slate-800 text-right bg-slate-50/60 dark:bg-slate-800/30">
+                                                    <span className="inline-block w-full px-1 py-1 text-right font-semibold text-slate-700 dark:text-slate-200">
+                                                        {formatPercent(availablePercentage(r.irpf) / 100)}
+                                                    </span>
                                                 </td>
 
                                                 {/* BRUTO */}
@@ -379,8 +387,8 @@ export default function MonthlyControlGrid({
                                                         <CellInput
                                                             recordId={r.id}
                                                             field="gross"
-                                                            display={String(Number(r.gross || 0))}
-                                                            parse={(raw) => Number(raw)}
+                                                            display={formatAmount(brutoOf(r))}
+                                                            parse={(raw) => parseNumber(raw)}
                                                             onBlur={onCellBlur}
                                                             disabled={isLocked}
                                                             type="number"
@@ -397,8 +405,8 @@ export default function MonthlyControlGrid({
                                                         <CellInput
                                                             recordId={r.id}
                                                             field="productivity"
-                                                            display={String(Number(r.productivity || 0))}
-                                                            parse={(raw) => Number(raw)}
+                                                            display={formatAmount(productividadOf(r), 4)}
+                                                            parse={(raw) => parseNumber(raw)}
                                                             onBlur={onCellBlur}
                                                             disabled={isLocked}
                                                             type="number"
@@ -412,7 +420,7 @@ export default function MonthlyControlGrid({
                                                 <td title={r.isHoursAmountManual ? `Calculado: ${Number(r.hoursCalculated || 0).toFixed(2)} € · Manual efectivo: ${Number(r.hoursAmount || 0).toFixed(2)} €` : 'Valor calculado automáticamente'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isHoursAmountManual ? 'bg-amber-50 dark:bg-amber-950/30' : 'bg-slate-50/60 dark:bg-slate-800/30'}`}>
                                                     <div className="flex items-center justify-end gap-1">
                                                         {r.isHoursAmountManual && <button type="button" onClick={() => onRestoreField(r.id, 'hoursAmount')} title="Restaurar cálculo automático" className="text-amber-600"><RotateCcw size={12} /></button>}
-                                                        <CellInput recordId={r.id} field="hoursAmount" display={String(Number(r.hoursAmount || 0))} parse={(raw) => Number(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="w-full bg-transparent px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 rounded" />
+                                                        <CellInput recordId={r.id} field="hoursAmount" display={formatAmount(horasOf(r))} parse={(raw) => parseNumber(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="w-full bg-transparent px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 rounded" />
                                                     </div>
                                                 </td>
 
@@ -420,12 +428,12 @@ export default function MonthlyControlGrid({
                                                 <td title={r.isDifferenceManual ? `Calculado: ${Number(r.differenceCalculated || 0).toFixed(2)} € · Manual efectivo: ${Number(r.difference || 0).toFixed(2)} €` : 'Valor calculado automáticamente'} className={`p-1 border-r border-slate-100 dark:border-slate-800 text-right ${r.isDifferenceManual ? 'bg-amber-50 dark:bg-amber-950/30' : 'bg-slate-50/60 dark:bg-slate-800/30'}`}>
                                                     <div className="flex items-center justify-end gap-1">
                                                         {r.isDifferenceManual && <button type="button" onClick={() => onRestoreField(r.id, 'difference')} title="Restaurar cálculo automático" className="text-amber-600"><RotateCcw size={12} /></button>}
-                                                        <CellInput recordId={r.id} field="difference" display={String(Number(r.difference || 0))} parse={(raw) => Number(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="w-full bg-transparent px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 rounded" />
+                                                        <CellInput recordId={r.id} field="difference" display={formatAmount(diferenciaOf(r))} parse={(raw) => parseNumber(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="w-full bg-transparent px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 rounded" />
                                                     </div>
                                                 </td>
                                                 {configurableConcepts.map((definition) => {
                                                     const concept = (r.conceptValues || []).find((item: any) => item.conceptConfigId === definition.conceptConfigId);
-                                                    return <td key={definition.conceptConfigId} className="p-1 border-r border-slate-100 dark:border-slate-800 text-right"><CellInput recordId={r.id} field={`concept-${definition.conceptConfigId}`} display={String(Number(concept?.value || 0))} parse={(raw) => Number(raw)} onBlur={(_, __, value) => concept && onConceptBlur(r, concept.conceptConfigId, Number(value))} disabled={isLocked || !concept} type="number" step="0.01" className="w-full bg-transparent px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 rounded" /></td>;
+                                                    return <td key={definition.conceptConfigId} className="p-1 border-r border-slate-100 dark:border-slate-800 text-right"><CellInput recordId={r.id} field={`concept-${definition.conceptConfigId}`} display={formatAmount(concept?.value)} parse={(raw) => parseNumber(raw)} onBlur={(_, __, value) => concept && onConceptBlur(r, concept.conceptConfigId, parseNumber(String(value)))} disabled={isLocked || !concept} type="number" step="0.01" className="w-full bg-transparent px-1 py-1 text-right focus:ring-1 focus:ring-blue-500 rounded" /></td>;
                                                 })}
                                             </tr>
                                         );
