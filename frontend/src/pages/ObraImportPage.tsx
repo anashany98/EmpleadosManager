@@ -52,6 +52,49 @@ const TEMPLATE_SAMPLE_ROW = [
 type Step = 'UPLOAD' | 'MAP' | 'REVIEW';
 type LayoutHint = 'presto' | 'flat' | 'unknown';
 
+interface ObraOption {
+    id: string;
+    code: string;
+    name: string;
+}
+
+interface UploadResponse {
+    batchId: string;
+    headers: string[];
+    detectedLayout?: LayoutHint;
+    prestoPedidosCount?: number;
+}
+
+interface PreviewRow {
+    rowIndex: number;
+    data?: {
+        obraId?: string;
+        type?: string;
+        date?: string;
+        amount?: number;
+        currency?: string;
+    };
+}
+
+interface PreviewResponse {
+    totalRows: number;
+    validCount: number;
+    invalidCount: number;
+    invalid: Array<{
+        rowIndex: number;
+        obraCode?: string;
+        originalRef?: string;
+        employeeDni?: string;
+        warnings: string[];
+    }>;
+    valid: PreviewRow[];
+}
+
+interface CommitResponse {
+    inserted: number;
+    warningsCount: number;
+}
+
 const PRESTO_MAPPING: Record<string, string> = {
     obra_code: '',
     date: '',
@@ -76,7 +119,7 @@ export default function ObraImportPage() {
     const [batchId, setBatchId] = useState<string | null>(null);
     const [headers, setHeaders] = useState<string[]>([]);
     const [mapping, setMapping] = useState<Record<string, string>>({});
-    const [preview, setPreview] = useState<any>(null);
+    const [preview, setPreview] = useState<PreviewResponse | null>(null);
     const [loading, setLoading] = useState(false);
     const [layout, setLayout] = useState<LayoutHint>('flat');
     const [prestoPedidosCount, setPrestoPedidosCount] = useState(0);
@@ -86,8 +129,8 @@ export default function ObraImportPage() {
     const fetchObras = async () => {
         try {
             const res = await api.get('/obras', { params: { limit: 200 } });
-            const data: any = unwrap(res);
-            setObras(Array.isArray(data?.data) ? data.data : (Array.isArray(data) ? data : []));
+            const data = unwrap<{ data?: ObraOption[] } | ObraOption[]>(res);
+            setObras(Array.isArray(data) ? data : (data?.data ?? []));
         } catch (err) {
             console.error(err);
         }
@@ -101,10 +144,10 @@ export default function ObraImportPage() {
             formData.append('file', file);
             if (obraOverride) formData.append('obraOverride', obraOverride);
             const res = await api.post('/obra-imports/upload', formData);
-            const data = unwrap(res);
+            const data = unwrap<UploadResponse>(res);
             setBatchId(data.batchId);
             setHeaders(data.headers || []);
-            const detected: LayoutHint = (data.detectedLayout as LayoutHint) || 'flat';
+            const detected: LayoutHint = data.detectedLayout || 'flat';
             setLayout(detected);
             setPrestoPedidosCount(Number(data.prestoPedidosCount) || 0);
 
@@ -133,7 +176,7 @@ export default function ObraImportPage() {
         try {
             setLoading(true);
             const res = await api.post(`/obra-imports/${batchId}/preview`, { mappingRules: mapping, obraOverride: obraOverride || null });
-            setPreview(unwrap(res));
+            setPreview(unwrap<PreviewResponse>(res));
             setStep('REVIEW');
         } catch (err: unknown) {
             toast.error(getErrorMessage(err, 'Error al previsualizar'));
@@ -169,7 +212,7 @@ export default function ObraImportPage() {
         try {
             setLoading(true);
             const res = await api.post(`/obra-imports/${batchId}/preview`, { mappingRules: mapping });
-            setPreview(unwrap(res));
+            setPreview(unwrap<PreviewResponse>(res));
             setStep('REVIEW');
             toast.success('Vista previa generada');
         } catch (err: unknown) {
@@ -184,7 +227,7 @@ export default function ObraImportPage() {
         try {
             setLoading(true);
             const res = await api.post(`/obra-imports/${batchId}/commit`, { mappingRules: mapping, obraOverride: obraOverride || null });
-            const r = unwrap(res);
+            const r = unwrap<CommitResponse>(res);
             toast.success(`Importación completada: ${r.inserted} gastos, ${r.warningsCount} avisos`);
             navigate('/obras');
         } catch (err: unknown) {
@@ -327,7 +370,7 @@ export default function ObraImportPage() {
                             <div className="bg-white dark:bg-slate-900 rounded-xl border border-amber-200 p-5">
                                 <h3 className="font-bold flex items-center gap-2 text-amber-700 mb-3"><AlertTriangle size={18} /> Filas con avisos (no se importarán)</h3>
                                 <div className="max-h-64 overflow-auto text-xs space-y-1">
-                                    {preview.invalid.map((w: any, i: number) => (
+                                    {preview.invalid.map((w, i: number) => (
                                         <div key={i} className="flex justify-between bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded">
                                             <span className="flex items-center gap-2">
                                                 <span>Fila {w.rowIndex}</span>
@@ -350,7 +393,7 @@ export default function ObraImportPage() {
                                 <table className="w-full">
                                     <thead className="text-slate-500"><tr><th className="text-left">Fila</th><th className="text-left">Obra</th><th className="text-left">Tipo</th><th className="text-left">Fecha</th><th className="text-right">Importe</th></tr></thead>
                                     <tbody>
-                                        {preview.valid.map((v: any) => (
+                                        {preview.valid.map((v) => (
                                             <tr key={v.rowIndex} className="border-t border-slate-100 dark:border-slate-800">
                                                 <td className="py-1">{v.rowIndex}</td>
                                                 <td className="py-1">{v.data?.obraId?.substring(0, 8)}...</td>

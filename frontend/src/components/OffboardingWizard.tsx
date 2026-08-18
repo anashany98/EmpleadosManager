@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { OFFBOARDING_REASONS } from '../features/employees/constants/offboardingReasons';
+import { OFFBOARDING_REASONS } from '@shared/terminations';
 
 interface OffboardingWizardProps {
     employeeId: string;

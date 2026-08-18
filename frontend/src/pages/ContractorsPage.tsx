@@ -55,7 +55,7 @@ export default function ContractorsPage() {
     const fetchContractors = useCallback(async () => {
         try {
             const res = await api.get('/obra-contractors', { params: { limit: 200 } });
-            const data = unwrap(res);
+            const data = unwrap<Contractor[] | { data?: Contractor[] }>(res);
             setContractors(Array.isArray(data) ? data : (data?.data ?? []));
         } catch (err) {
             toast.error(getErrorMessage(err, 'Error al cargar autónomos'));

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api/client';
+import { useApiUnwrap } from '../hooks/useApiUnwrap';
 import { toast } from 'sonner';
 import { Clock, LogIn, LogOut, Coffee, Calendar, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useConfirm } from '../context/ConfirmContext';
@@ -140,6 +141,7 @@ const initialFormData = () => ({
 });
 
 export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
+    const unwrap = useApiUnwrap();
     const confirmAction = useConfirm();
     const [entries, setEntries] = useState<DailyTimeEntry[]>([]);
     const [loading, setLoading] = useState(true);
@@ -161,11 +163,10 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
             const to = toLocalDateString(new Date(year, month + 1, 0));
             const response = await api.get<{ success: boolean; data: { data: RawTimeEntry[]; pagination?: unknown } }>(`/time-entries/range?from=${from}&to=${to}&employeeId=${employeeId}`);
             // El backend devuelve { data: { data: [...], pagination } } dentro del
-            // envelope, así que hay que desempaquetar dos niveles para el array.
-            const rows = Array.isArray(response?.data?.data)
-                ? response.data.data
-                : (Array.isArray(response?.data) ? response.data : []);
-            const normalized = normalizeEntries(rows as RawTimeEntry[]);
+            // envelope; unwrap desempaqueta los dos niveles hasta llegar al array.
+            const rawRows = unwrap<RawTimeEntry[]>(response);
+            const rows = Array.isArray(rawRows) ? rawRows : [];
+            const normalized = normalizeEntries(rows);
             setEntries(normalized);
             setSummary(computeSummary(normalized));
         } catch (error) {

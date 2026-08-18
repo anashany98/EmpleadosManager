@@ -16,6 +16,27 @@ const TIPO_LABELS: Record<string, string> = {
     OTHER: 'Otros'
 };
 
+interface ObraRow {
+    id: string;
+    code: string;
+    name: string;
+    status: string;
+    clientName?: string | null;
+    destination?: string | null;
+    budget?: string | number | null;
+    managerId?: string | null;
+    manager?: { id: string; name?: string | null } | null;
+    active: boolean;
+}
+
+interface EmployeeOption {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    dni?: string;
+}
+
 export default function ObrasPage() {
     const navigate = useNavigate();
     const confirmAction = useConfirm();
@@ -52,9 +73,9 @@ export default function ObrasPage() {
             if (statusFilter) params.status = statusFilter;
             if (committedSearch) params.q = committedSearch;
             const res = await api.get('/obras', { params });
-            const data = unwrap(res);
+            const data = unwrap<ObraRow[] | { data?: ObraRow[]; meta?: { totalPages?: number; total?: number } }>(res);
             const list = Array.isArray(data) ? data : (data?.data ?? []);
-            const meta = data?.meta ?? null;
+            const meta = !Array.isArray(data) ? (data?.meta ?? null) : null;
             setObras(list);
             if (meta) {
                 setTotalPages(meta.totalPages || 1);
@@ -74,7 +95,7 @@ export default function ObrasPage() {
     const fetchEmployees = async () => {
         try {
             const res = await api.get('/employees', { params: { limit: 200 } });
-            setEmployees(unwrap(res) || []);
+            setEmployees(unwrap<EmployeeOption[]>(res) || []);
         } catch (err) {
             console.error(err);
         }

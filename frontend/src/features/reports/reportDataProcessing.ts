@@ -1,5 +1,6 @@
 import type { ReportType, SummaryCardData } from './reportTypes';
 import { getAttendanceWindow, formatCurrency, formatNumber, formatPercent, formatDate } from './reportHelpers';
+import { getTerminationTypeLabel } from '@shared/terminations';
 
 export function buildRequestParams(activeTab: ReportType, filters: Record<string, string>) {
     const params: Record<string, string> = {};
@@ -159,19 +160,13 @@ export function getNormalizedRows(activeTab: ReportType, data: any) {
     }
 
     if (activeTab === 'TERMINATIONS') {
-        const typeLabels: Record<string, string> = {
-            DISMISSAL: 'Despido',
-            VOLUNTARY_LEAVE: 'Baja voluntaria',
-            CONTRACT_END: 'Fin de contrato',
-            OTHER: 'Otra baja'
-        };
         return rows.map((item: any) => ({
             employee: item.employee || 'N/A',
             dni: item.dni || '-',
             department: item.department || 'Sin asignar',
             date: item.date,
             type: item.type || 'OTHER',
-            typeLabel: typeLabels[item.type] || 'Otra baja',
+            typeLabel: getTerminationTypeLabel(item.type),
             reason: item.reason || 'Sin motivo especificado'
         }));
     }

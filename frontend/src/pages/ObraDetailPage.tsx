@@ -76,6 +76,21 @@ interface ObraShape {
     totals?: { hours: number; byType: Record<string, number>; totalExpenses: number };
 }
 
+interface EmployeeOption {
+    id: string;
+    firstName?: string;
+    lastName?: string;
+    name?: string;
+    dni?: string;
+}
+
+interface ContractorOption {
+    id: string;
+    name: string;
+    nif?: string;
+    active?: boolean;
+}
+
 export default function ObraDetailPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -114,7 +129,7 @@ export default function ObraDetailPage() {
             if (f.from) params.from = f.from;
             if (f.to) params.to = f.to;
             const res = await api.get(`/obras/${id}`, { params });
-            setObra(unwrap(res) as ObraShape);
+            setObra(unwrap<ObraShape>(res));
         } catch (err: any) {
             toast.error(getErrorMessage(err, 'Error al cargar la obra'));
             navigate('/obras');
@@ -126,7 +141,7 @@ export default function ObraDetailPage() {
     const fetchEmployees = async () => {
         try {
             const res = await api.get('/employees', { params: { limit: 200 } });
-            setEmployees(unwrap(res) || []);
+            setEmployees(unwrap<EmployeeOption[]>(res) || []);
         } catch (err) {
             console.error(err);
         }
@@ -138,7 +153,7 @@ export default function ObraDetailPage() {
     const fetchContractors = async () => {
         try {
             const res = await api.get('/obra-contractors', { params: { limit: 200 } });
-            const data = unwrap(res);
+            const data = unwrap<ContractorOption[] | { data?: ContractorOption[] }>(res);
             setContractors(Array.isArray(data) ? data : (data?.data ?? []));
         } catch (err) {
             console.error(err);

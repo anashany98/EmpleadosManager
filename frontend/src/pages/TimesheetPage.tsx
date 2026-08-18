@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
+import { useApiUnwrap } from '../hooks/useApiUnwrap';
 import { toast } from 'sonner';
 import { Clock, Calendar, ChevronLeft, ChevronRight, User, MapPin, HardHat, Sun } from 'lucide-react';
 import LocationMapModal from '../components/LocationMapModal';
@@ -226,6 +227,7 @@ function buildVacationMaps(
 }
 
 export default function TimesheetPage() {
+  const unwrap = useApiUnwrap();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
@@ -262,12 +264,12 @@ export default function TimesheetPage() {
   const fetchEmployees = useCallback(async () => {
     try {
       const res = await api.get<{ success: boolean; data: Employee[] }>('/employees');
-      setEmployees(res.data || res || []);
+      setEmployees(unwrap<Employee[]>(res));
     } catch (error) {
       console.error(error);
       toast.error('Error al cargar empleados');
     }
-  }, []);
+  }, [unwrap]);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -283,15 +285,15 @@ export default function TimesheetPage() {
 
       const res = await api.get<{ success: boolean; data: { data: RawTimeEntry[]; pagination?: unknown } }>(url);
       // El backend devuelve { data: { data: [...], pagination } } dentro del
-      // envelope, así que hay que desempaquetar dos niveles para llegar al array.
-      setEntries(normalizeTimeEntries(res.data?.data || res.data || res || []));
+      // envelope; unwrap desempaqueta los dos niveles hasta llegar al array.
+      setEntries(normalizeTimeEntries(unwrap<RawTimeEntry[]>(res)));
 
       try {
         const vacRes = await api.get<{ success: boolean; data: unknown }>('/vacations', { params: { startDate, endDate, limit: 500 } });
-        const rawVacations: unknown = vacRes.data;
+        const rawVacations = unwrap<VacationApi[]>(vacRes);
         const vacList = Array.isArray(rawVacations)
-            ? (rawVacations as VacationApi[])
-            : ((rawVacations as { data?: VacationApi[] } | null)?.data ?? []);
+            ? rawVacations
+            : [];
         setVacations(vacList);
       } catch (vacError) {
         console.error('Error al cargar vacaciones', vacError);
@@ -303,7 +305,7 @@ export default function TimesheetPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentMonth, selectedEmployee]);
+  }, [currentMonth, selectedEmployee, unwrap]);
 
   useEffect(() => {
     void fetchEmployees();

@@ -1,14 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { InventoryService } from './InventoryService';
 import { AppError } from '../utils/AppError';
-
-const OFFBOARDING_REASONS: Record<string, { label: string; type: string }> = {
-    BAJA_VOLUNTARIA: { label: 'Baja voluntaria / Dimisión', type: 'VOLUNTARY_LEAVE' },
-    FIN_CONTRATO: { label: 'Fin de contrato / No superación del periodo de prueba', type: 'CONTRACT_END' },
-    DESPIDO: { label: 'Despido', type: 'DISMISSAL' },
-    JUBILACION: { label: 'Jubilación', type: 'OTHER' },
-    OTRO: { label: 'Otro motivo', type: 'OTHER' }
-};
+import { getOffboardingReason } from '../../../shared/terminations';
 
 export const OffboardingService = {
     /**
@@ -47,9 +40,9 @@ export const OffboardingService = {
         returnAssets: string[], // IDs of assets returned
         userId: string
     }) => {
-        const reasonDetails = OFFBOARDING_REASONS[options.reason] || {
+        const reasonDetails = getOffboardingReason(options.reason) || {
             label: String(options.reason).trim(),
-            type: 'OTHER'
+            type: 'OTHER' as const
         };
         const results = {
             assetsReturned: 0,

@@ -69,8 +69,8 @@ export default function ObraHoursModal({ open, onClose, employeeId, date, defaul
                 api.get('/obras', { params: { status: 'ACTIVE', limit: 200 } }),
                 api.get(`/employee-project-work/employee/${employeeId}`, { params: { from: date, to: date } })
             ]);
-            setObras(unwrap(obrasResponse) || []);
-            setEntries(unwrap(entriesResponse) || []);
+            setObras(unwrap<Obra[]>(obrasResponse) || []);
+            setEntries(unwrap<WorkEntry[]>(entriesResponse) || []);
         } catch (error: unknown) {
             setLoadError(getErrorMessage(error, 'No se pudieron cargar las obras'));
         } finally {

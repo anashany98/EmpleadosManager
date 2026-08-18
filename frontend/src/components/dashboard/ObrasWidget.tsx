@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Briefcase, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Briefcase, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { api, getErrorMessage } from '../../api/client';
 import { useApiUnwrap } from '../../hooks/useApiUnwrap';
@@ -16,6 +16,21 @@ interface ObrasSummary {
     recent: Array<{ id: string; code: string; name: string; clientName: string | null; budget: number; spent: number; pct: number }>;
 }
 
+interface ObrasReportRow {
+    id: string;
+    code: string;
+    name: string;
+    status: string;
+    clientName?: string | null;
+    budget?: number;
+    consumed?: number;
+}
+
+interface ObrasReportData {
+    obras?: ObrasReportRow[];
+    budgets?: { budget?: number; consumed?: number };
+}
+
 export function ObrasWidget() {
     const unwrap = useApiUnwrap();
     const [data, setData] = useState<ObrasSummary | null>(null);
@@ -27,16 +42,16 @@ export function ObrasWidget() {
                 // El endpoint /reports/obras devuelve obras + budgets + consumed.
                 // Para el dashboard solo queremos el resumen, no las 1000+ obras.
                 const res = await api.get('/reports/obras', { params: { limit: 5 } });
-                const raw = unwrap<any>(res);
+                const raw = unwrap<ObrasReportData>(res);
                 const obras = Array.isArray(raw?.obras) ? raw.obras : [];
                 const summary: ObrasSummary = {
                     total: raw?.obras?.length ?? 0,
-                    active: obras.filter((o: any) => o.status === 'ACTIVE').length,
-                    inactive: obras.filter((o: any) => o.status === 'INACTIVE').length,
+                    active: obras.filter((o) => o.status === 'ACTIVE').length,
+                    inactive: obras.filter((o) => o.status === 'INACTIVE').length,
                     totalBudget: Number(raw?.budgets?.budget || 0),
                     totalSpent: Number(raw?.budgets?.consumed || 0),
-                    overBudget: obras.filter((o: any) => Number(o.budget || 0) > 0 && Number(o.consumed || 0) > Number(o.budget || 0)).length,
-                    recent: obras.slice(0, 5).map((o: any) => ({
+                    overBudget: obras.filter((o) => Number(o.budget || 0) > 0 && Number(o.consumed || 0) > Number(o.budget || 0)).length,
+                    recent: obras.slice(0, 5).map((o) => ({
                         id: o.id,
                         code: o.code,
                         name: o.name,
@@ -68,7 +83,6 @@ export function ObrasWidget() {
     if (!data) return null;
 
     const overBudgetPct = data.totalBudget > 0 ? (data.totalSpent / data.totalBudget) * 100 : 0;
-    const tone = data.overBudget > 0 ? 'rose' : 'emerald';
 
     return (
         <motion.div

@@ -1,19 +1,9 @@
 import type { Expense, ExpenseEmployeeOption } from './types';
-
-function unwrapData(value: unknown): unknown {
-    if (value && typeof value === 'object' && 'data' in value) {
-        return (value as { data: unknown }).data;
-    }
-
-    return value;
-}
+import { unwrapResponse } from '../../../hooks/useApiUnwrap';
 
 function normalizeList<T>(response: unknown): T[] {
-    const first = unwrapData(response);
-    if (Array.isArray(first)) return first as T[];
-
-    const second = unwrapData(first);
-    return Array.isArray(second) ? second as T[] : [];
+    const unwrapped = unwrapResponse<T[]>(response);
+    return Array.isArray(unwrapped) ? unwrapped : [];
 }
 
 export function normalizeExpenseListResponse(response: unknown): Expense[] {

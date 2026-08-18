@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { CalendarDays, UserMinus, X } from 'lucide-react';
-import { OFFBOARDING_REASONS } from '../constants/offboardingReasons';
+import { OFFBOARDING_REASONS } from '@shared/terminations';
 
 export interface EmployeeDeactivationData {
     terminationType: 'DISMISSAL' | 'VOLUNTARY_LEAVE' | 'CONTRACT_END' | 'OTHER';
@@ -21,7 +21,7 @@ export function EmployeeDeactivationDialog({
     onClose: () => void;
     onConfirm: (data: EmployeeDeactivationData) => void;
 }) {
-    const [reasonCode, setReasonCode] = useState(OFFBOARDING_REASONS[0].value);
+    const [reasonCode, setReasonCode] = useState<string>(OFFBOARDING_REASONS[0].value);
     const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
 
     useEffect(() => {

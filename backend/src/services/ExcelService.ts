@@ -14,6 +14,7 @@ import {
     TIPO_LABEL_ES
 } from './excel/excelHelpers';
 import { EncryptionService } from './EncryptionService';
+import { getTerminationTypeLabel } from '../../../shared/terminations';
 
 export class ExcelService {
     static async generateAttendanceReport(data: any[], context: ExcelContext = {}) {
@@ -515,12 +516,6 @@ export class ExcelService {
 
     static async generateTerminationReport(data: any[], context: ExcelContext = {}) {
         const workbook = createWorkbook('Bajas y despidos');
-        const typeLabels: Record<string, string> = {
-            DISMISSAL: 'Despido',
-            VOLUNTARY_LEAVE: 'Baja voluntaria',
-            CONTRACT_END: 'Fin de contrato',
-            OTHER: 'Otra baja'
-        };
         const dismissals = data.filter((item) => item.type === 'DISMISSAL').length;
         const voluntaryLeaves = data.filter((item) => item.type === 'VOLUNTARY_LEAVE').length;
         const contractEnds = data.filter((item) => item.type === 'CONTRACT_END').length;
@@ -548,7 +543,7 @@ export class ExcelService {
                 employee: item.employee || 'N/A',
                 dni: item.dni || '-',
                 department: item.department || 'Sin asignar',
-                type: typeLabels[item.type] || 'Otra baja',
+                type: getTerminationTypeLabel(item.type),
                 date: formatDate(item.date),
                 reason: item.reason || 'Sin motivo especificado'
             })),
