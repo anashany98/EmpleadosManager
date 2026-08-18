@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
+import { OFFBOARDING_REASONS } from '../features/employees/constants/offboardingReasons';
 
 interface OffboardingWizardProps {
     employeeId: string;
@@ -194,12 +195,9 @@ export default function OffboardingWizard({ employeeId, employeeName, onClose, o
                                             onChange={e => setForm({ ...form, reason: e.target.value })}
                                             className="w-full p-3 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-2 focus:ring-red-500 transition-all"
                                         >
-                                            <option value="BAJA_VOLUNTARIA">Baja Voluntaria / Dimisión</option>
-                                            <option value="FIN_CONTRATO">Fin de Contrato / No Superación Prueba</option>
-                                            <option value="DESPIDO_OBJETIVO">Despido Objetivo</option>
-                                            <option value="DESPIDO_DISCIPLINARIO">Despido Disciplinario</option>
-                                            <option value="JUBILACION">Jubilación</option>
-                                            <option value="OTRO">Otro motivo</option>
+                                            {OFFBOARDING_REASONS.map((reason) => (
+                                                <option key={reason.value} value={reason.value}>{reason.label}</option>
+                                            ))}
                                         </select>
                                     </div>
                                 </div>

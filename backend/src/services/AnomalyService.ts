@@ -64,6 +64,29 @@ export const AnomalyService = {
                 });
             }
 
+            // Enlace con vacaciones: un fichaje en un día cubierto por un período
+            // de vacaciones aprobado es señal de revisión (trabajar estando de
+            // vacaciones, fichaje residual tras el alta, etc.). Se marcan solo las
+            // vacaciones APPROVED/EXISTING, igual que hace el control horario.
+            const vacationOverlap = await prisma.vacation.findFirst({
+                where: {
+                    employeeId: entry.employeeId,
+                    status: { in: ['APPROVED', 'EXISTING'] },
+                    startDate: { lte: entryDate },
+                    endDate: { gte: entryDate }
+                },
+                select: { startDate: true, endDate: true, reason: true }
+            });
+            if (vacationOverlap) {
+                reasons.push({
+                    code: 'VACATION_OVERLAP',
+                    message: vacationOverlap.reason
+                        ? `Fichaje dentro de vacaciones aprobadas (${vacationOverlap.reason}).`
+                        : 'Fichaje dentro de un período de vacaciones aprobado.',
+                    score: 25
+                });
+            }
+
             const lastEntry = await prisma.timeEntry.findFirst({
                 where: {
                     employeeId: entry.employeeId,

@@ -1,7 +1,7 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
 import { toast } from 'sonner';
-import { Clock, Calendar, ChevronLeft, ChevronRight, User, MapPin, HardHat } from 'lucide-react';
+import { Clock, Calendar, ChevronLeft, ChevronRight, User, MapPin, HardHat, Sun } from 'lucide-react';
 import LocationMapModal from '../components/LocationMapModal';
 import ObraHoursModal from '../features/employee-detail/components/ObraHoursModal';
 
@@ -22,6 +22,9 @@ interface TimeEntry {
   lunchHours: number;
   lat?: number;
   lng?: number;
+  /** Marca los días con vacaciones aprobadas mostrados junto a los fichajes. */
+  isVacation?: boolean;
+  vacationReason?: string;
   employee: {
     id: string;
     name: string;
@@ -131,12 +134,104 @@ const normalizeTimeEntries = (payload: unknown): TimeEntry[] => {
   });
 };
 
+interface VacationApi {
+  id: string;
+  startDate: string;
+  endDate: string;
+  type?: string | null;
+  status?: string | null;
+  reason?: string | null;
+  employee?: {
+    id?: string;
+    name?: string;
+    firstName?: string;
+    lastName?: string;
+    department?: string;
+  } | null;
+}
+
+interface VacationDayInfo {
+  reason?: string;
+  employee: { id: string; name: string; department: string };
+}
+
+const VACATION_TYPES = new Set(['VACATION', 'VACACIONES']);
+
+/**
+ * Expande las vacaciones aprobadas del mes a un mapa por día (para el
+ * calendario) y por empleado+día (para la lista), aplicando los filtros
+ * de departamento/empleado activos. Solo cuenta ausencias tipo vacaciones
+ * en estado APPROVED/EXISTING, igual que el control horario del empleado.
+ */
+function buildVacationMaps(
+  vacations: VacationApi[],
+  year: number,
+  month: number,
+  selectedEmployee: string,
+  selectedDepartment: string,
+  employees: Employee[]
+): {
+  byDate: Map<string, { count: number; names: string[] }>;
+  byEmployeeDay: Map<string, VacationDayInfo>;
+} {
+  const monthStart = new Date(Date.UTC(year, month - 1, 1));
+  const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+  const byDate = new Map<string, { count: number; names: string[] }>();
+  const byEmployeeDay = new Map<string, VacationDayInfo>();
+
+  for (const vac of vacations) {
+    const status = String(vac.status || 'APPROVED').toUpperCase().trim();
+    if (status !== 'APPROVED' && status !== 'EXISTING') continue;
+    const type = String(vac.type || 'VACATION').toUpperCase().trim();
+    if (!VACATION_TYPES.has(type)) continue;
+
+    const vacEmp = vac.employee;
+    const employeeId = vacEmp?.id;
+    if (!employeeId) continue;
+
+    const employee = employees.find((item) => item.id === employeeId) || {
+      id: employeeId,
+      name: vacEmp?.name || [vacEmp?.firstName, vacEmp?.lastName].filter(Boolean).join(' ').trim() || 'Empleado',
+      department: vacEmp?.department || ''
+    };
+    if (selectedEmployee !== 'all' && employeeId !== selectedEmployee) continue;
+    if (selectedDepartment !== 'all' && employee.department !== selectedDepartment) continue;
+
+    const rawStart = new Date(vac.startDate);
+    const rawEnd = new Date(vac.endDate);
+    if (Number.isNaN(rawStart.getTime()) || Number.isNaN(rawEnd.getTime())) continue;
+
+    const start = new Date(Date.UTC(rawStart.getUTCFullYear(), rawStart.getUTCMonth(), rawStart.getUTCDate()));
+    const end = new Date(Date.UTC(rawEnd.getUTCFullYear(), rawEnd.getUTCMonth(), rawEnd.getUTCDate(), 23, 59, 59, 999));
+    const cursor = new Date(Math.max(start.getTime(), monthStart.getTime()));
+    cursor.setUTCHours(0, 0, 0, 0);
+    const limit = new Date(Math.min(end.getTime(), monthEnd.getTime()));
+    limit.setUTCHours(23, 59, 59, 999);
+
+    while (cursor <= limit) {
+      const dayKey = cursor.toISOString().slice(0, 10);
+      const mapKey = `${employeeId}|${dayKey}`;
+      if (!byEmployeeDay.has(mapKey)) {
+        byEmployeeDay.set(mapKey, { reason: vac.reason || undefined, employee });
+      }
+      const dayInfo = byDate.get(dayKey) || { count: 0, names: [] };
+      dayInfo.count += 1;
+      if (employee.name && !dayInfo.names.includes(employee.name)) dayInfo.names.push(employee.name);
+      byDate.set(dayKey, dayInfo);
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+  }
+
+  return { byDate, byEmployeeDay };
+}
+
 export default function TimesheetPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
+  const [vacations, setVacations] = useState<VacationApi[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('all');
   const [selectedDepartment, setSelectedDepartment] = useState<string>('all');
@@ -166,7 +261,7 @@ export default function TimesheetPage() {
 
   const fetchEmployees = useCallback(async () => {
     try {
-      const res = await api.get('/employees');
+      const res = await api.get<{ success: boolean; data: Employee[] }>('/employees');
       setEmployees(res.data || res || []);
     } catch (error) {
       console.error(error);
@@ -186,8 +281,22 @@ export default function TimesheetPage() {
         ? `/time-entries/range?from=${startDate}&to=${endDate}`
         : `/time-entries/range?from=${startDate}&to=${endDate}&employeeId=${selectedEmployee}`;
 
-      const res = await api.get(url);
-      setEntries(normalizeTimeEntries(res.data || res || []));
+      const res = await api.get<{ success: boolean; data: { data: RawTimeEntry[]; pagination?: unknown } }>(url);
+      // El backend devuelve { data: { data: [...], pagination } } dentro del
+      // envelope, así que hay que desempaquetar dos niveles para llegar al array.
+      setEntries(normalizeTimeEntries(res.data?.data || res.data || res || []));
+
+      try {
+        const vacRes = await api.get<{ success: boolean; data: unknown }>('/vacations', { params: { startDate, endDate, limit: 500 } });
+        const rawVacations: unknown = vacRes.data;
+        const vacList = Array.isArray(rawVacations)
+            ? (rawVacations as VacationApi[])
+            : ((rawVacations as { data?: VacationApi[] } | null)?.data ?? []);
+        setVacations(vacList);
+      } catch (vacError) {
+        console.error('Error al cargar vacaciones', vacError);
+        setVacations([]);
+      }
     } catch (error) {
       console.error(error);
       toast.error('Error al cargar fichajes');
@@ -245,6 +354,38 @@ export default function TimesheetPage() {
     acc[date].push(entry);
     return acc;
   }, {} as Record<string, TimeEntry[]>);
+
+  // Vacaciones aprobadas del mes: mapa por día (calendario) y por empleado+día (lista)
+  const { byDate: vacationsByDate, byEmployeeDay: vacationsByEmployeeDay } = useMemo(
+    () => buildVacationMaps(vacations, currentMonth.getFullYear(), currentMonth.getMonth() + 1, selectedEmployee, selectedDepartment, employees),
+    [vacations, currentMonth, selectedEmployee, selectedDepartment, employees]
+  );
+
+  // Días de vacaciones sin fichaje se añaden a la lista para verlos junto a los marcajes.
+  const vacationRows = useMemo(() => {
+    const rows: TimeEntry[] = [];
+    for (const [key, info] of vacationsByEmployeeDay) {
+      const [employeeId, date] = key.split('|');
+      const alreadyShown = displayedEntries.some((entry) => entry.employee.id === employeeId && entry.date.slice(0, 10) === date);
+      if (alreadyShown) continue;
+      rows.push({
+        id: `vac-${key}`,
+        date: `${date}T00:00:00.000Z`,
+        checkIn: undefined,
+        checkOut: undefined,
+        lunchStart: undefined,
+        lunchEnd: undefined,
+        totalHours: 0,
+        lunchHours: 0,
+        isVacation: true,
+        vacationReason: info.reason,
+        employee: info.employee
+      });
+    }
+    return rows;
+  }, [vacationsByEmployeeDay, displayedEntries]);
+
+  const allDisplayedRows = [...displayedEntries, ...vacationRows].sort((a, b) => b.date.localeCompare(a.date));
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -401,22 +542,36 @@ export default function TimesheetPage() {
                 const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                 const dayEntries = entriesByDate[dateKey] || [];
                 const totalHours = dayEntries.reduce((sum, e) => sum + e.totalHours, 0);
+                const vacationsOnDay = vacationsByDate.get(dateKey);
 
                 return (
                   <div
                     key={idx}
-                    className={`aspect-square border border-slate-100 dark:border-slate-800 rounded-lg p-1 sm:p-2 text-center ${dayEntries.length > 0 ? 'bg-blue-50 dark:bg-blue-900/20' : ''
+                    className={`aspect-square border border-slate-100 dark:border-slate-800 rounded-lg p-1 sm:p-2 text-center ${dayEntries.length > 0 ? 'bg-blue-50 dark:bg-blue-900/20' : vacationsOnDay ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''
                     }`}
                   >
                     <div className="text-[10px] sm:text-xs font-medium text-slate-500">{day}</div>
-                    {dayEntries.length > 0 && (
+                    {(dayEntries.length > 0 || vacationsOnDay) && (
                       <div className="mt-0.5 sm:mt-1">
-                        <div className="text-[10px] sm:text-xs font-bold text-blue-600 dark:text-blue-400">
-                          {dayEntries.length}p
-                        </div>
-                        <div className="text-[9px] sm:text-xs text-slate-600 dark:text-slate-400">
-                          {totalHours.toFixed(1)}h
-                        </div>
+                        {dayEntries.length > 0 && (
+                          <>
+                            <div className="text-[10px] sm:text-xs font-bold text-blue-600 dark:text-blue-400">
+                              {dayEntries.length}p
+                            </div>
+                            <div className="text-[9px] sm:text-xs text-slate-600 dark:text-slate-400">
+                              {totalHours.toFixed(1)}h
+                            </div>
+                          </>
+                        )}
+                        {vacationsOnDay && (
+                          <div
+                            className="inline-flex items-center gap-0.5 text-[9px] sm:text-[10px] font-bold text-emerald-600 dark:text-emerald-400"
+                            title={`Vacaciones: ${vacationsOnDay.names.join(', ')}`}
+                          >
+                            <Sun size={9} className="shrink-0" />
+                            {vacationsOnDay.count}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -440,49 +595,62 @@ export default function TimesheetPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {displayedEntries.length === 0 ? (
+                {allDisplayedRows.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
                       No hay fichajes registrados que coincidan con los filtros
                     </td>
                   </tr>
                 ) : (
-                  displayedEntries.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                  allDisplayedRows.map((entry) => (
+                    <tr key={entry.id} className={`transition-colors ${entry.isVacation ? 'bg-emerald-50/80 dark:bg-emerald-950/30' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}>
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900 dark:text-white">{entry.employee.name}</div>
                         <div className="text-xs text-slate-500">{entry.employee.department}</div>
+                        {entry.isVacation && (
+                          <div
+                            className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200"
+                            title={entry.vacationReason ? `Vacaciones: ${entry.vacationReason}` : 'Vacaciones aprobadas'}
+                          >
+                            <Sun size={10} className="shrink-0" />
+                            {entry.vacationReason ? `Vacaciones (${entry.vacationReason})` : 'Vacaciones'}
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm font-medium">{formatDate(entry.date)}</td>
-                      <td className="px-4 py-3 text-sm text-green-600 dark:text-green-400">{formatTime(entry.checkIn)}</td>
-                      <td className="px-4 py-3 text-sm text-red-600 dark:text-red-400">{formatTime(entry.checkOut)}</td>
+                      <td className="px-4 py-3 text-sm text-green-600 dark:text-green-400">{entry.isVacation ? '—' : formatTime(entry.checkIn)}</td>
+                      <td className="px-4 py-3 text-sm text-red-600 dark:text-red-400">{entry.isVacation ? '—' : formatTime(entry.checkOut)}</td>
                       <td className="px-4 py-3 text-sm">
-                        {entry.lunchHours > 0 ? `${entry.lunchHours.toFixed(1)}h` : '-'}
+                        {entry.isVacation ? '—' : (entry.lunchHours > 0 ? `${entry.lunchHours.toFixed(1)}h` : '-')}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-blue-600 dark:text-blue-400">
-                            {entry.totalHours.toFixed(2)}h
-                          </span>
-                          {Number.isFinite(entry.lat) && Number.isFinite(entry.lng) && (
-                            <button
-                              onClick={() => handleViewMap(entry.lat, entry.lng)}
-                              className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors touch-active"
-                              title="Ver ubicación"
-                            >
-                              <MapPin size={16} />
-                            </button>
-                          )}
-                          {entry.employee?.id && entry.employee.id !== 'unknown' && (
-                            <button
-                              onClick={() => setObraModal({ employeeId: entry.employee.id, date: entry.date.split('T')[0], hours: entry.totalHours })}
-                              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded transition-colors touch-active"
-                              title="Imputar horas de este día a una obra"
-                            >
-                              <HardHat size={16} />
-                            </button>
-                          )}
-                        </div>
+                        {entry.isVacation ? (
+                          <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">0.00h</span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-blue-600 dark:text-blue-400">
+                              {entry.totalHours.toFixed(2)}h
+                            </span>
+                            {Number.isFinite(entry.lat) && Number.isFinite(entry.lng) && (
+                              <button
+                                onClick={() => handleViewMap(entry.lat, entry.lng)}
+                                className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition-colors touch-active"
+                                title="Ver ubicación"
+                              >
+                                <MapPin size={16} />
+                              </button>
+                            )}
+                            {entry.employee?.id && entry.employee.id !== 'unknown' && (
+                              <button
+                                onClick={() => setObraModal({ employeeId: entry.employee.id, date: entry.date.split('T')[0], hours: entry.totalHours })}
+                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded transition-colors touch-active"
+                                title="Imputar horas de este día a una obra"
+                              >
+                                <HardHat size={16} />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))

@@ -5,8 +5,7 @@ import { AppError } from '../utils/AppError';
 const OFFBOARDING_REASONS: Record<string, { label: string; type: string }> = {
     BAJA_VOLUNTARIA: { label: 'Baja voluntaria / Dimisión', type: 'VOLUNTARY_LEAVE' },
     FIN_CONTRATO: { label: 'Fin de contrato / No superación del periodo de prueba', type: 'CONTRACT_END' },
-    DESPIDO_OBJETIVO: { label: 'Despido objetivo', type: 'DISMISSAL' },
-    DESPIDO_DISCIPLINARIO: { label: 'Despido disciplinario', type: 'DISMISSAL' },
+    DESPIDO: { label: 'Despido', type: 'DISMISSAL' },
     JUBILACION: { label: 'Jubilación', type: 'OTHER' },
     OTRO: { label: 'Otro motivo', type: 'OTHER' }
 };

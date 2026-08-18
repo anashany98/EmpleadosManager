@@ -43,7 +43,7 @@ describe('OffboardingService', () => {
     it('records a dismissal and resets the employee vacation balance', async () => {
         await OffboardingService.completeOffboarding('emp-1', {
             exitDate: '2026-07-15',
-            reason: 'DESPIDO_DISCIPLINARIO',
+            reason: 'DESPIDO',
             returnAssets: [],
             userId: 'user-1'
         });
@@ -52,7 +52,7 @@ describe('OffboardingService', () => {
             where: { id: 'period-1' },
             data: expect.objectContaining({
                 endType: 'DISMISSAL',
-                endReason: 'Despido disciplinario',
+                endReason: 'Despido',
                 endedById: 'user-1'
             })
         });
@@ -60,7 +60,7 @@ describe('OffboardingService', () => {
             where: { id: 'emp-1' },
             data: expect.objectContaining({
                 active: false,
-                lowReason: 'Despido disciplinario',
+                lowReason: 'Despido',
                 vacationDaysTotal: 0
             })
         });

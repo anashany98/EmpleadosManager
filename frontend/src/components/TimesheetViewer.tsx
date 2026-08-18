@@ -159,8 +159,12 @@ export function TimesheetViewer({ employeeId }: TimesheetViewerProps) {
             const month = currentMonth.getMonth();
             const from = toLocalDateString(new Date(year, month, 1));
             const to = toLocalDateString(new Date(year, month + 1, 0));
-            const response = await api.get(`/time-entries/range?from=${from}&to=${to}&employeeId=${employeeId}`);
-            const rows = Array.isArray(response?.data) ? response.data : [];
+            const response = await api.get<{ success: boolean; data: { data: RawTimeEntry[]; pagination?: unknown } }>(`/time-entries/range?from=${from}&to=${to}&employeeId=${employeeId}`);
+            // El backend devuelve { data: { data: [...], pagination } } dentro del
+            // envelope, así que hay que desempaquetar dos niveles para el array.
+            const rows = Array.isArray(response?.data?.data)
+                ? response.data.data
+                : (Array.isArray(response?.data) ? response.data : []);
             const normalized = normalizeEntries(rows as RawTimeEntry[]);
             setEntries(normalized);
             setSummary(computeSummary(normalized));

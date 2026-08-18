@@ -168,4 +168,50 @@ describe('PayrollControlService - control horario diario', () => {
         expect(value(result.overtimeHours)).toBe('0');
         expect(value(result.holidayOvertimeHours)).toBe('0');
     });
+
+    it('un día de vacaciones aprobadas no suma jornada planificada aunque el payload traiga 8h/0,5 (datos antiguos)', () => {
+        // Datos guardados antes del cruce con vacaciones (o un importador con
+        // H.LAB=8): el backend debe imponer la misma regla que la rejilla
+        // (H.LAB = 0, DESCONTAR = 0) para que el traspaso a gestoría cuadre.
+        const result = PayrollControlService.calculateDailyEntryState(
+            daily({ workDate: '2026-07-20', discountHours: 0.5, scheduledHours: 8 }),
+            undefined,
+            new Set(['2026-07-20'])
+        );
+
+        expect(value(result.workedHours)).toBe('9.5');
+        expect(value(result.discountHours)).toBe('0');
+        expect(value(result.scheduledHours)).toBe('0');
+        // Trabajar en vacaciones cuenta como extra normal (no festiva).
+        expect(value(result.overtimeHours)).toBe('9.5');
+        expect(value(result.holidayOvertimeHours)).toBe('0');
+    });
+
+    it('un día de vacaciones sin fichaje no genera horas y sigue sin jornada planificada', () => {
+        const result = PayrollControlService.calculateDailyEntryState(
+            daily({ workDate: '2026-07-21', entryTime: null, breakOutTime: null, breakInTime: null, exitTime: null, discountHours: 0.5, scheduledHours: 8 }),
+            undefined,
+            new Set(['2026-07-21'])
+        );
+
+        expect(value(result.workedHours)).toBe('0');
+        expect(value(result.discountHours)).toBe('0');
+        expect(value(result.scheduledHours)).toBe('0');
+        expect(value(result.overtimeHours)).toBe('0');
+        expect(value(result.holidayOvertimeHours)).toBe('0');
+    });
+
+    it('un día normal no se ve afectado por el conjunto de vacaciones', () => {
+        const result = PayrollControlService.calculateDailyEntryState(
+            daily({ workDate: '2026-07-22' }),
+            undefined,
+            new Set(['2026-07-20'])
+        );
+
+        expect(value(result.workedHours)).toBe('9.5');
+        expect(value(result.discountHours)).toBe('0.5');
+        expect(value(result.scheduledHours)).toBe('8');
+        expect(value(result.overtimeHours)).toBe('1');
+        expect(value(result.holidayOvertimeHours)).toBe('0');
+    });
 });

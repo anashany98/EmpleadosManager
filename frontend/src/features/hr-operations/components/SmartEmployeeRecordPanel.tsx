@@ -61,7 +61,7 @@ export function SmartEmployeeRecordPanel({ employeeId }: { employeeId: string })
                         </div>
                         <div>
                             <p className={`text-sm font-black ${record.score >= 85 ? 'text-emerald-300' : record.score >= 65 ? 'text-amber-300' : 'text-rose-300'}`}>{tone.label}</p>
-                            <p className="mt-1 text-sm leading-5 text-slate-400">{record.completed} de {record.total} requisitos cubiertos.</p>
+                            <p className="mt-1 text-sm leading-5 text-slate-400">{record.completedWeight} de {record.totalWeight} puntos esenciales cubiertos.</p>
                         </div>
                     </div>
                     <div className="mt-6 grid grid-cols-2 gap-2">

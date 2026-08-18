@@ -298,7 +298,7 @@ export const PayrollControlController = {
             const employee = await prisma.employee.findUnique({ where: { id: req.params.employeeId }, select: { companyId: true } });
             if (!employee) throw new AppError('Empleado no encontrado.', 404);
             assertTenantAccess(user, employee.companyId);
-            return ApiResponse.success(res, await PayrollControlImportService.preview(req.file.buffer, body.year, body.month));
+            return ApiResponse.success(res, await PayrollControlImportService.preview(req.file.buffer, body.year, body.month, body.sheetName));
         } catch (error: unknown) {
             log.error({ error }, 'Error previewing employee timesheet import');
             return handleControllerError(res, error, 'Error al procesar la vista previa del Excel');
@@ -324,7 +324,8 @@ export const PayrollControlController = {
                 expectedVersion,
                 body.year,
                 body.month,
-                user.id
+                user.id,
+                body.sheetName
             );
             return ApiResponse.success(res, result, 'Detalle horario importado correctamente desde Excel.');
         } catch (error: unknown) {

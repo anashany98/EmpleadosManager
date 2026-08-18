@@ -12,9 +12,11 @@ describe('SmartEmployeeRecordPanel', () => {
 
     it('shows completeness, detected issues and the recommended next action', async () => {
         vi.spyOn(hrOperationsApi, 'smartRecord').mockResolvedValue({
-            score: 73,
+            score: 68,
             completed: 8,
-            total: 11,
+            total: 12,
+            completedWeight: 13,
+            totalWeight: 19,
             missing: [
                 { key: 'phone', label: 'Teléfono', actionUrl: '/employees/employee-1?tab=personal' }
             ],
@@ -51,7 +53,7 @@ describe('SmartEmployeeRecordPanel', () => {
             </QueryClientProvider>
         );
 
-        expect(await screen.findByLabelText('Expediente completado al 73%')).toBeInTheDocument();
+        expect(await screen.findByLabelText('Expediente completado al 68%')).toBeInTheDocument();
         expect(screen.getByText('1 asuntos detectados')).toBeInTheDocument();
         expect(screen.getByText('Revisar contrato')).toBeInTheDocument();
         expect(screen.getByText(/Próximo paso recomendado: completar teléfono/i)).toBeInTheDocument();

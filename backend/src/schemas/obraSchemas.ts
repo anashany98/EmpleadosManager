@@ -170,9 +170,13 @@ export const obraExpenseCreateSchema = z.object({
         origin: optionalTextShort,
         destination: optionalTextShort,
         employeeId: optionalId,
-        employeeIds: z.array(z.string().min(1)).min(1).max(200).optional(),
+        // Los arrays pueden venir vacíos: el controller los trata como gasto
+        // de empresa sin asignar (employeeId/contractorId null). Exigir `.min(1)`
+        // aquí rompía el alta manual cuando el usuario no seleccionaba a nadie
+        // ("Array must contain at least 1 element(s)").
+        employeeIds: z.array(z.string().min(1)).max(200).optional(),
         contractorId: optionalId,
-        contractorIds: z.array(z.string().min(1)).min(1).max(200).optional(),
+        contractorIds: z.array(z.string().min(1)).max(200).optional(),
         distributeEvenly: z.boolean().optional()
     })
         .refine((value) => !value.endDate || new Date(value.endDate) >= new Date(value.date), {

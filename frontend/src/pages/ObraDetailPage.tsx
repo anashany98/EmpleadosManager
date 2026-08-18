@@ -177,6 +177,7 @@ export default function ObraDetailPage() {
         const amountNum = Number(expenseForm.amount);
         if (!Number.isFinite(amountNum) || amountNum <= 0) return toast.error('Importe debe ser > 0');
         if (expenseForm.type === 'PER_DIEM' && !expenseForm.destination.trim()) return toast.error('Indica el destino del viaje');
+        if (expenseForm.type === 'PER_DIEM' && totalExpensePeople === 0) return toast.error('Selecciona al menos un empleado o autónomo para la dieta');
         if (expenseForm.type === 'CONTRACTOR' && !expenseForm.contractorId) return toast.error('Selecciona el autónomo');
         try {
             const payload: any = {
@@ -192,12 +193,16 @@ export default function ObraDetailPage() {
                         : {}
                     : expenseEditingId
                         ? { employeeId: expenseForm.employeeIds[0] || null }
-                        : { employeeIds: expenseForm.employeeIds }),
+                        : expenseForm.employeeIds.length > 0
+                            ? { employeeIds: expenseForm.employeeIds }
+                            : {}),
                 ...(expenseForm.type === 'CONTRACTOR'
                     ? { contractorId: expenseForm.contractorId || null }
                     : expenseEditingId
                         ? { contractorId: expenseForm.contractorIds[0] || null }
-                        : { contractorIds: expenseForm.contractorIds }),
+                        : expenseForm.contractorIds.length > 0
+                            ? { contractorIds: expenseForm.contractorIds }
+                            : {}),
                 description: expenseForm.description || null,
                 vendor: expenseForm.vendor || null,
                 reference: expenseForm.reference || null,

@@ -94,6 +94,8 @@ export interface SmartRecord {
     score: number;
     completed: number;
     total: number;
+    completedWeight: number;
+    totalWeight: number;
     missing: Array<{ key: string; label: string; actionUrl: string }>;
     attention: Array<{
         id: string;

@@ -701,61 +701,86 @@ export class HrWorkspaceService {
             select: { id: true, name: true, category: true, expiryDate: true },
             orderBy: { uploadDate: 'desc' }
         });
+        const trainings = await prisma.training.findMany({
+            where: { employeeId },
+            select: { type: true, name: true }
+        });
         const categories = documents.map((document) => `${document.category} ${document.name}`.toUpperCase());
-        const hasLaborDocument = categories.some((value) => /CONTRAT|LABORAL|ALTA/.test(value));
-        const hasPrlDocument = categories.some((value) => /PRL|FORMACI|PREVEN|MEDIC/.test(value)) || employee._count.trainings > 0 || employee._count.medicalReviews > 0;
+        // Documento laboral: contrato/alta (el "ALTA" suelto puede ser una baja médica; solo cuenta si
+        // va referida a Seguridad Social o a la empresa).
+        const hasLaborDocument = categories.some((value) => /\bCONTRAT\w*|\bLABORAL\w*|\bALTA\b[^.]{0,40}(SEGURIDAD|EMPRESA)/.test(value));
+        // PRL: solo cuentan formaciones de prevención (una formación de idiomas u oficio no equivale a PRL).
+        const hasPrlTraining = trainings.some((training) => /PRL|PREVEN|RIESGOS?/i.test(`${training.type} ${training.name}`));
+        const hasPrlDocument = categories.some((value) => /PRL|FORMACI|PREVEN|MEDIC/.test(value)) || hasPrlTraining || employee._count.medicalReviews > 0;
+        // El tab "expediente" (DocumentArchive) solo existe para admins; el resto de roles no tiene dónde subir documentos.
+        const documentsActionUrl = user.role === 'admin' ? `/employees/${employeeId}?tab=expediente` : `/employees/${employeeId}`;
+        // El score pondera los requisitos legales y de nómina (DNI, documento laboral, PRL,
+        // Seguridad Social, IBAN) por encima de los datos de contacto y administrativos.
         const checks = [
-            { key: 'email', label: 'Correo electrónico', complete: Boolean(employee.email), actionUrl: `/employees/${employeeId}` },
-            { key: 'phone', label: 'Teléfono', complete: Boolean(employee.phone), actionUrl: `/employees/${employeeId}` },
-            { key: 'address', label: 'Dirección', complete: Boolean(employee.address), actionUrl: `/employees/${employeeId}` },
-            { key: 'socialSecurity', label: 'Número de Seguridad Social', complete: Boolean(employee.socialSecurityNumberEnc || employee.socialSecurityNumber), actionUrl: `/employees/${employeeId}` },
-            { key: 'iban', label: 'Cuenta bancaria', complete: Boolean(employee.ibanEnc || employee.iban), actionUrl: `/employees/${employeeId}` },
-            { key: 'department', label: 'Departamento', complete: Boolean(employee.department), actionUrl: `/employees/${employeeId}` },
-            { key: 'jobTitle', label: 'Puesto de trabajo', complete: Boolean(employee.jobTitle), actionUrl: `/employees/${employeeId}` },
-            { key: 'contractType', label: 'Tipo de contrato', complete: Boolean(employee.contractType), actionUrl: `/employees/${employeeId}` },
-            { key: 'entryDate', label: 'Fecha de incorporación', complete: Boolean(employee.entryDate), actionUrl: `/employees/${employeeId}` },
-            { key: 'laborDocument', label: 'Documento laboral', complete: hasLaborDocument, actionUrl: `/employees/${employeeId}?tab=expediente` },
-            { key: 'prlDocument', label: 'PRL o formación', complete: hasPrlDocument, actionUrl: `/employees/${employeeId}?tab=prl` }
+            { key: 'dni', label: 'DNI/NIE', weight: 3, complete: Boolean(employee.dni), actionUrl: `/employees/${employeeId}` },
+            { key: 'laborDocument', label: 'Documento laboral', weight: 3, complete: hasLaborDocument, actionUrl: documentsActionUrl },
+            { key: 'prlDocument', label: 'PRL o formación', weight: 2, complete: hasPrlDocument, actionUrl: `/employees/${employeeId}?tab=prl` },
+            { key: 'socialSecurity', label: 'Número de Seguridad Social', weight: 2, complete: Boolean(employee.socialSecurityNumberEnc || employee.socialSecurityNumber), actionUrl: `/employees/${employeeId}` },
+            { key: 'iban', label: 'Cuenta bancaria', weight: 2, complete: Boolean(employee.ibanEnc || employee.iban), actionUrl: `/employees/${employeeId}` },
+            { key: 'email', label: 'Correo electrónico', weight: 1, complete: Boolean(employee.email), actionUrl: `/employees/${employeeId}` },
+            { key: 'phone', label: 'Teléfono', weight: 1, complete: Boolean(employee.phone), actionUrl: `/employees/${employeeId}` },
+            { key: 'address', label: 'Dirección', weight: 1, complete: Boolean(employee.address), actionUrl: `/employees/${employeeId}` },
+            { key: 'department', label: 'Departamento', weight: 1, complete: Boolean(employee.department), actionUrl: `/employees/${employeeId}` },
+            { key: 'jobTitle', label: 'Puesto de trabajo', weight: 1, complete: Boolean(employee.jobTitle), actionUrl: `/employees/${employeeId}` },
+            { key: 'contractType', label: 'Tipo de contrato', weight: 1, complete: Boolean(employee.contractType), actionUrl: `/employees/${employeeId}` },
+            { key: 'entryDate', label: 'Fecha de incorporación', weight: 1, complete: Boolean(employee.entryDate), actionUrl: `/employees/${employeeId}` }
         ];
         const completed = checks.filter((check) => check.complete).length;
-        const score = Math.round((completed / checks.length) * 100);
+        const completedWeight = checks.filter((check) => check.complete).reduce((sum, check) => sum + check.weight, 0);
+        const totalWeight = checks.reduce((sum, check) => sum + check.weight, 0);
+        const score = Math.round((completedWeight / totalWeight) * 100);
+        const missing = checks.filter((check) => !check.complete).sort((a, b) => b.weight - a.weight);
         const now = new Date();
+        const horizon = new Date(now.getTime() + 30 * DAY_MS);
+        // Comparación por día: algo con fecha límite de hoy aún no se considera vencido.
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const isExpired = (date: Date) => date < startOfToday;
         const attention: Array<{ id: string; type: string; severity: string; title: string; description: string; actionUrl: string }> = [];
-        if (employee.contractEndDate && employee.contractEndDate <= new Date(now.getTime() + 30 * DAY_MS)) {
+        if (employee.contractEndDate && (isExpired(employee.contractEndDate) || employee.contractEndDate <= horizon)) {
+            const expired = isExpired(employee.contractEndDate);
             attention.push({
                 id: 'contract-expiry',
                 type: 'CONTRACT',
-                severity: 'HIGH',
-                title: 'Contrato próximo a vencer',
+                severity: expired ? 'URGENT' : 'HIGH',
+                title: expired ? 'Contrato vencido' : 'Contrato próximo a vencer',
                 description: employee.contractEndDate.toLocaleDateString('es-ES'),
                 actionUrl: `/employees/${employeeId}`
             });
         }
-        if (employee.dniExpiration && employee.dniExpiration <= new Date(now.getTime() + 30 * DAY_MS)) {
+        if (employee.dniExpiration && (isExpired(employee.dniExpiration) || employee.dniExpiration <= horizon)) {
+            const expired = isExpired(employee.dniExpiration);
             attention.push({
                 id: 'dni-expiry',
                 type: 'DOCUMENT',
-                severity: 'MEDIUM',
-                title: 'DNI próximo a caducar',
+                severity: expired ? 'HIGH' : 'MEDIUM',
+                title: expired ? 'DNI caducado' : 'DNI próximo a caducar',
                 description: employee.dniExpiration.toLocaleDateString('es-ES'),
                 actionUrl: `/employees/${employeeId}`
             });
         }
         documents
-            .filter((document) => document.expiryDate && document.expiryDate <= new Date(now.getTime() + 30 * DAY_MS))
+            .filter((document) => document.expiryDate && document.expiryDate <= horizon)
             .slice(0, 5)
-            .forEach((document) => attention.push({
-                id: document.id,
-                type: 'DOCUMENT',
-                severity: 'MEDIUM',
-                title: `${document.name} próximo a caducar`,
-                description: document.expiryDate!.toLocaleDateString('es-ES'),
-                actionUrl: `/employees/${employeeId}?tab=expediente`
-            }));
-        checks.filter((check) => !check.complete).slice(0, 5).forEach((check) => attention.push({
+            .forEach((document) => {
+                const expired = isExpired(document.expiryDate!);
+                attention.push({
+                    id: document.id,
+                    type: 'DOCUMENT',
+                    severity: expired ? 'HIGH' : 'MEDIUM',
+                    title: `${document.name} ${expired ? 'caducado' : 'próximo a caducar'}`,
+                    description: document.expiryDate!.toLocaleDateString('es-ES'),
+                    actionUrl: documentsActionUrl
+                });
+            });
+        missing.slice(0, 5).forEach((check) => attention.push({
             id: `missing-${check.key}`,
             type: 'MISSING_DATA',
-            severity: 'LOW',
+            severity: check.weight >= 3 ? 'MEDIUM' : 'LOW',
             title: `Falta ${check.label.toLowerCase()}`,
             description: 'Completa este dato para cerrar el expediente.',
             actionUrl: check.actionUrl
@@ -770,8 +795,10 @@ export class HrWorkspaceService {
             score,
             completed,
             total: checks.length,
+            completedWeight,
+            totalWeight,
             checks,
-            missing: checks.filter((check) => !check.complete),
+            missing,
             attention,
             tasks,
             counts: employee._count

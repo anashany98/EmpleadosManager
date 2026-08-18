@@ -56,6 +56,7 @@ interface VacationItemApi {
 
 interface TimeSheetImportPreview {
     sheetName: string;
+    sheets?: string[];
     entries: Array<Pick<DailyRow, 'workDate' | 'entryTime' | 'breakOutTime' | 'breakInTime' | 'exitTime' | 'notes'>>;
     warnings: string[];
 }
@@ -169,6 +170,7 @@ interface CalendarEventApi {
 
 interface TimeSheetImportPreview {
     sheetName: string;
+    sheets?: string[];
     entries: Array<Pick<DailyRow, 'workDate' | 'entryTime' | 'breakOutTime' | 'breakInTime' | 'exitTime' | 'notes'>>;
     warnings: string[];
 }
@@ -236,21 +238,24 @@ function recalculateRow(row: DailyRow): DailyRow {
     const workedHours = splitShift
         ? intervalHours(row.entryTime, row.breakOutTime) + intervalHours(row.breakInTime, row.exitTime)
         : intervalHours(row.entryTime, row.exitTime);
-    const holidayOrWeekend = row.isHoliday || row.isCalendarHoliday || row.weekend;
-    // Festivos y fines de semana no tienen jornada planificada ni descuento,
-    // igual que la plantilla de control horario (H.LAB = 0 y DESCONTAR = 0).
-    // Sin esta regla, un festivo trabajado suma 8 h a las planificadas y
-    // descuadra el total frente a la plantilla de gestoría.
-    const discountHours = holidayOrWeekend ? 0 : row.discountHours;
-    const scheduledHours = holidayOrWeekend ? 0 : row.scheduledHours;
+    const festivo = row.isHoliday || row.isCalendarHoliday || row.weekend;
+    // Festivos, fines de semana y vacaciones no tienen jornada planificada ni
+    // descuento, igual que la plantilla de control horario (H.LAB = 0 y
+    // DESCONTAR = 0). Sin esta regla, un festivo o día de vacaciones sumaba
+    // 8 h a las planificadas y descuadraba el total y la diferencia.
+    const noScheduledShift = festivo || row.isVacation;
+    const discountHours = noScheduledShift ? 0 : row.discountHours;
+    const scheduledHours = noScheduledShift ? 0 : row.scheduledHours;
     const netWorked = workedHours - discountHours;
     return {
         ...row,
         workedHours: Number(workedHours.toFixed(2)),
         discountHours: Number(discountHours.toFixed(2)),
         scheduledHours: Number(scheduledHours.toFixed(2)),
-        overtimeHours: holidayOrWeekend ? 0 : Number(Math.max(netWorked - scheduledHours, 0).toFixed(2)),
-        holidayOvertimeHours: holidayOrWeekend ? Number(Math.max(netWorked, 0).toFixed(2)) : 0
+        // En vacaciones trabajadas las horas cuentan como extra normal (no como
+        // extra festiva); en festivos/fin de semana van a la columna de festivas.
+        overtimeHours: festivo ? 0 : Number(Math.max(netWorked - scheduledHours, 0).toFixed(2)),
+        holidayOvertimeHours: festivo ? Number(Math.max(netWorked, 0).toFixed(2)) : 0
     };
 }
 
@@ -333,8 +338,8 @@ function buildRows(
                 breakInTime: timeValue(entry.breakInAt),
                 exitTime: timeValue(entry.exitAt),
                 workedHours: Number(entry.workedHours),
-                discountHours: festivo ? 0 : Number(entry.discountHours),
-                scheduledHours: festivo ? 0 : Number(entry.scheduledHours),
+                discountHours: (festivo || isVacation) ? 0 : Number(entry.discountHours),
+                scheduledHours: (festivo || isVacation) ? 0 : Number(entry.scheduledHours),
                 overtimeHours: Number(entry.overtimeHours),
                 holidayOvertimeHours: Number(entry.holidayOvertimeHours),
                 dietAmount: Number(entry.dietAmount),
@@ -358,8 +363,8 @@ function buildRows(
             breakInTime: '',
             exitTime: '',
             workedHours: 0,
-            discountHours: (weekend || isCalendarHoliday) ? 0 : 0.5,
-            scheduledHours: (weekend || isCalendarHoliday) ? 0 : 8,
+            discountHours: (weekend || isCalendarHoliday || isVacation) ? 0 : 0.5,
+            scheduledHours: (weekend || isCalendarHoliday || isVacation) ? 0 : 8,
             overtimeHours: 0,
             holidayOvertimeHours: 0,
             dietAmount: 0,
@@ -841,23 +846,24 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         }
     };
 
-    const createImportForm = (file: File, includeVersion = false) => {
+    const createImportForm = (file: File, includeVersion = false, sheetName?: string) => {
         const form = new FormData();
         form.append('file', file);
         form.append('year', String(year));
         form.append('month', String(month));
+        if (sheetName) form.append('sheetName', sheetName);
         if (includeVersion && record) form.append('expectedVersion', String(record.version));
         return form;
     };
 
-    const previewImport = async (file: File) => {
+    const previewImport = async (file: File, sheetName?: string) => {
         if (!record || isLocked) return;
         setImporting(true);
         setImportPreview(null);
         try {
             const response = await api.post<ApiEnvelope<TimeSheetImportPreview>>(
                 `/payroll/control/employee/${employeeId}/daily/import-preview`,
-                createImportForm(file)
+                createImportForm(file, false, sheetName)
             );
             setImportFile(file);
             setImportPreview(unwrap(response));
@@ -874,7 +880,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         try {
             const response = await api.post<ApiEnvelope<{ record: PayrollRecord; importedDays: number; warnings: string[] }>>(
                 `/payroll/control/employee/${employeeId}/daily/import`,
-                createImportForm(importFile, true)
+                createImportForm(importFile, true, importPreview.sheetName)
             );
             const result = unwrap(response);
             setRecord(result.record);
@@ -1351,6 +1357,19 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                                 <p className="font-semibold text-blue-950 dark:text-blue-100">Vista previa: {importPreview.entries.length} días de la hoja {importPreview.sheetName}</p>
+                                {importPreview.sheets && importPreview.sheets.length > 1 && (
+                                    <label className="mt-2 flex flex-wrap items-center gap-2 text-xs font-semibold text-blue-900 dark:text-blue-100">
+                                        Hoja a importar
+                                        <select
+                                            value={importPreview.sheetName}
+                                            disabled={importing}
+                                            onChange={(event) => { if (importFile) void previewImport(importFile, event.target.value); }}
+                                            className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 dark:border-blue-700 dark:bg-slate-800 dark:text-white"
+                                        >
+                                            {importPreview.sheets.map((name) => <option key={name} value={name}>{name}</option>)}
+                                        </select>
+                                    </label>
+                                )}
                                 <p className="text-xs text-blue-800 dark:text-blue-200">Se importarán las cuatro horas y las observaciones del mes abierto. Los demás días se conservarán.</p>
                                 {importPreview.warnings.length > 0 && <p className="mt-1 text-xs font-medium text-amber-700">{importPreview.warnings.join(' ')}</p>}
                             </div>

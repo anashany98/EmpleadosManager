@@ -94,7 +94,9 @@ export const updateDailyEntriesSchema = z.object({
 export const timeSheetImportBodySchema = z.object({
     year: z.coerce.number().int().min(2000).max(2100),
     month: z.coerce.number().int().min(1).max(12),
-    expectedVersion: z.coerce.number().int().positive().optional()
+    expectedVersion: z.coerce.number().int().positive().optional(),
+    // Hoja concreta a importar cuando el archivo trae varias con datos del mes.
+    sheetName: z.string().trim().min(1).max(200).optional()
 }).strict();
 
 // Envuelto para validateResource (valida { body, query, params });

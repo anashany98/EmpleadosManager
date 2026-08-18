@@ -113,7 +113,7 @@ function intervalHours(start: Date | null, end: Date | null): Prisma.Decimal {
     return new Decimal(milliseconds).div(3_600_000);
 }
 
-function calculateDailyEntry(entry: DailyEntryPayload, calendarHolidayName?: string) {
+function calculateDailyEntry(entry: DailyEntryPayload, calendarHolidayName?: string, vacationDates?: Set<string>) {
     const entryAt = timeOnDate(entry.workDate, entry.entryTime);
     const breakOutAt = timeOnDate(entry.workDate, entry.breakOutTime);
     const breakInAt = timeOnDate(entry.workDate, entry.breakInTime);
@@ -126,17 +126,25 @@ function calculateDailyEntry(entry: DailyEntryPayload, calendarHolidayName?: str
     const date = utcDate(entry.workDate);
     const day = date.getUTCDay();
     const holidayOrWeekend = entry.isHoliday || Boolean(calendarHolidayName) || day === 0 || day === 6;
-    // Festivos y fines de semana no tienen jornada planificada ni descuento,
-    // igual que la plantilla de control horario (H.LAB = 0 y DESCONTAR = 0).
-    // Sin esta regla, un festivo trabajado suma 8 h a las horas planificadas
-    // del mes y descuadra el total frente a la plantilla de gestoría.
-    const discountHours = holidayOrWeekend
+    const isVacationDay = Boolean(vacationDates?.has(entry.workDate));
+    // Festivos, fines de semana y vacaciones aprobadas no tienen jornada
+    // planificada ni descuento, igual que la plantilla de control horario
+    // (H.LAB = 0 y DESCONTAR = 0) y que la rejilla del empleado. Sin esta
+    // regla, un festivo o un día de vacaciones trabajado sumaba 8 h a las
+    // planificadas y descuadraba el total frente a la plantilla de gestoría.
+    // Las vacaciones se resuelven aquí con los datos aprobados del empleado
+    // para que el traspaso no dependa de que el cliente envíe 0 en H.LAB.
+    const noScheduledShift = holidayOrWeekend || isVacationDay;
+    const discountHours = noScheduledShift
         ? new Decimal(0)
         : decimal(entry.discountHours).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-    const scheduledHours = holidayOrWeekend
+    const scheduledHours = noScheduledShift
         ? new Decimal(0)
         : decimal(entry.scheduledHours).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
     const netWorked = workedHours.minus(discountHours);
+    // En vacaciones trabajadas las horas cuentan como extra normal (no como
+    // extra festiva), igual que en la rejilla del empleado; solo festivos y
+    // fines de semana van a la columna de festivas.
     const overtimeHours = holidayOrWeekend
         ? new Decimal(0)
         : Decimal.max(netWorked.minus(scheduledHours), 0).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
@@ -182,8 +190,8 @@ const recordInclude = {
 };
 
 export class PayrollControlService {
-    static calculateDailyEntryState(entry: DailyEntryPayload, calendarHolidayName?: string) {
-        return calculateDailyEntry(entry, calendarHolidayName);
+    static calculateDailyEntryState(entry: DailyEntryPayload, calendarHolidayName?: string, vacationDates?: Set<string>) {
+        return calculateDailyEntry(entry, calendarHolidayName, vacationDates);
     }
 
     static calculateRecordState(record: RecordForCalculation) {
@@ -590,9 +598,34 @@ export class PayrollControlService {
             }
         }
 
+        // Vacaciones aprobadas del empleado que caen en el período: la rejilla
+        // las muestra sin jornada planificada (H.LAB = 0, DESCONTAR = 0) y el
+        // traspaso a gestoría debe aplicar la misma regla aunque el cliente
+        // envíe valores antiguos (datos previos al cruce con vacaciones).
+        const vacations = await prisma.vacation.findMany({
+            where: {
+                employeeId: record.employeeId,
+                status: { in: ['APPROVED', 'EXISTING'] },
+                startDate: { lte: monthEnd },
+                endDate: { gte: monthStart }
+            },
+            select: { startDate: true, endDate: true }
+        });
+        const vacationDates = new Set<string>();
+        for (const vacation of vacations) {
+            const cursor = new Date(Math.max(vacation.startDate.getTime(), monthStart.getTime()));
+            cursor.setUTCHours(0, 0, 0, 0);
+            const vacationEnd = new Date(Math.min(vacation.endDate.getTime(), monthEnd.getTime()));
+            vacationEnd.setUTCHours(23, 59, 59, 999);
+            while (cursor <= vacationEnd) {
+                vacationDates.add(cursor.toISOString().slice(0, 10));
+                cursor.setUTCDate(cursor.getUTCDate() + 1);
+            }
+        }
+
         await prisma.$transaction(async (tx) => {
             for (const entry of entries) {
-                const calculated = this.calculateDailyEntryState(entry, calendarHolidays.get(entry.workDate));
+                const calculated = this.calculateDailyEntryState(entry, calendarHolidays.get(entry.workDate), vacationDates);
                 await tx.payrollControlDailyEntry.upsert({
                     where: { recordId_workDate: { recordId, workDate: calculated.workDate } },
                     create: { recordId, ...calculated },

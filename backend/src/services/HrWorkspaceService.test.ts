@@ -14,6 +14,7 @@ const { tx, prismaMock } = vi.hoisted(() => {
             hrAlertRule: { createMany: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
             employee: { findMany: vi.fn(), findUnique: vi.fn() },
             document: { findMany: vi.fn() },
+            training: { findMany: vi.fn() },
             vacation: { findMany: vi.fn(), count: vi.fn() },
             inboxDocument: { findMany: vi.fn(), count: vi.fn() },
             hrTask: { findMany: vi.fn(), findUnique: vi.fn(), count: vi.fn(), create: vi.fn(), update: vi.fn() },
@@ -148,6 +149,7 @@ describe('HrWorkspaceService', () => {
         prismaMock.document.findMany.mockResolvedValue([
             { id: 'doc-1', name: 'Contrato', category: 'LABORAL', expiryDate: null }
         ]);
+        prismaMock.training.findMany.mockResolvedValue([]);
         prismaMock.hrTask.findMany.mockResolvedValue([]);
 
         const record = await HrWorkspaceService.getSmartRecord(actor, 'employee-1');
@@ -156,6 +158,176 @@ describe('HrWorkspaceService', () => {
         expect(record.missing.map((item) => item.key)).toEqual(
             expect.arrayContaining(['phone', 'address', 'socialSecurity', 'prlDocument'])
         );
+        expect(record.missing.some((item) => item.key === 'dni')).toBe(false);
         expect(record.attention.some((item) => item.type === 'MISSING_DATA')).toBe(true);
+    });
+
+    it('only counts PRL-type trainings towards PRL completeness', async () => {
+        prismaMock.employee.findUnique.mockResolvedValue({
+            id: 'employee-1',
+            companyId: 'company-1',
+            active: true,
+            dni: '12345678Z',
+            email: null,
+            phone: null,
+            address: null,
+            socialSecurityNumber: null,
+            socialSecurityNumberEnc: null,
+            iban: null,
+            ibanEnc: null,
+            department: null,
+            jobTitle: null,
+            contractType: null,
+            entryDate: null,
+            contractEndDate: null,
+            dniExpiration: null,
+            _count: { documents: 0, trainings: 1, medicalReviews: 0, assets: 0 }
+        });
+        prismaMock.document.findMany.mockResolvedValue([]);
+        prismaMock.hrTask.findMany.mockResolvedValue([]);
+
+        prismaMock.training.findMany.mockResolvedValue([
+            { type: 'Técnica', name: 'Soldadura' }
+        ]);
+        let record = await HrWorkspaceService.getSmartRecord(actor, 'employee-1');
+        expect(record.checks.find((check) => check.key === 'prlDocument')?.complete).toBe(false);
+
+        prismaMock.training.findMany.mockResolvedValue([
+            { type: 'PRL', name: 'PRL 20 horas' }
+        ]);
+        record = await HrWorkspaceService.getSmartRecord(actor, 'employee-1');
+        expect(record.checks.find((check) => check.key === 'prlDocument')?.complete).toBe(true);
+    });
+
+    it('flags expired contracts and DNI as vencido/caducado with higher severity', async () => {
+        prismaMock.employee.findUnique.mockResolvedValue({
+            id: 'employee-1',
+            companyId: 'company-1',
+            active: true,
+            dni: '12345678Z',
+            email: null,
+            phone: null,
+            address: null,
+            socialSecurityNumber: null,
+            socialSecurityNumberEnc: null,
+            iban: null,
+            ibanEnc: null,
+            department: null,
+            jobTitle: null,
+            contractType: null,
+            entryDate: null,
+            contractEndDate: new Date(Date.now() - 10 * 86400000),
+            dniExpiration: new Date(Date.now() - 5 * 86400000),
+            _count: { documents: 0, trainings: 0, medicalReviews: 0, assets: 0 }
+        });
+        prismaMock.document.findMany.mockResolvedValue([
+            { id: 'doc-1', name: 'Certificado', category: 'OTHER', expiryDate: new Date(Date.now() - 3 * 86400000) }
+        ]);
+        prismaMock.training.findMany.mockResolvedValue([]);
+        prismaMock.hrTask.findMany.mockResolvedValue([]);
+
+        const record = await HrWorkspaceService.getSmartRecord(actor, 'employee-1');
+
+        const contract = record.attention.find((item) => item.id === 'contract-expiry');
+        expect(contract).toMatchObject({ severity: 'URGENT', title: 'Contrato vencido' });
+        const dni = record.attention.find((item) => item.id === 'dni-expiry');
+        expect(dni).toMatchObject({ severity: 'HIGH', title: 'DNI caducado' });
+        expect(record.attention.some((item) => item.id === 'doc-1' && item.title === 'Certificado caducado' && item.severity === 'HIGH')).toBe(true);
+    });
+
+    it('does not count a medical leave (ALTA) as a labor document', async () => {
+        prismaMock.employee.findUnique.mockResolvedValue({
+            id: 'employee-1',
+            companyId: 'company-1',
+            active: true,
+            dni: '12345678Z',
+            email: null,
+            phone: null,
+            address: null,
+            socialSecurityNumber: null,
+            socialSecurityNumberEnc: null,
+            iban: null,
+            ibanEnc: null,
+            department: null,
+            jobTitle: null,
+            contractType: null,
+            entryDate: null,
+            contractEndDate: null,
+            dniExpiration: null,
+            _count: { documents: 1, trainings: 0, medicalReviews: 0, assets: 0 }
+        });
+        prismaMock.document.findMany.mockResolvedValue([
+            { id: 'doc-1', name: 'Alta médica', category: 'MEDICAL', expiryDate: null }
+        ]);
+        prismaMock.training.findMany.mockResolvedValue([]);
+        prismaMock.hrTask.findMany.mockResolvedValue([]);
+
+        const record = await HrWorkspaceService.getSmartRecord(actor, 'employee-1');
+        expect(record.checks.find((check) => check.key === 'laborDocument')?.complete).toBe(false);
+
+        prismaMock.document.findMany.mockResolvedValue([
+            { id: 'doc-2', name: 'Alta en la Seguridad Social', category: 'LABORAL', expiryDate: null }
+        ]);
+        const recordWithAlta = await HrWorkspaceService.getSmartRecord(actor, 'employee-1');
+        expect(recordWithAlta.checks.find((check) => check.key === 'laborDocument')?.complete).toBe(true);
+    });
+
+    it('weights legal/payroll requirements above contact data in the score', async () => {
+        const base = {
+            companyId: 'company-1',
+            active: true,
+            dniExpiration: null,
+            contractEndDate: null,
+            iban: null,
+            ibanEnc: null,
+            jobTitle: null,
+            contractType: null,
+            entryDate: null
+        };
+        // Empleado A: 4 requisitos críticos cubiertos (DNI, laboral, PRL, Seguridad Social).
+        prismaMock.employee.findUnique.mockResolvedValueOnce({
+            ...base,
+            id: 'employee-a',
+            dni: '12345678Z',
+            email: null,
+            phone: null,
+            address: null,
+            socialSecurityNumber: '123456789',
+            socialSecurityNumberEnc: null,
+            department: null,
+            _count: { documents: 1, trainings: 1, medicalReviews: 0, assets: 0 }
+        });
+        // Empleado B: 4 requisitos de contacto cubiertos (email, teléfono, dirección, departamento).
+        prismaMock.employee.findUnique.mockResolvedValueOnce({
+            ...base,
+            id: 'employee-b',
+            dni: null,
+            email: 'ana@example.com',
+            phone: '600000000',
+            address: 'Calle 1',
+            socialSecurityNumber: null,
+            socialSecurityNumberEnc: null,
+            department: 'Obras',
+            _count: { documents: 0, trainings: 0, medicalReviews: 0, assets: 0 }
+        });
+        prismaMock.document.findMany.mockResolvedValueOnce([
+            { id: 'doc-a', name: 'Contrato', category: 'LABORAL', expiryDate: null }
+        ]).mockResolvedValueOnce([]);
+        prismaMock.training.findMany.mockResolvedValueOnce([
+            { type: 'PRL', name: 'PRL 20 horas' }
+        ]).mockResolvedValueOnce([]);
+        prismaMock.hrTask.findMany.mockResolvedValue([]);
+
+        const recordA = await HrWorkspaceService.getSmartRecord(actor, 'employee-a');
+        const recordB = await HrWorkspaceService.getSmartRecord(actor, 'employee-b');
+
+        expect(recordA.completed).toBe(4);
+        expect(recordB.completed).toBe(4);
+        expect(recordA.completedWeight).toBeGreaterThan(recordB.completedWeight);
+        expect(recordA.score).toBeGreaterThan(recordB.score);
+        expect(recordA.totalWeight).toBe(19);
+        // Los críticos pendientes (DNI, laboral) aparecen primero en "missing" y con severidad MEDIUM.
+        expect(recordB.missing.map((item) => item.key).slice(0, 2)).toEqual(['dni', 'laborDocument']);
+        expect(recordB.attention.find((item) => item.id === 'missing-dni')?.severity).toBe('MEDIUM');
     });
 });
