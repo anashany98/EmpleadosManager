@@ -1,12 +1,26 @@
 import { Router } from 'express';
+import type { RequestHandler } from 'express';
 import multer from 'multer';
 import { PayrollControlController } from '../controllers/PayrollControlController';
 import { checkPermission } from '../middlewares/authMiddleware';
 import { createMulterOptions } from '../config/multer';
 import { validateResource } from '../middlewares/validateResource';
 import { timeSheetImportSchema } from '../schemas/payrollControlSchemas';
+import { hasModuleAccess } from '../../../shared/authz';
+import { AppError } from '../utils/AppError';
+import type { AuthenticatedRequest } from '../types/express';
 
 const router = Router();
+
+// El parte de horas por obra se usa desde el control horario del empleado
+// (módulo employees) y desde el control de gestoría (módulo payroll), así que
+// se permite con cualquiera de los dos permisos de lectura.
+const canReadControlHorarioOrPayroll: RequestHandler = (req, res, next) => {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user) return next(new AppError('No estás autenticado.', 401));
+    if (hasModuleAccess(user, 'employees', 'read') || hasModuleAccess(user, 'payroll', 'read')) return next();
+    return next(new AppError('No tienes acceso al control horario.', 403));
+};
 const timeSheetUpload = multer(createMulterOptions('uploads/payroll-control/', ['.xlsx'], ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']));
 
 // Control General y Administración RRHH
@@ -28,6 +42,9 @@ router.put('/employee/:employeeId', checkPermission('employees', 'write'), Payro
 router.put('/employee/:employeeId/daily', checkPermission('employees', 'write'), PayrollControlController.updateEmployeeDailyEntries);
 router.post('/employee/:employeeId/daily/import-preview', checkPermission('employees', 'write'), timeSheetUpload.single('file'), validateResource(timeSheetImportSchema), PayrollControlController.previewEmployeeTimeSheetImport);
 router.post('/employee/:employeeId/daily/import', checkPermission('employees', 'write'), timeSheetUpload.single('file'), validateResource(timeSheetImportSchema), PayrollControlController.importEmployeeTimeSheet);
+
+// Parte mensual de horas imputadas a obras (Excel)
+router.get('/obra-hours/export', canReadControlHorarioOrPayroll, PayrollControlController.exportObraHours);
 
 // Exportación a Gestoría
 router.post('/export/gestoria/preview', checkPermission('payroll', 'write'), PayrollControlController.previewGestoria);

@@ -19,6 +19,19 @@ describe('PayrollControlService - cálculo Decimal', () => {
         expect(value(result.reconciliationCalculated)).toBe('-0.0021');
     });
 
+    it('aplica TGSS 6,35% fijo aunque el registro tenga 0 almacenado', () => {
+        // Misma matriz que el primer test pero con tgss: 0: el cálculo debe usar
+        // siempre el 6,35% fijo (no el valor almacenado ni 0).
+        const result = PayrollControlService.calculateRecordState({
+            overtimeRate: 10, holidayOvertimeRate: 12, overtimeHours: 5, holidayOvertimeHours: 2,
+            positiveVariable: 20, irpf: 0.17, tgss: 0
+        });
+
+        expect(value(result.availablePercentageCalculated)).toBe('0.7665');
+        expect(value(result.grossCalculated)).toBe('96.54');
+        expect(value(result.productivityCalculated)).toBe('0.2072');
+    });
+
     it('conserva el cálculo original y usa solo la sobrescritura efectiva cuando se marca manual', () => {
         const result = PayrollControlService.calculateRecordState({
             overtimeRate: 10, holidayOvertimeRate: 12, overtimeHours: 5, holidayOvertimeHours: 2,
@@ -77,16 +90,17 @@ describe('PayrollControlService - cálculo Decimal', () => {
         expect(value(withNegativeVariable.difference)).toBe(value(baseline.difference));
     });
 
-    it('aplica ROUND_HALF_UP con dos decimales en importes y cuatro en porcentajes', () => {
+    it('aplica ROUND_HALF_UP con dos decimales en importes y cuatro en porcentajes (TGSS fijo 6,35%)', () => {
         const result = PayrollControlService.calculateRecordState({
             overtimeRate: 10.005, holidayOvertimeRate: 0, overtimeHours: 1, holidayOvertimeHours: 0,
-            positiveVariable: 1, irpf: 0.12345, tgss: 0.01234
+            positiveVariable: 1, irpf: 0.12345, tgss: 0
         });
 
         expect(value(result.totalOvertimeAmountCalculated)).toBe('10.01');
-        expect(value(result.availablePercentageCalculated)).toBe('0.8642');
-        expect(value(result.grossCalculated)).toBe('11.58');
-        expect(value(result.productivityCalculated)).toBe('0.0864');
+        // 1 - 0.12345 - 0.0635 = 0.81305 → redondeado a 4 decimales
+        expect(value(result.availablePercentageCalculated)).toBe('0.8131');
+        expect(value(result.grossCalculated)).toBe('12.31');
+        expect(value(result.productivityCalculated)).toBe('0.0812');
     });
 });
 

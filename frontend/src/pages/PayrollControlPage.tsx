@@ -13,6 +13,7 @@ import MonthlyControlGrid from './payroll-control/MonthlyControlGrid';
 import EmptyPeriodState from './payroll-control/EmptyPeriodState';
 import ReopenModal from './payroll-control/ReopenModal';
 import { controlHorarioTotals, MONTHS, PERIOD_STATUS_LABELS } from './payroll-control/types';
+import { brutoOf, diferenciaOf, horasOf, productividadOf } from './payroll-control/CellInput';
 import type { MonthlyHistoryItem, PayrollExportHistoryItem } from './payroll-control/types';
 
 export default function PayrollControlPage() {
@@ -423,6 +424,30 @@ export default function PayrollControlPage() {
         }
     };
 
+    const handleExportObraHours = async () => {
+        try {
+            const blob = await api.get<Blob>('/payroll/control/obra-hours/export', {
+                params: {
+                    year,
+                    month,
+                    ...(isGlobalAdmin ? { companyId: selectedCompanyId } : {})
+                },
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `parte_obras_${year}_${String(month).padStart(2, '0')}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success('Parte de horas por obra descargado');
+        } catch (err: unknown) {
+            toast.error(getErrorMessage(err, 'No se pudo generar el parte de obras'));
+        }
+    };
+
     const handleDownloadExport = async (item: PayrollExportHistoryItem) => {
         try {
             const blob = await api.get<Blob>(`/payroll/control/export/gestoria/${item.id}/download`, { responseType: 'blob' });
@@ -547,10 +572,10 @@ export default function PayrollControlPage() {
                 positiveVar: acc.positiveVar + Number(r.positiveVariable || 0),
                 negativeVar: acc.negativeVar + Number(r.negativeVariable || 0),
                 diets: acc.diets + Number(r.diets || 0),
-                gross: acc.gross + Number(r.gross || 0),
-                productivity: acc.productivity + Number(r.productivity || 0),
-                hoursAmount: acc.hoursAmount + Number(r.hoursAmount || 0),
-                difference: acc.difference + Number(r.difference || 0),
+                gross: acc.gross + brutoOf(r),
+                productivity: acc.productivity + productividadOf(r),
+                hoursAmount: acc.hoursAmount + horasOf(r),
+                difference: acc.difference + diferenciaOf(r),
                 trabajadas: acc.trabajadas + horario.trabajadas,
                 planificadas: acc.planificadas + horario.planificadas,
                 horarioDiferencia: acc.horarioDiferencia + horario.diferencia
@@ -580,6 +605,7 @@ export default function PayrollControlPage() {
                 onStatusChange={handleStatusChange}
                 exporting={exporting}
                 onExportGestoria={handleExportGestoria}
+                onExportObraHours={() => void handleExportObraHours()}
                 recordsLength={records.length}
                 reviewSummary={reviewSummary}
                 grandTotals={grandTotals}

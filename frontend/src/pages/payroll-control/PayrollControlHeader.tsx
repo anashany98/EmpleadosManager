@@ -22,6 +22,7 @@ interface PayrollControlHeaderProps {
     onStatusChange: (status: string) => void;
     exporting: boolean;
     onExportGestoria: () => void;
+    onExportObraHours: () => void;
     recordsLength: number;
     reviewSummary: ReviewSummary;
     grandTotals: GrandTotals;
@@ -30,7 +31,7 @@ interface PayrollControlHeaderProps {
 export default function PayrollControlHeader({
     isGlobalAdmin, companies, selectedCompanyId, loadingCompanies, onCompanyChange,
     savingState, month, year, onMonthChange, onYearChange,
-    isClosed, period, onStatusChange, exporting, onExportGestoria,
+    isClosed, period, onStatusChange, exporting, onExportGestoria, onExportObraHours,
     recordsLength, reviewSummary, grandTotals
 }: PayrollControlHeaderProps) {
     const statusAction: { status: string; label: string; icon: ReactNode } | null =
@@ -147,6 +148,17 @@ export default function PayrollControlHeader({
                             <span>{statusAction.label}</span>
                         </button>
                     ) : null}
+
+                    {/* Parte mensual de horas por obra */}
+                    <button
+                        type="button"
+                        onClick={onExportObraHours}
+                        title="Descargar el parte mensual de horas imputadas a obras de todos los empleados (Excel)"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-medium text-sm rounded-xl transition-colors shadow-sm cursor-pointer"
+                    >
+                        <FileSpreadsheet size={16} />
+                        <span>Parte de obras</span>
+                    </button>
 
                     {/* Exportación Gestoría */}
                     <button

@@ -10,6 +10,10 @@ import { CalendarService } from './CalendarService';
 const Decimal = Prisma.Decimal;
 const FORMULA_VERSION = '2026-control-v1';
 const EDITABLE_PERIOD_STATUSES = new Set(['DRAFT', 'IN_REVIEW', 'REOPENED']);
+// TGSS fijo para todos los empleados (cuota del trabajador a la Seguridad
+// Social). Se aplica siempre, sin importar el valor almacenado: la columna
+// de la rejilla es fija y el cálculo de BRUTO/% disponible lo usa directo.
+const DEFAULT_TGSS_RATE = new Decimal('0.0635');
 
 const DEFAULT_CONCEPTS = [
     { key: 'ARREARS', label: 'Atrasos', gestoriaCode: '044', order: 10 },
@@ -206,7 +210,8 @@ export class PayrollControlService {
         const totalOvertimeAmount = manualOrCalculated(record, 'totalOvertimeAmount', totalOvertimeAmountCalculated);
 
         const irpf = decimal(record.irpf);
-        const tgss = decimal(record.tgss);
+        // TGSS es 6,35% fijo para todos: no se hereda ni se edita por empleado.
+        const tgss = DEFAULT_TGSS_RATE;
         const availablePercentageCalculated = percentage(new Decimal(1).minus(irpf).minus(tgss));
         const availablePercentage = manualOrCalculated(record, 'availablePercentage', availablePercentageCalculated);
 
@@ -336,21 +341,29 @@ export class PayrollControlService {
         });
         const configs = await this.ensureDefaultConceptConfigs(companyId);
 
-        // Herencia de tarifas: buscar período inmediatamente anterior y tarifas por categoría
-        const previousPeriod = await prisma.payrollControlPeriod.findFirst({
+        // Herencia de tarifas: para cada empleado se busca SU último registro en
+        // cualquier período anterior (no solo el mes inmediatamente anterior), de
+        // modo que el IRPF se recuerde mes a mes aunque haya meses sin período o
+        // el empleado se añadiera al período previo más tarde.
+        const previousRecords = await prisma.payrollControlRecord.findMany({
             where: {
-                companyId,
-                OR: [
-                    { year: { lt: year } },
-                    { year, month: { lt: month } }
-                ]
+                period: {
+                    companyId,
+                    OR: [
+                        { year: { lt: year } },
+                        { year, month: { lt: month } }
+                    ]
+                }
             },
-            orderBy: [{ year: 'desc' }, { month: 'desc' }],
-            include: { records: { select: { employeeId: true, overtimeRate: true, holidayOvertimeRate: true, irpf: true, tgss: true } } }
+            orderBy: [{ period: { year: 'desc' } }, { period: { month: 'desc' } }],
+            select: { employeeId: true, overtimeRate: true, holidayOvertimeRate: true, irpf: true }
         });
-        const prevRatesByEmployee = new Map(
-            (previousPeriod?.records || []).map((r) => [r.employeeId, r])
-        );
+        const prevRatesByEmployee = new Map<string, (typeof previousRecords)[number]>();
+        for (const record of previousRecords) {
+            if (!prevRatesByEmployee.has(record.employeeId)) {
+                prevRatesByEmployee.set(record.employeeId, record);
+            }
+        }
 
         const categoryRates = await prisma.categoryRate.findMany();
         const categoryRateMap = new Map(categoryRates.map((cr) => [cr.category.toLowerCase().trim(), cr]));
@@ -374,7 +387,8 @@ export class PayrollControlService {
                                 ? prev.holidayOvertimeRate
                                 : catRate ? catRate.holidayOvertimeRate : 0;
                             const irpf = prev ? prev.irpf : 0;
-                            const tgss = prev ? prev.tgss : 0;
+                            // TGSS fijo 6,35% para todos: siempre se asigna al crear.
+                            const tgss = DEFAULT_TGSS_RATE;
 
                             return {
                                 periodId: created.id,
@@ -438,18 +452,22 @@ export class PayrollControlService {
         year: number,
         month: number
     ) {
-        const previousPeriod = await prisma.payrollControlPeriod.findFirst({
+        // Último registro del empleado en cualquier período anterior para
+        // recordar su IRPF mes a mes (misma regla que en createPeriod).
+        const prev = await prisma.payrollControlRecord.findFirst({
             where: {
-                companyId,
-                OR: [
-                    { year: { lt: year } },
-                    { year, month: { lt: month } }
-                ]
+                employeeId: employee.id,
+                period: {
+                    companyId,
+                    OR: [
+                        { year: { lt: year } },
+                        { year, month: { lt: month } }
+                    ]
+                }
             },
-            orderBy: [{ year: 'desc' }, { month: 'desc' }],
-            include: { records: { where: { employeeId: employee.id }, select: { overtimeRate: true, holidayOvertimeRate: true, irpf: true, tgss: true } } }
+            orderBy: [{ period: { year: 'desc' } }, { period: { month: 'desc' } }],
+            select: { overtimeRate: true, holidayOvertimeRate: true, irpf: true }
         });
-        const prev = previousPeriod?.records?.[0];
         const catRate = employee.category
             ? await prisma.categoryRate.findFirst({ where: { category: { equals: employee.category, mode: 'insensitive' } } })
             : null;
@@ -461,7 +479,8 @@ export class PayrollControlService {
             ? prev.holidayOvertimeRate
             : catRate ? catRate.holidayOvertimeRate : 0;
         const irpf = prev ? prev.irpf : 0;
-        const tgss = prev ? prev.tgss : 0;
+        // TGSS fijo 6,35% para todos: siempre se asigna al crear.
+        const tgss = DEFAULT_TGSS_RATE;
 
         const configs = await this.ensureDefaultConceptConfigs(companyId);
 
@@ -543,6 +562,44 @@ export class PayrollControlService {
             record.gestoriaCode = employee.payrollAgencyEmployeeCode;
         }
 
+        // Tarifas desde la categoría de configuración (Ajustes → Tarifas por
+        // categoría): si el registro no tiene precio de hora extra/festiva (0),
+        // se rellena con el de la categoría del empleado para que el importe de
+        // horas se calcule bien y la rejilla de gestoría no avise de "tarifa a 0".
+        // Solo se cubre lo que falte; los precios ya fijados (manuales o
+        // heredados) se respetan.
+        if (record && employee.category) {
+            const missingRate = Number(record.overtimeRate) === 0 || Number(record.holidayOvertimeRate) === 0;
+            if (missingRate) {
+                const catRate = await prisma.categoryRate.findFirst({
+                    where: { category: { equals: employee.category, mode: 'insensitive' } }
+                });
+                if (catRate) {
+                    const overtimeRate = Number(record.overtimeRate) === 0 && Number(catRate.overtimeRate) > 0
+                        ? catRate.overtimeRate
+                        : undefined;
+                    const holidayOvertimeRate = Number(record.holidayOvertimeRate) === 0 && Number(catRate.holidayOvertimeRate) > 0
+                        ? catRate.holidayOvertimeRate
+                        : undefined;
+                    if (overtimeRate !== undefined || holidayOvertimeRate !== undefined) {
+                        await prisma.payrollControlRecord.update({
+                            where: { id: record.id },
+                            data: {
+                                ...(overtimeRate !== undefined ? { overtimeRate } : {}),
+                                ...(holidayOvertimeRate !== undefined ? { holidayOvertimeRate } : {}),
+                                version: { increment: 1 }
+                            }
+                        });
+                        record = {
+                            ...record,
+                            ...(overtimeRate !== undefined ? { overtimeRate } : {}),
+                            ...(holidayOvertimeRate !== undefined ? { holidayOvertimeRate } : {})
+                        };
+                    }
+                }
+            }
+        }
+
         return { periodStatus: period.status, periodId: period.id, record, vacations };
     }
 
@@ -565,12 +622,26 @@ export class PayrollControlService {
         recordId: string,
         expectedVersion: number,
         entries: DailyEntryPayload[],
-        userId: string
+        userId: string,
+        monthly?: Pick<CellUpdatePayload, 'overtimeRate' | 'holidayOvertimeRate' | 'positiveVariable' | 'negativeVariable' | 'irpf' | 'tgss' | 'gestoriaCode' | 'observations'>
     ) {
         const record = await prisma.payrollControlRecord.findUnique({ where: { id: recordId }, include: { period: true } });
         if (!record) throw new AppError('Registro de control no encontrado.', 404);
         assertEditable(record.period.status);
         if (record.version !== expectedVersion) throw new AppError('El registro cambió en otra sesión. Recarga antes de guardar.', 409);
+
+        // Datos mensuales opcionales: se persisten en la misma transacción que
+        // el detalle diario (antes el cliente hacía dos PUTs encadenados).
+        const monthlyData: Record<string, unknown> = {};
+        if (monthly) {
+            const monthlyKeys = ['overtimeRate', 'holidayOvertimeRate', 'positiveVariable', 'negativeVariable', 'irpf', 'tgss', 'observations'] as const;
+            for (const key of monthlyKeys) {
+                if (monthly[key] !== undefined) monthlyData[key] = monthly[key];
+            }
+            if (monthly.gestoriaCode !== undefined) {
+                monthlyData.gestoriaCode = typeof monthly.gestoriaCode === 'string' ? monthly.gestoriaCode.trim() || null : null;
+            }
+        }
 
         const expectedPrefix = `${record.period.year}-${String(record.period.month).padStart(2, '0')}-`;
         const uniqueDates = new Set(entries.map((entry) => entry.workDate));
@@ -661,15 +732,33 @@ export class PayrollControlService {
             const diets = manualOrCalculated(record, 'diets', calculatedDiets);
 
             // Al actualizar horas diarias explícitamente, se limpia cualquier sobrescritura manual
-            // previa sobre el importe de horas para sincronizar con las nuevas horas introducidas:
+            // previa sobre el importe de horas para sincronizar con las nuevas horas introducidas.
+            // Los campos mensuales enviados se aplican en el mismo cálculo y guardado.
             const calculatedRecord = this.calculateRecordState({
                 ...record,
+                ...monthlyData,
                 overtimeHours,
                 holidayOvertimeHours,
                 diets,
                 isTotalOvertimeAmountManual: false,
                 totalOvertimeAmountManual: null
             });
+
+            if (monthlyData.gestoriaCode !== undefined && record.employeeId) {
+                const rawCode = typeof monthlyData.gestoriaCode === 'string' ? monthlyData.gestoriaCode.trim() || null : null;
+                try {
+                    await tx.employee.update({
+                        where: { id: record.employeeId },
+                        data: { payrollAgencyEmployeeCode: rawCode }
+                    });
+                } catch (err) {
+                    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+                        throw new AppError(`El código de gestoría '${rawCode}' ya está asignado a otro empleado en esta empresa.`, 409);
+                    }
+                    throw err;
+                }
+            }
+
             const updated = await tx.payrollControlRecord.updateMany({
                 where: { id: recordId, version: expectedVersion },
                 data: {
@@ -678,6 +767,7 @@ export class PayrollControlService {
                     diets,
                     isTotalOvertimeAmountManual: false,
                     totalOvertimeAmountManual: null,
+                    ...monthlyData,
                     ...calculatedRecord,
                     version: { increment: 1 }
                 }
@@ -953,5 +1043,107 @@ export class PayrollControlService {
         const exportRecord = await prisma.payrollControlExport.findUnique({ include: { period: true }, where: { id: exportId } });
         if (!exportRecord) throw new AppError('Exportación no encontrada.', 404);
         return exportRecord;
+    }
+
+    /**
+     * Parte mensual de horas imputadas a obras (Excel). Agrupa por empleado y
+     * por obra para el mes indicado y sirve como parte para la gestoría o para
+     * facturación. Con `employeeId` el parte es solo de ese empleado (botón del
+     * control horario); sin él, de toda la empresa (control de gestoría).
+     * Los registros que abarcan varios días suman sus horas completas, la misma
+     * regla que el indicador del control horario.
+     */
+    static async buildObraHoursWorkbook(companyId: string, year: number, month: number, employeeId?: string) {
+        const monthStart = new Date(Date.UTC(year, month - 1, 1));
+        const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
+        const entries = await prisma.employeeProjectWork.findMany({
+            where: {
+                startDate: { lte: monthEnd },
+                endDate: { gte: monthStart },
+                employee: { companyId, ...(employeeId ? { id: employeeId } : {}) }
+            },
+            include: {
+                employee: { select: { id: true, name: true, firstName: true, lastName: true, category: true } },
+                project: { select: { id: true, code: true, name: true } }
+            },
+            orderBy: [{ employee: { lastName: 'asc' } }, { employee: { firstName: 'asc' } }, { project: { code: 'asc' } }]
+        });
+
+        const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const byEmployee = new Map<string, { employeeName: string; category: string; rows: Array<{ code: string; name: string; hours: number }>; total: number }>();
+        const byProject = new Map<string, { code: string; name: string; hours: number }>();
+        for (const entry of entries) {
+            const empName = entry.employee.lastName
+                ? `${entry.employee.lastName}, ${entry.employee.firstName || entry.employee.name || ''}`
+                : entry.employee.name;
+            const hours = Number(entry.hours || 0);
+            const bucket = byEmployee.get(entry.employeeId) || { employeeName: empName, category: entry.employee.category || '', rows: [], total: 0 };
+            bucket.total += hours;
+            const existing = bucket.rows.find((item) => item.code === entry.project.code);
+            if (existing) existing.hours += hours;
+            else bucket.rows.push({ code: entry.project.code || '—', name: entry.project.name || 'Obra', hours });
+            byEmployee.set(entry.employeeId, bucket);
+
+            const project = byProject.get(entry.projectId) || { code: entry.project.code || '—', name: entry.project.name || 'Obra', hours: 0 };
+            project.hours += hours;
+            byProject.set(entry.projectId, project);
+        }
+
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = 'Freebuff';
+        workbook.created = new Date();
+        const periodLabel = `${monthNames[month - 1]} ${year}`;
+
+        const detail = workbook.addWorksheet('Horas por empleado y obra', { views: [{ state: 'frozen', ySplit: 1 }] });
+        detail.columns = [
+            { header: 'Empleado', key: 'employee', width: 34 },
+            { header: 'Categoría', key: 'category', width: 24 },
+            { header: 'Obra', key: 'obra', width: 40 },
+            { header: 'Código', key: 'code', width: 14 },
+            { header: 'Horas', key: 'hours', width: 12, style: { numFmt: '#,##0.00' } }
+        ];
+        detail.getRow(1).font = { bold: true };
+        detail.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+
+        let grandTotal = 0;
+        for (const bucket of byEmployee.values()) {
+            for (const row of bucket.rows) {
+                detail.addRow({ employee: bucket.employeeName, category: bucket.category, obra: row.name, code: row.code, hours: row.hours });
+            }
+            const subtotalRow = detail.addRow({ employee: `Subtotal ${bucket.employeeName}`, category: '', obra: '', code: '', hours: bucket.total });
+            subtotalRow.font = { bold: true };
+            subtotalRow.getCell(5).style.numFmt = '#,##0.00';
+            grandTotal += bucket.total;
+        }
+        const totalRow = detail.addRow({ employee: 'TOTAL', category: '', obra: '', code: '', hours: grandTotal });
+        totalRow.font = { bold: true };
+        totalRow.getCell(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        totalRow.getCell(5).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        totalRow.getCell(5).style.numFmt = '#,##0.00';
+        totalRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E293B' } };
+
+        const summary = workbook.addWorksheet('Resumen por obra', { views: [{ state: 'frozen', ySplit: 1 }] });
+        summary.columns = [
+            { header: 'Obra', key: 'obra', width: 44 },
+            { header: 'Código', key: 'code', width: 14 },
+            { header: 'Horas', key: 'hours', width: 12, style: { numFmt: '#,##0.00' } },
+            { header: '% del total', key: 'pct', width: 12, style: { numFmt: '0.0%' } }
+        ];
+        summary.getRow(1).font = { bold: true };
+        summary.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        for (const project of byProject.values()) {
+            summary.addRow({ obra: project.name, code: project.code, hours: project.hours, pct: grandTotal > 0 ? project.hours / grandTotal : 0 });
+        }
+
+        if (entries.length === 0) {
+            detail.addRow({ employee: `Sin horas imputadas a obras en ${periodLabel}.` });
+            summary.addRow({ obra: `Sin horas imputadas a obras en ${periodLabel}.` });
+        }
+
+        const buffer = Buffer.from(await workbook.xlsx.writeBuffer());
+        const filename = employeeId
+            ? `parte_obras_${year}_${String(month).padStart(2, '0')}_${employeeId.slice(0, 8)}.xlsx`
+            : `parte_obras_${year}_${String(month).padStart(2, '0')}.xlsx`;
+        return { buffer, filename, employeeCount: byEmployee.size, entryCount: entries.length };
     }
 }

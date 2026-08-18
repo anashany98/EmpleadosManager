@@ -1,4 +1,4 @@
-import { AlertTriangle, CalendarDays, HardHat, Sun } from 'lucide-react';
+import { AlertTriangle, CalendarDays, CheckCircle2, HardHat, Sun } from 'lucide-react';
 import { toast } from 'sonner';
 import { normalizeTimeInput } from '../employeeControlHorarioForm';
 import {
@@ -19,6 +19,7 @@ interface ControlHorarioGridProps {
     gridExpanded: boolean;
     obraDayHours: Record<string, number>;
     obraMonthProjects: Array<{ code: string; name: string; hours: number }>;
+    obraHoursTotal: number;
     onUpdateRow: (index: number, patch: Partial<DailyRow>) => void;
     onGridKeyDown: (event: React.KeyboardEvent<HTMLTableElement>) => void;
     onGridPaste: (event: React.ClipboardEvent<HTMLTableElement>) => void;
@@ -83,6 +84,49 @@ function MobileTimeInput({
     );
 }
 
+/** Tolerancia (en horas) bajo la cual el cuadre trabajadas ↔ imputadas se considera correcto. */
+const OBRA_BALANCE_TOLERANCE = 0.5;
+
+/**
+ * Indicador mensual del cuadre entre horas trabajadas y horas imputadas a obras.
+ * Avisa en ambos sentidos: horas trabajadas sin imputar y horas imputadas de más.
+ */
+export function ObraBalanceIndicator({ worked, imputed }: { worked: number; imputed: number }) {
+    const difference = worked - imputed;
+    if (worked <= 0 && imputed <= 0) {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                <CalendarDays size={12} /> Sin horas este mes
+            </span>
+        );
+    }
+    if (Math.abs(difference) <= OBRA_BALANCE_TOLERANCE) {
+        return (
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                <CheckCircle2 size={12} /> Cuadre correcto
+            </span>
+        );
+    }
+    if (difference > 0) {
+        return (
+            <span
+                className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+                title="Horas trabajadas que aún no se han imputado a ninguna obra. Revisa si falta imputar algún día."
+            >
+                <AlertTriangle size={12} /> {difference.toFixed(2)}h sin imputar a obra
+            </span>
+        );
+    }
+    return (
+        <span
+            className="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"
+            title="Se han imputado más horas a obras de las trabajadas. Revisa las imputaciones del mes."
+        >
+            <AlertTriangle size={12} /> {Math.abs(difference).toFixed(2)}h imputadas de más
+        </span>
+    );
+}
+
 export function ControlHorarioGrid({
     year,
     month,
@@ -94,6 +138,7 @@ export function ControlHorarioGrid({
     gridExpanded,
     obraDayHours,
     obraMonthProjects,
+    obraHoursTotal,
     onUpdateRow,
     onGridKeyDown,
     onGridPaste,
@@ -115,7 +160,7 @@ export function ControlHorarioGrid({
                                     </p>
                                     <p className="text-xs text-slate-500">
                                         {isVacation
-                                            ? (row.vacationReason ? `Vacaciones (${row.vacationReason})` : 'Vacaciones')
+                                            ? (row.vacationReason ? `${row.vacationLabel} (${row.vacationReason})` : row.vacationLabel)
                                             : highlighted
                                                 ? row.holidayName || (row.weekend ? 'Fin de semana' : 'Festivo')
                                                 : `${row.workedHours.toFixed(2)} h trabajadas · ${row.overtimeHours.toFixed(2)} h extra`}
@@ -153,14 +198,16 @@ export function ControlHorarioGrid({
                                 disabled={isLocked}
                                 value={row.notes}
                                 onChange={(event) => onUpdateRow(index, { notes: event.target.value })}
-                                placeholder={isVacation ? 'Vacaciones' : 'Añadir observación…'}
+                                placeholder={isVacation ? row.vacationLabel : 'Añadir observación…'}
                                 className={`mt-2 h-10 w-full rounded-lg border px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 disabled:text-slate-500 ${isVacation ? 'border-red-300 bg-red-50 text-red-800 font-semibold placeholder:text-red-500 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200' : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'}`}
                             />
                             <div className="mt-2 flex items-center justify-between gap-2">
                                 <button
                                     type="button"
                                     onClick={() => onOpenObraModal(row.workDate)}
-                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                                    disabled={isVacation}
+                                    title={isVacation ? 'No se pueden imputar horas a obra en un día de vacaciones' : 'Imputar horas de este día a una obra'}
+                                    className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
                                 >
                                     <HardHat size={13} /> Imputar a obra
                                 </button>
@@ -228,14 +275,14 @@ export function ControlHorarioGrid({
                                         : 'bg-white dark:bg-slate-900';
                             return (
                                 <tr key={row.workDate} className={`${rowBackground} ${modifiedRows.has(row.workDate) ? 'outline outline-1 -outline-offset-1 outline-blue-300 dark:outline-blue-700' : ''} hover:bg-red-100/70 dark:hover:bg-red-950/50 transition-colors`}>
-                                    <td title={isVacation ? (row.vacationReason ? `Vacaciones: ${row.vacationReason}` : 'Vacaciones') : (row.holidayName || undefined)} className={`sticky left-0 z-10 h-9 border-b border-r border-slate-200 px-2 font-semibold ${rowBackground} ${isVacation ? 'text-red-700 font-bold dark:text-red-300' : highlighted ? 'text-rose-700' : 'text-slate-600'} dark:border-slate-700`}>
+                                    <td title={isVacation ? (row.vacationReason ? `${row.vacationLabel}: ${row.vacationReason}` : row.vacationLabel) : (row.holidayName || undefined)} className={`sticky left-0 z-10 h-9 border-b border-r border-slate-200 px-2 font-semibold ${rowBackground} ${isVacation ? 'text-red-700 font-bold dark:text-red-300' : highlighted ? 'text-rose-700' : 'text-slate-600'} dark:border-slate-700`}>
                                         <span className="flex items-center gap-1">
                                             {modifiedRows.has(row.workDate) && <span className="h-2 w-2 rounded-full bg-blue-600" title="Fila modificada sin guardar" />}
                                             {row.dayLabel}
                                             {isVacation && (
-                                                <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 py-0.2 text-[9px] font-black tracking-tight text-red-800 border border-red-300 dark:bg-red-900 dark:text-red-200 dark:border-red-700" title={row.vacationReason ? `Vacaciones (${row.vacationReason})` : 'Vacaciones'}>
+                                                <span className="inline-flex items-center gap-0.5 rounded bg-red-100 px-1 py-0.2 text-[9px] font-black tracking-tight text-red-800 border border-red-300 dark:bg-red-900 dark:text-red-200 dark:border-red-700" title={row.vacationReason ? `${row.vacationLabel} (${row.vacationReason})` : row.vacationLabel}>
                                                     <Sun size={10} className="shrink-0 text-red-700 dark:text-red-300" />
-                                                    VAC
+                                                    {row.vacationShort}
                                                 </span>
                                             )}
                                             {incomplete && <AlertTriangle size={12} className="text-amber-600" aria-label="Marcaje incompleto" />}
@@ -315,7 +362,7 @@ export function ControlHorarioGrid({
                                                 aria-label={`Observaciones ${row.workDate}`}
                                                 data-grid-row={index}
                                                 data-grid-col={11}
-                                                placeholder={isVacation ? 'Vacaciones' : 'Añadir nota…'}
+                                                placeholder={isVacation ? row.vacationLabel : 'Añadir nota…'}
                                                 className={`h-8 w-full min-w-60 border-0 bg-transparent px-1 text-xs outline-none focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-500 disabled:cursor-not-allowed dark:focus:bg-blue-950/40 ${isVacation ? 'font-semibold text-red-800 placeholder:text-red-500 dark:text-red-200' : ''}`}
                                             />
                                         </div>
@@ -325,8 +372,9 @@ export function ControlHorarioGrid({
                                             <button
                                                 type="button"
                                                 onClick={() => onOpenObraModal(row.workDate)}
-                                                title="Imputar horas de este día a una obra"
-                                                className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                                                disabled={isVacation}
+                                                title={isVacation ? 'No se pueden imputar horas a obra en un día de vacaciones' : 'Imputar horas de este día a una obra'}
+                                                className="inline-flex h-7 items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
                                             >
                                                 <HardHat size={12} /> Imputar
                                             </button>
@@ -369,10 +417,13 @@ export function ControlHorarioGrid({
                         </span>
                     ))
                 )}
-                <span className="ml-auto text-[11px] text-slate-500">
-                    Total imputado: <strong className="font-mono text-slate-800 dark:text-slate-100">{obraMonthProjects.reduce((sum, project) => sum + project.hours, 0).toFixed(2)}h</strong>
-                    <span className="mx-1">·</span>
-                    Trabajadas: <strong className="font-mono">{totals.worked.toFixed(2)}h</strong>
+                <span className="ml-auto flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                    <span>
+                        Trabajadas: <strong className="font-mono text-slate-800 dark:text-slate-100">{totals.worked.toFixed(2)}h</strong>
+                        <span className="mx-1">·</span>
+                        Imputadas: <strong className="font-mono">{obraHoursTotal.toFixed(2)}h</strong>
+                    </span>
+                    <ObraBalanceIndicator worked={totals.worked} imputed={obraHoursTotal} />
                 </span>
             </div>
         </>

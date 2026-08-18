@@ -64,6 +64,10 @@ export interface DailyRow {
     isVacation: boolean;
     vacationReason: string;
     vacationType: string;
+    /** Etiqueta legible del tipo de ausencia (Vacaciones, Baja médica, Permiso...). */
+    vacationLabel: string;
+    /** Etiqueta abreviada para la insignia de la tabla (VAC, BAJA, PERM...). */
+    vacationShort: string;
     notes: string;
 }
 
@@ -266,7 +270,7 @@ export function buildRows(
     month: number,
     entries: DailyEntryApi[] = [],
     calendarHolidays?: Map<string, string>,
-    vacationsMap?: Map<string, { type: string; reason?: string }>
+    vacationsMap?: Map<string, { type: string; reason?: string; label: string; short: string }>
 ): DailyRow[] {
     const byDate = new Map(entries.map((entry) => [entry.workDate.slice(0, 10), entry]));
     const days = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -280,8 +284,10 @@ export function buildRows(
         const isVacation = Boolean(vacationInfo);
         const vacationReason = vacationInfo?.reason || '';
         const vacationType = vacationInfo?.type || 'VACATION';
+        const vacationLabel = vacationInfo?.label || 'Vacaciones';
+        const vacationShort = vacationInfo?.short || 'VAC';
         const defaultVacationNotes = isVacation
-            ? (vacationReason ? `Vacaciones (${vacationReason})` : 'Vacaciones')
+            ? (vacationReason ? `${vacationLabel} (${vacationReason})` : vacationLabel)
             : '';
 
         if (entry) {
@@ -310,6 +316,8 @@ export function buildRows(
                 isVacation,
                 vacationReason,
                 vacationType,
+                vacationLabel,
+                vacationShort,
                 notes: entry.notes || defaultVacationNotes
             };
         }
@@ -335,6 +343,8 @@ export function buildRows(
             isVacation,
             vacationReason,
             vacationType,
+            vacationLabel,
+            vacationShort,
             notes: defaultVacationNotes
         } satisfies DailyRow;
     });

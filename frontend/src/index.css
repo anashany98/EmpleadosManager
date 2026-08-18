@@ -387,23 +387,23 @@
   display: none;
 }
 
+/* Las columnas TGSS % (15) y BRUTO (17) NO se ocultan: la primera es un
+   valor fijo 6,35% que debe verse junto al IRPF %, y la segunda es el
+   resultado del recálculo que RRHH consulta al editar retenciones, sin
+   tener que cambiar al preset "Todas". */
 .payroll-essential-columns thead tr:last-child th:nth-child(2),
 .payroll-essential-columns thead tr:last-child th:nth-child(3),
 .payroll-essential-columns thead tr:last-child th:nth-child(11),
 .payroll-essential-columns thead tr:last-child th:nth-child(12),
 .payroll-essential-columns thead tr:last-child th:nth-child(13),
-.payroll-essential-columns thead tr:last-child th:nth-child(15),
 .payroll-essential-columns thead tr:last-child th:nth-child(16),
-.payroll-essential-columns thead tr:last-child th:nth-child(17),
 .payroll-essential-columns thead tr:last-child th:nth-child(n + 18),
 .payroll-essential-columns .payroll-record-row td:nth-child(2),
 .payroll-essential-columns .payroll-record-row td:nth-child(3),
 .payroll-essential-columns .payroll-record-row td:nth-child(11),
 .payroll-essential-columns .payroll-record-row td:nth-child(12),
 .payroll-essential-columns .payroll-record-row td:nth-child(13),
-.payroll-essential-columns .payroll-record-row td:nth-child(15),
 .payroll-essential-columns .payroll-record-row td:nth-child(16),
-.payroll-essential-columns .payroll-record-row td:nth-child(17),
 .payroll-essential-columns .payroll-record-row td:nth-child(n + 18) {
   display: none;
 }

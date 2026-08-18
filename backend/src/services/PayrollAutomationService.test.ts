@@ -19,6 +19,9 @@ vi.mock('../lib/prisma', () => ({
         },
         auditLog: {
             create: vi.fn(),
+        },
+        payrollControlPeriod: {
+            findUnique: vi.fn(),
         }
     },
 }));
@@ -46,6 +49,8 @@ describe('PayrollAutomationService', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockAddJob.mockResolvedValue({ id: 'job-1' });
+        // Sin período de control → la nómina usa la tasa global (fallback).
+        (prisma.payrollControlPeriod.findUnique as any).mockResolvedValue(null);
     });
 
     it('should generate payroll rows correctly from attendance', async () => {
@@ -98,6 +103,59 @@ describe('PayrollAutomationService', () => {
             where: { id: 'batch-1' },
             data: { status: 'VALID' }
         }));
+    });
+
+    it('usa el IRPF por empleado del control de gestoría en vez del 15% global', async () => {
+        const year = 2024;
+        const month = 1;
+        const companyId = 'comp-1';
+        const userId = 'user-1';
+
+        (prisma.payrollImportBatch.create as any).mockResolvedValue({ id: 'batch-4' });
+        (prisma.employee.findMany as any).mockResolvedValue([
+            { id: 'emp-1', name: 'John Doe', weeklyHours: 40, monthlyGrossSalary: 2000, companyId },
+            { id: 'emp-2', name: 'Jane Roe', weeklyHours: 40, monthlyGrossSalary: 2000, companyId }
+        ]);
+        // Período de control de gestoría: emp-1 tiene IRPF 10%;
+        // emp-2 no tiene registro → debe caer a la regla global (15%).
+        (prisma.payrollControlPeriod.findUnique as any).mockResolvedValue({
+            records: [
+                { employeeId: 'emp-1', irpf: 0.1 }
+            ]
+        });
+
+        const entries: any[] = [];
+        for (let day = 1; day <= 20; day++) {
+            const date = new Date(year, month - 1, day, 8, 0, 0);
+            const outDate = new Date(year, month - 1, day, 16, 0, 0);
+            entries.push(
+                { employeeId: 'emp-1', type: 'IN', timestamp: date },
+                { employeeId: 'emp-1', type: 'OUT', timestamp: outDate },
+                { employeeId: 'emp-2', type: 'IN', timestamp: date },
+                { employeeId: 'emp-2', type: 'OUT', timestamp: outDate }
+            );
+        }
+        (prisma.timeEntry.findMany as any).mockResolvedValue(entries);
+
+        await PayrollAutomationService.generateFromAttendance(year, month, companyId, userId);
+
+        expect(prisma.payrollControlPeriod.findUnique).toHaveBeenCalledWith({
+            where: { companyId_year_month: { companyId, year, month } },
+            select: { records: { select: { employeeId: true, irpf: true } } }
+        });
+
+        const createManyInput = vi.mocked(prisma.payrollRow.createMany).mock.calls[0]?.[0];
+        const rows = createManyInput?.data as any[];
+        const emp1 = rows.find((r) => r.employeeId === 'emp-1');
+        const emp2 = rows.find((r) => r.employeeId === 'emp-2');
+
+        // Ambos trabajan 160h → misma proporción → mismo bruto.
+        const expectedBruto = 2000 * (160 / (40 * 4.33));
+        expect(Number(emp1.bruto)).toBeCloseTo(expectedBruto, 1);
+        // emp-1: IRPF 10% del control de gestoría.
+        expect(Number(emp1.irpf)).toBeCloseTo(expectedBruto * 0.10, 2);
+        // emp-2: sin registro → regla global 15%.
+        expect(Number(emp2.irpf)).toBeCloseTo(expectedBruto * 0.15, 2);
     });
 
     it('should warn for low attendance', async () => {

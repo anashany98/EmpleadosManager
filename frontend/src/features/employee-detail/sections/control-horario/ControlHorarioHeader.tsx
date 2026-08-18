@@ -8,6 +8,7 @@ import {
     ClipboardPaste,
     Clock,
     Eraser,
+    FileSpreadsheet,
     Keyboard,
     Loader2,
     Lock,
@@ -46,6 +47,7 @@ interface ControlHorarioHeaderProps {
     onQuickScheduleChange: (patch: Partial<QuickSchedule>) => void;
     onApplyQuickSchedule: (onlyEmpty: boolean) => void;
     onClearTimeEntries: () => void;
+    onExportObraHours: () => void;
 }
 
 export function ControlHorarioHeader({
@@ -73,7 +75,8 @@ export function ControlHorarioHeader({
     onSave,
     onQuickScheduleChange,
     onApplyQuickSchedule,
-    onClearTimeEntries
+    onClearTimeEntries,
+    onExportObraHours
 }: ControlHorarioHeaderProps) {
     const importInputRef = useRef<HTMLInputElement>(null);
 
@@ -108,7 +111,7 @@ export function ControlHorarioHeader({
                     {vacationDaysCount > 0 && (
                         <span className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-bold text-red-700 dark:border-red-800/80 dark:bg-red-950/40 dark:text-red-300">
                             <Sun size={14} className="text-red-600 dark:text-red-400" />
-                            {vacationDaysCount} {vacationDaysCount === 1 ? 'día vacaciones' : 'días vacaciones'}
+                            {vacationDaysCount} {vacationDaysCount === 1 ? 'día de ausencia' : 'días de ausencia'}
                         </span>
                     )}
                     <button
@@ -130,6 +133,15 @@ export function ControlHorarioHeader({
                                     ? `${pendingDays} días${monthlyFieldsDirty ? ' + datos mensuales' : ''} pendientes`
                                     : 'Sin cambios'}
                     </span>
+                    <button
+                        type="button"
+                        onClick={onExportObraHours}
+                        title="Descargar el parte mensual de horas imputadas a obras (Excel)"
+                        className="inline-flex h-9 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-50 dark:border-emerald-700 dark:bg-slate-800 dark:text-emerald-300"
+                    >
+                        <FileSpreadsheet size={15} />
+                        Parte de obras
+                    </button>
                     {!isLocked && (
                         <>
                         <input ref={importInputRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(event) => {

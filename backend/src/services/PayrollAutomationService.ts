@@ -79,6 +79,11 @@ export class PayrollAutomationService {
      *     correspondiente a la fecha del periodo de nómina. La
      *     versión usada se persiste en `PayrollRow.ruleSetVersion`
      *     para reproducibilidad histórica.
+     *   - El IRPF por empleado del control de gestoría (el que RRHH
+     *     configura y se recuerda mes a mes en `PayrollControlRecord`)
+     *     prevalece sobre el tipo global cuando existe y es > 0; si no
+     *     hay período de control o el empleado no tiene IRPF asignado,
+     *     se usa la tasa global de la regla versionada.
      *   - El redondeo se aplica al resultado final de cada
      *     magnitud, con banker's rounding al céntimo.
      */
@@ -99,6 +104,20 @@ export class PayrollAutomationService {
         // Regla activa para el periodo de nómina.
         const rule: PayrollRuleSet = getRulesForDate(start);
         const rates = ruleSetToDecimals(rule);
+
+        // IRPF por empleado desde el control de gestoría del mismo periodo.
+        // Si no existe período de control (o el empleado no tiene registro),
+        // se cae a la tasa global de la regla versionada.
+        const controlPeriod = await prisma.payrollControlPeriod.findUnique({
+            where: { companyId_year_month: { companyId, year, month } },
+            select: { records: { select: { employeeId: true, irpf: true } } }
+        });
+        const irpfByEmployee = new Map<string, Prisma.Decimal>(
+            (controlPeriod?.records || []).map((record) => [
+                record.employeeId,
+                record.irpf ? new Prisma.Decimal(record.irpf) : new Prisma.Decimal(0)
+            ])
+        );
 
         const employees = await prisma.employee.findMany({
             where: {
@@ -192,7 +211,10 @@ export class PayrollAutomationService {
 
             // Tasas como Decimal — todo en Decimal hasta el final.
             const ssTrabajador = bruto.times(rates.ssWorkerRate);
-            const irpf = bruto.times(rates.irpfRate);
+            // IRPF del control de gestoría si el empleado lo tiene asignado; si no, el global.
+            const employeeIrpfRate = irpfByEmployee.get(employee.id);
+            const effectiveIrpfRate = employeeIrpfRate && employeeIrpfRate.greaterThan(0) ? employeeIrpfRate : rates.irpfRate;
+            const irpf = bruto.times(effectiveIrpfRate);
             const ssEmpresa = bruto.times(rates.ssCompanyRate);
 
             // Redondeo al céntimo (banker's rounding) en cada línea
