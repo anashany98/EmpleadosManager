@@ -45,7 +45,8 @@ function getMockState() {
             employeeFindMany: vi.fn(),
             timeEntryFindMany: vi.fn(),
             payrollRowCreateMany: vi.fn(async () => ({ count: 1 })),
-            auditLogCreate: vi.fn(async () => undefined)
+            auditLogCreate: vi.fn(async () => undefined),
+            payrollControlPeriodFindUnique: vi.fn(async () => null)
         };
     }
     return (globalThis as any).__high009MockState;
@@ -70,6 +71,9 @@ vi.mock('../../lib/prisma', () => {
             },
             auditLog: {
                 create: ms.auditLogCreate
+            },
+            payrollControlPeriod: {
+                findUnique: ms.payrollControlPeriodFindUnique
             },
             $transaction: vi.fn(async (arg: any) => {
                 if (typeof arg === 'function') {
