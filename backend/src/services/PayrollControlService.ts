@@ -10,6 +10,10 @@ import { CalendarService } from './CalendarService';
 const Decimal = Prisma.Decimal;
 const FORMULA_VERSION = '2026-control-v1';
 const EDITABLE_PERIOD_STATUSES = new Set(['DRAFT', 'IN_REVIEW', 'REOPENED']);
+// TGSS fijo para todos los empleados (cuota del trabajador a la Seguridad
+// Social). Se aplica siempre, sin importar el valor almacenado: la columna
+// de la rejilla es fija y el cálculo de BRUTO/% disponible lo usa directo.
+const DEFAULT_TGSS_RATE = new Decimal('0.0635');
 
 const DEFAULT_CONCEPTS = [
     { key: 'ARREARS', label: 'Atrasos', gestoriaCode: '044', order: 10 },
@@ -206,7 +210,8 @@ export class PayrollControlService {
         const totalOvertimeAmount = manualOrCalculated(record, 'totalOvertimeAmount', totalOvertimeAmountCalculated);
 
         const irpf = decimal(record.irpf);
-        const tgss = decimal(record.tgss);
+        // TGSS es 6,35% fijo para todos: no se hereda ni se edita por empleado.
+        const tgss = DEFAULT_TGSS_RATE;
         const availablePercentageCalculated = percentage(new Decimal(1).minus(irpf).minus(tgss));
         const availablePercentage = manualOrCalculated(record, 'availablePercentage', availablePercentageCalculated);
 
@@ -336,21 +341,29 @@ export class PayrollControlService {
         });
         const configs = await this.ensureDefaultConceptConfigs(companyId);
 
-        // Herencia de tarifas: buscar período inmediatamente anterior y tarifas por categoría
-        const previousPeriod = await prisma.payrollControlPeriod.findFirst({
+        // Herencia de tarifas: para cada empleado se busca SU último registro en
+        // cualquier período anterior (no solo el mes inmediatamente anterior), de
+        // modo que el IRPF se recuerde mes a mes aunque haya meses sin período o
+        // el empleado se añadiera al período previo más tarde.
+        const previousRecords = await prisma.payrollControlRecord.findMany({
             where: {
-                companyId,
-                OR: [
-                    { year: { lt: year } },
-                    { year, month: { lt: month } }
-                ]
+                period: {
+                    companyId,
+                    OR: [
+                        { year: { lt: year } },
+                        { year, month: { lt: month } }
+                    ]
+                }
             },
-            orderBy: [{ year: 'desc' }, { month: 'desc' }],
-            include: { records: { select: { employeeId: true, overtimeRate: true, holidayOvertimeRate: true, irpf: true, tgss: true } } }
+            orderBy: [{ period: { year: 'desc' } }, { period: { month: 'desc' } }],
+            select: { employeeId: true, overtimeRate: true, holidayOvertimeRate: true, irpf: true }
         });
-        const prevRatesByEmployee = new Map(
-            (previousPeriod?.records || []).map((r) => [r.employeeId, r])
-        );
+        const prevRatesByEmployee = new Map<string, (typeof previousRecords)[number]>();
+        for (const record of previousRecords) {
+            if (!prevRatesByEmployee.has(record.employeeId)) {
+                prevRatesByEmployee.set(record.employeeId, record);
+            }
+        }
 
         const categoryRates = await prisma.categoryRate.findMany();
         const categoryRateMap = new Map(categoryRates.map((cr) => [cr.category.toLowerCase().trim(), cr]));
@@ -374,7 +387,8 @@ export class PayrollControlService {
                                 ? prev.holidayOvertimeRate
                                 : catRate ? catRate.holidayOvertimeRate : 0;
                             const irpf = prev ? prev.irpf : 0;
-                            const tgss = prev ? prev.tgss : 0;
+                            // TGSS fijo 6,35% para todos: siempre se asigna al crear.
+                            const tgss = DEFAULT_TGSS_RATE;
 
                             return {
                                 periodId: created.id,
@@ -438,18 +452,22 @@ export class PayrollControlService {
         year: number,
         month: number
     ) {
-        const previousPeriod = await prisma.payrollControlPeriod.findFirst({
+        // Último registro del empleado en cualquier período anterior para
+        // recordar su IRPF mes a mes (misma regla que en createPeriod).
+        const prev = await prisma.payrollControlRecord.findFirst({
             where: {
-                companyId,
-                OR: [
-                    { year: { lt: year } },
-                    { year, month: { lt: month } }
-                ]
+                employeeId: employee.id,
+                period: {
+                    companyId,
+                    OR: [
+                        { year: { lt: year } },
+                        { year, month: { lt: month } }
+                    ]
+                }
             },
-            orderBy: [{ year: 'desc' }, { month: 'desc' }],
-            include: { records: { where: { employeeId: employee.id }, select: { overtimeRate: true, holidayOvertimeRate: true, irpf: true, tgss: true } } }
+            orderBy: [{ period: { year: 'desc' } }, { period: { month: 'desc' } }],
+            select: { overtimeRate: true, holidayOvertimeRate: true, irpf: true }
         });
-        const prev = previousPeriod?.records?.[0];
         const catRate = employee.category
             ? await prisma.categoryRate.findFirst({ where: { category: { equals: employee.category, mode: 'insensitive' } } })
             : null;
@@ -461,7 +479,8 @@ export class PayrollControlService {
             ? prev.holidayOvertimeRate
             : catRate ? catRate.holidayOvertimeRate : 0;
         const irpf = prev ? prev.irpf : 0;
-        const tgss = prev ? prev.tgss : 0;
+        // TGSS fijo 6,35% para todos: siempre se asigna al crear.
+        const tgss = DEFAULT_TGSS_RATE;
 
         const configs = await this.ensureDefaultConceptConfigs(companyId);
 

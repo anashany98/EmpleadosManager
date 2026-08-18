@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 import type { ReviewSummary } from './types';
+import CellInput from './CellInput';
 
 export interface GestoriaColumn {
     code: string;
@@ -85,11 +86,13 @@ export default function GestoriaView({
                             return (
                                 <tr key={record.id} className={lastSavedRecordId === record.id ? 'bg-emerald-100/80 outline outline-1 -outline-offset-1 outline-emerald-400 dark:bg-emerald-950/30' : invalid ? 'bg-rose-50/70 dark:bg-rose-950/15' : 'hover:bg-emerald-50/50 dark:hover:bg-emerald-950/10'}>
                                     <td className={`sticky left-0 z-10 border-b border-r border-slate-200 p-1 ${invalid ? 'bg-rose-50 dark:bg-rose-950/30' : 'bg-white dark:bg-slate-900'} dark:border-slate-700`}>
-                                        <input
-                                            type="text"
+                                        <CellInput
+                                            recordId={record.id}
+                                            field="gestoriaCode"
+                                            display={employeeCode}
+                                            parse={(raw) => raw.trim() || null}
+                                            onBlur={onCellBlur}
                                             disabled={isLocked}
-                                            defaultValue={employeeCode}
-                                            onBlur={(event) => onCellBlur(record.id, 'gestoriaCode', event.target.value.trim() || null)}
                                             placeholder="Sin código"
                                             className={`h-8 w-full rounded border-0 bg-transparent px-2 font-mono font-bold outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800 ${missingCode ? 'text-rose-700 placeholder:text-rose-500' : 'text-slate-800 dark:text-slate-100'}`}
                                         />
@@ -106,7 +109,7 @@ export default function GestoriaView({
                                                 <td key={column.code} className={`border-b border-r border-slate-200 p-1 dark:border-slate-700 ${record.isTotalOvertimeAmountManual ? 'bg-amber-50 dark:bg-amber-950/30' : ''}`}>
                                                     <div className="flex items-center">
                                                         {record.isTotalOvertimeAmountManual && <button type="button" onClick={() => onRestoreField(record.id, 'totalOvertimeAmount')} title="Restaurar cálculo" className="text-amber-600"><RotateCcw size={12} /></button>}
-                                                        <input type="number" step="0.01" disabled={isLocked} defaultValue={Number(record.totalOvertimeAmount || 0)} onBlur={(event) => onCellBlur(record.id, 'totalOvertimeAmount', Number(event.target.value))} className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
+                                                        <CellInput recordId={record.id} field="totalOvertimeAmount" display={String(Number(record.totalOvertimeAmount || 0))} parse={(raw) => Number(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
                                                     </div>
                                                 </td>
                                             );
@@ -114,14 +117,14 @@ export default function GestoriaView({
                                         if (column.conceptConfigId === 'diets') {
                                             return (
                                                 <td key={column.code} className="border-b border-r border-slate-200 p-1 dark:border-slate-700">
-                                                    <input type="number" step="0.01" disabled={isLocked} defaultValue={Number(record.diets || 0)} onBlur={(event) => onCellBlur(record.id, 'diets', Number(event.target.value))} className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
+                                                    <CellInput recordId={record.id} field="diets" display={String(Number(record.diets || 0))} parse={(raw) => Number(raw)} onBlur={onCellBlur} disabled={isLocked} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
                                                 </td>
                                             );
                                         }
                                         const concept = (record.conceptValues || []).find((item: any) => item.conceptConfigId === column.conceptConfigId);
                                         return (
                                             <td key={column.code} className="border-b border-r border-slate-200 p-1 dark:border-slate-700">
-                                                <input type="number" step="0.01" disabled={isLocked || !concept} defaultValue={Number(concept?.value || 0)} onBlur={(event) => concept && onConceptBlur(record, concept.conceptConfigId, Number(event.target.value))} className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
+                                                <CellInput recordId={record.id} field={`concept-${column.conceptConfigId}`} display={String(Number(concept?.value || 0))} parse={(raw) => Number(raw)} onBlur={(_, __, value) => concept && onConceptBlur(record, concept.conceptConfigId, Number(value))} disabled={isLocked || !concept} type="number" step="0.01" className="h-8 w-full bg-transparent px-2 text-right font-mono outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 dark:focus:bg-slate-800" />
                                             </td>
                                         );
                                     })}
