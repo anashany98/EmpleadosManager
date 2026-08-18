@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { api, getErrorMessage } from '../../../api/client';
 import { useApiUnwrap } from '../../../hooks/useApiUnwrap';
 import { getEmployeeVacations, normalizeDailyRowsForSave } from './employeeControlHorarioForm';
+import type { AbsenceInfo } from './employeeControlHorarioForm';
 import ObraHoursModal from '../components/ObraHoursModal';
 import { ControlHorarioHeader } from './control-horario/ControlHorarioHeader';
 import { ControlHorarioGrid } from './control-horario/ControlHorarioGrid';
@@ -52,7 +53,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
     const [record, setRecord] = useState<PayrollRecord | null>(null);
     const [rows, setRows] = useState<DailyRow[]>([]);
     const [calendarHolidays, setCalendarHolidays] = useState<Map<string, string>>(new Map());
-    const [vacationsMap, setVacationsMap] = useState<Map<string, { type: string; reason?: string }>>(new Map());
+    const [vacationsMap, setVacationsMap] = useState<Map<string, AbsenceInfo>>(new Map());
     const [dirty, setDirty] = useState(false);
     const [modifiedRows, setModifiedRows] = useState<Set<string>>(new Set());
     const [monthlyFieldsDirty, setMonthlyFieldsDirty] = useState(false);
@@ -206,6 +207,12 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         !row.weekend && !row.isHoliday && !row.isCalendarHoliday && !row.isVacation && !rowHasTimes(row)
     )).length, [rows]);
     const hourDifference = totals.worked - totals.scheduled;
+    // Cuadre mensual trabajadas ↔ imputadas a obras (indicador y avisos)
+    const obraHoursTotal = useMemo(
+        () => obraMonthProjects.reduce((sum, project) => sum + project.hours, 0),
+        [obraMonthProjects]
+    );
+    const obraBalance = totals.worked - obraHoursTotal;
 
     const updateRow = (index: number, patch: Partial<DailyRow>) => {
         if (isLocked) return;
@@ -370,7 +377,10 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
         setSaving(true);
         setSaveError(false);
         try {
-            const dailyResponse = await api.put<ApiEnvelope<PayrollRecord>>(
+            // Un único PUT: detalle diario + datos mensuales se guardan juntos
+            // en la misma transacción (antes eran dos llamadas encadenadas con
+            // control de versión entre medias).
+            const response = await api.put<ApiEnvelope<PayrollRecord>>(
                 `/payroll/control/employee/${employeeId}/daily`,
                 {
                     year,
@@ -387,16 +397,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                         isHoliday: row.isHoliday,
                         dietAmount: row.dietAmount,
                         notes: row.notes
-                    }))
-                }
-            );
-            const dailyRecord = unwrap<PayrollRecord>(dailyResponse);
-            const monthlyResponse = await api.put<ApiEnvelope<PayrollRecord>>(
-                `/payroll/control/employee/${employeeId}`,
-                {
-                    year,
-                    month,
-                    expectedVersion: dailyRecord.version,
+                    })),
                     overtimeRate: Number(record.overtimeRate || 0),
                     holidayOvertimeRate: Number(record.holidayOvertimeRate || 0),
                     positiveVariable: Number(record.positiveVariable || 0),
@@ -407,7 +408,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                     observations: record.observations || ''
                 }
             );
-            const updated = unwrap<PayrollRecord>(monthlyResponse);
+            const updated = unwrap<PayrollRecord>(response);
             setRecord(updated);
             setRows(buildRows(year, month, updated.dailyEntries || [], calendarHolidays, vacationsMap));
             setDirty(false);
@@ -424,6 +425,26 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
             toast.error(getErrorMessage(error, 'No se pudo guardar el control horario'));
         } finally {
             setSaving(false);
+        }
+    };
+
+    const handleExportObraHours = async () => {
+        try {
+            const blob = await api.get<Blob>('/payroll/control/obra-hours/export', {
+                params: { year, month, employeeId },
+                responseType: 'blob'
+            });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `parte_obras_${year}_${String(month).padStart(2, '0')}.xlsx`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+            toast.success('Parte de horas por obra descargado');
+        } catch (error: unknown) {
+            toast.error(getErrorMessage(error, 'No se pudo generar el parte de obras'));
         }
     };
 
@@ -523,6 +544,7 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                     onQuickScheduleChange={(patch) => setQuickSchedule((current) => ({ ...current, ...patch }))}
                     onApplyQuickSchedule={applyQuickSchedule}
                     onClearTimeEntries={clearTimeEntries}
+                    onExportObraHours={() => void handleExportObraHours()}
                 />
 
                 {!record ? (
@@ -562,10 +584,17 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
                         gridExpanded={gridExpanded}
                         obraDayHours={obraDayHours}
                         obraMonthProjects={obraMonthProjects}
+                        obraHoursTotal={obraHoursTotal}
                         onUpdateRow={updateRow}
                         onGridKeyDown={handleGridKeyDown}
                         onGridPaste={handleGridPaste}
-                        onOpenObraModal={setObraModalDate}
+                        onOpenObraModal={(date) => {
+                            if (rows.find((row) => row.workDate === date)?.isVacation) {
+                                toast.error('No se pueden imputar horas a obra en un día de ausencia (vacaciones, baja médica o permiso).');
+                                return;
+                            }
+                            setObraModalDate(date);
+                        }}
                     />
                 )}
 
@@ -592,10 +621,12 @@ export function EmployeeControlHorarioSection({ employeeId }: EmployeeControlHor
 
             {record && (
                 <aside className="sticky bottom-0 z-30 grid gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white shadow-2xl safe-bottom xl:grid-cols-[1fr_auto] xl:items-center">
-                    <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs xl:grid-cols-6">
+                    <div className="grid grid-cols-2 gap-x-5 gap-y-2 text-xs xl:grid-cols-8">
                         <div><span className="block text-slate-400">Trabajadas</span><strong className="font-mono text-sm">{totals.worked.toFixed(2)} h</strong></div>
                         <div><span className="block text-slate-400">Planificadas</span><strong className="font-mono text-sm">{totals.scheduled.toFixed(2)} h</strong></div>
                         <div><span className="block text-slate-400">Diferencia</span><strong className={`font-mono text-sm ${hourDifference < 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{hourDifference.toFixed(2)} h</strong></div>
+                        <div><span className="block text-slate-400">Imputadas obra</span><strong className="font-mono text-sm">{obraHoursTotal.toFixed(2)} h</strong></div>
+                        <div><span className="block text-slate-400">Sin imputar</span><strong className={`font-mono text-sm ${obraBalance < -0.5 ? 'text-rose-300' : obraBalance > 0.5 ? 'text-amber-300' : 'text-emerald-300'}`}>{obraBalance.toFixed(2)} h</strong></div>
                         <div><span className="block text-slate-400">H. extra</span><strong className="font-mono text-sm">{totals.overtime.toFixed(2)} h</strong></div>
                         <div><span className="block text-slate-400">H. festivas</span><strong className="font-mono text-sm">{totals.holiday.toFixed(2)} h</strong></div>
                         <div><span className="block text-slate-400">Dietas</span><strong className="font-mono text-sm">{totals.diets.toFixed(2)} €</strong></div>

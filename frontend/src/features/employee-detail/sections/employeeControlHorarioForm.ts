@@ -44,21 +44,77 @@ export function normalizeDailyRowsForSave<T extends TimeRow>(rows: T[]) {
     return { rows: normalizedRows, invalidRowIndexes: [...new Set(invalidRowIndexes)] };
 }
 
+export interface AbsenceInfo {
+    type: string;
+    reason?: string;
+    label: string;
+    short: string;
+}
+
+const ABSENCE_TYPE_LABELS: Record<string, string> = {
+    VACATION: 'Vacaciones',
+    VACACIONES: 'Vacaciones',
+    SICK: 'Baja médica',
+    MEDICAL_LEAVE: 'Baja médica',
+    MATERNITY: 'Maternidad',
+    PATERNITY: 'Paternidad',
+    MEDICAL_APPOINTMENT: 'Cita médica',
+    UNPAID: 'Permiso sin goce',
+    MARRIAGE: 'Boda',
+    DEATH: 'Fallecimiento',
+    MOVING: 'Mudanza',
+    FAMILY_SICK: 'Enfermedad familiar',
+    PUBLIC_DUTY: 'Deber público',
+    LACTATION: 'Lactancia',
+    LACTANCIA: 'Lactancia',
+    OTHER: 'Otro permiso'
+};
+
+const ABSENCE_SHORT_LABELS: Record<string, string> = {
+    VACATION: 'VAC',
+    VACACIONES: 'VAC',
+    SICK: 'BAJA',
+    MEDICAL_LEAVE: 'BAJA',
+    MEDICAL_APPOINTMENT: 'BAJA',
+    FAMILY_SICK: 'BAJA',
+    MATERNITY: 'MAT',
+    PATERNITY: 'PAT',
+    UNPAID: 'PERM',
+    MARRIAGE: 'PERM',
+    DEATH: 'PERM',
+    MOVING: 'PERM',
+    PUBLIC_DUTY: 'PERM',
+    LACTATION: 'PERM',
+    LACTANCIA: 'PERM',
+    OTHER: 'AUS'
+};
+
+export function getAbsenceLabel(type: string | null | undefined): string {
+    return ABSENCE_TYPE_LABELS[(type || 'VACATION').toUpperCase().trim()] || 'Ausencia';
+}
+
+export function getAbsenceShortLabel(type: string | null | undefined): string {
+    return ABSENCE_SHORT_LABELS[(type || 'VACATION').toUpperCase().trim()] || 'AUS';
+}
+
+/**
+ * Días de ausencia aprobada (vacaciones, bajas médicas, permisos...) que caen
+ * en el mes. Todos los tipos aprobados cuentan: la rejilla los trata igual que
+ * las vacaciones (sin jornada planificada ni imputación a obra).
+ */
 export function getEmployeeVacations(
     vacations: VacationItem[] = [],
     year: number,
     month: number
-): Map<string, { type: string; reason?: string }> {
-    const map = new Map<string, { type: string; reason?: string }>();
+): Map<string, AbsenceInfo> {
+    const map = new Map<string, AbsenceInfo>();
     const monthStart = new Date(Date.UTC(year, month - 1, 1));
     const monthEnd = new Date(Date.UTC(year, month, 0, 23, 59, 59, 999));
 
     vacations
         .filter((vac) => {
             const status = (vac.status || 'APPROVED').toUpperCase().trim();
-            if (status !== 'APPROVED' && status !== 'EXISTING') return false;
-            const t = (vac.type || 'VACATION').toUpperCase().trim();
-            return t === 'VACATION' || t === 'VACACIONES';
+            return status === 'APPROVED' || status === 'EXISTING';
         })
         .forEach((vac) => {
             const rawStart = new Date(vac.startDate);
@@ -73,11 +129,14 @@ export function getEmployeeVacations(
             const limit = new Date(Math.min(end.getTime(), monthEnd.getTime()));
             limit.setUTCHours(23, 59, 59, 999);
 
+            const type = vac.type || 'VACATION';
             while (cursor <= limit) {
                 const key = cursor.toISOString().slice(0, 10);
                 map.set(key, {
-                    type: vac.type || 'VACATION',
-                    reason: vac.reason || undefined
+                    type,
+                    reason: vac.reason || undefined,
+                    label: getAbsenceLabel(type),
+                    short: getAbsenceShortLabel(type)
                 });
                 cursor.setUTCDate(cursor.getUTCDate() + 1);
             }

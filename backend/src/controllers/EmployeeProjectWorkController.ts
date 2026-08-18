@@ -5,6 +5,32 @@ import { canManageEmployee, canReadEmployeeDetail } from '../policies/employeeAc
 import { ApiResponse } from '../utils/ApiResponse';
 import { Prisma } from '@prisma/client';
 
+/**
+ * Si el rango cae en un día con ausencia aprobada (vacaciones, baja médica,
+ * permiso...) devuelve el mensaje de bloqueo; si no, null. Refuerza a nivel de
+ * API lo que el control horario ya hace en la interfaz (deshabilitar la
+ * imputación de obras en días de ausencia).
+ */
+async function approvedAbsenceBlockMessage(employeeId: string, start: Date, end: Date): Promise<string | null> {
+    const absence = await prisma.vacation.findFirst({
+        where: {
+            employeeId,
+            status: { in: ['APPROVED', 'EXISTING'] },
+            startDate: { lte: end },
+            endDate: { gte: start }
+        },
+        select: { type: true, startDate: true, endDate: true }
+    });
+    if (!absence) return null;
+    const config = await prisma.absenceTypeConfig.findFirst({
+        where: { code: { equals: absence.type || 'VACATION', mode: 'insensitive' } }
+    });
+    const label = config?.name || 'ausencia aprobada';
+    const from = absence.startDate.toISOString().slice(0, 10);
+    const to = absence.endDate.toISOString().slice(0, 10);
+    return `No se pueden imputar horas a obra: el empleado tiene ${label} aprobada (${from} a ${to}).`;
+}
+
 export class EmployeeProjectWorkController {
     async getByEmployee(req: Request, res: Response) {
         try {
@@ -78,6 +104,11 @@ export class EmployeeProjectWorkController {
                 return ApiResponse.error(res, 'endDate debe ser posterior o igual a startDate', 400);
             }
 
+            const absenceBlock = await approvedAbsenceBlockMessage(employeeId, start, end);
+            if (absenceBlock) {
+                return ApiResponse.error(res, absenceBlock, 422);
+            }
+
             const entry = await prisma.employeeProjectWork.create({
                 data: {
                     employeeId,
@@ -121,6 +152,11 @@ export class EmployeeProjectWorkController {
             }
             if (newStart > newEnd) {
                 return ApiResponse.error(res, 'endDate debe ser posterior o igual a startDate', 400);
+            }
+
+            const absenceBlock = await approvedAbsenceBlockMessage(existing.employeeId, newStart, newEnd);
+            if (absenceBlock) {
+                return ApiResponse.error(res, absenceBlock, 422);
             }
 
             const updated = await prisma.employeeProjectWork.update({

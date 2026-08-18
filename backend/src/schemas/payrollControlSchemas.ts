@@ -88,7 +88,18 @@ export const updateDailyEntriesSchema = z.object({
         // Al volver a guardarlos, el cliente debe poder enviarlos sin bloquear
         // todo el mes; se normalizan a texto vacío para el servicio.
         notes: z.string().trim().max(1000).nullable().transform((value) => value ?? '')
-    }).strict()).min(28).max(31)
+    }).strict()).min(28).max(31),
+    // Campos mensuales opcionales: el control horario guarda el detalle diario y
+    // los datos mensuales en un único PUT (antes eran dos llamadas encadenadas
+    // con control de versión entre medias).
+    overtimeRate: nonNegativeMoney.optional(),
+    holidayOvertimeRate: nonNegativeMoney.optional(),
+    positiveVariable: nonNegativeMoney.optional(),
+    negativeVariable: nonNegativeMoney.optional(),
+    irpf: z.coerce.number().finite().min(0).max(1).optional(),
+    tgss: z.coerce.number().finite().min(0).max(1).optional(),
+    gestoriaCode: z.string().trim().max(50).nullable().optional(),
+    observations: z.string().trim().max(2000).nullable().transform((value) => value ?? '').optional()
 }).strict();
 
 export const timeSheetImportBodySchema = z.object({
@@ -106,6 +117,15 @@ export const timeSheetImportSchema = z.object({
 });
 
 export const exportGestoriaSchema = z.object({ periodId: z.string().uuid() }).strict();
+
+export const obraHoursExportQuerySchema = z.object({
+    year: z.coerce.number().int().min(2000).max(2100),
+    month: z.coerce.number().int().min(1).max(12),
+    companyId: z.string().uuid().optional(),
+    // Si se indica un empleado, el parte es solo de ese empleado (desde su
+    // control horario); sin él, es el parte mensual de toda la empresa.
+    employeeId: z.string().uuid().optional()
+}).strict();
 
 export const createConceptConfigSchema = z.object({
     companyId: z.string().uuid().optional(),

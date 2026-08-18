@@ -166,7 +166,7 @@ export default function ObraHoursModal({ open, onClose, employeeId, date, defaul
     const remaining = Math.max(0, defaultHours - allocatedHours);
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
             <div
                 className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]"
                 onClick={(event) => event.stopPropagation()}

@@ -13,6 +13,7 @@ import {
     employeeRecordBodySchema,
     updateDailyEntriesSchema,
     exportGestoriaSchema,
+    obraHoursExportQuerySchema,
     createConceptConfigSchema,
     historyQuerySchema,
     periodQuerySchema,
@@ -280,8 +281,17 @@ export const PayrollControlController = {
             }
             return ApiResponse.success(
                 res,
-                await PayrollControlService.updateDailyEntries(info.record.id, info.record.version, body.entries, user.id),
-                'Detalle diario guardado.'
+                await PayrollControlService.updateDailyEntries(info.record.id, info.record.version, body.entries, user.id, {
+                    overtimeRate: body.overtimeRate,
+                    holidayOvertimeRate: body.holidayOvertimeRate,
+                    positiveVariable: body.positiveVariable,
+                    negativeVariable: body.negativeVariable,
+                    irpf: body.irpf,
+                    tgss: body.tgss,
+                    gestoriaCode: body.gestoriaCode,
+                    observations: body.observations
+                }),
+                'Control horario guardado.'
             );
         } catch (error: unknown) {
             log.error({ error }, 'Error updating employee daily payroll control');
@@ -375,6 +385,28 @@ export const PayrollControlController = {
         } catch (error: unknown) {
             log.error({ error }, 'Error downloading gestoria export');
             return handleControllerError(res, error, 'Error al descargar la exportación de gestoría');
+        }
+    },
+
+    exportObraHours: async (req: Request, res: Response) => {
+        try {
+            const user = requireUser(req);
+            const query = obraHoursExportQuerySchema.parse(req.query);
+            const companyId = isGlobalAdmin(user) ? query.companyId : user.companyId;
+            if (!companyId) throw new AppError('Un administrador global debe indicar la empresa.', 400);
+            assertTenantAccess(user, companyId);
+            if (query.employeeId) {
+                const employee = await prisma.employee.findUnique({ where: { id: query.employeeId }, select: { companyId: true } });
+                if (!employee) throw new AppError('Empleado no encontrado.', 404);
+                assertTenantAccess(user, employee.companyId);
+            }
+            const result = await PayrollControlService.buildObraHoursWorkbook(companyId, query.year, query.month, query.employeeId);
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+            return res.send(result.buffer);
+        } catch (error: unknown) {
+            log.error({ error }, 'Error exporting obra hours');
+            return handleControllerError(res, error, 'Error al generar el parte de horas por obra');
         }
     }
 };

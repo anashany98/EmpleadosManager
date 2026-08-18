@@ -50,16 +50,16 @@ describe('getEmployeeVacations', () => {
 
         const result = getEmployeeVacations(vacations, 2026, 8);
         expect(result.size).toBe(5);
-        expect(result.get('2026-08-10')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano' });
-        expect(result.get('2026-08-11')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano' });
-        expect(result.get('2026-08-12')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano' });
-        expect(result.get('2026-08-13')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano' });
-        expect(result.get('2026-08-14')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano' });
+        expect(result.get('2026-08-10')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano', label: 'Vacaciones', short: 'VAC' });
+        expect(result.get('2026-08-11')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano', label: 'Vacaciones', short: 'VAC' });
+        expect(result.get('2026-08-12')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano', label: 'Vacaciones', short: 'VAC' });
+        expect(result.get('2026-08-13')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano', label: 'Vacaciones', short: 'VAC' });
+        expect(result.get('2026-08-14')).toEqual({ type: 'VACATION', reason: 'Vacaciones de verano', label: 'Vacaciones', short: 'VAC' });
         expect(result.get('2026-08-09')).toBeUndefined();
         expect(result.get('2026-08-15')).toBeUndefined();
     });
 
-    it('ignora registros pendientes, rechazados o tipos de ausencia que no sean vacaciones', () => {
+    it('ignora pendientes/rechazados pero incluye bajas médicas y permisos aprobados', () => {
         const vacations = [
             {
                 startDate: '2026-08-01T00:00:00.000Z',
@@ -69,14 +69,35 @@ describe('getEmployeeVacations', () => {
             },
             {
                 startDate: '2026-08-20T00:00:00.000Z',
-                endDate: '2026-08-25T00:00:00.000Z',
+                endDate: '2026-08-22T00:00:00.000Z',
                 status: 'APPROVED',
-                type: 'MEDICAL_LEAVE'
+                type: 'MEDICAL_LEAVE',
+                reason: 'Baja por enfermedad'
+            },
+            {
+                startDate: '2026-08-26T00:00:00.000Z',
+                endDate: '2026-08-26T00:00:00.000Z',
+                status: 'APPROVED',
+                type: 'MARRIAGE'
             }
         ];
 
         const result = getEmployeeVacations(vacations, 2026, 8);
-        expect(result.size).toBe(0);
+        // Solo los aprobados: baja médica (3 días) + boda (1 día); el PENDING se ignora.
+        expect(result.size).toBe(4);
+        expect(result.get('2026-08-01')).toBeUndefined();
+        expect(result.get('2026-08-20')).toEqual({
+            type: 'MEDICAL_LEAVE',
+            reason: 'Baja por enfermedad',
+            label: 'Baja médica',
+            short: 'BAJA'
+        });
+        expect(result.get('2026-08-26')).toEqual({
+            type: 'MARRIAGE',
+            reason: undefined,
+            label: 'Boda',
+            short: 'PERM'
+        });
     });
 
     it('acota correctamente las fechas cuando la vacación abarca el cambio de mes', () => {
