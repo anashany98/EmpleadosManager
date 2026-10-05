@@ -16,7 +16,7 @@ export class VacationReportService {
         // Only cache aggregated (non-paginated) vacation data
         if (!pagination) {
             const companyId = filters.companyId || 'global';
-            const cacheKey = CacheKeys.vacations(companyId, year);
+            const cacheKey = `${CacheKeys.vacations(companyId, year)}:${JSON.stringify(filters.department || null)}`;
 
             return CacheService.wrap(cacheKey, async () => this.computeVacationData(year, filters), VACATION_CACHE_TTL);
         }
@@ -75,8 +75,7 @@ export class VacationReportService {
             prisma.employeeVacationBalance.findMany({
                 where: {
                     year,
-                    ...(filters.companyId ? { employee: { companyId: filters.companyId } } : {}),
-                    ...(filters.department ? { employee: { department: filters.department } } : {})
+                    employee: where
                 },
                 select: {
                     employeeId: true,
@@ -218,7 +217,7 @@ export class VacationReportService {
 
             if (absence.type === 'VACATION') {
                 deptStats[dept].vacationDays += absence.days || 0;
-            } else if (absence.type === 'SICK_LEAVE') {
+            } else if (absence.type === 'SICK') {
                 deptStats[dept].sickDays += absence.days || 0;
             } else {
                 deptStats[dept].otherDays += absence.days || 0;

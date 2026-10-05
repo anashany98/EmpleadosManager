@@ -22,7 +22,7 @@ import ReportScheduleModal from '../components/reports/ReportScheduleModal';
 import type { ReportType, CompanyOption, DepartmentOptionsResponse } from '../features/reports/reportTypes';
 import { reportsCatalog, reportCategories, getReportDefinition, getToneClasses } from '../features/reports/reportTypes';
 import { extractResponseData, buildRequestParams, toQueryString, getPeriodLabel } from '../features/reports/reportHelpers';
-import { getNormalizedRows, buildSummaryCards, buildInsight, buildPdfTable } from '../features/reports/reportDataProcessing';
+import { getNormalizedRows, buildSummaryCards, buildInsight, buildPdfTable, buildScheduleParams, getScheduledReportType } from '../features/reports/reportDataProcessing';
 import { FilterSelect, SummaryCard, ReportTableHead, ReportTableBody } from '../features/reports/reportTableComponents';
 
 export default function Reports() {
@@ -31,8 +31,9 @@ export default function Reports() {
     const isGlobalAdmin = user?.role === 'admin' && !user?.companyId;
 
     const [activeTab, setActiveTab] = useState<ReportType>('ATTENDANCE');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [data, setData] = useState<any>(null);
+    const [loadedRequest, setLoadedRequest] = useState('');
     const [companies, setCompanies] = useState<CompanyOption[]>([]);
     const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -41,22 +42,27 @@ export default function Reports() {
         department: '',
         status: '',
         month: (new Date().getMonth() + 1).toString(),
-        start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-        end: new Date().toISOString().split('T')[0],
+        start: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`,
+        end: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
+        obraStart: '',
+        obraEnd: '',
         year: new Date().getFullYear().toString()
     });
 
-    const [scheduleModal, setScheduleModal] = useState<{ isOpen: boolean; reportType: string; reportName: string }>({
+    const [scheduleModal, setScheduleModal] = useState<{ isOpen: boolean; reportType: string; reportName: string; params: Record<string, string | number> }>({
         isOpen: false,
         reportType: '',
-        reportName: ''
+        reportName: '',
+        params: {}
     });
 
     const activeReport = getReportDefinition(activeTab);
     const ActiveReportIcon = activeReport.icon;
-    const normalizedRows = useMemo(() => getNormalizedRows(activeTab, data), [activeTab, data]);
-    const summaryCards = useMemo(() => buildSummaryCards(activeTab, normalizedRows, data), [activeTab, normalizedRows, data]);
-    const reportInsight = useMemo(() => buildInsight(activeTab, normalizedRows, data), [activeTab, normalizedRows, data]);
+    const requestUrl = `${activeReport.endpoint}?${toQueryString(buildRequestParams(activeTab, filters))}`;
+    const reportData = loadedRequest === requestUrl ? data : null;
+    const normalizedRows = useMemo(() => getNormalizedRows(activeTab, reportData), [activeTab, reportData]);
+    const summaryCards = useMemo(() => buildSummaryCards(activeTab, normalizedRows, reportData), [activeTab, normalizedRows, reportData]);
+    const reportInsight = useMemo(() => buildInsight(activeTab, normalizedRows, reportData), [activeTab, normalizedRows, reportData]);
 
     useEffect(() => {
         void fetchCompanies();
@@ -64,8 +70,20 @@ export default function Reports() {
     }, []);
 
     useEffect(() => {
-        void fetchData();
-    }, [activeTab, filters.companyId, filters.department, filters.start, filters.end, filters.year, filters.month, filters.status]);
+        const controller = new AbortController();
+        setLoading(true);
+        setData(null);
+        void api.get(requestUrl, { signal: controller.signal }).then((response) => {
+            if (controller.signal.aborted) return;
+            setData(extractResponseData<any>(response));
+            setLoadedRequest(requestUrl);
+        }).catch(() => {
+            if (!controller.signal.aborted) toast.error('Error al cargar el reporte');
+        }).finally(() => {
+            if (!controller.signal.aborted) setLoading(false);
+        });
+        return () => controller.abort();
+    }, [requestUrl]);
 
     const fetchCompanies = async () => {
         try {
@@ -84,20 +102,6 @@ export default function Reports() {
         } catch (error) {
             console.error(error);
             setDepartmentOptions([]);
-        }
-    };
-
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const params = buildRequestParams(activeTab, filters);
-            const queryString = toQueryString(params);
-            const response = await api.get(`${activeReport.endpoint}?${queryString}`);
-            setData(extractResponseData<any>(response));
-        } catch (error) {
-            toast.error('Error al cargar el reporte');
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -123,7 +127,7 @@ export default function Reports() {
                 import('jspdf-autotable')
             ]);
 
-            const pdfTable = buildPdfTable(activeTab, normalizedRows, data);
+            const pdfTable = buildPdfTable(activeTab, normalizedRows, reportData);
 
             const doc = new jsPDF();
             doc.setFontSize(18);
@@ -150,7 +154,7 @@ export default function Reports() {
     };
 
     const openScheduleModal = (reportType: string, reportName: string) => {
-        setScheduleModal({ isOpen: true, reportType, reportName });
+        setScheduleModal({ isOpen: true, reportType: getScheduledReportType(reportType as ReportType), reportName, params: buildScheduleParams(reportType as ReportType, filters) });
     };
 
     const toneClasses = getToneClasses(activeReport.tone);
@@ -363,10 +367,11 @@ export default function Reports() {
                         options={[{ value: '', label: 'Todos los departamentos' }, ...departmentOptions.map((department) => ({ value: department, label: department }))]}
                     />
 
-                    {(activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED') ? (
+                    {(activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED' || activeTab === 'PRL_MEDICAL' || activeTab === 'PRL_TRAINING') ? (
                         <div className="flex flex-wrap items-center gap-2">
                             <input
                                 type="date"
+                                aria-label="Fecha inicial del reporte"
                                 value={filters.start}
                                 onChange={(event) => setFilters({ ...filters, start: event.target.value })}
                                 className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
@@ -374,6 +379,7 @@ export default function Reports() {
                             <span className="text-xs font-black text-slate-400 uppercase tracking-widest">a</span>
                             <input
                                 type="date"
+                                aria-label="Fecha final del reporte"
                                 value={filters.end}
                                 onChange={(event) => setFilters({ ...filters, end: event.target.value })}
                                 className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
@@ -381,6 +387,7 @@ export default function Reports() {
                         </div>
                     ) : activeTab === 'OBRA_SUMMARY' || activeTab === 'OBRA_EMPLOYEES' ? (
                         <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm text-slate-500">{getPeriodLabel(activeTab, filters)}</span>
                             {(activeTab === 'OBRA_SUMMARY') && (
                                 <select
                                     value={filters.status}
@@ -394,17 +401,24 @@ export default function Reports() {
                             )}
                             <input
                                 type="date"
-                                value={filters.start}
-                                onChange={(event) => setFilters({ ...filters, start: event.target.value })}
+                                aria-label="Fecha inicial de obras"
+                                value={filters.obraStart}
+                                onChange={(event) => setFilters({ ...filters, obraStart: event.target.value })}
                                 className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
                             />
                             <span className="text-xs font-black text-slate-400 uppercase tracking-widest">a</span>
                             <input
                                 type="date"
-                                value={filters.end}
-                                onChange={(event) => setFilters({ ...filters, end: event.target.value })}
+                                aria-label="Fecha final de obras"
+                                value={filters.obraEnd}
+                                onChange={(event) => setFilters({ ...filters, obraEnd: event.target.value })}
                                 className="px-3 py-2 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium outline-none"
                             />
+                            {(filters.obraStart || filters.obraEnd) && (
+                                <button type="button" onClick={() => setFilters({ ...filters, obraStart: '', obraEnd: '' })} className="px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm">
+                                    Ver histórico completo
+                                </button>
+                            )}
                         </div>
                     ) : (
                         <div className="flex flex-wrap items-center gap-3">
@@ -433,7 +447,7 @@ export default function Reports() {
                         <button onClick={() => void handleExportExcel()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300 font-bold text-xs hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition-colors">
                             <Download size={14} /> Excel
                         </button>
-                        <button onClick={() => void handleExportPDF()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300 font-bold text-xs hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors">
+                        <button disabled={loading || loadedRequest !== requestUrl} onClick={() => void handleExportPDF()} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300 font-bold text-xs hover:bg-rose-100 dark:hover:bg-rose-500/20 transition-colors disabled:opacity-50">
                             <FileText size={14} /> PDF
                         </button>
                     </div>
@@ -511,9 +525,10 @@ export default function Reports() {
                 {scheduleModal.isOpen && (
                     <ReportScheduleModal
                         isOpen={scheduleModal.isOpen}
-                        onClose={() => setScheduleModal({ isOpen: false, reportType: '', reportName: '' })}
+                        onClose={() => setScheduleModal({ isOpen: false, reportType: '', reportName: '', params: {} })}
                         reportType={scheduleModal.reportType}
                         reportName={scheduleModal.reportName}
+                        params={scheduleModal.params}
                     />
                 )}
             </AnimatePresence>

@@ -6,6 +6,8 @@ import { EmailService } from './EmailService';
 import { StorageService } from './StorageService';
 import { AuditService } from './AuditService';
 import { createLogger } from './LoggerService';
+import { parseReportDateRange, parseReportYear, parseReportMonth } from '../utils/reportFilters';
+import { AppError } from '../utils/AppError';
 
 const log = createLogger('ReportScheduler');
 
@@ -17,6 +19,10 @@ interface ReportParams {
     employeeId?: string;
     year?: number;
     month?: number;
+    from?: string;
+    to?: string;
+    status?: string;
+    isGlobalAdmin?: boolean;
 }
 
 /**
@@ -39,7 +45,12 @@ const REPORT_LABELS: Record<string, string> = {
     costs: 'Coste empresa',
     absences: 'Bajas y ausencias',
     kpis: 'KPIs',
-    genderGap: 'Igualdad y diversidad'
+    genderGap: 'Igualdad y diversidad',
+    terminations: 'Bajas y despidos',
+    obras: 'Resumen por obra',
+    obraEmployees: 'Gastos de obra por empleado',
+    medicalReviews: 'Revisiones médicas (PRL)',
+    trainings: 'Cursos y formación'
 };
 
 /**
@@ -59,6 +70,11 @@ const SCHEDULE_REPORT_TYPE_VALUES = [
     'ABSENCES_DETAILED',
     'KPIS',
     'GENDER_GAP',
+    'TERMINATIONS',
+    'OBRA_SUMMARY',
+    'OBRA_EMPLOYEES',
+    'PRL_MEDICAL',
+    'PRL_TRAINING',
     'CUSTOM'
 ] as const;
 
@@ -91,6 +107,11 @@ function normalizeReportType(input: unknown): ScheduleReportType {
         kpis: 'KPIS',
         'gender-gap': 'GENDER_GAP',
         genderGap: 'GENDER_GAP',
+        terminations: 'TERMINATIONS',
+        'obra-summary': 'OBRA_SUMMARY',
+        'obra-employees': 'OBRA_EMPLOYEES',
+        'prl-medical': 'PRL_MEDICAL',
+        'prl-training': 'PRL_TRAINING',
         custom: 'CUSTOM'
     };
     if (alias[input]) return alias[input];
@@ -122,6 +143,27 @@ function normalizeFrequency(input: unknown): ScheduleFrequency {
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function parseScheduleParams(raw: string): ReportParams {
+    let params: ReportParams;
+    try {
+        const parsed = JSON.parse(raw || '{}');
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error();
+        params = { ...parsed };
+    } catch {
+        throw new Error('Parámetros del reporte inválidos');
+    }
+    if (params.year !== undefined) params.year = parseReportYear(params.year);
+    if (params.month !== undefined && params.month !== 0) params.month = parseReportMonth(params.month);
+    parseReportDateRange(params.startDate, params.endDate);
+    parseReportDateRange(params.from, params.to);
+    if (params.department !== undefined && (typeof params.department !== 'string' || params.department.length > 100)) {
+        throw new Error('Departamento inválido');
+    }
+    if (params.companyId !== undefined && typeof params.companyId !== 'string') throw new Error('Empresa inválida');
+    delete params.isGlobalAdmin;
+    return params;
+}
 
 function isGlobalAdmin(actor: SchedulerActor | null | undefined): boolean {
     return !!actor && actor.role === 'admin' && !actor.companyId;
@@ -209,12 +251,19 @@ export class ReportScheduler {
             // Forzamos companyId del actor en los params que se pasan
             // a ReportService, para que ningún query pueda "ver" más
             // allá del tenant del actor.
-            const params: ReportParams = JSON.parse(schedule.params || '{}');
+            const params = parseScheduleParams(schedule.params);
             if (!isGlobalAdmin(actor)) {
                 params.companyId = actor.companyId ?? undefined;
+            } else if (schedule.companyId) {
+                params.companyId = schedule.companyId;
             }
+            params.isGlobalAdmin = isGlobalAdmin(actor);
             const now = new Date();
             const dateStr = now.toISOString().split('T')[0];
+            const dates = parseReportDateRange(params.startDate, params.endDate);
+            const startDate = dates.start || new Date(now.getFullYear(), now.getMonth(), 1);
+            const endDate = dates.end || now;
+            const obraDates = parseReportDateRange(params.from, params.to);
 
             const REPORT_TYPE_MAP: Record<ScheduleReportType, string> = {
                 ATTENDANCE: 'attendance',
@@ -226,6 +275,11 @@ export class ReportScheduler {
                 ABSENCES_DETAILED: 'absences',
                 KPIS: 'kpis',
                 GENDER_GAP: 'genderGap',
+                TERMINATIONS: 'terminations',
+                OBRA_SUMMARY: 'obras',
+                OBRA_EMPLOYEES: 'obraEmployees',
+                PRL_MEDICAL: 'medicalReviews',
+                PRL_TRAINING: 'trainings',
                 CUSTOM: 'attendance' // fallback seguro: nunca debería llegar aquí
             };
 
@@ -238,7 +292,7 @@ export class ReportScheduler {
             const buildContext = () => ({
                 title,
                 subtitle: `Generado automáticamente el ${dateStr}`,
-                periodLabel: params.year ? `Año ${params.year}` : `${params.startDate || ''} al ${params.endDate || ''}`,
+                periodLabel: params.year ? (params.month ? `${params.month}/${params.year}` : `Año ${params.year}`) : params.from || params.to ? `${params.from || 'Inicio'} al ${params.to || 'Actualidad'}` : params.startDate || params.endDate ? `${params.startDate || 'Inicio'} al ${params.endDate || 'Actualidad'}` : 'Histórico completo',
                 filters: [
                     params.department ? `Departamento: ${params.department}` : 'Todos los departamentos',
                     params.companyId ? 'Empresa filtrada' : 'Todas las empresas'
@@ -252,23 +306,17 @@ export class ReportScheduler {
 
             switch (normalizedType) {
                 case 'attendance': {
-                    const startDate = params.startDate ? new Date(params.startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-                    const endDate = params.endDate ? new Date(params.endDate) : now;
                     const data = await ReportService.getAttendanceData(startDate, endDate, params);
                     const rows = (data as any)?.data || data || [];
                     excelBuffer = toBuffer(await ExcelService.generateAttendanceReport(rows, buildContext()));
                     break;
                 }
                 case 'attendanceSummary': {
-                    const startDate = params.startDate ? new Date(params.startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-                    const endDate = params.endDate ? new Date(params.endDate) : now;
                     const data = await ReportService.getAttendanceDailySummary(startDate, endDate, params);
                     excelBuffer = toBuffer(await ExcelService.generateAttendanceSummaryReport(data || [], buildContext()));
                     break;
                 }
                 case 'overtime': {
-                    const startDate = params.startDate ? new Date(params.startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-                    const endDate = params.endDate ? new Date(params.endDate) : now;
                     const data = await ReportService.getOvertimeData(startDate, endDate, params);
                     const rows = (data as any)?.data || data || [];
                     excelBuffer = toBuffer(await ExcelService.generateOvertimeReport(rows, buildContext()));
@@ -293,8 +341,6 @@ export class ReportScheduler {
                     break;
                 }
                 case 'absences': {
-                    const startDate = params.startDate ? new Date(params.startDate) : new Date(now.getFullYear(), now.getMonth(), 1);
-                    const endDate = params.endDate ? new Date(params.endDate) : now;
                     const data = await ReportService.getDetailedAbsenceData(startDate, endDate, params);
                     const rows = (data as any)?.data || data || [];
                     excelBuffer = toBuffer(await ExcelService.generateDetailedAbsenceReport(rows, buildContext()));
@@ -302,7 +348,7 @@ export class ReportScheduler {
                 }
                 case 'kpis': {
                     const year = params.year || now.getFullYear();
-                    const month = params.month || now.getMonth() + 1;
+                    const month = params.month === 0 ? undefined : params.month || now.getMonth() + 1;
                     const summary = await ReportService.getKPIMetrics(year, month, params);
                     const deptStats = await ReportService.getAbsenteeismByDepartment(year, month, params);
                     excelBuffer = toBuffer(await ExcelService.generateKPIReport(summary, deptStats || [], buildContext()));
@@ -311,6 +357,31 @@ export class ReportScheduler {
                 case 'genderGap': {
                     const genderData = await ReportService.getGenderGapData(params);
                     excelBuffer = toBuffer(await ExcelService.generateGenderGapReport(genderData, buildContext()));
+                    break;
+                }
+                case 'terminations': {
+                    const data = await ReportService.getMonthlyTerminations(params.year || now.getFullYear(), params.month || undefined, params);
+                    excelBuffer = toBuffer(await ExcelService.generateTerminationReport(data, buildContext()));
+                    break;
+                }
+                case 'obras': {
+                    const data = await ReportService.getObraSummary({ ...params, from: obraDates.start, to: obraDates.end });
+                    excelBuffer = toBuffer(await ExcelService.generateObraSummaryReport(data, buildContext()));
+                    break;
+                }
+                case 'obraEmployees': {
+                    const data = await ReportService.getObraEmployeeBreakdown({ ...params, from: obraDates.start, to: obraDates.end });
+                    excelBuffer = toBuffer(await ExcelService.generateObraEmployeeReport(data, buildContext()));
+                    break;
+                }
+                case 'medicalReviews': {
+                    const data = await ReportService.getMedicalReviewsReport({ ...params, from: obraDates.start, to: obraDates.end });
+                    excelBuffer = toBuffer(await ExcelService.generateMedicalReviewsReport(data, buildContext()));
+                    break;
+                }
+                case 'trainings': {
+                    const data = await ReportService.getTrainingsReport({ ...params, from: obraDates.start, to: obraDates.end });
+                    excelBuffer = toBuffer(await ExcelService.generateTrainingsReport(data, buildContext()));
                     break;
                 }
                 default:
@@ -471,9 +542,12 @@ export class ReportScheduler {
         // basura que el cron luego no puede ejecutar.
         const reportType = normalizeReportType(data.reportType);
         const frequency = normalizeFrequency(data.frequency);
+        const params = parseScheduleParams(data.params);
 
         // Forzamos companyId del actor (nunca del body)
-        const companyId = isGlobalAdmin(actor) ? (data.companyId ?? null) : (actor.companyId ?? null);
+        const companyId = isGlobalAdmin(actor) ? (data.companyId || params.companyId || null) : (actor.companyId ?? null);
+        if (!isGlobalAdmin(actor) && !companyId) throw new AppError('Usuario sin empresa asignada', 403);
+        params.companyId = companyId || undefined;
 
         // Si va a enviar email, validamos los destinatarios AHORA
         // (no en cada ejecución) para no propagar schedules inválidos.
@@ -487,7 +561,7 @@ export class ReportScheduler {
             data: {
                 name: data.name,
                 reportType,
-                params: data.params,
+                params: JSON.stringify(params),
                 frequency,
                 sendEmail: data.sendEmail,
                 recipients: data.recipients,

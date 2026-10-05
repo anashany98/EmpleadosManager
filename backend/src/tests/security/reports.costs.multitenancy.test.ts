@@ -157,6 +157,25 @@ describe('CRIT-001 — CostReportService tenant isolation', () => {
         expect(mocked.payrollRow.groupBy).not.toHaveBeenCalled();
     });
 
+    it('keeps an explicit company and department selection for a global administrator', async () => {
+        mocked.payrollImportBatch.findMany.mockResolvedValue([{ id: 'batch-A' }]);
+        mocked.payrollRow.groupBy.mockResolvedValue([
+            { employeeId: 'emp-A', _sum: { bruto: 1000, ssEmpresa: 200 } },
+            { employeeId: 'emp-B', _sum: { bruto: 9000, ssEmpresa: 900 } },
+            { employeeId: 'emp-C', _sum: { bruto: 3000, ssEmpresa: 300 } }
+        ]);
+        mocked.employee.findMany.mockResolvedValue([
+            { id: 'emp-A', name: 'Ana', dni: null, companyId: 'company-A', department: 'Taller' },
+            { id: 'emp-B', name: 'Luis', dni: null, companyId: 'company-B', department: 'Taller' },
+            { id: 'emp-C', name: 'Eva', dni: null, companyId: 'company-A', department: 'Oficina' }
+        ]);
+        const rows = await CostReportService.getCompanyCostData(2026, 8, { isGlobalAdmin: true, companyId: 'company-A', department: 'Taller' });
+        expect(rows).toHaveLength(1);
+        expect(rows[0].name).toBe('Ana');
+        expect(mocked.payrollImportBatch.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ createdBy: { employee: { companyId: 'company-A' } } }) }));
+        expect(mocked.payrollRow.groupBy).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ employee: { department: 'Taller' } }) }));
+    });
+
     it('un usuario no global sin companyId recibe [] (safeguard) sin tocar Prisma', async () => {
         const result = await CostReportService.getCompanyCostData(2026, 3, { companyId: null });
         expect(result).toEqual([]);

@@ -748,7 +748,7 @@ export class ExcelService {
                     lodging: safeNumber(totals.LODGING),
                     flight: safeNumber(totals.FLIGHT),
                     transport: safeNumber(totals.TRANSPORT),
-                    other: safeNumber(totals.OTHER),
+                    other: Object.entries(totals).filter(([type]) => !['PER_DIEM', 'LODGING', 'FLIGHT', 'TRANSPORT', 'CONTRACTOR'].includes(type)).reduce((sum, [, amount]) => sum + safeNumber(amount), 0),
                     autonomos: safeNumber(totals.CONTRACTOR),
                     hours: safeNumber(o.hours),
                     budget: budget || 0,
@@ -827,7 +827,7 @@ export class ExcelService {
                     LODGING: safeNumber(r.byType?.LODGING),
                     FLIGHT: safeNumber(r.byType?.FLIGHT),
                     TRANSPORT: safeNumber(r.byType?.TRANSPORT),
-                    OTHER: safeNumber(r.byType?.OTHER),
+                    OTHER: Object.entries(r.byType || {}).filter(([type]) => !['PER_DIEM', 'LODGING', 'FLIGHT', 'TRANSPORT', 'CONTRACTOR'].includes(type)).reduce((sum, [, amount]) => sum + safeNumber(amount), 0),
                     CONTRACTOR: safeNumber(r.byType?.CONTRACTOR),
                     total: safeNumber(r.total)
                 }))

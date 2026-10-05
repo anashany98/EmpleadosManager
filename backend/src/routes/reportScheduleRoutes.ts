@@ -2,6 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { checkPermission } from '../middlewares/authMiddleware';
 import { reportScheduler } from '../services/ReportScheduler';
 import { AuthenticatedRequest } from '../types/express';
+import { AppError } from '../utils/AppError';
 
 const router = Router();
 
@@ -27,7 +28,7 @@ router.post('/schedules', checkPermission('reports', 'write'), async (req: Reque
         // de validación con mensajes "reportType inválido" / "frequency
         // inválido" / "destinatarios inválidos". Esos son 400, no 500.
         const message = (error as Error)?.message || 'Failed to create schedule';
-        const status = /inválid|obligatorio|destinatarios/i.test(message) ? 400 : 500;
+        const status = error instanceof AppError ? error.statusCode : /inválid|obligatorio|destinatarios/i.test(message) ? 400 : 500;
         res.status(status).json({ error: message });
     }
 });

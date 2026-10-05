@@ -18,7 +18,10 @@ export class AttendanceReportService {
             const companyId = filters.companyId || 'global';
             const startStr = start.toISOString().split('T')[0];
             const endStr = end.toISOString().split('T')[0];
-            const cacheKey = CacheKeys.attendance(companyId, startStr, endStr);
+            const cacheKey = `${CacheKeys.attendance(companyId, startStr, endStr)}:${JSON.stringify([
+                start.toISOString(), end.toISOString(), filters.department || null,
+                pagination.isPaginationRequested, pagination.skip, pagination.limit
+            ])}`;
 
             return CacheService.wrap(cacheKey, async () => this.computeAttendanceData(start, end, filters, pagination), ATTENDANCE_CACHE_TTL);
         }
@@ -80,16 +83,19 @@ export class AttendanceReportService {
         if (filters.companyId) where.employee = { companyId: filters.companyId };
         if (filters.department) where.employee = { ...where.employee, department: filters.department };
 
-        if (pagination) getPrismaPagination(pagination);
-
-        const employees = await prisma.employee.findMany({
-            where: {
-                timeEntries: { some: where },
-                ...(filters.companyId ? { companyId: filters.companyId } : {}),
-                ...(filters.department ? { department: filters.department } : {})
-            },
-            select: { id: true, name: true, firstName: true, lastName: true, dni: true, department: true }
-        });
+        const employeeWhere = {
+            timeEntries: { some: where },
+            ...(filters.companyId ? { companyId: filters.companyId } : {}),
+            ...(filters.department ? { department: filters.department } : {})
+        };
+        const [employees, total] = await Promise.all([
+            prisma.employee.findMany({
+                where: employeeWhere,
+                select: { id: true, name: true, firstName: true, lastName: true, dni: true, department: true },
+                ...(pagination ? getPrismaPagination(pagination) : {})
+            }),
+            pagination ? prisma.employee.count({ where: employeeWhere }) : Promise.resolve(0)
+        ]);
 
         const employeeIds = employees.map(e => e.id);
         const allEntries = await prisma.timeEntry.findMany({
@@ -141,21 +147,20 @@ export class AttendanceReportService {
             };
         });
 
-        return { data: report, total: report.length };
+        return { data: report, total: pagination ? total : report.length };
     }
 
     /**
      * Calculates daily summaries for employees, pairing IN/OUT entries.
      */
-    static async getAttendanceDailySummary(start: Date, end: Date, filters: { employeeId?: string; companyId?: string } = {}, pagination?: PaginationParams) {
+    static async getAttendanceDailySummary(start: Date, end: Date, filters: { employeeId?: string; companyId?: string; department?: string } = {}, pagination?: PaginationParams) {
         const where: any = {
             timestamp: { gte: start, lte: end }
         };
 
         if (filters.employeeId) where.employeeId = filters.employeeId;
         if (filters.companyId) where.employee = { companyId: filters.companyId };
-
-        const prismaPagination = pagination ? getPrismaPagination(pagination) : {};
+        if (filters.department) where.employee = { ...where.employee, department: filters.department };
 
         const entries = await prisma.timeEntry.findMany({
             where,
@@ -164,8 +169,7 @@ export class AttendanceReportService {
                     select: { id: true, name: true, firstName: true, lastName: true, dni: true, department: true }
                 }
             },
-            orderBy: [{ employeeId: 'asc' }, { timestamp: 'asc' }],
-            ...prismaPagination
+            orderBy: [{ employeeId: 'asc' }, { timestamp: 'asc' }]
         });
 
         const summaries: any[] = [];
@@ -241,6 +245,11 @@ export class AttendanceReportService {
             }
         }
 
+        // Page consolidated days rather than individual marks, preserving IN/OUT pairs.
+        if (pagination) {
+            const { skip = 0, take } = getPrismaPagination(pagination);
+            return summaries.slice(skip, skip + take);
+        }
         return summaries;
     }
 }

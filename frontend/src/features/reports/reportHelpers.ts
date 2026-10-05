@@ -69,7 +69,10 @@ export function getAttendanceWindow(segments: Array<{ start: string; end: string
 }
 
 export function getPeriodLabel(activeTab: ReportType, filters: Record<string, string>) {
-    if (activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED') {
+    if (activeTab === 'OBRA_SUMMARY' || activeTab === 'OBRA_EMPLOYEES') {
+        return filters.obraStart || filters.obraEnd ? `${filters.obraStart || 'Inicio'} · ${filters.obraEnd || 'Actualidad'}` : 'Histórico completo';
+    }
+    if (activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED' || activeTab === 'PRL_MEDICAL' || activeTab === 'PRL_TRAINING') {
         return `${filters.start} · ${filters.end}`;
     }
 

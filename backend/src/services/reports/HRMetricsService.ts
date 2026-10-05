@@ -12,9 +12,10 @@ export class HRMetricsService {
      * Gets a summary of HR KPIs for a specific period.
      * Results are cached per company/year/month.
      */
-    static async getKPIMetrics(year: number, month: number, filters: any = {}) {
+    static async getKPIMetrics(year: number, month: number | undefined, filters: any = {}) {
         const companyId = filters.companyId || 'global';
-        const cacheKey = CacheKeys.kpis(companyId, year, month);
+        const baseKey = CacheKeys.kpis(companyId, year, month || 0);
+        const cacheKey = filters.department ? `${baseKey}:${JSON.stringify(filters.department)}` : baseKey;
 
         return CacheService.wrap(cacheKey, async () => this.computeKPIMetrics(year, month, filters), KPI_CACHE_TTL);
     }
@@ -22,16 +23,22 @@ export class HRMetricsService {
     /**
      * Computes the actual KPI metrics (called on cache miss).
      */
-    private static async computeKPIMetrics(year: number, month: number, filters: any = {}) {
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0, 23, 59, 59);
+    private static async computeKPIMetrics(year: number, month: number | undefined, filters: any = {}) {
+        const startDate = new Date(year, month ? month - 1 : 0, 1);
+        const endDate = new Date(year, month || 12, 0, 23, 59, 59, 999);
+        const employeeWhere = {
+            ...(filters.companyId ? { companyId: filters.companyId } : {}),
+            ...(filters.department ? { department: filters.department } : {})
+        };
+        const departmentScope = filters.department ? { employee: { department: filters.department } } : {};
 
         // 1. Employee Count (Start, End and Avg)
         const activePeriods = await prisma.employmentPeriod.findMany({
             where: {
                 startDate: { lte: endDate },
                 OR: [{ endDate: null }, { endDate: { gte: startDate } }],
-                ...(filters.companyId ? { companyId: filters.companyId } : {})
+                ...(filters.companyId ? { companyId: filters.companyId } : {}),
+                ...departmentScope
             },
             select: { employeeId: true }
         });
@@ -41,14 +48,16 @@ export class HRMetricsService {
         const hires = await prisma.employmentPeriod.count({
             where: {
                 startDate: { gte: startDate, lte: endDate },
-                ...(filters.companyId ? { companyId: filters.companyId } : {})
+                ...(filters.companyId ? { companyId: filters.companyId } : {}),
+                ...departmentScope
             }
         });
 
         const exits = await prisma.employmentPeriod.count({
             where: {
                 endDate: { gte: startDate, lte: endDate },
-                ...(filters.companyId ? { companyId: filters.companyId } : {})
+                ...(filters.companyId ? { companyId: filters.companyId } : {}),
+                ...departmentScope
             }
         });
 
@@ -60,18 +69,19 @@ export class HRMetricsService {
                 startDate: { lte: endDate },
                 endDate: { gte: startDate },
                 type: { notIn: VACATION_TYPES_FOR_BALANCE }, // Regular vacations don't count as absenteeism
-                employee: filters.companyId ? { companyId: filters.companyId } : {}
+                status: 'APPROVED',
+                employee: employeeWhere
             }
         });
 
         // Calculate real working days in the month
         const workingDaysInMonth = this.getWorkingDays(startDate, endDate);
         const totalPotentialDays = totalEmployees * workingDaysInMonth;
-        const totalAbsenceDays = absences.reduce((sum, a: any) => sum + (a.days || 0), 0);
+        const totalAbsenceDays = absences.reduce((sum, a) => sum + this.getAbsenceWorkingDays(a.startDate, a.endDate, startDate, endDate), 0);
         const absenteeismRate = totalPotentialDays > 0 ? (totalAbsenceDays / totalPotentialDays) * 100 : 0;
 
         return {
-            period: `${month}/${year}`,
+            period: month ? `${month}/${year}` : `Año ${year}`,
             headcount: totalEmployees,
             hires,
             exits,
@@ -97,13 +107,23 @@ export class HRMetricsService {
         return count;
     }
 
+    private static getAbsenceWorkingDays(start: Date, end: Date, periodStart: Date, periodEnd: Date): number {
+        const from = new Date(Math.max(start.getTime(), periodStart.getTime()));
+        const to = new Date(Math.min(end.getTime(), periodEnd.getTime()));
+        if (from > to) return 0;
+        from.setHours(0, 0, 0, 0);
+        to.setHours(0, 0, 0, 0);
+        return this.getWorkingDays(from, to);
+    }
+
     /**
      * Gets absenteeism breakdown by department.
      * Results are cached per company/year/month.
      */
-    static async getAbsenteeismByDepartment(year: number, month: number, filters: any = {}) {
+    static async getAbsenteeismByDepartment(year: number, month: number | undefined, filters: any = {}) {
         const companyId = filters.companyId || 'global';
-        const cacheKey = CacheKeys.absenteeism(companyId, year, month);
+        const baseKey = CacheKeys.absenteeism(companyId, year, month || 0);
+        const cacheKey = filters.department ? `${baseKey}:${JSON.stringify(filters.department)}` : baseKey;
 
         return CacheService.wrap(cacheKey, async () => this.computeAbsenteeismByDepartment(year, month, filters), ABSENTEEISM_CACHE_TTL);
     }
@@ -111,9 +131,9 @@ export class HRMetricsService {
     /**
      * Computes actual absenteeism data (called on cache miss).
      */
-    private static async computeAbsenteeismByDepartment(year: number, month: number, filters: any = {}) {
-        const startDate = new Date(year, month - 1, 1);
-        const endDate = new Date(year, month, 0, 23, 59, 59);
+    private static async computeAbsenteeismByDepartment(year: number, month: number | undefined, filters: any = {}) {
+        const startDate = new Date(year, month ? month - 1 : 0, 1);
+        const endDate = new Date(year, month || 12, 0, 23, 59, 59, 999);
 
         const employees = await prisma.employee.findMany({
             where: {
@@ -123,14 +143,16 @@ export class HRMetricsService {
                         OR: [{ endDate: null }, { endDate: { gte: startDate } }]
                     }
                 },
-                ...(filters.companyId ? { companyId: filters.companyId } : {})
+                ...(filters.companyId ? { companyId: filters.companyId } : {}),
+                ...(filters.department ? { department: filters.department } : {})
             },
             include: {
                 vacations: {
                     where: {
                         startDate: { lte: endDate },
                         endDate: { gte: startDate },
-                        type: { notIn: VACATION_TYPES_FOR_BALANCE }
+                        type: { notIn: VACATION_TYPES_FOR_BALANCE },
+                        status: 'APPROVED'
                     }
                 }
             }
@@ -146,7 +168,7 @@ export class HRMetricsService {
             }
             deptStats[dept].employees++;
             deptStats[dept].potentialDays += workingDays;
-            deptStats[dept].absenceDays += emp.vacations.reduce((sum, v: any) => sum + (v.days || 0), 0);
+            deptStats[dept].absenceDays += emp.vacations.reduce((sum, v) => sum + this.getAbsenceWorkingDays(v.startDate, v.endDate, startDate, endDate), 0);
         });
 
         return Object.values(deptStats).map((d: any) => ({
@@ -161,14 +183,15 @@ export class HRMetricsService {
     static async getGenderGapData(filters: any = {}) {
         const where: any = {};
         if (filters.companyId) where.companyId = filters.companyId;
+        if (filters.department) where.department = filters.department;
 
         const employees = await prisma.employee.findMany({
             where,
             include: {
                 payrollRows: {
-                    where: { status: 'OK' },
+                    where: { status: 'OK', ...(filters.year ? { batch: { year: Number(filters.year) } } : {}) },
                     orderBy: { batch: { createdAt: 'desc' } },
-                    take: 12 // Last 12 records
+                    ...(!filters.year ? { take: 12 } : {})
                 }
             }
         });

@@ -8,11 +8,12 @@ interface ReportScheduleModalProps {
   onClose: () => void;
   reportType: string;
   reportName: string;
+  params: Record<string, string | number>;
 }
 
 type Frequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
-export default function ReportScheduleModal({ isOpen, onClose, reportType, reportName }: ReportScheduleModalProps) {
+export default function ReportScheduleModal({ isOpen, onClose, reportType, reportName, params }: ReportScheduleModalProps) {
   const [name, setName] = useState(`${reportName} - Programado`);
   const [frequency, setFrequency] = useState<Frequency>('WEEKLY');
   const [sendEmail, setSendEmail] = useState(false);
@@ -28,8 +29,9 @@ export default function ReportScheduleModal({ isOpen, onClose, reportType, repor
     try {
       await api.post('/report-schedules/schedules', {
         name,
-        reportType: reportType.toLowerCase().replace('_', '-'),
-        params: JSON.stringify({}),
+        reportType,
+        companyId: params.companyId || undefined,
+        params: JSON.stringify(params),
         frequency,
         sendEmail,
         recipients: JSON.stringify(recipients.split(',').map(r => r.trim()).filter(Boolean))

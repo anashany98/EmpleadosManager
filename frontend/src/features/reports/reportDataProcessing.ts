@@ -6,7 +6,7 @@ export function buildRequestParams(activeTab: ReportType, filters: Record<string
     const params: Record<string, string> = {};
 
     if (filters.companyId) params.companyId = filters.companyId;
-    if (filters.department && activeTab !== 'GENDER_GAP') params.department = filters.department;
+    if (filters.department) params.department = filters.department;
 
     if (activeTab === 'ATTENDANCE' || activeTab === 'OVERTIME' || activeTab === 'ABSENCES_DETAILED') {
         params.start = filters.start;
@@ -19,14 +19,33 @@ export function buildRequestParams(activeTab: ReportType, filters: Record<string
     } else if (activeTab === 'GENDER_GAP') {
         params.year = filters.year;
     } else if (activeTab === 'OBRA_SUMMARY' || activeTab === 'OBRA_EMPLOYEES') {
-        if (filters.status) params.status = filters.status;
-        if (filters.start) params.from = filters.start;
-        if (filters.end) params.to = filters.end;
+        if (filters.status && activeTab === 'OBRA_SUMMARY') params.status = filters.status;
+        if (filters.obraStart) params.from = filters.obraStart;
+        if (filters.obraEnd) params.to = filters.obraEnd;
     } else if (activeTab === 'PRL_MEDICAL' || activeTab === 'PRL_TRAINING') {
         if (filters.start) params.from = filters.start;
         if (filters.end) params.to = filters.end;
     }
 
+    return params;
+}
+
+export function getScheduledReportType(activeTab: ReportType): string {
+    if (activeTab === 'ATTENDANCE') return 'ATTENDANCE_SUMMARY';
+    if (activeTab === 'VACATIONS') return 'VACATION';
+    return activeTab;
+}
+
+export function buildScheduleParams(activeTab: ReportType, filters: Record<string, string>) {
+    const query = buildRequestParams(activeTab, filters);
+    const params: Record<string, string | number> = {};
+    for (const [key, value] of Object.entries(query)) {
+        if (!value) continue;
+        const name = key === 'start' ? 'startDate' : key === 'end' ? 'endDate' : key;
+        params[name] = key === 'year' || key === 'month' ? Number(value) : value;
+    }
+    // An empty month means the whole year, including in recurring KPI reports.
+    if (activeTab === 'KPIS' && !query.month) params.month = 0;
     return params;
 }
 
@@ -68,7 +87,7 @@ export function getNormalizedRows(activeTab: ReportType, data: any) {
                 lodging: Number(totals.LODGING || 0),
                 flight: Number(totals.FLIGHT || 0),
                 transport: Number(totals.TRANSPORT || 0),
-                other: Number(totals.OTHER || 0),
+                other: Object.entries(totals).filter(([type]) => !['PER_DIEM', 'LODGING', 'FLIGHT', 'TRANSPORT'].includes(type)).reduce((sum, [, amount]) => sum + Number(amount || 0), 0),
                 hours: Number(o.hours || 0),
                 empleadosCount: Number(o.empleadosCount || 0),
                 budget,
@@ -91,7 +110,7 @@ export function getNormalizedRows(activeTab: ReportType, data: any) {
             lodging: Number(r.byType?.LODGING || 0),
             flight: Number(r.byType?.FLIGHT || 0),
             transport: Number(r.byType?.TRANSPORT || 0),
-            other: Number(r.byType?.OTHER || 0),
+            other: Object.entries(r.byType || {}).filter(([type]) => !['PER_DIEM', 'LODGING', 'FLIGHT', 'TRANSPORT'].includes(type)).reduce((sum, [, amount]) => sum + Number(amount || 0), 0),
             total: Number(r.total || 0)
         }));
     }
@@ -140,7 +159,7 @@ export function getNormalizedRows(activeTab: ReportType, data: any) {
             pendingDays: item.pendingDays || 0,
             usedDays: item.usedDays || 0,
             remainingDays: item.remainingDays || 0,
-            projectedRemainingDays: item.projectedRemainingDays || item.remainingDays || 0,
+            projectedRemainingDays: item.projectedRemainingDays ?? item.remainingDays ?? 0,
             usageRate: item.totalQuota ? ((item.usedDays || 0) / item.totalQuota) * 100 : 0,
             requests: item.requests || item.vacations?.length || 0
         }));
@@ -170,17 +189,6 @@ export function getNormalizedRows(activeTab: ReportType, data: any) {
             reason: item.reason || 'Sin motivo especificado'
         }));
     }
-
-    return rows.map((item: any) => ({
-        employee: item.employee?.name || 'N/A',
-        dni: item.employee?.dni || '-',
-        department: item.employee?.department || 'Sin asignar',
-        startDate: item.startDate,
-        endDate: item.endDate,
-        days: item.days || 0,
-        type: item.type || '-',
-        reason: item.reason || '-'
-    }));
 
     if (activeTab === 'PRL_MEDICAL') {
         const list = Array.isArray(data?.rows) ? data.rows : [];
@@ -216,7 +224,16 @@ export function getNormalizedRows(activeTab: ReportType, data: any) {
         }));
     }
 
-    return rows;
+    return rows.map((item: any) => ({
+        employee: item.employee?.name || 'N/A',
+        dni: item.employee?.dni || '-',
+        department: item.employee?.department || 'Sin asignar',
+        startDate: item.startDate,
+        endDate: item.endDate,
+        days: item.days || 0,
+        type: item.type || '-',
+        reason: item.reason || '-'
+    }));
 }
 
 export function buildSummaryCards(activeTab: ReportType, rows: any[], data: any): SummaryCardData[] {
@@ -454,8 +471,8 @@ export function buildInsight(activeTab: ReportType, rows: any[], data: any) {
     if (activeTab === 'PRL_TRAINING') {
         const s = data?.summary || {};
         if ((s.totalTrainings || 0) === 0) return 'No hay cursos registrados en el rango seleccionado.';
-        const topCourse = Object.entries(data?.distributionByCourse || {})
-            .sort((a: any, b: any) => Number(b[1]?.count || 0) - Number(a[1]?.count || 0))[0];
+        const topCourse = Object.entries((data?.distributionByCourse || {}) as Record<string, { count: number }>)
+            .sort((a, b) => Number(b[1]?.count || 0) - Number(a[1]?.count || 0))[0];
         if (topCourse) {
             return `"${topCourse[0]}" es el curso con más imparticiones (${topCourse[1]?.count || 0}). Total acumulado: ${formatNumber(s.totalHours || 0, ' h')}.`;
         }

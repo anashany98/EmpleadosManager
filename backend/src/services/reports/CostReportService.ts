@@ -28,10 +28,10 @@ export class CostReportService {
     static async getCompanyCostData(
         year: number,
         month: number | undefined,
-        filters: { companyId?: string | null; isGlobalAdmin?: boolean } = {}
+        filters: { companyId?: string | null; isGlobalAdmin?: boolean; department?: string } = {}
     ) {
         const isGlobal = !!filters.isGlobalAdmin;
-        const companyId = isGlobal ? null : (filters.companyId ?? null);
+        const companyId = filters.companyId ?? null;
 
         if (!isGlobal && !companyId) {
             // Usuario no global sin tenant: nunca devolver datos.
@@ -41,11 +41,12 @@ export class CostReportService {
         }
 
         const cacheScope = companyId ?? GLOBAL_SCOPE_KEY;
-        const cacheKey = CacheKeys.costs(cacheScope, year, month);
+        const baseKey = CacheKeys.costs(cacheScope, year, month);
+        const cacheKey = filters.department ? `${baseKey}:${JSON.stringify(filters.department)}` : baseKey;
 
         return CacheService.wrap(
             cacheKey,
-            async () => this.computeCompanyCostData(year, month, { companyId, isGlobalAdmin: isGlobal }),
+            async () => this.computeCompanyCostData(year, month, { ...filters, companyId, isGlobalAdmin: isGlobal }),
             COST_CACHE_TTL
         );
     }
@@ -66,10 +67,9 @@ export class CostReportService {
     private static async computeCompanyCostData(
         year: number,
         month?: number,
-        filters: { companyId?: string | null; isGlobalAdmin?: boolean } = {}
+        filters: { companyId?: string | null; isGlobalAdmin?: boolean; department?: string } = {}
     ) {
-        const isGlobal = !!filters.isGlobalAdmin;
-        const companyId = isGlobal ? null : (filters.companyId ?? null);
+        const companyId = filters.companyId ?? null;
 
         const whereBatch: any = { year };
         if (month) whereBatch.month = month;
@@ -88,7 +88,7 @@ export class CostReportService {
         // 2. Agregados por empleado
         const aggregatedCosts = await prisma.payrollRow.groupBy({
             by: ['employeeId'],
-            where: { batchId: { in: batchIds } },
+            where: { batchId: { in: batchIds }, ...(filters.department ? { employee: { department: filters.department } } : {}) },
             _sum: {
                 bruto: true,
                 ssEmpresa: true,
@@ -124,6 +124,7 @@ export class CostReportService {
             if (companyId && emp.companyId !== companyId) {
                 continue;
             }
+            if (filters.department && emp.department !== filters.department) continue;
 
             const bruto = Number(cost._sum.bruto || 0);
             const ssEmpresa = Number(cost._sum.ssEmpresa || 0);

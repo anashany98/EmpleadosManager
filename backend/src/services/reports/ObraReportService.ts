@@ -1,13 +1,48 @@
 import { prisma } from '../../lib/prisma';
 import { CacheService } from '../CacheService';
+import { Prisma } from '@prisma/client';
 
 const OBRA_REPORT_CACHE_TTL = 300;
 
+interface ObraReportScope {
+    companyId?: string | null;
+    isGlobalAdmin?: boolean;
+    department?: string;
+}
+
+const employeeScope = (companyId?: string | null, department?: string) => ({
+    ...(companyId ? { companyId } : {}),
+    ...(department ? { department } : {})
+});
+
+const expenseScope = (companyId?: string | null, department?: string): Prisma.ObraExpenseWhereInput => companyId || department ? {
+    OR: [
+        { employee: employeeScope(companyId, department) },
+        // Expenses without an employee (e.g. contractors) belong to the creator's tenant.
+        { employeeId: null, createdBy: { employee: employeeScope(companyId, department) } }
+    ]
+} : {};
+
+const workScope = (companyId?: string | null, department?: string): Prisma.EmployeeProjectWorkWhereInput =>
+    companyId || department ? { employee: employeeScope(companyId, department) } : {};
+
+const projectScope = (companyId?: string | null, department?: string): Prisma.ProjectWhereInput => companyId || department ? {
+    OR: [
+        { manager: employeeScope(companyId, department) },
+        { employeeWork: { some: workScope(companyId, department) } },
+        { expenses: { some: expenseScope(companyId, department) } }
+    ]
+} : {};
+
+const emptySummary = () => ({ obras: [], totalsByType: {}, horasTotales: 0, totalEmpleados: 0, budgets: { budget: 0, consumed: 0 } });
+
 export class ObraReportService {
-    static async getObraSummary(filters: { from?: Date; to?: Date; status?: string } = {}) {
-        const cacheKey = `report:obra-summary:${filters.status || 'ALL'}:${filters.from?.toISOString() || ''}:${filters.to?.toISOString() || ''}`;
+    static async getObraSummary(filters: ObraReportScope & { from?: Date; to?: Date; status?: string } = {}) {
+        const companyId = filters.companyId;
+        if (!companyId && !filters.isGlobalAdmin) return emptySummary();
+        const cacheKey = `report:obra-summary:${JSON.stringify([companyId || '__global__', filters.department || null, filters.status || 'ALL', filters.from?.toISOString() || '', filters.to?.toISOString() || ''])}`;
         return CacheService.wrap(cacheKey, async () => {
-            const whereObra: any = {};
+            const whereObra: Prisma.ProjectWhereInput = projectScope(companyId, filters.department);
             if (filters.status === 'ACTIVE' || filters.status === 'INACTIVE') {
                 whereObra.status = filters.status;
             }
@@ -15,25 +50,29 @@ export class ObraReportService {
             const obras = await prisma.project.findMany({
                 where: whereObra,
                 include: {
-                    manager: { select: { id: true, name: true, firstName: true, lastName: true } },
-                    _count: { select: { employeeWork: true, expenses: true } }
+                    manager: { select: { id: true, name: true, firstName: true, lastName: true, companyId: true } },
+                    _count: { select: {
+                        employeeWork: { where: workScope(companyId, filters.department) },
+                        expenses: { where: expenseScope(companyId, filters.department) }
+                    } }
                 },
                 orderBy: { createdAt: 'desc' }
             });
             if (obras.length === 0) {
-                return { obras: [], totalsByType: {}, horasTotales: 0, totalEmpleados: 0, budgets: { budget: 0, consumed: 0 } };
+                return emptySummary();
             }
 
             const obraIds = obras.map((o) => o.id);
 
-            const expenseWhere: any = { obraId: { in: obraIds } };
+            const expenseWhere: Prisma.ObraExpenseWhereInput = { obraId: { in: obraIds }, ...expenseScope(companyId, filters.department) };
             if (filters.from || filters.to) {
-                expenseWhere.date = {};
-                if (filters.from) expenseWhere.date.gte = filters.from;
-                if (filters.to) expenseWhere.date.lte = filters.to;
+                expenseWhere.date = {
+                    ...(filters.from ? { gte: filters.from } : {}),
+                    ...(filters.to ? { lte: filters.to } : {})
+                };
             }
 
-            const horasWhere: any = { projectId: { in: obraIds } };
+            const horasWhere: Prisma.EmployeeProjectWorkWhereInput = { projectId: { in: obraIds }, ...workScope(companyId, filters.department) };
             if (filters.from || filters.to) {
                 horasWhere.AND = [
                     ...(filters.from ? [{ endDate: { gte: filters.from } }] : []),
@@ -75,14 +114,18 @@ export class ObraReportService {
                 empleadosByObra[e.projectId].add(e.employeeId);
             }
 
-            const enrichedObras = obras.map((o: any) => {
-                const consumed = (totalsByTypeRaw || [])
-                    .filter((t) => t.obraId === o.id)
-                    .reduce((acc, t) => acc + Number(t._sum.amount || 0), 0);
+            const enrichedObras = obras.map((o) => {
+                const totals: Record<string, number> = {};
+                for (const expense of totalsByTypeRaw.filter((row) => row.obraId === o.id)) {
+                    totals[expense.type] = (totals[expense.type] || 0) + Number(expense._sum.amount || 0);
+                }
+                const consumed = Object.values(totals).reduce((sum, amount) => sum + amount, 0);
                 return {
                     ...o,
+                    manager: companyId && o.manager?.companyId !== companyId ? null : o.manager,
                     hours: horasByObra[o.id] || 0,
                     empleadosCount: empleadosByObra[o.id]?.size || 0,
+                    totals,
                     consumed
                 };
             });
@@ -101,17 +144,20 @@ export class ObraReportService {
         }, OBRA_REPORT_CACHE_TTL);
     }
 
-    static async getObraEmployeeBreakdown(filters: { from?: Date; to?: Date } = {}) {
-        const cacheKey = `report:obra-employee:${filters.from?.toISOString() || ''}:${filters.to?.toISOString() || ''}`;
+    static async getObraEmployeeBreakdown(filters: ObraReportScope & { from?: Date; to?: Date } = {}) {
+        const companyId = filters.companyId;
+        if (!companyId && !filters.isGlobalAdmin) return [];
+        const cacheKey = `report:obra-employee:${JSON.stringify([companyId || '__global__', filters.department || null, filters.from?.toISOString() || '', filters.to?.toISOString() || ''])}`;
         return CacheService.wrap(cacheKey, async () => {
-            const employeeWhere: any = {};
+            const employeeWhere: Prisma.ObraExpenseWhereInput = expenseScope(companyId, filters.department);
             if (filters.from || filters.to) {
-                employeeWhere.date = {};
-                if (filters.from) employeeWhere.date.gte = filters.from;
-                if (filters.to) employeeWhere.date.lte = filters.to;
+                employeeWhere.date = {
+                    ...(filters.from ? { gte: filters.from } : {}),
+                    ...(filters.to ? { lte: filters.to } : {})
+                };
             }
 
-            const workWhere: any = {};
+            const workWhere: Prisma.EmployeeProjectWorkWhereInput = workScope(companyId, filters.department);
             if (filters.from || filters.to) {
                 workWhere.AND = [
                     ...(filters.from ? [{ endDate: { gte: filters.from } }] : []),
@@ -200,6 +246,8 @@ export class ObraReportService {
 
             const rows = Array.from(map.values())
                 .map((r) => ({
+                    employeeId: r.employeeId,
+                    obraId: r.obraId,
                     employee: r.employee,
                     obra: r.obra,
                     obraCode: r.obraCode,

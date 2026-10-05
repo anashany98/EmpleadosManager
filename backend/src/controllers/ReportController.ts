@@ -8,6 +8,7 @@ import { AuthenticatedRequest } from '../types/express';
 import { AppError } from '../utils/AppError';
 import { resolveAuthorizedCompanyId } from '../utils/companyAccess';
 import { AuditService, AuditAction, AuditEntity } from '../services/AuditService';
+import { parseReportDateRange, parseReportYear, parseReportMonth } from '../utils/reportFilters';
 
 const log = createLogger('ReportController');
 
@@ -97,13 +98,8 @@ export class ReportController {
                 return res.status(400).json({ error: 'Start and end dates are required' });
             }
 
-            const startDate = new Date(start as string);
-            const endDate = new Date(end as string);
-            const maxRangeDays = 366;
-            if ((endDate.getTime() - startDate.getTime()) > maxRangeDays * 24 * 60 * 60 * 1000) {
-                return res.status(400).json({ error: `El rango máximo permitido es de ${maxRangeDays} días` });
-            }
-            const result = await ReportService.getAttendanceData(startDate, endDate, { companyId, department });
+            const dates = parseReportDateRange(start, end, 366);
+            const result = await ReportService.getAttendanceData(dates.start!, dates.end!, { companyId, department });
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             await auditReportAccess(req, 'attendance', {
@@ -137,23 +133,22 @@ export class ReportController {
      */
     static async getAttendanceSummary(req: Request, res: Response) {
         try {
-            const { start, end, employeeId } = req.query;
+            const { start, end, employeeId, department } = req.query;
             const companyId = getCompanyScope(req);
 
             if (!start || !end) {
                 return res.status(400).json({ error: 'Start and end dates are required' });
             }
 
-            const startDate = new Date(start as string);
-            const endDate = new Date(end as string);
-
-            const data = await ReportService.getAttendanceDailySummary(startDate, endDate, {
+            const dates = parseReportDateRange(start, end, 366);
+            const data = await ReportService.getAttendanceDailySummary(dates.start!, dates.end!, {
                 companyId: companyId as string,
-                employeeId: employeeId as string
+                employeeId: employeeId as string,
+                department: department as string | undefined
             });
 
             await auditReportAccess(req, 'attendance-summary', {
-                start, end, employeeId, companyId,
+                start, end, employeeId, department, companyId,
                 format: req.query.format === 'xlsx' ? 'xlsx' : 'json'
             });
 
@@ -163,7 +158,7 @@ export class ReportController {
                     subtitle: 'Consolidado ejecutivo de horas diarias y jornadas incompletas.',
                     periodLabel: `${start} al ${end}`,
                     companyId,
-                    department: undefined
+                    department: department as string | undefined
                 }));
                 res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 res.setHeader('Content-Disposition', `attachment; filename=Resumen_Asistencia_${start}_${end}.xlsx`);
@@ -191,13 +186,8 @@ export class ReportController {
                 return res.status(400).json({ error: 'Start and end dates are required' });
             }
 
-            const startDate = new Date(start as string);
-            const endDate = new Date(end as string);
-            const maxRangeDays = 366;
-            if ((endDate.getTime() - startDate.getTime()) > maxRangeDays * 24 * 60 * 60 * 1000) {
-                return res.status(400).json({ error: `El rango máximo permitido es de ${maxRangeDays} días` });
-            }
-            const result = await ReportService.getOvertimeData(startDate, endDate, { companyId, department });
+            const dates = parseReportDateRange(start, end, 366);
+            const result = await ReportService.getOvertimeData(dates.start!, dates.end!, { companyId, department });
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             await auditReportAccess(req, 'overtime', {
@@ -232,10 +222,9 @@ export class ReportController {
         try {
             const { year, format, department } = req.query;
             const companyId = getCompanyScope(req);
-            const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
+            const targetYear = parseReportYear(year);
             const pagination = getPaginationParams(req);
-
-            const result = await ReportService.getVacationData(targetYear, { companyId, department }, pagination);
+            const result = await ReportService.getVacationData(targetYear, { companyId, department }, format !== 'xlsx' && pagination.isPaginationRequested ? pagination : undefined);
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             await auditReportAccess(req, 'vacations', {
@@ -272,24 +261,23 @@ export class ReportController {
      */
     static async getCosts(req: Request, res: Response) {
         try {
-            const { year, month, format } = req.query;
+            const { year, month, format, department } = req.query;
             const user = (req as AuthenticatedRequest).user;
             const companyId = getCompanyScope(req);
             const isGlobalAdmin = !user?.companyId && user?.role === 'admin';
-            const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
-            const targetMonth = month ? parseInt(month as string) : undefined;
+            const targetYear = parseReportYear(year);
+            const targetMonth = parseReportMonth(month);
 
-            // CRIT-001: pasamos el flag isGlobalAdmin explícito para que
-            // el servicio use una cache key separada y NO aplique el
-            // filtro de empresa al admin global.
+            // Global access permits all companies unless one was explicitly selected.
             const data = await ReportService.getCompanyCostData(targetYear, targetMonth, {
                 companyId: companyId ?? null,
-                isGlobalAdmin
+                isGlobalAdmin,
+                department: department as string | undefined
             });
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             await auditReportAccess(req, 'costs', {
-                year: targetYear, month: targetMonth, companyId, format: requestedFormat
+                year: targetYear, month: targetMonth, department, companyId, format: requestedFormat
             });
 
             if (format === 'xlsx') {
@@ -297,7 +285,8 @@ export class ReportController {
                     title: 'Reporte de costes de personal',
                     subtitle: 'Visión de coste empresa basada en nómina consolidada.',
                     periodLabel: targetMonth ? `${targetMonth}/${targetYear}` : `Año ${targetYear}`,
-                    companyId
+                    companyId,
+                    department: department as string | undefined
                 }));
                 res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 res.setHeader('Content-Disposition', `attachment; filename=Reporte_Costes_${targetYear}_${targetMonth || 'Total'}.xlsx`);
@@ -324,14 +313,9 @@ export class ReportController {
                 return res.status(400).json({ error: 'Start and end dates are required' });
             }
 
-            const startDate = new Date(start as string);
-            const endDate = new Date(end as string);
-            const maxRangeDays = 366;
-            if ((endDate.getTime() - startDate.getTime()) > maxRangeDays * 24 * 60 * 60 * 1000) {
-                return res.status(400).json({ error: `El rango máximo permitido es de ${maxRangeDays} días` });
-            }
+            const dates = parseReportDateRange(start, end, 366);
             const pagination = getPaginationParams(req);
-            const result = await ReportService.getDetailedAbsenceData(startDate, endDate, { companyId, department }, pagination);
+            const result = await ReportService.getDetailedAbsenceData(dates.start!, dates.end!, { companyId, department }, format !== 'xlsx' && pagination.isPaginationRequested ? pagination : undefined);
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             await auditReportAccess(req, 'absences-detailed', {
@@ -421,28 +405,30 @@ export class ReportController {
      */
     static async getKPIs(req: Request, res: Response) {
         try {
-            const { year, month, format } = req.query;
+            const { year, month, format, department } = req.query;
             const companyId = getCompanyScope(req);
-            const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
-            const targetMonth = month ? parseInt(month as string) : new Date().getMonth() + 1;
+            const targetYear = parseReportYear(year);
+            const targetMonth = parseReportMonth(month);
 
-            const summary = await ReportService.getKPIMetrics(targetYear, targetMonth, { companyId });
-            const deptStats = await ReportService.getAbsenteeismByDepartment(targetYear, targetMonth, { companyId });
+            const filters = { companyId, department: department as string | undefined };
+            const summary = await ReportService.getKPIMetrics(targetYear, targetMonth, filters);
+            const deptStats = await ReportService.getAbsenteeismByDepartment(targetYear, targetMonth, filters);
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             await auditReportAccess(req, 'kpis', {
-                year: targetYear, month: targetMonth, companyId, format: requestedFormat
+                year: targetYear, month: targetMonth, department, companyId, format: requestedFormat
             });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateKPIReport(summary, deptStats, buildExcelContext({
                     title: 'KPIs de organización',
                     subtitle: 'Cuadro de mando de estructura, rotación y absentismo.',
-                    periodLabel: `${targetMonth}/${targetYear}`,
-                    companyId
+                    periodLabel: targetMonth ? `${targetMonth}/${targetYear}` : `Año ${targetYear}`,
+                    companyId,
+                    department: department as string | undefined
                 }));
                 res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-                res.setHeader('Content-Disposition', `attachment; filename=Reporte_KPIs_${targetYear}_${targetMonth}.xlsx`);
+                res.setHeader('Content-Disposition', `attachment; filename=Reporte_KPIs_${targetYear}_${targetMonth || 'Anual'}.xlsx`);
                 return res.send(buffer);
             }
 
@@ -459,13 +445,13 @@ export class ReportController {
      */
     static async getGenderGap(req: Request, res: Response) {
         try {
-            const { year, format } = req.query;
+            const { year, format, department } = req.query;
             const companyId = getCompanyScope(req);
-            const data = await ReportService.getGenderGapData({ companyId, year });
+            const data = await ReportService.getGenderGapData({ companyId, year: year ? parseReportYear(year) : undefined, department });
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             await auditReportAccess(req, 'gender-gap', {
-                year, companyId, format: requestedFormat
+                year, department, companyId, format: requestedFormat
             });
 
             if (format === 'xlsx') {
@@ -473,7 +459,8 @@ export class ReportController {
                     title: 'Reporte de igualdad y diversidad',
                     subtitle: 'Seguimiento de brecha salarial y distribución de plantilla.',
                     periodLabel: year ? `Año ${year}` : 'Últimos 12 meses de nómina válida',
-                    companyId
+                    companyId,
+                    department: department as string | undefined
                 }));
                 res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 res.setHeader('Content-Disposition', `attachment; filename=Reporte_Igualdad_${year || 'actual'}.xlsx`);
@@ -495,7 +482,7 @@ export class ReportController {
         try {
             const { year } = req.query;
             const companyId = getCompanyScope(req);
-            const targetYear = year ? parseInt(year as string) : new Date().getFullYear();
+            const targetYear = parseReportYear(year);
 
             const data = await ReportService.getUsageByDepartment(targetYear, { companyId });
 
@@ -518,27 +505,32 @@ export class ReportController {
      */
     static async getObras(req: Request, res: Response) {
         try {
-            const { status, from, to, format } = req.query;
+            const { status, from, to, format, department } = req.query;
             const companyId = getCompanyScope(req);
+            const dates = parseReportDateRange(from, to);
             const filters: any = {
+                companyId,
+                department: department ? String(department) : undefined,
+                isGlobalAdmin: (req as AuthenticatedRequest).user?.role === 'admin' && !(req as AuthenticatedRequest).user?.companyId,
                 status: status ? String(status) : undefined,
-                from: from ? new Date(String(from)) : undefined,
-                to: to ? new Date(String(to)) : undefined
+                from: dates.start,
+                to: dates.end
             };
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             const data = await ReportService.getObraSummary(filters);
 
             await auditReportAccess(req, 'obras', {
-                status, from, to, companyId, format: requestedFormat
+                status, from, to, department, companyId, format: requestedFormat
             });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateObraSummaryReport(data, buildExcelContext({
                     title: 'Resumen de obras',
                     subtitle: 'Horas, gastos y consumo de presupuesto por obra.',
-                    periodLabel: filters.from && filters.to ? `Del ${String(from)} al ${String(to)}` : 'Histórico completo',
-                    companyId
+                    periodLabel: from || to ? `${from || 'Inicio'} al ${to || 'Actualidad'}` : 'Histórico completo',
+                    companyId,
+                    department: department as string | undefined
                 }));
                 res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 res.setHeader('Content-Disposition', 'attachment; filename=Reporte_Obras.xlsx');
@@ -560,26 +552,31 @@ export class ReportController {
      */
     static async getObraEmployees(req: Request, res: Response) {
         try {
-            const { from, to, format } = req.query;
+            const { from, to, format, department } = req.query;
             const companyId = getCompanyScope(req);
+            const dates = parseReportDateRange(from, to);
             const filters: any = {
-                from: from ? new Date(String(from)) : undefined,
-                to: to ? new Date(String(to)) : undefined
+                companyId,
+                department: department ? String(department) : undefined,
+                isGlobalAdmin: (req as AuthenticatedRequest).user?.role === 'admin' && !(req as AuthenticatedRequest).user?.companyId,
+                from: dates.start,
+                to: dates.end
             };
             const requestedFormat = (format as string) === 'xlsx' ? 'xlsx' : 'json';
 
             const data = await ReportService.getObraEmployeeBreakdown(filters);
 
             await auditReportAccess(req, 'obras-employees', {
-                from, to, companyId, format: requestedFormat
+                from, to, department, companyId, format: requestedFormat
             });
 
             if (format === 'xlsx') {
                 const buffer = await ExcelService.generateObraEmployeeReport(data, buildExcelContext({
                     title: 'Gastos de obra por empleado',
                     subtitle: 'Horas y gastos imputados por empleado dentro de las obras.',
-                    periodLabel: filters.from && filters.to ? `Del ${String(from)} al ${String(to)}` : 'Histórico completo',
-                    companyId
+                    periodLabel: from || to ? `${from || 'Inicio'} al ${to || 'Actualidad'}` : 'Histórico completo',
+                    companyId,
+                    department: department as string | undefined
                 }));
                 res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
                 res.setHeader('Content-Disposition', 'attachment; filename=Reporte_Obras_Por_Empleado.xlsx');
@@ -603,9 +600,10 @@ export class ReportController {
         try {
             const { from, to, department, employeeId, format } = req.query;
             const companyId = getCompanyScope(req);
+            const dates = parseReportDateRange(from, to);
             const filters: any = {
-                from: from ? new Date(String(from)) : undefined,
-                to: to ? new Date(String(to)) : undefined,
+                from: dates.start,
+                to: dates.end,
                 companyId: companyId || undefined,
                 department: department ? String(department) : undefined,
                 employeeId: employeeId ? String(employeeId) : undefined
@@ -648,9 +646,10 @@ export class ReportController {
         try {
             const { from, to, department, employeeId, type, format } = req.query;
             const companyId = getCompanyScope(req);
+            const dates = parseReportDateRange(from, to);
             const filters: any = {
-                from: from ? new Date(String(from)) : undefined,
-                to: to ? new Date(String(to)) : undefined,
+                from: dates.start,
+                to: dates.end,
                 companyId: companyId || undefined,
                 department: department ? String(department) : undefined,
                 employeeId: employeeId ? String(employeeId) : undefined,

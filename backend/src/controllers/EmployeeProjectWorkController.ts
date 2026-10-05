@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../types/express';
 import { canManageEmployee, canReadEmployeeDetail } from '../policies/employeeAccess';
 import { ApiResponse } from '../utils/ApiResponse';
 import { Prisma } from '@prisma/client';
+import { CacheService } from '../services/CacheService';
 
 /**
  * Si el rango cae en un día con ausencia aprobada (vacaciones, baja médica,
@@ -61,8 +62,8 @@ export class EmployeeProjectWorkController {
                 const validTo = lte && !isNaN(lte.getTime());
                 if (validFrom || validTo) {
                     where.AND = [
-                        ...(validFrom ? [{ endDate: { gte: gte } }] : []),
-                        ...(validTo ? [{ startDate: { lte: lte } }] : [])
+                        ...(validFrom ? [{ endDate: { gte } }] : []),
+                        ...(validTo ? [{ startDate: { lte } }] : [])
                     ];
                 }
             }
@@ -120,6 +121,7 @@ export class EmployeeProjectWorkController {
                 },
                 include: { project: true }
             });
+            CacheService.invalidateByPrefix('report:obra-');
             return ApiResponse.success(res, entry, 'Registro creado', 201);
         } catch (error) {
             return ApiResponse.error(res, 'Error al crear registro', 500);
@@ -169,6 +171,7 @@ export class EmployeeProjectWorkController {
                 },
                 include: { project: true }
             });
+            CacheService.invalidateByPrefix('report:obra-');
             return ApiResponse.success(res, updated, 'Registro actualizado');
         } catch (error) {
             return ApiResponse.error(res, 'Error al actualizar registro', 500);
@@ -222,6 +225,7 @@ export class EmployeeProjectWorkController {
             await prisma.employeeProjectWork.delete({
                 where: { id }
             });
+            CacheService.invalidateByPrefix('report:obra-');
             return ApiResponse.success(res, null, 'Registro eliminado');
         } catch (error) {
             return ApiResponse.error(res, 'Error al eliminar registro', 500);
