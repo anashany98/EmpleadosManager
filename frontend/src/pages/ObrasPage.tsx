@@ -143,18 +143,24 @@ export default function ObrasPage() {
     };
 
     const handleSave = async () => {
-        if (!form.code || !form.name) return toast.error('Código y nombre son obligatorios');
+        const code = form.code.trim();
+        if (!code || !form.name) return toast.error('Código y nombre son obligatorios');
         if (form.startDate && form.endDate && form.startDate > form.endDate) {
             return toast.error('Fecha fin debe ser posterior o igual a fecha inicio');
         }
         try {
-            const payload: Record<string, string | number> = { ...form };
+            const payload: Record<string, string | number | null> = {
+                ...form,
+                code,
+                managerId: form.managerId || null,
+                destination: form.destination || null,
+                clientName: form.clientName || null,
+                description: form.description || null
+            };
             if (payload.budget === '' || payload.budget == null) delete payload.budget;
             else payload.budget = Number(payload.budget);
-            if (!payload.managerId) delete payload.managerId;
             if (!payload.startDate) delete payload.startDate;
             if (!payload.endDate) delete payload.endDate;
-            ['destination', 'clientName', 'description'].forEach((k) => { if (!payload[k]) delete payload[k]; });
             if (editingId) {
                 await api.patch(`/obras/${editingId}`, payload);
                 toast.success('Obra actualizada');
@@ -264,7 +270,7 @@ export default function ObrasPage() {
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <div>
                                     <label htmlFor="obra-code" className="text-xs font-medium text-slate-500">Código *</label>
-                                    <input id="obra-code" name="code" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editingId} />
+                                    <input id="obra-code" name="code" className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
                                 </div>
                                 <div className="md:col-span-2">
                                     <label htmlFor="obra-name" className="text-xs font-medium text-slate-500">Nombre *</label>

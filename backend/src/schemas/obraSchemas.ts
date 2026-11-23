@@ -116,9 +116,11 @@ export const contractorListQuerySchema = z.object({
     })
 });
 
+const obraCode = z.string().trim().min(1, 'code obligatorio').max(50);
+
 export const obraCreateSchema = z.object({
     body: z.object({
-        code: z.string().trim().min(1, 'code obligatorio').max(50),
+        code: obraCode,
         name: z.string().trim().min(1, 'name obligatorio').max(200),
         destination: optionalText,
         description: optionalText,
@@ -132,14 +134,15 @@ export const obraCreateSchema = z.object({
 
 export const obraUpdateSchema = z.object({
     body: z.object({
+        code: obraCode.optional(),
         name: z.string().trim().min(1).max(200).optional(),
-        destination: optionalText,
-        description: optionalText,
-        clientName: optionalText,
+        destination: optionalText.optional(),
+        description: optionalText.optional(),
+        clientName: optionalText.optional(),
         startDate: dateString.optional().nullable(),
         endDate: dateString.optional().nullable(),
         budget: z.union([z.number().positive(), z.string()]).optional().nullable(),
-        managerId: optionalId
+        managerId: optionalId.optional()
     })
 });
 

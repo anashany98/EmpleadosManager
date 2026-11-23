@@ -4,7 +4,7 @@
 #########################
 # Stage 1: Build
 #########################
-FROM node:22.12-bullseye AS builder
+FROM node:22-bookworm AS builder
 
 WORKDIR /app
 

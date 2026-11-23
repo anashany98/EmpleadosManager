@@ -28,7 +28,6 @@ const FORBIDDEN_UPDATE_KEYS = new Set([
     'createdById',
     'obraId',
     'importBatchId',
-    'code',
     'status'
 ]);
 
@@ -289,7 +288,7 @@ export const ObraController = {
 
             const obra = await prisma.project.findUnique({
                 where: { id },
-                select: { id: true, endDate: true, startDate: true, managerId: true, code: true, name: true }
+                select: { id: true, endDate: true, startDate: true, managerId: true }
             });
             if (!obra) return ApiResponse.error(res, 'Obra no encontrada', 404);
 
@@ -337,8 +336,8 @@ export const ObraController = {
                 if (newManagerUser) {
                     await NotificationService.create({
                         userId: newManagerUser.id,
-                        title: `Asignado como manager de ${obra.code}`,
-                        message: `Se te ha asignado como manager de la obra "${obra.name}". Ahora puedes ver y gestionar sus gastos y horas.`,
+                        title: `Asignado como manager de ${updated.code}`,
+                        message: `Se te ha asignado como manager de la obra "${updated.name}". Ahora puedes ver y gestionar sus gastos y horas.`,
                         type: 'INFO',
                         link: `/obras/${id}`
                     });
@@ -358,7 +357,10 @@ export const ObraController = {
 
             return ApiResponse.success(res, updated, 'Obra actualizada');
         } catch (err: unknown) {
-            if (err !== null && typeof err === 'object' && 'code' in err && (err as { code: string }).code === 'P2003') return ApiResponse.error(res, 'managerId no existe', 400);
+            if (err !== null && typeof err === 'object' && 'code' in err) {
+                if (err.code === 'P2002') return ApiResponse.error(res, 'Ya existe una obra con ese código', 409);
+                if (err.code === 'P2003') return ApiResponse.error(res, 'managerId no existe', 400);
+            }
             if (err instanceof AppError) return ApiResponse.error(res, err.message, err.statusCode);
             return ApiResponse.error(res, err instanceof Error ? err.message : 'Error al actualizar la obra', 500);
         }

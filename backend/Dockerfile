@@ -4,7 +4,7 @@
 #########################
 # Stage 1: Dependencies (dev + prod for building)
 #########################
-FROM node:22.12-bullseye AS deps
+FROM node:22-bookworm AS deps
 
 WORKDIR /app/backend
 
@@ -18,7 +18,7 @@ RUN npm install && npm cache clean --force
 #########################
 # Stage 2: Builder
 #########################
-FROM node:22.12-bullseye AS builder
+FROM node:22-bookworm AS builder
 
 WORKDIR /app
 
@@ -56,7 +56,7 @@ RUN cd backend && npm run build
 #########################
 # Stage 3: Runner (production only)
 #########################
-FROM node:22.12-bullseye-slim AS runner
+FROM node:22-bookworm-slim AS runner
 
 # Match the runtime OS with the Prisma client generated in the build stage.
 # Production runs PostgreSQL 17. pg_dump refuses to dump a newer server with
@@ -66,7 +66,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     ca-certificates \
  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql.gpg \
- && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt bullseye-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
+ && echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/pgdg.list \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
     libcairo2 \
